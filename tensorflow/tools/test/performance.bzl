@@ -21,8 +21,9 @@ def tf_cc_logged_benchmark(
     fail(" ".join(("Target must be a single well-defined test, e.g.,",
                    "//path/to:test. Received: %s" % target)))
 
-  all_tags = list(depset(tags) + \
-                  depset(["benchmark-test", "local", "manual", "regression-test"]))
+  all_tags = (
+    depset(tags) + depset(
+      ["benchmark-test", "local", "manual", "regression-test"])).to_list()
 
   tf_py_test(
       name = name,

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -315,6 +316,104 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
     }
   }
   return const_cast<NodeDef*>(current);
+}
+
+// Every permutation is a product of one or more cycles. Iterate over the cycles
+// in the permutation, and convert each of those into a product of
+// transpositions (swaps): https://en.wikipedia.org/wiki/Cyclic_permutation
+void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
+                         bool invert_permutation) {
+  CHECK_EQ(graph->node_size(), permutation->size());
+  std::vector<int> inv_perm(permutation->size(), 0);
+  if (invert_permutation) {
+    for (size_t n = 0; n < permutation->size(); ++n) {
+      inv_perm[(*permutation)[n]] = n;
+    }
+    permutation->swap(inv_perm);
+  }
+  for (std::size_t n = 0; n + 1 < permutation->size(); ++n) {
+    while (n != (*permutation)[n]) {
+      std::size_t r = (*permutation)[n];
+      graph->mutable_node()->SwapElements(n, r);
+      std::swap((*permutation)[n], (*permutation)[r]);
+    }
+  }
+}
+
+namespace {
+template <typename T>
+inline void STLSortAndRemoveDuplicates(T* v) {
+  std::sort(v->begin(), v->end());
+  v->erase(std::unique(v->begin(), v->end()), v->end());
+}
+}  // namespace
+
+Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
+                                   bool dedup_outputs) {
+  const int num_nodes = graph.node_size();
+  inputs_.clear();
+  inputs_.resize(num_nodes);
+  outputs_.clear();
+  outputs_.resize(num_nodes);
+  name_to_index_.clear();
+  name_to_index_.reserve(num_nodes);
+  index_to_name_.clear();
+  index_to_name_.reserve(num_nodes);
+
+  // Build map from name to index and vice versa.
+  for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const NodeDef& node = graph.node(node_idx);
+    name_to_index_.emplace(node.name(), node_idx);
+    index_to_name_.push_back(node.name());
+  }
+
+  // Build forward and reverse adjacency lists.
+  for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
+    const NodeDef& node = graph.node(node_idx);
+    inputs_[node_idx].reserve(node.input_size());
+    for (const string& input : node.input()) {
+      auto it = name_to_index_.find(NodeName(input));
+      if (it == name_to_index_.end()) {
+        return errors::InvalidArgument("Non-existent input ", input,
+                                       " for node ", node.name());
+      }
+      const int input_idx = it->second;
+      inputs_[node_idx].push_back(input_idx);
+      outputs_[input_idx].push_back(node_idx);
+    }
+    if (dedup_inputs) {
+      // Dedup the input list while it's still hot in cache.
+      STLSortAndRemoveDuplicates(&inputs_[node_idx]);
+    }
+  }
+
+  // Dedup outputs.
+  if (dedup_outputs) {
+    for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
+      STLSortAndRemoveDuplicates(&outputs_[node_idx]);
+    }
+  }
+  return Status::OK();
+}
+
+string SimpleGraphView::PrintToString() const {
+  string str;
+  for (int i = 0; i < num_nodes(); ++i) {
+    strings::StrAppend(&str, "Node ", i, "'", node_name(i), "'\n", "Inputs: [");
+    for (int input : inputs(i)) {
+      strings::StrAppend(&str, input, " '", node_name(input), "', ");
+    }
+    strings::StrAppend(&str, "]\n", "Outputs: [");
+    for (int j = 0; j < outputs(i).size(); ++j) {
+      const int output = outputs(i)[j];
+      if (j > 0) {
+        strings::StrAppend(&str, ", ");
+      }
+      strings::StrAppend(&str, output, " '", node_name(output), "'");
+    }
+    strings::StrAppend(&str, "]\n");
+  }
+  return str;
 }
 
 }  // end namespace grappler

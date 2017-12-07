@@ -289,7 +289,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
@@ -442,6 +442,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor.h"

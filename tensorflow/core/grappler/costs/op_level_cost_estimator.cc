@@ -31,6 +31,7 @@ constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
 constexpr char kConv2dBackpropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
+constexpr char kPlaceholder[] = "Placeholder";
 constexpr char kIdentity[] = "Identity";
 constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
@@ -160,6 +161,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
+      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+
+      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -171,7 +175,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -174,6 +175,43 @@ DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
 NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
                         bool follow_control_input,
                         const std::function<bool(const NodeDef&)>& pred_fn);
+
+// Permute the nodes of graph in place according to the permutation.
+void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
+                         bool invert_permutation);
+
+class SimpleGraphView {
+ public:
+  Status Initialize(const GraphDef& graph) {
+    return Initialize(graph, true, true);
+  }
+  Status Initialize(const GraphDef& graph, bool dedup_inputs,
+                    bool dedup_outputs);
+
+  inline int num_nodes() const { return index_to_name_.size(); }
+  inline const int index(const string& node_name) const {
+    const auto& it = name_to_index_.find(node_name);
+    DCHECK(it != name_to_index_.end());
+    return it == name_to_index_.end() ? -1 : it->second;
+  }
+  inline const string& node_name(int node_idx) const {
+    return index_to_name_[node_idx];
+  }
+  inline const gtl::InlinedVector<int, 4>& inputs(int node_idx) const {
+    return inputs_[node_idx];
+  }
+  inline const gtl::InlinedVector<int, 2>& outputs(int node_idx) const {
+    return outputs_[node_idx];
+  }
+
+  string PrintToString() const;
+
+ private:
+  std::vector<string> index_to_name_;
+  std::unordered_map<string, int> name_to_index_;
+  std::vector<gtl::InlinedVector<int, 4>> inputs_;
+  std::vector<gtl::InlinedVector<int, 2>> outputs_;
+};
 
 }  // end namespace grappler
 }  // end namespace tensorflow

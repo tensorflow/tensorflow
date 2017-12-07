@@ -64,6 +64,9 @@ class Cluster {
   // before Provision().
   void SetNumWarmupSteps(int num_steps);
 
+  // Returns the number of warmup steps.
+  int NumWarmupSteps() const;
+
   // Disable the collection of detailed statistics. Must be called
   // before Provision().
   void DisableDetailedStats(bool disable);

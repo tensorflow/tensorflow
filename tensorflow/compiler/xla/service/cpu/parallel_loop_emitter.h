@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 
@@ -31,9 +32,8 @@ namespace cpu {
 // [start, limit) pairs of ir values (one for each partitioned outer dimension).
 //
 // EX: Let 'shape' = [8, 16, 32], with the loop bounds of the two-most major
-//     dimensions dynamic.
-//     Then 'dynamic_loop_bounds' will contain the following ir values for
-//     the two most-major dimenions:
+//     dimensions dynamic. Then 'dynamic_loop_bounds' will contain the
+//     following ir values for the two most-major dimensions:
 //       [dim0_index_start_ir_value, dim0_index_limit_ir_value]
 //       [dim1_index_start_ir_value, dim1_index_limit_ir_value]
 //
@@ -47,15 +47,13 @@ namespace cpu {
 //
 class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
  public:
-  using LoopBounds = std::vector<std::pair<llvm::Value*, llvm::Value*>>;
-
   // Constructs a ParallelLoopEmitter which uses 'target_element_generator' to
   // generate elements, 'dynamic_loop_bounds' to set the loop bounds of the
   // most-major dimensions, and 'target_array.' shape to set the static loop
   // bounds for the most-minor dimensions.
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
-                      const LoopBounds* dynamic_loop_bounds,
+                      const DynamicLoopBounds* dynamic_loop_bounds,
                       llvm::IRBuilder<>* ir_builder);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
@@ -66,7 +64,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
       tensorflow::StringPiece loop_name) override;
 
  private:
-  const LoopBounds* dynamic_loop_bounds_;
+  const DynamicLoopBounds* dynamic_loop_bounds_;
 };
 
 }  // namespace cpu

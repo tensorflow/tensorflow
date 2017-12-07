@@ -109,8 +109,10 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Infers the shape produced a cross replica sum with the given operand shape.
-  static StatusOr<Shape> InferCrossReplicaSumShape(const Shape& operand);
+  // Infers the shape produced a cross replica sum with the given operand
+  // shapes.
+  static StatusOr<Shape> InferCrossReplicaSumShape(
+      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.

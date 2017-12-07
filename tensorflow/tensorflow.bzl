@@ -341,6 +341,7 @@ def tf_gen_op_wrapper_cc(name,
           " $$(dirname $$(echo $(locations " + api_def_src +
           ") | cut -d\" \" -f1))")
     api_def_args_str = ",".join(api_def_args)
+
   native.genrule(
       name=name + "_genrule",
       outs=[
@@ -476,7 +477,8 @@ def tf_gen_op_wrapper_py(name,
                          hidden_file=None,
                          generated_target_name=None,
                          op_whitelist=[],
-                         cc_linkopts=[]):
+                         cc_linkopts=[],
+                         api_def_srcs=[]):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -509,22 +511,39 @@ def tf_gen_op_wrapper_py(name,
     op_list_arg = "''"
     op_list_is_whitelist = False
 
+  # Prepare ApiDef directories to pass to the genrule.
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          "$$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
+
   if hidden_file:
     # `hidden_file` is file containing a list of op names to be hidden in the
     # generated module.
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
-        srcs=[hidden_file],
+        srcs=api_def_srcs + [hidden_file],
         tools=[tool_name] + tf_binary_additional_srcs(),
-        cmd=("$(location " + tool_name + ") @$(location " + hidden_file + ") " +
+        cmd=("$(location " + tool_name + ") " + api_def_args_str +
+             " @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
   else:
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
+        srcs=api_def_srcs,
         tools=[tool_name] + tf_binary_additional_srcs(),
-        cmd=("$(location " + tool_name + ") " + op_list_arg + " " +
+        cmd=("$(location " + tool_name + ") " + api_def_args_str + " " +
+             op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
              ("1" if op_list_is_whitelist else "0") + " > $@"))
 

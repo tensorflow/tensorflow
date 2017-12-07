@@ -152,19 +152,13 @@ class LayerCollection(object):
     """LossFunctions registered with this LayerCollection."""
     return list(self._loss_dict.values())
 
-  def is_variable_registered(self, variable):
-    """Checks whether the variable has already been registered.
-
-    Args:
-      variable: A single variable or tensor.
-    Returns:
-      True if the variable has been registered either by itself or as part of a
-      tuple.
-    """
-    return any([
-        variable in key if isinstance(key, (tuple, list)) else variable == key
-        for key in self.fisher_blocks.keys()
-    ])
+  @property
+  def registered_variables(self):
+    """A tuple of all of the variables currently registered."""
+    tuple_of_tuples = (ensure_sequence(key) for key, block
+                       in six.iteritems(self.fisher_blocks))
+    flat_tuple = tuple(item for tuple_ in tuple_of_tuples for item in tuple_)
+    return flat_tuple
 
   @property
   def linked_parameters(self):

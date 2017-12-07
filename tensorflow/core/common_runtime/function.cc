@@ -588,14 +588,13 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            std::vector<Tensor>* rets,
                                            Executor::Args* exec_args,
                                            Item* item, DoneCallback done) {
-  FunctionCallFrame* frame = exec_args->call_frame;
+  DCHECK(exec_args->call_frame == nullptr);
   string target_device = parent_->GetDeviceName(handle);
   string source_device = opts.source_device;
   Rendezvous* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   Status s = parent_->GetDeviceContext(target_device, &device_context);
   if (!s.ok()) {
-    delete frame;
     delete exec_args;
     done(s);
     return;
@@ -603,6 +602,16 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   int64 src_incarnation, target_incarnation;
   s = parent_->GetDeviceIncarnation(source_device, &src_incarnation);
   s.Update(parent_->GetDeviceIncarnation(target_device, &target_incarnation));
+  if (!s.ok()) {
+    delete exec_args;
+    done(s);
+    return;
+  }
+
+  const FunctionBody* fbody = GetFunctionBody(handle);
+  FunctionCallFrame* frame =
+      new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
+  exec_args->call_frame = frame;
   if (!s.ok()) {
     delete frame;
     delete exec_args;
@@ -679,14 +688,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
-  const FunctionBody* fbody = GetFunctionBody(handle);
-  FunctionCallFrame* frame =
-      new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
 
   Item* item = nullptr;
   Status s = GetOrCreateItem(handle, &item);
   if (!s.ok()) {
-    delete frame;
     done(s);
     return;
   }
@@ -697,7 +702,6 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->step_id = run_opts.step_id;
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
-  exec_args->call_frame = frame;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
   exec_args->step_container = run_opts.step_container;
   exec_args->runner = *run_opts.runner;
@@ -707,6 +711,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  const FunctionBody* fbody = GetFunctionBody(handle);
+  FunctionCallFrame* frame =
+      new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
+  exec_args->call_frame = frame;
   s = frame->SetArgs(args);
   if (!s.ok()) {
     delete frame;
@@ -714,6 +722,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     done(s);
     return;
   }
+
   item->exec->RunAsync(
       // Executor args
       *exec_args,

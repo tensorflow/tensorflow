@@ -265,10 +265,10 @@ void ReadModelFlagsFromCommandLineFlags(
       model_flags->add_input_arrays();
     }
     auto* shape = model_flags->mutable_input_arrays(0)->mutable_shape();
-    shape->Clear();
+    shape->clear_dims();
     const IntList& list = parsed_model_flags.input_shape.value();
     for (auto& dim : list.elements) {
-      shape->Add(dim);
+      shape->add_dims(dim);
     }
   }
   if (parsed_model_flags.input_shapes.specified()) {
@@ -278,25 +278,12 @@ void ReadModelFlagsFromCommandLineFlags(
     QCHECK(input_shapes.size() == model_flags->input_arrays_size());
     for (int i = 0; i < input_shapes.size(); ++i) {
       auto* shape = model_flags->mutable_input_arrays(i)->mutable_shape();
-      shape->Clear();
-      if (input_shapes[i].empty()) {
-        // empty i.e. 0-dimensional input shape.
-        // Unfortunately, the current toco::InputArray
-        // proto does not allow to distinguish between a known 0-D shape,
-        // and an unknown shape. Indeed, shape is currently a plain array,
-        // and it being empty means unknown shape. So here, we import a
-        // 0-D shape as a 1-D shape of size.
-        // TODO(benoitjacob): fix toco::InputArray to allow 0-D shape,
-        // probably by making shape an optional message,
-        // encapsulating the array.
-        shape->Add(1);
-      } else {
-        for (const auto& dim_str : absl::StrSplit(input_shapes[i], ',')) {
-          int size;
-          CHECK(absl::SimpleAtoi(dim_str, &size))
-              << "Failed to parse input_shape: " << input_shapes[i];
-          shape->Add(size);
-        }
+      shape->clear_dims();
+      for (const auto& dim_str : absl::StrSplit(input_shapes[i], ',')) {
+        int size;
+        CHECK(absl::SimpleAtoi(dim_str, &size))
+            << "Failed to parse input_shape: " << input_shapes[i];
+        shape->add_dims(size);
       }
     }
   }
@@ -362,6 +349,8 @@ void ReadModelFlagsFromCommandLineFlags(
       }
     }
   }
+
+  CheckInputArraysAreNotOutputArrays(*model_flags);
 }
 
 ParsedModelFlags* UncheckedGlobalParsedModelFlags(bool must_already_exist) {
@@ -394,6 +383,16 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]) {
     fprintf(stderr, "%s", msg.c_str());
     fflush(stderr);
     abort();
+  }
+}
+
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
+  for (const auto& input_array : model_flags.input_arrays()) {
+    for (const string& output_array : model_flags.output_arrays()) {
+      QCHECK_NE(input_array.name(), output_array)
+          << "The array " << output_array
+          << " is listed in both --input_arrays and --output_arrays.";
+    }
   }
 }
 

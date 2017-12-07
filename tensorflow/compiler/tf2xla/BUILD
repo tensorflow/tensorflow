@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package_group(
     name = "internal",
@@ -24,6 +24,30 @@ package(
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+
+cc_library(
+    name = "tf2xla_supported_ops_lib",
+    srcs = ["tf2xla_supported_ops.cc"],
+    hdrs = ["tf2xla_supported_ops.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_binary(
+    name = "tf2xla_supported_ops",
+    srcs = ["tf2xla_supported_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [":tf2xla_supported_ops_lib"],
+)
 
 xla_proto_library(
     name = "tf2xla_proto",

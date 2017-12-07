@@ -1847,13 +1847,6 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
-    name = "cuda_device_functions",
-    hdrs = ["util/cuda_device_functions.h"],
-    visibility = ["//visibility:public"],
-    deps = [":framework_lite"],
-)
-
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
@@ -3416,7 +3409,7 @@ filegroup(
 
 filegroup(
     name = "python_api_def",
-    data = glob(["api_def/python_api/*"]),
+    srcs = glob(["api_def/python_api/*"]),
 )
 
 tf_cc_test(

@@ -109,7 +109,6 @@ namespace mkl_op_registry {
     if (!IsMklOp(op_name, T)) {
       return false;
     }
-
     bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
                     0 == op_name.compare(GetMklOpName("Sub")) ||
                     0 == op_name.compare(GetMklOpName("Mul")) ||

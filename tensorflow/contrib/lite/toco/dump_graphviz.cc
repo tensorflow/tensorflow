@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -160,7 +161,21 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
     node_properties.label =
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op;
   } else {
-    node_properties.label = OperatorTypeName(op.type);
+    node_properties.label =
+        string(absl::StripPrefix(OperatorTypeName(op.type), "TensorFlow"));
+  }
+  switch (op.fused_activation_function) {
+    case FusedActivationFunctionType::kRelu:
+      AppendF(&node_properties.label, "\\nReLU");
+      break;
+    case FusedActivationFunctionType::kRelu6:
+      AppendF(&node_properties.label, "\\nReLU6");
+      break;
+    case FusedActivationFunctionType::kRelu1:
+      AppendF(&node_properties.label, "\\nReLU1");
+      break;
+    default:
+      break;
   }
   // Additional information for some of the operators.
   switch (op.type) {

@@ -298,6 +298,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Test should only be run manually
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reduction_ops_test_big.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
+      # Depends on python/framework/test_ops
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/control_flow_util_test.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

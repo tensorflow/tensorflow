@@ -66,6 +66,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -505,29 +506,6 @@ def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
-def _IsLoopConstantEnter(op):
-  """Return true iff op is a loop invariant."""
-  is_enter = (op.type == "Enter" or op.type == "RefEnter")
-  return is_enter and op.get_attr("is_constant")
-
-
-def _GetLoopConstantEnter(value):
-  """Return the enter op if we can infer `value` to be a loop invariant."""
-  id_ops = {"Switch", "RefSwitch", "Identity", "RefIdentity"}
-  op = value.op
-  while op.type in id_ops:
-    op = op.inputs[0].op
-  return op if _IsLoopConstantEnter(op) else None
-
-
-def _GetOutputContext(op):
-  """Return the control flow context for the output of an op."""
-  ctxt = op._get_control_flow_context()
-  if IsLoopExit(op):
-    ctxt = ctxt.outer_context
-  return ctxt
-
-
 def _ShapeLessThanOrEqual(shape1, shape2):
   if shape2.dims is None:
     return True
@@ -918,7 +896,7 @@ class GradLoopState(object):
 
       # Add the stack_push op in the context of value.op.
       swap_enabled = self.forward_context.swap_memory
-      value_ctxt = _GetOutputContext(value.op)
+      value_ctxt = util.GetOutputContext(value.op)
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
@@ -1028,7 +1006,7 @@ class GradLoopState(object):
       cur_value = value
       cur_grad_state = self
       while True:
-        enter_op = _GetLoopConstantEnter(cur_value)
+        enter_op = util.GetLoopConstantEnter(cur_value)
         if enter_op:
           # Special case: cur_value comes from a constant Enter node.
           cur_value = enter_op.inputs[0]
@@ -1081,7 +1059,7 @@ class ControlFlowState(object):
 
   def GetGradState(self, op, before):
     """Return the grad state for this op if it's in a forward loop context."""
-    if before and IsLoopExit(op):
+    if before and util.IsLoopExit(op):
       forward_ctxt = op._get_control_flow_context()
       forward_ctxt = forward_ctxt.outer_context
       if forward_ctxt:
@@ -1241,8 +1219,8 @@ class ControlFlowState(object):
     Returns:
       A zero tensor of the same shape of op.outputs[index].
     """
-    if IsLoopSwitch(op): return None
-    dead_branch = IsSwitch(op)
+    if util.IsLoopSwitch(op): return None
+    dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
@@ -1342,7 +1320,7 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   """
   loop_state = None
   for op in between_op_list:
-    if IsLoopExit(op):
+    if util.IsLoopExit(op):
       if loop_state is None:
         loop_state = ControlFlowState()
       if colocate_gradients_with_ops:
@@ -1353,28 +1331,10 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   return loop_state
 
 
-def IsSwitch(op):
-  """Return true if `op` is a Switch."""
-  return op.type == "Switch" or op.type == "RefSwitch"
-
-
-def IsLoopExit(op):
-  """Return true if `op` is an Exit."""
-  return op.type == "Exit" or op.type == "RefExit"
-
-
-def IsLoopSwitch(op):
-  """Return true if `op` is the Switch for a while loop."""
-  if IsSwitch(op):
-    ctxt = op._get_control_flow_context()
-    return ctxt and isinstance(ctxt, WhileContext)
-  return False
-
-
 def ZerosLikeOutsideLoop(op, index):
   """Create zeros_like for the specified output of an op."""
   val = op.outputs[index]
-  if not IsSwitch(op):
+  if not util.IsSwitch(op):
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
@@ -1511,7 +1471,7 @@ class ControlFlowContext(object):
     return None
 
   def _IsInOuterContext(self, op):
-    op_ctxt = _GetOutputContext(op)
+    op_ctxt = util.GetOutputContext(op)
     outer_ctxt = self.outer_context
     while outer_ctxt != op_ctxt:
       if outer_ctxt is None:
@@ -1529,7 +1489,7 @@ class ControlFlowContext(object):
     else:
       internal_control_inputs = []
       for x in op.control_inputs:
-        ctxt = _GetOutputContext(x)
+        ctxt = util.GetOutputContext(x)
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
@@ -1546,6 +1506,12 @@ class ControlFlowContext(object):
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""
     return None
+
+  def IsWhileContext(self):
+    return False
+
+  def __str__(self):
+    return self.name
 
 
 class CondContext(ControlFlowContext):
@@ -1720,7 +1686,7 @@ class CondContext(ControlFlowContext):
         op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
 
-    if self._outer_context or not IsLoopExit(op):
+    if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
     if self._outer_context:
@@ -2190,7 +2156,7 @@ class WhileContext(ControlFlowContext):
         grad_ctxt = grad_ctxt.GetWhileContext()
         if grad_ctxt.grad_state:
           forward_ctxt = _GetWhileContext(val.op)
-          if IsLoopExit(val.op):
+          if util.IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
             if forward_ctxt:
               forward_ctxt = forward_ctxt.GetWhileContext()
@@ -2272,7 +2238,7 @@ class WhileContext(ControlFlowContext):
       self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
-    if self._outer_context or not IsLoopExit(op):
+    if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
       for x in op.outputs:
         op.graph.prevent_feeding(x)
@@ -2291,7 +2257,7 @@ class WhileContext(ControlFlowContext):
         return True
       # pylint: enable=protected-access
       for x in op.inputs:
-        if not _IsLoopConstantEnter(x.op):
+        if not util.IsLoopConstantEnter(x.op):
           return False
       return True
     if _IsOpFree(op):
@@ -2607,7 +2573,7 @@ class WhileContext(ControlFlowContext):
 
     if control_pivot is not None:
       for var in enter_vars:
-        if _IsLoopConstantEnter(var.op.inputs[0].op):
+        if util.IsLoopConstantEnter(var.op.inputs[0].op):
           # pylint: disable=protected-access
           var.op._add_control_input(control_pivot.op)
           # pylint: enable=protected-access
@@ -2742,6 +2708,9 @@ class WhileContext(ControlFlowContext):
         x.op._add_control_inputs(outer_control_inputs)
         graph._record_op_seen_by_control_dependencies(x.op)
     # pylint: enable=protected-access
+
+  def IsWhileContext(self):
+    return True
 
 
 def while_loop(cond, body, loop_vars, shape_invariants=None,
