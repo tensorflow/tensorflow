@@ -92,6 +92,8 @@ Status SingleMachine::Provision() {
     VLOG(1) << "Adding GPU device " << device_name;
     devices_[device_name] = GetLocalGPUInfo(i);
   }
+  mutex_lock l(this->last_graph_mu_);
+  last_graph_ = nullptr;
   return Status::OK();
 }
 
@@ -230,7 +232,7 @@ Status SingleMachine::RunWithTimeout(
 }
 
 Status SingleMachine::CloseSession(bool use_timeout) {
-  if (!session_) {
+  if (!session_ || !thread_pool_) {
     return Status::OK();
   }
 
