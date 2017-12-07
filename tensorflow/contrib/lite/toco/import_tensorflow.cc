@@ -1380,6 +1380,31 @@ void ConvertSvdfOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+// Some TensorFlow ops only occur in graph cycles, representing
+// control flow. We do not currently support control flow, so we wouldn't
+// be able to fully support such graphs, including performing inference,
+// anyway. However, rather than erroring out early on graphs being cyclic,
+// it helps to at least support these just enough to allow getting a
+// graph visualization. This is not trivial, as we require graphs to be
+// acyclic aside from RNN back-edges. The solution is to special-case
+// such ops as RNN back-edges, which is technically incorrect (does not
+// allow representing the op's semantics) but good enough to get a
+// graph visualization.
+void ConvertOperatorSpecialCasedAsRNNBackEdge(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // At the moment, the only type of operator special-cased in this way is
+  // NextIteration, occuring only in control-flow cycles.
+  CHECK_EQ(node.op(), "NextIteration");
+  CHECK_EQ(node.input_size(), 1);
+  auto* rnn_state = model->flags.add_rnn_states();
+  // This RNN state is not explicitly created by the user, so it's
+  // OK for some later graph transformation to discard it.
+  rnn_state->set_discardable(true);
+  rnn_state->set_state_array(node.name());
+  rnn_state->set_back_edge_source_array(node.input(0));
+}
+
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -1402,26 +1427,61 @@ void StripZeroOutputIndexFromInputs(NodeDef* node) {
   }
 }
 
-void AddExtraOutputsFedIntoOtherOps(Model* model) {
+// In TensorFlow GraphDef, when a node has multiple outputs, they are named
+// name:0, name:1, ...
+// where 'name' is the node's name(). Just 'name' is an equivalent shorthand
+// form for name:0.
+// A TensorFlow GraphDef does not explicitly list all the outputs of each node
+// (unlike inputs), it being implied by the node's name and operator type
+// (the latter implies the number of outputs).
+// This makes it non-trivial for us to reconstruct the list of all arrays
+// present in the graph and, for each operator, the list of its outputs.
+// We do that by taking advantage of the fact that
+// at least each node lists explicitly its inputs, so after we've loaded
+// all nodes, we can use that information.
+void AddExtraOutputs(Model* model) {
+  // Construct the list of all arrays consumed by anything in the graph.
+  std::vector<string> consumed_arrays;
+  // Add arrays consumed by an op.
   for (const auto& consumer_op : model->operators) {
     for (const string& input : consumer_op->inputs) {
-      const std::vector<string>& split = absl::StrSplit(input, ':');
-      if (split.size() != 2) {
-        continue;
-      }
-      int output_index = 0;
-      if (!absl::SimpleAtoi(split[1], &output_index)) {
-        continue;
-      }
-      auto* producer_op = GetOpWithOutput(*model, split[0]);
-      if (!producer_op) {
-        continue;
-      }
-      while (producer_op->outputs.size() <= output_index) {
-        using toco::port::StringF;
-        producer_op->outputs.push_back(
-            StringF("%s:%d", split[0], producer_op->outputs.size()));
-      }
+      consumed_arrays.push_back(input);
+    }
+  }
+  // Add global outputs of the model.
+  for (const string& output_array : model->flags.output_arrays()) {
+    consumed_arrays.push_back(output_array);
+  }
+  // Add arrays consumed by a RNN back-edge.
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    consumed_arrays.push_back(rnn_state.back_edge_source_array());
+  }
+  // Now add operator outputs so that all arrays that are consumed,
+  // are produced.
+  for (const string& consumed_array : consumed_arrays) {
+    // Split the consumed array name into the form name:output_index.
+    const std::vector<string>& split = absl::StrSplit(consumed_array, ':');
+    // If not of the form name:output_index, then this is not an additional
+    // output of a node with multiple outputs, so nothing to do here.
+    if (split.size() != 2) {
+      continue;
+    }
+    int output_index = 0;
+    if (!absl::SimpleAtoi(split[1], &output_index)) {
+      continue;
+    }
+    // Each op is initially recorded as producing at least the array that
+    // has its name. We use that to identify the producer node.
+    auto* producer_op = GetOpWithOutput(*model, split[0]);
+    if (!producer_op) {
+      continue;
+    }
+    // Add extra outputs to that producer node, all the way to the
+    // output_index.
+    while (producer_op->outputs.size() <= output_index) {
+      using toco::port::StringF;
+      producer_op->outputs.push_back(
+          StringF("%s:%d", split[0], producer_op->outputs.size()));
     }
   }
 }
@@ -1633,6 +1693,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertMeanOperator(node, tf_import_flags, model);
     } else if (node.op() == "Svdf") {
       ConvertSvdfOperator(node, tf_import_flags, model);
+    } else if (node.op() == "NextIteration") {
+      ConvertOperatorSpecialCasedAsRNNBackEdge(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }
@@ -1641,7 +1703,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   ResolveModelFlags(model_flags, model);
 
   StripCaretFromArrayNames(model);
-  AddExtraOutputsFedIntoOtherOps(model);
+  AddExtraOutputs(model);
   FixNoMissingArray(model);
   FixNoOrphanedArray(model);
   FixOperatorOrdering(model);

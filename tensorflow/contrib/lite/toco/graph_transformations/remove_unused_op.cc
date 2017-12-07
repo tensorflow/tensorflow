@@ -65,7 +65,12 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     }
     for (const auto& rnn_state : model->flags.rnn_states()) {
       if (output == rnn_state.back_edge_source_array()) {
-        return false;
+        // The output is consumed by a RNN back-edge..
+        if (!IsDiscardableArray(*model, rnn_state.back_edge_source_array()) ||
+            !IsDiscardableArray(*model, rnn_state.state_array()) ||
+            CountOpsWithInput(*model, rnn_state.state_array())) {
+          return false;
+        }
       }
     }
     if (CountOpsWithInput(*model, output)) {

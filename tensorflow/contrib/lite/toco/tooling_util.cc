@@ -573,8 +573,10 @@ void CheckNoMissingArray(const Model& model) {
         << "Output array not found: " << output_array;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
-    CHECK(model.arrays.count(rnn_state.state_array()));
-    CHECK(model.arrays.count(rnn_state.back_edge_source_array()));
+    if (!rnn_state.discardable()) {
+      CHECK(model.arrays.count(rnn_state.state_array()));
+      CHECK(model.arrays.count(rnn_state.back_edge_source_array()));
+    }
   }
 }
 
@@ -596,12 +598,18 @@ void FixNoMissingArray(Model* model) {
       model->GetOrCreateArray(output_array);
     }
   }
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    model->GetOrCreateArray(rnn_state.state_array());
+    model->GetOrCreateArray(rnn_state.back_edge_source_array());
+  }
 }
 
 void CheckNoOrphanedArray(const Model& model) {
   std::unordered_set<string> arrays_without_known_use;
   for (const auto& array : model.arrays) {
-    arrays_without_known_use.insert(array.first);
+    if (IsDiscardableArray(model, array.first)) {
+      arrays_without_known_use.insert(array.first);
+    }
   }
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
@@ -610,6 +618,10 @@ void CheckNoOrphanedArray(const Model& model) {
     for (const auto& output : op->outputs) {
       arrays_without_known_use.erase(output);
     }
+  }
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    arrays_without_known_use.erase(rnn_state.state_array());
+    arrays_without_known_use.erase(rnn_state.back_edge_source_array());
   }
   if (!arrays_without_known_use.empty()) {
     for (const auto& array : arrays_without_known_use) {
@@ -632,8 +644,14 @@ void FixNoOrphanedArray(Model* model) {
       arrays_without_known_use.erase(output);
     }
   }
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    arrays_without_known_use.erase(rnn_state.state_array());
+    arrays_without_known_use.erase(rnn_state.back_edge_source_array());
+  }
   for (const auto& array : arrays_without_known_use) {
-    model->arrays.erase(array);
+    if (IsDiscardableArray(*model, array)) {
+      model->arrays.erase(array);
+    }
   }
 }
 
@@ -1042,16 +1060,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
 
 #undef RESOLVE_MODEL_FLAG
 
-  if (model->flags.rnn_states_size() == 0) {
+  if (!model_flags.rnn_states().empty()) {
     model->flags.mutable_rnn_states()->CopyFrom(model_flags.rnn_states());
-  } else {
-    CHECK_EQ(model->flags.rnn_states_size(), model_flags.rnn_states_size());
-    for (int i = 0; i < model->flags.rnn_states_size(); i++) {
-      CHECK_EQ(model->flags.rnn_states(i).state_array(),
-               model_flags.rnn_states(i).state_array());
-      CHECK_EQ(model->flags.rnn_states(i).back_edge_source_array(),
-               model_flags.rnn_states(i).back_edge_source_array());
-    }
   }
 
   if (model->flags.model_checks_size() == 0) {
@@ -1571,11 +1581,13 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
     }
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.state_array()) {
-      return false;
-    }
-    if (array_name == rnn_state.back_edge_source_array()) {
-      return false;
+    if (!rnn_state.discardable()) {
+      if (array_name == rnn_state.state_array()) {
+        return false;
+      }
+      if (array_name == rnn_state.back_edge_source_array()) {
+        return false;
+      }
     }
   }
   return true;
