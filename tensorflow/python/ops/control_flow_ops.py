@@ -590,6 +590,8 @@ def _EnforceShapeInvariant(merge_var, next_var):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
+      # TODO(skyewm): get original loop input that caused the shape error and
+      # report its name instead of the merge node's.
       raise ValueError(
           "The shape for %s is not an invariant for the loop. It enters "
           "the loop with shape %s, but has shape %s after one iteration. "
@@ -646,6 +648,11 @@ def _AddNextAndBackEdge(m, v):
   if isinstance(m, ops.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
+    # Make sure the shapes of loop outputs are correct. We do this before
+    # calling _update_input, which will raise a less-helpful error message if
+    # the types don't match.
+    # TODO(skyewm): call this for other cases below (needs testing)
+    _EnforceShapeInvariant(m, v)
     m.op._update_input(1, v)   # pylint: disable=protected-access
   elif isinstance(m, ops.IndexedSlices):
     # pylint: disable=protected-access
@@ -2656,11 +2663,6 @@ class WhileContext(ControlFlowContext):
     # Add the exit ops.
     exit_vars = [exit(x[0]) for x in switch_vars]
     self._loop_exits = exit_vars
-
-    # Make sure the shapes of loop outputs are correct.
-    for m_var, n_var in zip(merge_vars, next_vars):
-      if isinstance(m_var, ops.Tensor):
-        _EnforceShapeInvariant(m_var, n_var)
 
     # Exit the loop.
     self.ExitResult(exit_vars)
