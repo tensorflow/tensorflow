@@ -1265,6 +1265,19 @@ cuda_py_test(
     ],
 )
 
+tf_py_test(
+    name = "control_flow_util_test",
+    size = "small",
+    srcs = ["control_flow_util_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_ops_gen",
+        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:test_ops",
+    ],
+)
+
 cuda_py_test(
     name = "conv1d_test",
     size = "small",

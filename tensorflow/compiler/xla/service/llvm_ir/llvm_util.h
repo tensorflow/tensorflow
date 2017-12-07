@@ -281,6 +281,12 @@ Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized);
 
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

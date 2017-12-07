@@ -23,8 +23,8 @@ import os
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import export as export_lib
+from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -33,9 +33,9 @@ from tensorflow.python.keras._impl.keras import models
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.saved_model import signature_constants
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -191,7 +191,8 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
         export_outputs={
-            _DEFAULT_SERVING_KEY: export_lib.export_output.PredictOutput(predictions)
+            _DEFAULT_SERVING_KEY:
+            export_lib.export_output.PredictOutput(predictions)
         })
 
   return model_fn

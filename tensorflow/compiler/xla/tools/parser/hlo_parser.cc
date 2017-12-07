@@ -447,12 +447,11 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kCrossReplicaSum: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands[0]));
+          HloInstruction::CreateCrossReplicaSum(shape, operands));
       break;
     }
     case HloOpcode::kReshape: {

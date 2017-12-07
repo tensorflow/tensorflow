@@ -28,10 +28,30 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr char kStreamRemovedMessage[] = "Stream removed";
+
+// Identify if the given grpc::Status corresponds to an HTTP stream removed
+// error (see chttp2_transport.cc).
+//
+// When auto-reconnecting to a remote TensorFlow worker after it restarts, gRPC
+// can return an UNKNOWN error code with a "Stream removed" error message.
+// This should not be treated as an unrecoverable error.
+//
+// N.B. This is dependent on the error message from grpc remaining consistent.
+inline bool IsStreamRemovedError(const ::grpc::Status& s) {
+  return !s.ok() && s.error_code() == ::grpc::StatusCode::UNKNOWN &&
+         s.error_message() == kStreamRemovedMessage;
+}
+
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
     return Status::OK();
   } else {
+    // Convert "UNKNOWN" stream removed errors into unavailable, to allow
+    // for retry upstream.
+    if (IsStreamRemovedError(s)) {
+      return Status(tensorflow::error::UNAVAILABLE, s.error_message());
+    }
     return Status(static_cast<tensorflow::error::Code>(s.error_code()),
                   s.error_message());
   }

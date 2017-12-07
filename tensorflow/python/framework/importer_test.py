@@ -111,8 +111,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertNotEqual(None, a.op_def)
 
   def testMultipleImport(self):
-    if ops._USE_C_API: return  # TODO(skyewm): set uniquify_names
-
     graph_def = self._MakeGraphDef("""
     node { name: 'A' op: 'IntOutput' }
     node { name: 'B' op: 'IntInput' input: 'A:0' }
@@ -156,16 +154,16 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(list(b3.inputs), [a3.outputs[0]])
 
       # Import with existing de-duped node names
-      a4, b4 = importer.import_graph_def(
+      a1_1, b1_1 = importer.import_graph_def(
           self._MakeGraphDef("""
           node { name: 'A_1' op: 'IntOutput' }
           node { name: 'B_1' op: 'IntInput' input: 'A_1:0' }
           """),
           return_elements=["A_1", "B_1"],
           name="")
-      self.assertEqual(a4.name, "A_1_1")
-      self.assertEqual(b4.name, "B_1_1")
-      self.assertEqual(list(b4.inputs), [a4.outputs[0]])
+      self.assertEqual(a1_1.name, "A_1_1")
+      self.assertEqual(b1_1.name, "B_1_1")
+      self.assertEqual(list(b1_1.inputs), [a1_1.outputs[0]])
 
       # Create a name scope and then import node with same name
       with ops.name_scope("foo"):
@@ -738,8 +736,6 @@ class ImportGraphDefTest(test.TestCase):
                        [b"loc:@imported_graph/A", b"loc:@imported_graph/B"])
 
   def testNamePrefixColocationAttrsMultipleImport(self):
-    if ops._USE_C_API: return  # TODO(skyewm): set uniquify_names
-
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
           node { name: 'B' op: 'None'  attr {
@@ -748,21 +744,18 @@ class ImportGraphDefTest(test.TestCase):
           } }""")
 
     with ops.Graph().as_default():
-      b, = importer.import_graph_def(
-          original_graph_def, return_elements=["B"], name="")
-      _, = importer.import_graph_def(
-          original_graph_def, return_elements=["B"], name="")
-      self.assertProtoEqualsVersion("""
-          node { name: 'A' op: 'None' }
-          node { name: 'B' op: 'None'  attr {
-            key: '_class'
-            value { list { s: 'loc:@A' } }
-          } }
-          node { name: 'A_1' op: 'None' }
-          node { name: 'B_1' op: 'None'  attr {
-            key: '_class'
-            value { list { s: 'loc:@A_1' } }
-          } }""", b.graph.as_graph_def())
+      a, b = importer.import_graph_def(
+          original_graph_def, return_elements=["A", "B"], name="")
+      a_1, b_1 = importer.import_graph_def(
+          original_graph_def, return_elements=["A", "B"], name="")
+
+      self.assertEqual(a.name, "A")
+      self.assertEqual(b.name, "B")
+      self.assertEqual(b.colocation_groups(), [b"loc:@A"])
+
+      self.assertEqual(a_1.name, "A_1")
+      self.assertEqual(b_1.name, "B_1")
+      self.assertEqual(b_1.colocation_groups(), [b"loc:@A_1"])
 
   def testNamePrefixColocationAttrsNotFound(self):
     original_graph_def = self._MakeGraphDef("""

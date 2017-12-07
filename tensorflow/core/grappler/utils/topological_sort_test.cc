@@ -102,6 +102,27 @@ TEST_F(TopologicalSortTest, DuplicatedInputs) {
   }
 }
 
+TEST_F(TopologicalSortTest, Idempotent) {
+  GraphDef graph;
+  *graph.add_node() = CreateNode("1", {});
+  *graph.add_node() = CreateNode("2", {});
+  *graph.add_node() = CreateNode("3", {"1", "2"});
+  *graph.add_node() = CreateNode("4", {"1", "3"});
+  *graph.add_node() = CreateNode("5", {"2", "3"});
+
+  TF_EXPECT_OK(TopologicalSort(&graph));
+  std::vector<string> order = {"1", "2", "3", "4", "5"};
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+
+  // Run topo sort again to verify that it is idenpotent.
+  TF_EXPECT_OK(TopologicalSort(&graph));
+  for (int i = 0; i < order.size(); i++) {
+    EXPECT_EQ(graph.node(i).name(), order[i]);
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

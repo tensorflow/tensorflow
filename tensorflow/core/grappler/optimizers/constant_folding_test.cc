@@ -84,6 +84,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
                                 ops::Placeholder::Shape(TensorShape({2, 2})));
     Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
                                 ops::Placeholder::Shape(TensorShape({2, 2})));
+    Output a = ops::Placeholder(s.WithOpName("a"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({3, 2})));
+    Output b = ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
+                                ops::Placeholder::Shape(TensorShape({2, 3})));
     Output zeros = !use_const ? ops::ZerosLike(s.WithOpName("zeros"), x)
                               : ops::Const(s.WithOpName("zeros"), 0.0f, {2, 2});
     Output zeros_broadcast =
@@ -94,16 +98,20 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul2 = ops::Mul(s.WithOpName("mul2"), zeros, y);
     Output mul3 = ops::Mul(s.WithOpName("mul3"), x, ones);
     Output mul4 = ops::Mul(s.WithOpName("mul4"), ones, y);
-    Output mul5 = ops::Mul(s.WithOpName("mul1"), x, zeros_broadcast);
-    Output mul6 = ops::Mul(s.WithOpName("mul2"), zeros_broadcast, y);
+    Output mul5 = ops::Mul(s.WithOpName("mul5"), x, zeros_broadcast);
+    Output mul6 = ops::Mul(s.WithOpName("mul6"), zeros_broadcast, y);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
+    Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);
+    Output matmul4 = ops::MatMul(s.WithOpName("matmul4"), zeros, b);
     Output add1 = ops::Add(s.WithOpName("add1"), x, zeros);
     Output add2 = ops::Add(s.WithOpName("add2"), zeros, y);
-    Output addn =
-        ops::AddN(s, {mul1, mul2, mul3, mul4, matmul1, matmul2, add1, add2});
+    Output addn = ops::AddN(
+        s.WithOpName("addn"),
+        {mul1, mul2, mul3, mul4, mul5, mul6, matmul1, matmul2, add1, add2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"addn", "matmul3", "matmul4"};
 
     ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
                               nullptr /* cpu_device */);
@@ -111,35 +119,17 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
 
-    EXPECT_EQ(16, output.node_size());
+    EXPECT_EQ(20, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
       if (name == "mul1") {
-        if (use_const) {
-          EXPECT_EQ("Const", node.op());
-          EXPECT_EQ("^x", node.input(0));
-        } else {
-          EXPECT_EQ("Identity", node.op());
-          EXPECT_EQ("zeros", node.input(0));
-          EXPECT_EQ("^x", node.input(1));
-        }
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
       } else if (name == "mul2") {
-        if (use_const) {
-          EXPECT_EQ("Const", node.op());
-          EXPECT_EQ("^y", node.input(0));
-        } else {
-          EXPECT_EQ("Identity", node.op());
-          EXPECT_EQ("zeros", node.input(0));
-          EXPECT_EQ("^y", node.input(1));
-        }
-      } else if (name == "matmul1") {
-        EXPECT_EQ("Identity", node.op());
-        EXPECT_EQ("zeros", node.input(0));
-        EXPECT_EQ("^x", node.input(1));
-      } else if (name == "matmul2") {
-        EXPECT_EQ("Identity", node.op());
-        EXPECT_EQ("zeros", node.input(0));
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^zeros", node.input(0));
         EXPECT_EQ("^y", node.input(1));
       } else if (name == "mul3") {
         EXPECT_EQ("Identity", node.op());
@@ -152,23 +142,39 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
       } else if (name == "mul5") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));
-        EXPECT_EQ("^ones", node.input(1));
-        TensorProto t = node.attr().at("value").tensor();
-        EXPECT_EQ(1, t.float_val_size());
-        EXPECT_EQ(0, t.float_val(0));
-        EXPECT_EQ(2, t.tensor_shape().dim_size());
-        EXPECT_EQ(1, t.tensor_shape().dim(0).size());
-        EXPECT_EQ(2, t.tensor_shape().dim(1).size());
+        EXPECT_EQ("^zeros_broadcast", node.input(1));
       } else if (name == "mul6") {
         EXPECT_EQ("Const", node.op());
-        EXPECT_EQ("^y", node.input(0));
-        EXPECT_EQ("^ones", node.input(1));
+        EXPECT_EQ("^zeros_broadcast", node.input(0));
+        EXPECT_EQ("^y", node.input(1));
+      } else if (name == "matmul1") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "matmul2") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^zeros", node.input(0));
+        EXPECT_EQ("^y", node.input(1));
+      } else if (name == "matmul3") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^a", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
         TensorProto t = node.attr().at("value").tensor();
         EXPECT_EQ(1, t.float_val_size());
         EXPECT_EQ(0, t.float_val(0));
         EXPECT_EQ(2, t.tensor_shape().dim_size());
-        EXPECT_EQ(1, t.tensor_shape().dim(0).size());
+        EXPECT_EQ(3, t.tensor_shape().dim(0).size());
         EXPECT_EQ(2, t.tensor_shape().dim(1).size());
+      } else if (name == "matmul4") {
+        EXPECT_EQ("Const", node.op());
+        EXPECT_EQ("^zeros", node.input(0));
+        EXPECT_EQ("^b", node.input(1));
+        TensorProto t = node.attr().at("value").tensor();
+        EXPECT_EQ(1, t.float_val_size());
+        EXPECT_EQ(0, t.float_val(0));
+        EXPECT_EQ(2, t.tensor_shape().dim_size());
+        EXPECT_EQ(2, t.tensor_shape().dim(0).size());
+        EXPECT_EQ(3, t.tensor_shape().dim(1).size());
       } else if (name == "add1") {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("x", node.input(0));
@@ -177,6 +183,16 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ("^zeros", node.input(1));
+      }
+      const std::set<string> square_zero_const{"mul1", "mul2",    "mul5",
+                                               "mul6", "matmul1", "matmul2"};
+      if (square_zero_const.count(name) > 0) {
+        TensorProto t = node.attr().at("value").tensor();
+        EXPECT_EQ(1, t.float_val_size());
+        EXPECT_EQ(0, t.float_val(0));
+        EXPECT_EQ(2, t.tensor_shape().dim_size());
+        EXPECT_EQ(2, t.tensor_shape().dim(0).size());
+        EXPECT_EQ(2, t.tensor_shape().dim(1).size());
       }
     }
   }
@@ -899,7 +915,7 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("v", node.input(0));
-      EXPECT_EQ("^v", node.input(1));
+      EXPECT_EQ("^i", node.input(1));
     }
   }
   EXPECT_TRUE(found);
@@ -958,20 +974,20 @@ TEST_F(ConstantFoldingTest, NoOpReshape) {
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("v1", node.input(0));
-      EXPECT_EQ("^d1", node.input(1));
-      EXPECT_EQ("^v1", node.input(2));
+      EXPECT_EQ("^i1", node.input(1));
+      EXPECT_EQ("^d1", node.input(2));
     } else if (node.name() == "r3") {
       ++found;
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("v3", node.input(0));
-      EXPECT_EQ("^v3", node.input(1));
+      EXPECT_EQ("^i3", node.input(1));
     } else if (node.name() == "r4") {
       ++found;
       EXPECT_EQ("Identity", node.op());
       ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("v4", node.input(0));
-      EXPECT_EQ("^v4", node.input(1));
+      EXPECT_EQ("^i4", node.input(1));
     } else if (node.name() == "r2") {
       ++found;
       EXPECT_EQ("Reshape", node.op());

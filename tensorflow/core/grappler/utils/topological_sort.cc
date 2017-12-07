@@ -27,55 +27,47 @@ namespace grappler {
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
 Status TopologicalSort(GraphDef* graph) {
-  OutputMap output_map(graph);
-  std::vector<NodeDef*> ready_nodes;
-  ready_nodes.reserve(graph->node_size());
+  SimpleGraphView graph_view;
+  TF_RETURN_IF_ERROR(graph_view.Initialize(*graph));
+
+  std::vector<int> ready_nodes;
+  ready_nodes.reserve(graph_view.num_nodes());
+
   int front = 0;
   int back = 0;
-  std::unordered_map<const NodeDef*, int> ready_inputs;
-  for (int i = 0; i < graph->node_size(); i++) {
-    auto node = graph->mutable_node(i);
-    if (node->input_size() == 0) {
-      ready_nodes.push_back(node);
+  std::vector<int> num_ready_inputs(graph_view.num_nodes(), 0);
+  for (int i = 0; i < graph_view.num_nodes(); i++) {
+    if (graph_view.inputs(i).empty()) {
+      ready_nodes.push_back(i);
       back++;
     }
-    if (IsMerge(*node)) {
-      ready_inputs[node] = 0;
-      for (const auto& input : node->input()) {
-        if (IsNextIteration(*output_map.GetNode(input))) {
-          ready_inputs[node]++;
+    if (IsMerge(graph->node(i))) {
+      for (int input : graph_view.inputs(i)) {
+        if (IsNextIteration(graph->node(input))) {
+          num_ready_inputs[i]++;
         }
       }
-    } else {
-      ready_inputs[node] = 0;
     }
   }
 
   while (front != back) {
-    auto ready_node = ready_nodes[front];
-    for (const auto& fanout_pair : output_map.GetOutputs(ready_node->name())) {
-      auto fanout = fanout_pair.first;
-      ready_inputs[fanout] += fanout_pair.second;
-      if (ready_inputs[fanout] == fanout->input_size()) {
+    int ready_node = ready_nodes[front];
+    for (int fanout : graph_view.outputs(ready_node)) {
+      ++num_ready_inputs[fanout];
+      if (num_ready_inputs[fanout] == graph_view.inputs(fanout).size()) {
         ready_nodes.push_back(fanout);
-        back++;
+        ++back;
       }
     }
-    front++;
+    ++front;
   }
 
-  if (back != graph->node_size()) {
+  if (back != graph_view.num_nodes()) {
     return errors::InvalidArgument(
         "The graph couldn't be sorted in topological order.");
   }
 
-  GraphDef new_graph;
-  new_graph.mutable_node()->Reserve(graph->node_size());
-  for (int i = 0; i < graph->node_size(); i++) {
-    auto new_node = new_graph.add_node();
-    new_node->Swap(ready_nodes[i]);
-  }
-  graph->mutable_node()->Swap(new_graph.mutable_node());
+  PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
   return Status::OK();
 }
 

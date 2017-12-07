@@ -449,7 +449,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
 
   def __init__(self, sync_optimizer, is_chief, num_tokens):
-    """Creates hook to handle SyncReplicaOptimizer initialization ops.
+    """Creates hook to handle SyncReplicasOptimizer initialization ops.
 
     Args:
       sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.

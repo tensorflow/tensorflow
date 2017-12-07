@@ -77,9 +77,7 @@ def conv_model(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
   # Compute loss.
-  onehot_labels = tf.one_hot(tf.cast(labels, tf.int32), N_DIGITS, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Create training op.
   if mode == tf.estimator.ModeKeys.TRAIN:

@@ -40,7 +40,6 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util import deprecation
 
 
@@ -946,11 +945,7 @@ class TensorSliceDataset(Dataset):
     batch_dim = flat_tensors[0].get_shape()[0]
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
-    self._tensors = nest.pack_sequence_as(tensors, [
-        sparse_ops.serialize_many_sparse(tensor)
-        if sparse_tensor_lib.is_sparse(tensor) else tensor
-        for tensor in nest.flatten(tensors)
-    ])
+    self._tensors = sparse.serialize_many_sparse_tensors(tensors)
     self._output_classes = sparse.get_classes(tensors)
     self._output_shapes = nest.pack_sequence_as(
         tensors, [t.get_shape()[1:] for t in nest.flatten(tensors)])

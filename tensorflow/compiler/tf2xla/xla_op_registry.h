@@ -97,6 +97,12 @@ class XlaOpRegistry {
                               gtl::ArraySlice<DataType> supported_types,
                               BackendOpFilter op_filter);
 
+  // Returns the names of the registered backends.
+  static std::vector<string> BackendNames();
+
+  // Returns true iff a backend with the given name is registered.
+  static bool IsBackendRegistered(const string& name);
+
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
   static void RegisterCompilationDevice(const string& device_name,
@@ -116,8 +122,8 @@ class XlaOpRegistry {
   static void RegisterCompilationKernels();
 
   // Returns KernelDefs for compilation ops registered on
-  // 'compilation_device_name'.
-  // Does not include kernels registered as CompilationOnly.
+  // 'compilation_device_name'.  Does not include kernels registered as
+  // CompilationOnly, iff include_compilation_only_kernels=false.
   static std::vector<const KernelDef*> DeviceKernels(
       const string& compilation_device_name,
       bool include_compilation_only_kernels);

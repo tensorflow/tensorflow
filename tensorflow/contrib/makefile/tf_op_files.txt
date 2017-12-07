@@ -148,6 +148,7 @@ tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/decode_bmp_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc

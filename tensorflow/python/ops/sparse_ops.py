@@ -1385,16 +1385,17 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
             empty_row_indicator)
 
 
-def serialize_sparse(sp_input, name=None):
-  """Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
+def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
+  """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
 
   Args:
     sp_input: The input `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
+    out_type: The `dtype` to use for serialization.
 
   Returns:
-    A string 3-vector (1D `Tensor`), with each column representing the
-    serialized `SparseTensor`'s indices, values, and shape (respectively).
+    A 3-vector (1-D `Tensor`), with each column representing the serialized
+    `SparseTensor`'s indices, values, and shape (respectively).
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -1402,11 +1403,15 @@ def serialize_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_sparse(
-      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      name=name,
+      out_type=out_type)
 
 
-def serialize_many_sparse(sp_input, name=None):
-  """Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
+def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
+  """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
 
   The `SparseTensor` must have rank `R` greater than 1, and the first dimension
   is treated as the minibatch dimension.  Elements of the `SparseTensor`
@@ -1419,11 +1424,12 @@ def serialize_many_sparse(sp_input, name=None):
   Args:
     sp_input: The input rank `R` `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
+    out_type: The `dtype` to use for serialization.
 
   Returns:
-    A string matrix (2-D `Tensor`) with `N` rows and `3` columns.
-    Each column represents serialized `SparseTensor`'s indices, values, and
-    shape (respectively).
+    A matrix (2-D `Tensor`) with `N` rows and `3` columns. Each column
+    represents serialized `SparseTensor`'s indices, values, and shape
+    (respectively).
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -1431,7 +1437,11 @@ def serialize_many_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_many_sparse(
-      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      name=name,
+      out_type=out_type)
 
 
 def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
