@@ -360,7 +360,7 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
                                      " has negative dimensions; ",
-                                     "perhaps an uninitialized placeholder?");
+                                     "perhaps an un-fed placeholder?");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {
