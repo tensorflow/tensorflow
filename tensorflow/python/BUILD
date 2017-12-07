@@ -2624,7 +2624,7 @@ cuda_py_test(
         ":nn_grad",
         "//third_party/py/numpy",
     ],
-    shard_count = 4,
+    shard_count = 16,
 )
 
 cuda_py_test(
