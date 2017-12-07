@@ -374,7 +374,8 @@ Status SimpleGraphView::Initialize(const GraphDef& graph, bool dedup_inputs,
     for (const string& input : node.input()) {
       auto it = name_to_index_.find(NodeName(input));
       if (it == name_to_index_.end()) {
-        return errors::InvalidArgument("Invalid input name: ", input);
+        return errors::InvalidArgument("Non-existent input ", input,
+                                       " for node ", node.name());
       }
       const int input_idx = it->second;
       inputs_[node_idx].push_back(input_idx);

@@ -452,8 +452,8 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     }
   }
 
-  auto outputs = node_map_->GetOutputs(node.name());
-  for (const auto& output : outputs) {
+  const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
+  for (NodeDef* output : outputs) {
     for (int k = 0; k < output->input_size(); ++k) {
       int port;
       string node_name = ParseNodeName(output->input(k), &port);
