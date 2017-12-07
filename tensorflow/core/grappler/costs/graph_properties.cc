@@ -292,6 +292,7 @@ void VerboseLogUnknownDimensionSources(
   // Find all nodes in the graph for which we
   // do not have any unknown dimensions in their inputs, but
   // we have some unknown dimensions in their outputs.
+  std::map<string, int> op_to_count;
   for (const Node* const node : graph.nodes()) {
     if (node->num_outputs() == 0) {
       continue;
@@ -331,10 +332,17 @@ void VerboseLogUnknownDimensionSources(
         VLOG(2) << "Node: " << node->name() << ", Op: " << node->def().op()
                 << ", " << inputs << ", " << outputs;
 
+        op_to_count[node->def().op()]++;
+
         // don't log again for this node
         break;
       }
     }
+  }
+  VLOG(2) << "Op types with known inputs, but with unknown output dimensions "
+          << "(format: <op_type> (<count>)):";
+  for (const auto& p : op_to_count) {
+    VLOG(2) << p.first << " (" << p.second << ")";
   }
 }
 
