@@ -116,6 +116,7 @@ py_library(
     deps = [
         ":clip_weights",
         ":conditioning_utils",
+        ":random_tensor_pool",
         ":virtual_batchnorm",
         "//tensorflow/python:util",
     ],
@@ -216,6 +217,37 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+py_library(
+    name = "random_tensor_pool",
+    srcs = [
+        "python/features/python/random_tensor_pool.py",
+        "python/features/python/random_tensor_pool_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "random_tensor_pool_test",
+    srcs = ["python/features/python/random_tensor_pool_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_tensor_pool",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//third_party/py/numpy",
     ],
 )
 

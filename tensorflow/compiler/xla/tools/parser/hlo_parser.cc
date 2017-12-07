@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -104,6 +105,7 @@ class HloParser {
     kPaddingConfig,
     kMetadata,
     kFusionKind,
+    kDistribution,
   };
 
   struct AttrConfig {
@@ -174,6 +176,7 @@ class HloParser {
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
+  bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
@@ -434,13 +437,21 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConvert(shape, operands[0]));
       break;
     }
-    case HloOpcode::kCrossReplicaSum: {
+    case HloOpcode::kBitcastConvert: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands[0]));
+          HloInstruction::CreateBitcastConvert(shape, operands[0]));
+      break;
+    }
+    case HloOpcode::kCrossReplicaSum: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCrossReplicaSum(shape, operands));
       break;
     }
     case HloOpcode::kReshape: {
@@ -549,12 +560,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
           shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
@@ -564,12 +578,15 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kConvolution: {
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
@@ -644,10 +661,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> scatter;
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
-      attrs["window"] = {/*required=*/true, AttrTy::kWindow, &window};
+      attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
+      }
+      if (!window) {
+        window.emplace();
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
@@ -798,10 +818,36 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands[0], config ? *config : ""));
       break;
     }
+    case HloOpcode::kRng: {
+      optional<RandomDistribution> distribution;
+      attrs["distribution"] = {/*required=*/true, AttrTy::kDistribution,
+                               &distribution};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRng(shape, *distribution, operands));
+      break;
+    }
+    case HloOpcode::kReducePrecision: {
+      optional<int64> exponent_bits;
+      optional<int64> mantissa_bits;
+      attrs["exponent_bits"] = {/*required=*/true, AttrTy::kInt64,
+                                &exponent_bits};
+      attrs["mantissa_bits"] = {/*required=*/true, AttrTy::kInt64,
+                                &mantissa_bits};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateReducePrecision(
+              shape, operands[0], static_cast<int>(*exponent_bits),
+              static_cast<int>(*mantissa_bits)));
+      break;
+    }
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kReducePrecision:
-    case HloOpcode::kRng:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
@@ -1164,12 +1210,6 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 // rank2345 ::= shape nested_array
 bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                                      const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
-  if (size == 0) {
-    *literal = Literal::CreateFromShape(shape);
-    return true;
-  }
-
   const int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;
@@ -1536,6 +1576,15 @@ bool HloParser::ParseAttributeHelper(
         static_cast<optional<OpMetadata>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kDistribution: {
+        RandomDistribution result;
+        if (!ParseRandomDistribution(&result)) {
+          return false;
+        }
+        static_cast<optional<RandomDistribution>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
@@ -1673,7 +1722,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
           StrCat("expects unique lhs dimension numbers, but sees ", lhs));
     }
     for (int i = 0; i < rank - 2; i++) {
-      dnums->add_spatial_dimensions(-1);
+      dnums->add_input_spatial_dimensions(-1);
     }
     for (int i = 0; i < rank; i++) {
       char c = lhs[i];
@@ -1682,7 +1731,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       } else if (c == 'f') {
         dnums->set_input_feature_dimension(i);
       } else if (c < '0' + rank && c >= '0') {
-        dnums->set_spatial_dimensions(c - '0', i);
+        dnums->set_input_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
             Printf("expects [0-%lldbf] in lhs dimension numbers", rank - 1));
@@ -1720,6 +1769,9 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       return TokenError(
           StrCat("expects unique output dimension numbers, but sees ", out));
     }
+    for (int i = 0; i < rank - 2; i++) {
+      dnums->add_output_spatial_dimensions(-1);
+    }
     for (int i = 0; i < rank; i++) {
       char c = out[i];
       if (c == 'b') {
@@ -1727,11 +1779,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
       } else if (c == 'f') {
         dnums->set_output_feature_dimension(i);
       } else if (c < '0' + rank && c >= '0') {
-        if (dnums->spatial_dimensions(c - '0') != i) {
-          return TokenError(
-              "output spatial dimensions should be the same as input spatial "
-              "dimensions");
-        }
+        dnums->set_output_spatial_dimensions(c - '0', i);
       } else {
         return TokenError(
             Printf("expects [0-%lldbf] in output dimension numbers", rank - 1));
@@ -2013,20 +2061,51 @@ bool HloParser::ParseMetadata(OpMetadata* metadata) {
 
 bool HloParser::ParseOpcode(HloOpcode* result) {
   VLOG(1) << "ParseOpcode";
-  if (lexer_.GetKind() != TokKind::kOpcode) {
+  if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
-  *result = lexer_.GetOpcodeVal();
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToHloOpcode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects opcode but sees: %s, error: %s", val.c_str(),
+               status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }
 
 bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
   VLOG(1) << "ParseFusionKind";
-  if (lexer_.GetKind() != TokKind::kFusionKind) {
+  if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
-  *result = lexer_.GetFusionKindVal();
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToFusionKind(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects fusion kind but sees: %s, error: %s", val.c_str(),
+               status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
+  VLOG(1) << "ParseRandomDistribution";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects random distribution");
+  }
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToRandomDistribution(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        Printf("expects random distribution but sees: %s, error: %s",
+               val.c_str(), status_or_result.status().error_message().c_str()));
+  }
+  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }

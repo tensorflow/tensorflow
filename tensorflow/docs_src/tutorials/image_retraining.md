@@ -44,8 +44,14 @@ following command (these examples are not included in the installation):
 
 ```sh
 git clone https://github.com/tensorflow/tensorflow
+```
 
+Then checkout the version of the tensorflow repository matching your
+installation and this tutorial as follows:
+
+``` sh
 cd tensorflow
+git checkout {version}
 ```
 
 In the simplest cases the retrainer can then be run like this:

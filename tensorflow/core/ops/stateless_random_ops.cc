@@ -38,10 +38,11 @@ static Status StatelessShape(shape_inference::InferenceContext* context) {
 #define REGISTER_STATELESS_OP(name)                  \
   REGISTER_OP(name)                                  \
       .Input("shape: T")                             \
-      .Input("seed: int64")                          \
+      .Input("seed: Tseed")                          \
       .Output("output: dtype")                       \
       .Attr("dtype: {half,float,double} = DT_FLOAT") \
       .Attr("T: {int32, int64} = DT_INT32")          \
+      .Attr("Tseed: {int32, int64} = DT_INT64")      \
       .SetShapeFn(StatelessShape)
 
 // This op is exposed through contrib/stateless only.  The interface may change.

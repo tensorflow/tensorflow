@@ -168,6 +168,9 @@ class CurlHttpRequest : public HttpRequest {
   bool is_method_set_ = false;
   bool is_sent_ = false;
 
+  // Store the URI to help disambiguate requests when errors occur.
+  string uri_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);
 };
 
@@ -205,6 +208,8 @@ class LibCurl {
   virtual void curl_slist_free_all(curl_slist* list) = 0;
   virtual char* curl_easy_escape(CURL* curl, const char* str, int length) = 0;
   virtual void curl_free(void* p) = 0;
+
+  virtual const char* curl_easy_strerror(CURLcode errornum) = 0;
 };
 
 }  // namespace tensorflow

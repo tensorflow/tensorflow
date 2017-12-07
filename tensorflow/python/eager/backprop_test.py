@@ -28,7 +28,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -111,7 +110,7 @@ class BackpropTest(test.TestCase):
       return x, grad
 
     # TODO(apassos) raise the right error here
-    with self.assertRaises(errors_impl.InternalError):
+    with self.assertRaises(RuntimeError):
       backprop.gradients_function(f)(constant_op.constant(1.0))
 
   def testImplicitGradOverEmbeddingLookup(self):
@@ -215,6 +214,19 @@ class BackpropTest(test.TestCase):
 
     self.assertAllEqual(gradgrad(constant_op.constant(0.0))[0], 1.0)
 
+  def testStopGradient(self):
+    grad = backprop.gradients_function(
+        lambda x: array_ops.stop_gradient(math_ops.argmax(x)))
+    self.assertAllEqual(grad([0.0])[0], None)
+
+  def testArgmax(self):
+    def argmax(x):
+      i = math_ops.argmax(x)
+      return array_ops.stop_gradient(i)
+
+    grad = backprop.gradients_function(argmax)
+    self.assertAllEqual(grad([0.0])[0], None)
+
   def testGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -314,6 +326,37 @@ class BackpropTest(test.TestCase):
     with self.assertRaisesRegexp(
         RuntimeError, 'GradientTape.gradient can only be called once'):
       g.gradient(y, [x])
+
+  def testPersistentTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+    dz_dx = g.gradient(z, [x])[0]
+    self.assertEqual(dz_dx.numpy(), 4*3*3*3)
+    dy_dx = g.gradient(y, [x])[0]
+    self.assertEqual(dy_dx.numpy(), 2*3)
+    del g
+
+  def testPersistentNestedTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      with backprop.GradientTape(persistent=True) as gg:
+        gg.watch(y)
+        z = 2 * y
+      for _ in range(2):
+        inner_grad = gg.gradient(z, [y])[0]
+        self.assertEqual(inner_grad.numpy(), 2.0)
+      y += inner_grad
+      del gg
+    grad = g.gradient(y, [x])[0]
+    self.assertEqual(grad.numpy(), 6.0)
+    grad = g.gradient(z, [x])[0]
+    self.assertEqual(grad.numpy(), 12.0)
+    del g
 
   def testGradientTapeVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')

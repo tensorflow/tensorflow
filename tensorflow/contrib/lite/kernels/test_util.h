@@ -24,15 +24,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tflite {
-
-inline void LogToStderr() {
-#ifdef PLATFORM_GOOGLE
-  FLAGS_logtostderr = true;
-#endif
-}
 
 // A gmock matcher that check that elements of a float vector match to a given
 // tolerance.

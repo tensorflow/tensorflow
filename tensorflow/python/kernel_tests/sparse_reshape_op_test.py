@@ -196,7 +196,7 @@ class SparseReshapeTest(test.TestCase):
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1, -1])
-      with self.assertRaisesOpError("only one output shape size may be -1"):
+      with self.assertRaisesOpError("only one output dimension may be -1"):
         sess.run(sp_output, {sp_input: input_val})
 
   def testProvideStaticallyMismatchedSizes(self):

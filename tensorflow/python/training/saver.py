@@ -523,7 +523,10 @@ class BaseSaverBuilder(object):
     if not isinstance(op_list, (list, tuple, set)):
       raise TypeError("Variables to save should be passed in a dict or a "
                       "list: %s" % op_list)
-    op_list = set(op_list)
+    # When ResourceVariables are converted to Tensors, read ops are added to the
+    # graph. Sorting the op_list ensures that the resulting graph is always
+    # constructed in a deterministic way:
+    op_list = sorted(op_list, key=lambda x: x.name)
     names_to_saveables = {}
     # pylint: disable=protected-access
     for var in op_list:

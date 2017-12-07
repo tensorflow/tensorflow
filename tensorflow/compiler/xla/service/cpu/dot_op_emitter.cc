@@ -415,10 +415,17 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
   EmitInnerLoopEpilogue(/*current_tile_row=*/row, /*rows=*/row_count,
                         &scalar_accumulators);
 
+  std::vector<llvm::Value*> accumulator_values;
+  std::transform(
+      vector_accumulators.begin(), vector_accumulators.end(),
+      std::back_inserter(accumulator_values),
+      [](const VectorVariable& vector_var) { return vector_var.Get(); });
+  std::vector<llvm::Value*> horizontal_sums =
+      vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+
   for (int i = 0; i < row_count; i++) {
     llvm::Value* result_value =
-        vsl_.Add(vsl_.AddReduce(vector_accumulators[i].Get()),
-                 scalar_accumulators[i].Get());
+        vsl_.Add(horizontal_sums[i], scalar_accumulators[i].Get());
     llvm::Value* offset = ir_builder_->CreateAdd(ir_builder_->getInt64(i), row);
     vsl_.StoreScalar(result_value, result_, offset);
   }
@@ -518,14 +525,14 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
 bool DotOpEmitter::ShapesAreLegalForRuntimeDot() const { return true; }
 
 bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
-  if (dot_.shape().dimensions_size() != 2 ||
-      ProfitableToImplementDotInUntiledLlvmIr(dot_) ==
-          DotInLlvmIrProfitable::kYes) {
+  if (dot_.shape().dimensions_size() != 2) {
     return false;
   }
 
-  if (!primitive_util::IsFloatingPointType(dot_.shape().element_type()) &&
-      !primitive_util::IsIntegralType(dot_.shape().element_type())) {
+  PrimitiveType primitive_type = dot_.shape().element_type();
+
+  if (!primitive_util::IsFloatingPointType(primitive_type) &&
+      !primitive_util::IsIntegralType(primitive_type)) {
     return false;
   }
 
@@ -575,30 +582,59 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   int64 tiling_factor = GetGemvTilingFactor();
   CHECK_GT(tiling_factor, 0);
 
+  llvm::Value* result_op = target_array_.GetBasePointer();
+  llvm::Value* lhs_op =
+      swap_operands ? rhs_array_.GetBasePointer() : lhs_array_.GetBasePointer();
+  llvm::Value* rhs_op =
+      swap_operands ? lhs_array_.GetBasePointer() : rhs_array_.GetBasePointer();
+
+  const bool enable_fast_math =
+      hlo_module_config_.debug_options().xla_enable_fast_math();
+  const bool optimize_for_size =
+      options::OptimizeForSizeRequested(hlo_module_config_);
+
   if (is_column_major_matrix_vector) {
     VLOG(2) << "Emitting column major matrix-vector multiply with m = " << m
             << " and k = " << k;
-    ColumnMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), /*tile_rows=*/8,
-        /*tile_cols=*/tiling_factor, m, k,
-        swap_operands ? rhs_array_.GetBasePointer()
-                      : lhs_array_.GetBasePointer(),
-        swap_operands ? lhs_array_.GetBasePointer()
-                      : rhs_array_.GetBasePointer(),
-        target_array_.GetBasePointer(), ir_builder_);
-    emitter.Emit();
+    int64 tile_rows = 8;
+    int64 tile_cols = tiling_factor;
+
+    string kernel_name = tensorflow::strings::StrCat(
+        "col_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
+        "_", tile_cols, "_", m, "_", k);
+
+    KernelSupportLibrary::EmitAndCallOutlinedKernel(
+        /*enable_fast_math=*/enable_fast_math,
+        /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
+        lhs_op, rhs_op, result_op,
+        [this, tile_rows, tile_cols, m, k, primitive_type](
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+          ColumnMajorMatrixVectorProductEmitter emitter(
+              primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
+              result_op, ir_builder_);
+          emitter.Emit();
+        });
   } else {
     VLOG(2) << "Emitting row major matrix-vector multiply with m = " << m
             << " and k = " << k;
-    RowMajorMatrixVectorProductEmitter emitter(
-        dot_.shape().element_type(), /*tile_rows=*/tiling_factor,
-        /*tile_cols=*/8, m, k,
-        swap_operands ? rhs_array_.GetBasePointer()
-                      : lhs_array_.GetBasePointer(),
-        swap_operands ? lhs_array_.GetBasePointer()
-                      : rhs_array_.GetBasePointer(),
-        target_array_.GetBasePointer(), ir_builder_);
-    emitter.Emit();
+    int64 tile_rows = tiling_factor;
+    int64 tile_cols = 8;
+
+    string kernel_name = tensorflow::strings::StrCat(
+        "row_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
+        "_", tile_cols, "_", m, "_", k);
+
+    KernelSupportLibrary::EmitAndCallOutlinedKernel(
+        /*enable_fast_math=*/enable_fast_math,
+        /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
+        lhs_op, rhs_op, result_op,
+        [this, tile_rows, tile_cols, m, k, primitive_type](
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+          RowMajorMatrixVectorProductEmitter emitter(
+              primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
+              result_op, ir_builder_);
+          emitter.Emit();
+        });
   }
 
   return true;
@@ -977,9 +1013,7 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
       return false;
     }
 
-    if (ProfitableToImplementDotInUntiledLlvmIr(hlo) ==
-            DotInLlvmIrProfitable::kYes ||
-        ProfitableToImplementDotInTiledLlvmIr(hlo)) {
+    if (ProfitableToImplementDotInTiledLlvmIr(hlo)) {
       return false;
     }
 
@@ -1010,46 +1044,11 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   return false;
 }
 
-DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
-    const HloInstruction& dot) {
-  if (dot.opcode() == HloOpcode::kDot && dot.shape().dimensions_size() == 2) {
-    const Shape& result_shape = dot.shape();
-    // kReductionDimensionThresholdBytes was chosen to be 1/4 of a typical L1
-    // cache line size, so that we can have the reduction dimension of both the
-    // LHS and RHS matrices and still have some space "left over".  This needs
-    // to be tuned further.
-    const int64 kReductionDimensionThresholdBytes = 8 * 1024;
-    const bool single_threaded_eigen =
-        !dot.GetModule()->config().debug_options().xla_cpu_multi_thread_eigen();
-
-    // This is the point at which it is better to call into Eigen and shard the
-    // dot across multiple worker threads.  This is a rough estimate by running
-    // a matmult benchmark on my local machine, and it can be tuned further.
-    const int64 kMaxSingleThreadedFlops = 16 * 1024;
-
-    const int64 M = result_shape.dimensions(0);
-    const int64 N = result_shape.dimensions(1);
-    const int64 K = dot.operand(1)->shape().dimensions(0);
-    const int64 primitive_type_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(result_shape.element_type());
-    if (M == 1 &&
-        K * primitive_type_size <= kReductionDimensionThresholdBytes &&
-        (single_threaded_eigen || M * K * N <= kMaxSingleThreadedFlops)) {
-      // Heuristics:
-      //
-      //  - Look for a configuration where we will likely be able to keep LHS in
-      //    L1 and do a cache-optimal traversal of RHS.
-      //
-      //  - Bail out on matrices that are large enough that Eigen can profitably
-      //    shard the computation across multiple cores.  This only applies when
-      //    multi-threading is enabled.
-      return LayoutUtil::IsMonotonicWithDim0Major(
-                 dot.operand(1)->shape().layout())
-                 ? DotInLlvmIrProfitable::kWithColumnMajorRhs
-                 : DotInLlvmIrProfitable::kYes;
-    }
-  }
-  return DotInLlvmIrProfitable::kNo;
+// For vector-matrix dot products, it is always profitable to make the Rhs
+// column major.
+bool ProfitableToMakeDotRhsColumnMajor(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kDot &&
+         hlo.shape().dimensions_size() == 2 && hlo.shape().dimensions(0) == 1;
 }
 
 bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot) {

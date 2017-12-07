@@ -543,8 +543,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                      options.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
-  result->tuple_arg = options.use_tuple_arg;
-
   std::vector<XlaExpression> arg_expressions;
   std::vector<int> arg_cores;
   TF_RETURN_IF_ERROR(BuildArguments(
@@ -563,11 +561,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       options.return_updated_values_for_all_resources, &builder,
       result->computation.get(), &num_computation_outputs,
       &num_nonconst_outputs, &result->resource_updates));
-
-  result->requires_runtime_context = context->has_context_parameter();
-
-  // Tuple arguments and runtime context parameters are incompatible.
-  TF_RET_CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

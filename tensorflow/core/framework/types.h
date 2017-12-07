@@ -222,6 +222,9 @@ static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 bool DataTypeCanUseMemcpy(DataType dt);
 
+// Returns true iff 'dt' is a real, non-quantized floating point type.
+bool DataTypeIsFloating(DataType dt);
+
 bool DataTypeIsQuantized(DataType dt);
 
 // Is the dtype nonquantized integral?

@@ -162,6 +162,20 @@ class LocalClient : public Client {
   StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
       const ShapedBuffer& shaped_buffer);
 
+  // Transfer the given literal to the infeed queue of the given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferToInfeed.
+  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+
+  // Transfer and return a value of the given shape from the outfeed of the
+  // given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferFromOutfeed.
+  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
+      const Shape& shape, int device_ordinal);
+
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;
 

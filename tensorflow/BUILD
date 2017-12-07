@@ -364,14 +364,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Make a dummy rule that we can change "default" in select statements to.
-# to disable dependencies in copybara.
-config_setting(
-    name = "dummy_disabled_internal",
-    values = {"define": "with_dummy_disabled_internal=true"},
-    visibility = ["//visibility:public"],
-)
-
 package_group(
     name = "internal",
     packages = [
@@ -562,6 +554,7 @@ filegroup(
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:all_files",
         "//tensorflow/contrib/tpu:all_files",
         "//tensorflow/contrib/tpu/profiler:all_files",
+        "//tensorflow/contrib/tpu/proto:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
@@ -645,6 +638,7 @@ filegroup(
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
+        "//third_party/mpi:all_files",
         "//third_party/sycl:all_files",
         "//third_party/sycl/sycl:all_files",
     ],

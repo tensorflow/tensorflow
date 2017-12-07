@@ -73,14 +73,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
   cov = [[ 0.36,  0.12,  0.06],
          [ 0.12,  0.29, -0.13],
          [ 0.06, -0.13,  0.26]]
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance_matrix=cov)
 
@@ -100,7 +100,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   covariance_matrix = ...  # shape: [2, 3, 3], symmetric, positive definite.
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance=covariance_matrix)
 

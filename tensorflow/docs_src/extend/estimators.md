@@ -515,7 +515,7 @@ using `mean_squared_error()` (in bold):
   loss = tf.losses.mean_squared_error(labels, predictions)</strong>
   ...</code></pre>
 
-See the @{$python/contrib.losses$API guide} for a
+See the @{tf.losses$API guide} for a
 full list of loss functions and more details on supported arguments and usage.
 
 Supplementary metrics for evaluation can be added to an `eval_metric_ops` dict.
@@ -694,5 +694,5 @@ For additional reference materials on building `Estimator`s, see the following
 sections of the API guides:
 
 *   @{$python/contrib.layers$Layers}
-*   @{$python/contrib.losses$Losses}
+*   @{tf.losses$Losses}
 *   @{$python/contrib.layers#optimization$Optimization}

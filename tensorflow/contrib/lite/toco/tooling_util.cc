@@ -294,6 +294,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   VLOG(log_level) << "Array: " << name;
   switch (array.data_type) {
     case ArrayDataType::kNone:
+      VLOG(log_level) << "  Data type:";
       break;
     case ArrayDataType::kFloat:
       VLOG(log_level) << "  Data type: kFloat";
@@ -306,6 +307,24 @@ void LogArray(int log_level, const Model& model, const string& name) {
       break;
     default:
       VLOG(log_level) << "  Data type: other (numerical value: "
+                      << static_cast<int>(array.data_type) << ")";
+      break;
+  }
+  switch (array.final_data_type) {
+    case ArrayDataType::kNone:
+      VLOG(log_level) << "  Final type:";
+      break;
+    case ArrayDataType::kFloat:
+      VLOG(log_level) << "  Final type: kFloat";
+      break;
+    case ArrayDataType::kInt32:
+      VLOG(log_level) << "  Final type: kInt32";
+      break;
+    case ArrayDataType::kUint8:
+      VLOG(log_level) << "  Final type: kUint8";
+      break;
+    default:
+      VLOG(log_level) << "  Final type: other (numerical value: "
                       << static_cast<int>(array.data_type) << ")";
       break;
   }
@@ -773,14 +792,18 @@ void FixOperatorOrdering(Model* model) {
 }
 
 // Checks that the --input_arrays of the Model are actually used by at least
-// one of the --output_arrays i.e. that the graph contains a path from each one
-// of the inputs to at least one of the outputs. This catches cases where the
-// user passed the wrong --input_arrays or --output_arrays, which otherwise may
-// result in cryptic error messages.
-void CheckInputUsedByOutputs(const Model& model) {
+// one of the --output_arrays or --rnn_states i.e. that the graph contains a
+// path from each one of the inputs to at least one of the outputs or RNN
+// states. This catches cases where the user passed the wrong --input_arrays or
+// --output_arrays or --rnn_states, which otherwise may result in cryptic error
+// messages.
+void CheckInputsActuallyUsed(const Model& model) {
   std::set<string> used_arrays;
   for (const string& output : model.flags.output_arrays()) {
     used_arrays.insert(output);
+  }
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    used_arrays.insert(rnn_state.back_edge_source_array());
   }
   for (int i = model.operators.size() - 1; i >= 0; i--) {
     bool is_op_used = false;
@@ -813,7 +836,7 @@ void CheckInvariants(const Model& model) {
   CheckNoOrphanedArray(model);
   CheckArrayFieldsConsistent(model);
   CheckOperatorOrdering(model);
-  CheckInputUsedByOutputs(model);
+  CheckInputsActuallyUsed(model);
 }
 
 void CheckCountInRange(const ::toco::ModelFlags::ModelCheck& model_check,
@@ -891,9 +914,9 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
     // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
     // a better match by name.
     if (input_array.name() == name || num_dims == -1) {
-      num_dims = input_array.shape_size();
-      if (num_dims != 0) {
-        batch = input_array.shape(0);
+      num_dims = input_array.shape().dims_size();
+      if (num_dims > 0) {
+        batch = input_array.shape().dims(0);
       }
     }
   }
@@ -962,34 +985,39 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     RESOLVE_MODEL_FLAG(mean_value);
 #undef RESOLVE_MODEL_FLAG
 
-    if (!specified_input_array.shape().empty()) {
-      if (!dst_input_array->shape().empty()) {
-        QCHECK_EQ(specified_input_array.shape().size(),
-                  dst_input_array->shape().size())
+    if (specified_input_array.has_shape()) {
+      if (dst_input_array->has_shape()) {
+        QCHECK_EQ(specified_input_array.shape().dims_size(),
+                  dst_input_array->shape().dims_size())
             << "For input array '" << specified_input_array.name() << "', "
             << "size of specified input shape flag with size: "
-            << specified_input_array.shape().size()
+            << specified_input_array.shape().dims_size()
             << " does not agree with already defined input shape"
                " of this model, with size: "
-            << dst_input_array->shape().size();
+            << dst_input_array->shape().dims_size();
         // We treat the first dimension as a special case, since it is often
         // a batch size and the input_shape flag is effectively overriding
         // the model.
-        for (int i = 1; i < specified_input_array.shape().size(); i++) {
-          QCHECK_EQ(specified_input_array.shape().Get(i),
-                    dst_input_array->shape().Get(i))
+        for (int i = 1; i < specified_input_array.shape().dims_size(); i++) {
+          QCHECK_EQ(specified_input_array.shape().dims(i),
+                    dst_input_array->shape().dims(i))
               << "At dimension number " << i << " of input array "
               << specified_input_array.name() << ", the specified shape's "
               << "dimension flag with dimension: "
-              << specified_input_array.shape().Get(i)
+              << specified_input_array.shape().dims(i)
               << " does not agree with already defined shape"
               << " of this model, with dimension: "
-              << dst_input_array->shape().Get(i);
+              << dst_input_array->shape().dims(i);
         }
       } else {
         dst_input_array->mutable_shape()->CopyFrom(
             specified_input_array.shape());
       }
+    }
+
+    if (specified_input_array.has_data_type()) {
+      QCHECK(!dst_input_array->has_data_type());
+      dst_input_array->set_data_type(specified_input_array.data_type());
     }
   }
 
@@ -1011,7 +1039,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   }
 
   RESOLVE_MODEL_FLAG(variable_batch)
-  RESOLVE_MODEL_FLAG(drop_control_dependency)
 
 #undef RESOLVE_MODEL_FLAG
 
@@ -1039,13 +1066,21 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
          "--output_arrays flag must be given on the command-line.";
 
   for (const auto& input_array_proto : model->flags.input_arrays()) {
-    QCHECK(!input_array_proto.shape().empty())
-        << "This model does not have shape defined for input array "
-        << input_array_proto.name()
-        << ", so one must be specified by a non-empty --input_shape "
-           "command-line flag.";
-
     auto& input_array = model->GetOrCreateArray(input_array_proto.name());
+    if (input_array_proto.has_data_type()) {
+      const ArrayDataType specified_type =
+          ConvertIODataTypeToArrayDataType(input_array_proto.data_type());
+      QCHECK(specified_type != ArrayDataType::kNone);
+      if (input_array.data_type != ArrayDataType::kNone) {
+        QCHECK(specified_type == input_array.data_type)
+            << "For input array " << input_array_proto.name()
+            << " the specified input data type "
+            << IODataType_Name(input_array_proto.data_type())
+            << " conflicts with the existing type.";
+      }
+      input_array.data_type = specified_type;
+    }
+
     if (input_array.data_type == ArrayDataType::kNone) {
       // We start out with a float input array;
       // that may get replaced by a uint8 array later, by
@@ -1053,18 +1088,24 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       input_array.data_type = ArrayDataType::kFloat;
     }
 
+    if (!input_array.has_shape()) {
+      QCHECK(!input_array_proto.shape().dims().empty())
+          << "This model does not have shape defined for input array "
+          << input_array_proto.name();
+    }
+
     // Compare/merge the model->flags describing the input_shape with
     // the actual input array's shape.
     auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
     if (input_array_dims.empty()) {
-      for (auto dim : input_array_proto.shape()) {
+      for (auto dim : input_array_proto.shape().dims()) {
         CHECK_GE(dim, 1);
         input_array_dims.push_back(dim);
       }
     } else {
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape_size());
+      CHECK_EQ(input_array_dims.size(), input_array_proto.shape().dims_size());
       for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape(i));
+        CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
       }
     }
 
@@ -1544,8 +1585,27 @@ void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.arrays) {
     const auto& array = *array_entry.second;
     if (array.final_data_type != ArrayDataType::kNone) {
-      CHECK(array.final_data_type == array.data_type);
+      CHECK(array.final_data_type == array.data_type)
+          << "Array \"" << array_entry.first
+          << "\" has mis-matching actual and final data types ("
+          << static_cast<int>(array.data_type) << ","
+          << static_cast<int>(array.final_data_type) << ").";
     }
+  }
+}
+
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
+  switch (type) {
+    case FLOAT:
+      return ArrayDataType::kFloat;
+    case QUANTIZED_UINT8:
+      return ArrayDataType::kUint8;
+    case INT32:
+      return ArrayDataType::kInt32;
+    case INT64:
+      return ArrayDataType::kInt64;
+    default:
+      return ArrayDataType::kNone;
   }
 }
 

@@ -173,7 +173,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                  << ", skipping this input.";
       return nullptr;
     }
-    LOG(INFO) << "Will use feed node " << feed_name;
+    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -188,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }
@@ -297,7 +297,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
-    if (IsPlaceholder(node)) {
+    if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
                    << ", skipping this input";

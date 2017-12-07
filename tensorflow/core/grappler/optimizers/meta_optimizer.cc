@@ -76,7 +76,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
     }
-    if (cfg_.dependency_optimization() == RewriterConfig::ON) {
+    if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new DependencyOptimizer(cfg_.dependency_optimization())));
     }
@@ -134,6 +134,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
       auto status =
@@ -152,11 +154,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
             ". Graph size after: ", optimized_graph->node_size());
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     }
   }
 
   if (already_optimized) {
-    TopologicalSort(optimized_graph);
+    TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     // Make sure that the optimizers preserved the graph version and library.
     DCHECK_GE(optimized_graph->library().function_size(),
               item.graph.library().function_size());
@@ -187,7 +191,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
-         cfg.dependency_optimization() == RewriterConfig::ON ||
+         cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
          !cfg.optimizers().empty();

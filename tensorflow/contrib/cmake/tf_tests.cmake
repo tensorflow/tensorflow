@@ -153,7 +153,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
@@ -171,7 +172,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
     )
@@ -225,6 +225,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/periodic_resample_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/data_utils_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/backend_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/preprocessing/image_test.py"
       # Float division by zero
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
       # Flaky, for unknown reasons. Cannot reproduce in terminal. Revisit once we can get stack traces.
@@ -294,6 +298,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Test should only be run manually
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reduction_ops_test_big.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/svd_op_test.py"
+      # Depends on python/framework/test_ops
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/control_flow_util_test.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

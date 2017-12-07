@@ -93,7 +93,7 @@ def fuse_op(graph_def, input_nodes, output_nodes, output_dtypes,
                             (n, cur_node))
           if cur_node not in input_nodes_set:
             next_to_visit += name_to_input_name[cur_node]
-    else:
+    elif n not in reachable_by_input:
       nodes_post_output.append(n)
 
   # Add all nodes upto the input nodes
@@ -150,5 +150,5 @@ def get_placeholders(graph):
   # The return value (a Tensor) of placeholder() is the
   # first output of this operation in fact.
   operations = graph.get_operations()
-  result = [i.outputs[0] for i in operations if i.type == 'Placeholder']
+  result = [i.outputs[0] for i in operations if i.type == "Placeholder"]
   return result

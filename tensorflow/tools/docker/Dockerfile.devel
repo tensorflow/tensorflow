@@ -101,4 +101,3 @@ EXPOSE 6006
 EXPOSE 8888
 
 WORKDIR /root
-CMD ["/bin/bash"]

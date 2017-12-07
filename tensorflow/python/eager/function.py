@@ -25,15 +25,19 @@ import threading
 
 import numpy as np
 
+from tensorflow.core.framework import function_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_to_function_def
+from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
@@ -47,26 +51,41 @@ _scoped_captures = threading.local()
 _scoped_captures.tensors = None
 
 
-def make_function_def(graph, operations, inputs, outputs):
-  """Makes function def where accesses to resources are serialized."""
-  last_op_using_resource_tensor = {}
+def make_function_def(name, graph, operations, inputs, outputs):
+  """Makes FunctionDef proto and defined function.
 
-  # TODO(apassos) probably control flow has to be handled delicately here as in
-  # if a resource is accessed inside a control flow context we need the control
-  # dependency to point to something outside the context which is guaranteed to
-  # happen after the access.
-  #
-  # TODO(apassos) this should do some form of alias analysis as ops which
-  # forward the resources such as Identity and Switch can cause serialization to
-  # fail.
-  for op in operations:
-    for t in op.inputs:
-      if t.dtype == dtypes.resource:
-        if t.name in last_op_using_resource_tensor:
-          op._add_control_input(last_op_using_resource_tensor[t.name])  # pylint: disable=protected-access
-        last_op_using_resource_tensor[t.name] = op
-  return graph_to_function_def.graph_to_function_def(
-      graph, operations, inputs, outputs)
+  Args:
+    name: the function name
+    graph: the graph from which to build the function
+    operations: the operations in the function body
+    inputs: tensors to be used as function arguments
+    outputs: tensors to be returned from the function
+
+  Returns:
+   fdef: a FunctionDef protocol buffer for the function
+   fn: a wrapped TF_Function for the function
+  """
+  with errors.raise_exception_on_not_ok_status() as status:
+    fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
+        graph._c_graph,  # pylint: disable=protected-access
+        compat.as_str(name),
+        False,
+        [o._c_op for o in operations],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+        [],
+        None,
+        compat.as_str(""),
+        status)
+  # TODO(apassos) avoid creating a FunctionDef (specially to grab the signature,
+  # but also in general it's nice not to depend on it.
+  with c_api_util.tf_buffer() as buffer_:
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_, status)
+    proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(proto_data))
+  return fdef, fn
 
 
 @contextlib.contextmanager
@@ -85,7 +104,7 @@ def capture_value(tensor_map, value, dtype, name):
   if captured_value is None:
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
-    if captured_value.dtype == dtypes.resource:
+    if captured_value.dtype == dtypes_module.resource:
       captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
@@ -120,11 +139,23 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
 
 
 class CapturingGraph(ops.Graph):
+  """Graph used when constructing eager functions."""
 
   def __init__(self, captures):
     super(CapturingGraph, self).__init__()
     self._building_function = True
     self.captures = captures
+    # Map from resource tensor name to last op (in program order) which uses
+    # this tensor. Used to enforce that execution order matches program order
+    # for resource tensors.
+    self._last_op_using_resource_tensor = {}
+
+  # TODO(apassos) remove once the C API is used by default.
+  def _use_c_api_hack(self):
+    return True
+
+  def clear_resource_control_flow_state(self):
+    self._last_op_using_resource_tensor = {}
 
   def create_op(
       self,
@@ -137,12 +168,31 @@ class CapturingGraph(ops.Graph):
       op_def=None,
       compute_shapes=True,
       compute_device=True):
+    # TODO(apassos) probably control flow has to be handled delicately here as
+    # in if a resource is accessed inside a control flow context we need the
+    # control dependency to point to something outside the context which is
+    # guaranteed to happen after the access.
+    #
+    # TODO(apassos) this should do some form of alias analysis as ops which
+    # forward the resources such as Identity and Switch can cause serialization
+    # to fail.
+    resource_inputs = set()
+    control_inputs = set()
     for i, inp in enumerate(inputs):
       if inp.graph is not self:
         inputs[i] = capture_value(self.captures, inp, inp.dtype, inp.op.name)
-    return super(CapturingGraph, self).create_op(
-        op_type, inputs, dtypes, input_types, name, attrs, op_def,
-        compute_shapes, compute_device)
+      inp = inputs[i]
+      if inp.dtype == dtypes_module.resource:
+        if inp.name in self._last_op_using_resource_tensor:
+          control_inputs.add(self._last_op_using_resource_tensor[inp.name])
+        resource_inputs.add(inp.name)
+    with self.control_dependencies(list(control_inputs)):
+      op = super(CapturingGraph, self).create_op(
+          op_type, inputs, dtypes, input_types, name, attrs, op_def,
+          compute_shapes, compute_device)
+    for name in resource_inputs:
+      self._last_op_using_resource_tensor[name] = op
+    return op
 
 
 # TODO(apassos): it'd be really nice if we could scope this registration.
@@ -196,14 +246,20 @@ def _inference_name(n):
   return "__inference_%s_%s" % (n, ops.uid())
 
 
+# TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
+# so it doesn't have the definition-generating logic and is just a container for
+# an already-defined function.
 class _DefinedFunction(object):
   """Mocks the interface of tf _DefinedFunction."""
 
-  def __init__(self, fdef):
+  def __init__(self, fdef, fn):
     self.definition = fdef
     self.name = fdef.signature.name
+    self.signature = fdef.signature
     self.grad_func_name = None
     self.python_grad_func = None
+    self._c_func = fn
+    self._grad_func = None
 
 
 def _map_sequence_obj_to_idx(sequence):
@@ -239,6 +295,7 @@ class GraphModeFunction(object):
                input_placeholders,
                extra_inputs,
                fdef,
+               fn,
                graph,
                operations,
                func_outputs,
@@ -252,7 +309,7 @@ class GraphModeFunction(object):
     self._graph = graph
     self._has_backprop = False
     self._func_name = fdef.signature.name
-    self._fdef = _DefinedFunction(fdef)
+    self._fdef = _DefinedFunction(fdef, fn)
     self._num_outputs = len(fdef.signature.output_arg)
     self._ops = operations
     self._func_outputs = func_outputs
@@ -272,38 +329,45 @@ class GraphModeFunction(object):
     with self._graph.as_default(), context.graph_mode():
       c = _CapturingContext()
       with c:
-        filtered_outputs = [
-            x for x in self._returns if x is not None
-        ]
+        filtered_outputs = [x for x in self._returns if x is not None]
         self._out_grad_placeholders = [
-            graph_placeholder(x.dtype, x.shape) for x in filtered_outputs
-        ]
+            graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
         in_gradients = gradients_impl.gradients(
             filtered_outputs,
             self._input_placeholders,
             grad_ys=self._out_grad_placeholders)
-        shapes = [x.shape for x in in_gradients if x is not None]
+        shapes = tuple(x.shape for x in in_gradients if x is not None)
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
-    forward_function_def = make_function_def(
-        self._graph, self._ops, self._input_placeholders,
+    forward_name = _forward_name(self._func_name)
+    forward_function_def, forward_fn = make_function_def(
+        forward_name, self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
-    self._forward_fdef = _DefinedFunction(forward_function_def)
-    _register_with_name(_forward_name(self._func_name), forward_function_def)
-    backward_outputs = [x for x in in_gradients if x is not None]
+    self._forward_fdef = _DefinedFunction(forward_function_def, forward_fn)
+    _register(forward_fn)
+    backward_outputs = tuple(x for x in in_gradients if x is not None)
     all_inputs = self._out_grad_placeholders + captures
-    backward_function_def = make_function_def(
-        self._graph, [x.op for x in self._out_grad_placeholders
-                     ] + list(sorted(c.known_ops, key=lambda x: x.name)),
+    # Excluding input ops from the body as we do not intend to execute these
+    # operations when the function is executed.
+    all_ignored_ops = frozenset(x.op for x in all_inputs)
+    # Enforce a deterministic order of operations in the generated graph. This
+    # means rerunning the function-defining code will always define the same
+    # function, which is useful if we serialize this etc.
+    fdef_ops = tuple(x for x in sorted(c.known_ops, key=lambda x: x.name)
+                     if x not in all_ignored_ops)
+    bname = _backward_name(self._func_name)
+    backward_function_def, backward_fn = make_function_def(
+        bname, self._graph, fdef_ops,
         all_inputs, backward_outputs)
-    _register_with_name(_backward_name(self._func_name), backward_function_def)
+    _register(backward_fn)
     self._backward_function = GraphModeFunction(
-        all_inputs, [], backward_function_def, self._graph, c.known_ops,
-        in_gradients, _map_sequence_obj_to_idx(backward_outputs), shapes)
+        all_inputs, [], backward_function_def, backward_fn, self._graph,
+        c.known_ops, in_gradients, _map_sequence_obj_to_idx(backward_outputs),
+        shapes)
 
   def _backprop_call(self, args):
     """Calls the wrapped function and records the result on a tape."""
     all_args = args + self._extra_inputs
-    signature = self._forward_fdef.definition.signature
+    signature = self._forward_fdef.signature
     ctx = context.context()
     if ctx.in_graph_mode():
       g = ops.get_default_graph()
@@ -314,7 +378,7 @@ class GraphModeFunction(object):
         return ops.internal_convert_to_tensor(x, ctx=ctx)
       op = g.create_op(
           signature.name, [make_tensor(x) for x in all_args],
-          [dtypes.DType(x.type) for x in signature.output_arg],
+          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
           op_def=signature,
           name="FunctionCall",
           compute_shapes=False)
@@ -350,11 +414,8 @@ class GraphModeFunction(object):
       if v._trainable:  # pylint: disable=protected-access
         tape.watch_variable(v)
 
-    tensor_inputs = [
-        x for x in nest.flatten(args)
-        if isinstance(x, ops.Tensor)
-    ]
-
+    tensor_inputs = [x for x in nest.flatten(args)
+                     if isinstance(x, ops.Tensor)]
     if tape.should_record(tensor_inputs) or tape.should_record(
         self._extra_inputs):
       if not self._has_backprop:
@@ -373,7 +434,7 @@ class GraphModeFunction(object):
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(
           signature.name, [ops.convert_to_tensor(x) for x in args],
-          [dtypes.DType(x.type) for x in signature.output_arg],
+          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
           op_def=signature,
           name="FunctionCall",
           compute_shapes=False)
@@ -458,29 +519,32 @@ def _defun_internal(name, func, args, kwds):
         extra_inputs = []
         extra_placeholders = []
       outputs_list = nest.flatten(func_outputs)
-      output_shapes = [x.shape for x in outputs_list if x is not None]
+      output_shapes = tuple(x.shape for x in outputs_list if x is not None)
 
-  flat_inputs = [
-      x for x in nest.flatten(func_inputs) if isinstance(x, ops.Tensor)
-  ]
+  flat_inputs = [x for x in nest.flatten(func_inputs)
+                 if isinstance(x, ops.Tensor)]
   all_inputs = flat_inputs + list(extra_placeholders)
-
+  all_ignored_ops = frozenset(x.op for x in all_inputs)
   func_def_outputs = [x for x in outputs_list if x is not None]
-  inference_function_def = make_function_def(
-      tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
+  fname = _inference_name(name)
+  operations = tuple(x for x in tmp_graph.get_operations()
+                     if x not in all_ignored_ops)
+  inference_function_def, fn = make_function_def(
+      fname, tmp_graph, operations, all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
     # TODO(ashankar): What about the gradient registry?
-    _register_with_name(f.name, f.definition)
-  _register_with_name(_inference_name(name), inference_function_def)
+    _register(f._c_func)  # pylint: disable=protected-access
+  _register(fn)
 
   return GraphModeFunction(
       all_inputs,
       extra_inputs,
       inference_function_def,
+      fn,
       tmp_graph,
-      tmp_graph.get_operations(),
+      operations,
       func_outputs,
       _map_sequence_obj_to_idx(func_def_outputs),
       output_shapes,
@@ -506,10 +570,9 @@ def _cache_key(x):
   return x
 
 
-def _register_with_name(name, fdef):
-  """Registers the function `fdef` with the name `name`."""
-  fdef.signature.name = name
-  context.context().add_function_def(fdef)
+def _register(fn):
+  """Registers the function `fn`."""
+  context.context().add_function(fn)
 
 
 # TODO(apassos): better error messages for non-hashable arguments.

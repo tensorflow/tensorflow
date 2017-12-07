@@ -397,6 +397,15 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       CheckFormatConstraintsOnShape(data_format, filter_shape, "filter", c));
 
+  std::vector<int32> dilations;
+  TF_RETURN_IF_ERROR(c->GetAttr("dilations", &dilations));
+
+  if (dilations.size() != 4) {
+    return errors::InvalidArgument(
+        "Conv2D requires the dilation attribute to contain 4 values, but got: ",
+        dilations.size());
+  }
+
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
 
@@ -410,6 +419,8 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
 
   const int32 stride_rows = GetTensorDim(strides, data_format, 'H');
   const int32 stride_cols = GetTensorDim(strides, data_format, 'W');
+  const int32 dilation_rows = GetTensorDim(dilations, data_format, 'H');
+  const int32 dilation_cols = GetTensorDim(dilations, data_format, 'W');
 
   DimensionHandle batch_size_dim;
   DimensionHandle input_depth_dim;
@@ -447,12 +458,12 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
   DimensionHandle output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[0],
-                                                   filter_rows_dim, stride_rows,
-                                                   padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[1],
-                                                   filter_cols_dim, stride_cols,
-                                                   padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, input_spatial_dims[0], filter_rows_dim, dilation_rows, stride_rows,
+      padding, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, input_spatial_dims[1], filter_cols_dim, dilation_cols, stride_cols,
+      padding, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(
@@ -1307,6 +1318,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
+  if (c->input_handle_shapes_and_types(0) != nullptr) {
+    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+  }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
   ShapeHandle updates_shape;
@@ -1361,7 +1375,9 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, input_shape);
+  if (c->input_handle_shapes_and_types(0) == nullptr) {
+    c->set_output(0, input_shape);
+  }
   return Status::OK();
 }
 

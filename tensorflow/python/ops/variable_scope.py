@@ -843,6 +843,7 @@ class _VariableStore(object):
     Raises:
       ValueError: When giving unsupported dtype.
     """
+    del shape
     # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
     if dtype.is_floating:
       initializer = init_ops.glorot_uniform_initializer()
@@ -850,9 +851,8 @@ class _VariableStore(object):
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
     elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-      initializer = init_ops.zeros_initializer()(
-          shape=shape, dtype=dtype.base_dtype)
-      initializing_from_value = True
+      initializer = init_ops.zeros_initializer()
+      initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
@@ -1230,6 +1230,12 @@ class EagerVariableStore(object):
   def trainable_variables(self):
     # pylint: disable=protected-access
     return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+  def non_trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if not x._trainable],
                   key=lambda x: x.name)
     # pylint: enable=protected-access
 
@@ -1691,7 +1697,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1985,8 +1991,10 @@ def variable(initial_value=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  use_resource = get_variable_scope().use_resource
+             dtype=None,
+             use_resource=None):
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
