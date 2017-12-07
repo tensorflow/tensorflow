@@ -59,10 +59,47 @@ TEST_F(DependencyOptimizerTest, NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(DependencyOptimizerTest, ChangeToNoop) {
+TEST_F(DependencyOptimizerTest, DependenciesDrivenByConstants) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
   Output y = ops::Const(s.WithOpName("y"), {1.0f, 2.0f}, {1, 2});
+  Output z = ops::Const(s.WithOpName("z"), {1.0f, 2.0f}, {1, 2});
+  Output add = ops::Add(s.WithOpName("add"), x, y);
+  Output id1 =
+      ops::Identity(s.WithOpName("id1").WithControlDependencies(x), add);
+  Output id2 = ops::Identity(
+      s.WithOpName("id2").WithControlDependencies(y).WithControlDependencies(z),
+      add);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("id1");
+  item.fetch.push_back("id2");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The 'z' node should have been optimized away leaving only 5 nodes.
+  EXPECT_EQ(5, output.node_size());
+
+  for (const NodeDef& node : item.graph.node()) {
+    if (node.name() == "id1" || node.name() == "id2") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("add", node.input(0));
+    }
+  }
+}
+
+TEST_F(DependencyOptimizerTest, ChangeToNoop) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
   Output add = ops::Add(s.WithOpName("add"), x, y);
   Output id1 =
       ops::Identity(s.WithOpName("id1").WithControlDependencies(add), x);
@@ -107,8 +144,8 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
 // TODO(rmlarsen): Add test to make sure we skip Switch and Merge.
 TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
-  Output y = ops::Const(s.WithOpName("y"), {1.0f, 2.0f}, {1, 2});
+  Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
   Output add = ops::Add(s.WithOpName("add"), x, y);
   Output id1 =
       ops::Identity(s.WithOpName("id1").WithControlDependencies(add), x);
@@ -128,7 +165,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
 
 TEST_F(DependencyOptimizerTest, RemoveNoOps_EmptyInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output x = ops::Const(s, {1.0f, 2.0f}, {1, 2});
+  Output x = ops::RandomUniform(s, {1, 2}, DT_FLOAT);
   auto noop1 = ops::NoOp(s);
   auto noop2 = ops::NoOp(s.WithControlDependencies(x));
   Output id = ops::Identity(s.WithControlDependencies({noop1.operation}), x);
@@ -152,15 +189,15 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_EmptyInputOrOutput) {
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Identity") {
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("Const", node.input(0));
+      EXPECT_EQ("RandomUniform", node.input(0));
     }
   }
 }
 
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
-  Output y = ops::Const(s.WithOpName("y"), {1.0f, 2.0f}, {1, 2});
+  Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
   // NoOp with a single input- and two output dependencies.
   auto noop = ops::NoOp(s.WithControlDependencies(x));
   // NoOp with a two input- and a single output dependency.

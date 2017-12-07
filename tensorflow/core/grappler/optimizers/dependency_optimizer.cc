@@ -110,6 +110,43 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
                                        SetVector<int>* nodes_to_simplify,
                                        std::set<int>* nodes_to_delete) {
   NodeDef* node = optimized_graph_->mutable_node(node_idx);
+
+  // Constant nodes with no input control dependency are always executed early,
+  // so we can prune all their output control dependencies.
+  if (IsConstant(*node) && node->input_size() == 0) {
+    const std::set<NodeDef*> output_nodes = node_map_->GetOutputs(node->name());
+    for (NodeDef* fanout : output_nodes) {
+      bool optimize_fanout = false;
+      bool data_connection = false;
+      for (int i = fanout->input_size() - 1; i >= 0; --i) {
+        int pos;
+        string input_name = ParseNodeName(fanout->input(i), &pos);
+        if (input_name == node->name()) {
+          if (pos < 0) {
+            fanout->mutable_input()->SwapElements(i, fanout->input_size() - 1);
+            fanout->mutable_input()->RemoveLast();
+            optimize_fanout = true;
+          } else {
+            data_connection = true;
+          }
+        }
+      }
+      if (optimize_fanout) {
+        nodes_to_simplify->PushBack(node_to_idx_[fanout]);
+        if (!data_connection) {
+          node_map_->RemoveOutput(node->name(), fanout->name());
+        }
+      }
+    }
+    if (node_map_->GetOutputs(node->name()).empty() && fetch_nodes_known_ &&
+        nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+      // Mark the node for deletion.
+      nodes_to_delete->insert(node_to_idx_[node]);
+    }
+
+    return;
+  }
+
   // Change ops that only have control dependencies as outputs to NoOps.
   if (node->op() != "NoOp" && SafeToConvertToNoOp(*node)) {
     VLOG(1) << "***** Replacing  " << node->name() << " (" << node->op()
@@ -237,7 +274,7 @@ Status DependencyOptimizer::OptimizeDependencies() {
   std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
     const NodeDef& node = optimized_graph_->node(i);
-    if (node.op() == "NoOp" || SafeToConvertToNoOp(node)) {
+    if (node.op() == "NoOp" || IsConstant(node) || SafeToConvertToNoOp(node)) {
       nodes_to_simplify.PushBack(i);
     }
   }
