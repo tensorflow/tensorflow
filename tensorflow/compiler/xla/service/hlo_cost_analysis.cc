@@ -398,7 +398,14 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  current_properties_[kFlopsKey] = ShapeUtil::ElementsIn(crs->shape());
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(
+      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsArray(subshape)) {
+          flops += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  current_properties_[kFlopsKey] = flops;
   return Status::OK();
 }
 

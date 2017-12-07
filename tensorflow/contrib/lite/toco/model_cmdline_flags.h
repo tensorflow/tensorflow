@@ -38,6 +38,8 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]);
 // Get the global parsed model flags
 ParsedModelFlags* GlobalParsedModelFlags();
 
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags);
+
 }  // namespace toco
 
 

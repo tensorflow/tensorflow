@@ -339,6 +339,16 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       self.assertEqual(2, self.evaluate(model))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 

@@ -26,6 +26,8 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column as fc_lib
 from tensorflow.python.feature_column import feature_column_lib as fc
@@ -34,11 +36,13 @@ from tensorflow.python.feature_column.feature_column import _DenseColumn
 from tensorflow.python.feature_column.feature_column import _FeatureColumn
 from tensorflow.python.feature_column.feature_column import _LazyBuilder
 from tensorflow.python.feature_column.feature_column import _transform_features
+from tensorflow.python.feature_column.feature_column import InputLayer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
@@ -1689,6 +1693,105 @@ class LinearModelTest(test.TestCase):
 
 
 class InputLayerTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_retrieving_input(self):
+    features = {'a': [0.]}
+    input_layer = InputLayer(fc.numeric_column('a'))
+    inputs = self.evaluate(input_layer(features))
+    self.assertAllClose([[0.]], inputs)
+
+  def test_reuses_variables(self):
+    with context.eager_mode():
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=((0, 0), (1, 0), (2, 0)),
+          values=(0, 1, 2),
+          dense_shape=(3, 3))
+
+      # Create feature columns (categorical and embedding).
+      categorical_column = fc.categorical_column_with_identity(key='a',
+                                                               num_buckets=3)
+      embedding_dimension = 2
+      def _embedding_column_initializer(shape, dtype, partition_info):
+        del shape  # unused
+        del dtype  # unused
+        del partition_info  # unused
+        embedding_values = (
+            (1, 0),  # id 0
+            (0, 1),  # id 1
+            (1, 1))  # id 2
+        return embedding_values
+      embedding_column = fc.embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_embedding_column_initializer)
+
+      input_layer = InputLayer([embedding_column])
+      features = {'a': sparse_input}
+
+      inputs = input_layer(features)
+      variables = input_layer.variables
+
+      # Sanity check: test that the inputs are correct.
+      self.assertAllEqual([[1, 0], [0, 1], [1, 1]], inputs)
+
+      # Check that only one variable was created.
+      self.assertEqual(1, len(variables))
+
+      # Check that invoking input_layer on the same features does not create
+      # additional variables
+      _ = input_layer(features)
+      self.assertEqual(1, len(variables))
+      self.assertEqual(variables[0], input_layer.variables[0])
+
+  def test_feature_column_input_layer_gradient(self):
+    with context.eager_mode():
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=((0, 0), (1, 0), (2, 0)),
+          values=(0, 1, 2),
+          dense_shape=(3, 3))
+
+      # Create feature columns (categorical and embedding).
+      categorical_column = fc.categorical_column_with_identity(key='a',
+                                                               num_buckets=3)
+      embedding_dimension = 2
+
+      def _embedding_column_initializer(shape, dtype, partition_info):
+        del shape  # unused
+        del dtype  # unused
+        del partition_info  # unused
+        embedding_values = (
+            (1, 0),  # id 0
+            (0, 1),  # id 1
+            (1, 1))  # id 2
+        return embedding_values
+
+      embedding_column = fc.embedding_column(
+          categorical_column,
+          dimension=embedding_dimension,
+          initializer=_embedding_column_initializer)
+
+      input_layer = InputLayer([embedding_column])
+      features = {'a': sparse_input}
+
+      def scale_matrix():
+        matrix = input_layer(features)
+        return 2 * matrix
+
+      # Sanity check: Verify that scale_matrix returns the correct output.
+      self.assertAllEqual([[2, 0], [0, 2], [2, 2]], scale_matrix())
+
+      # Check that the returned gradient is correct.
+      grad_function = backprop.implicit_grad(scale_matrix)
+      grads_and_vars = grad_function()
+      indexed_slice = grads_and_vars[0][0]
+      gradient = grads_and_vars[0][0].values
+
+      self.assertAllEqual([0, 1, 2], indexed_slice.indices)
+      self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
+
+
+class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
     with self.assertRaisesRegexp(ValueError,

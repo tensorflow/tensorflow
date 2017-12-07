@@ -187,7 +187,7 @@ def toco_convert(input_data,
       input_array.mean, input_array.std = quantized_input_stats[idx]
 
     input_array.name = _tensor_name(input_tensor)
-    input_array.shape.extend(map(int, input_tensor.get_shape()))
+    input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
     toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:

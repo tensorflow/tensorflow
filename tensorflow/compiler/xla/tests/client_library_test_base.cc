@@ -512,4 +512,12 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
   return data;
 }
 
+ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
+    const Literal& literal, ComputationBuilder* builder) {
+  return builder->ConstantLiteral(
+      use_bfloat16_ && literal.shape().element_type() == F32
+          ? *LiteralTestUtil::ConvertF32ToBF16(literal)
+          : literal);
+}
+
 }  // namespace xla

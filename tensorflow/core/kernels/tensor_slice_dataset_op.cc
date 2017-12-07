@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/batch_util.h"
 
 namespace tensorflow {
 
@@ -101,41 +102,6 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
     }
 
    private:
-    template <typename T>
-    static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
-                                       int64 index) {
-      DCHECK_NE(parent.dim_size(0), 0);
-      DCHECK_GE(index, 0);
-      if (element->NumElements() !=
-          (parent.NumElements() / parent.dim_size(0))) {
-        TensorShape chip_shape = parent.shape();
-        chip_shape.RemoveDim(0);
-        return errors::Internal(
-            "HandleSliceToElement Cannot copy slice: number of elements does "
-            "not match.  Shapes are: [element]: ",
-            element->shape().DebugString(), ", [parent slice]: ",
-            chip_shape.DebugString());
-      }
-      auto parent_as_matrix = parent.flat_outer_dims<T>();
-      element->flat<T>() = parent_as_matrix.chip(index, 0);
-      return Status::OK();
-    }
-
-    static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int64 index) {
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleSliceToElement<T>(parent, element, index); \
-  }
-
-      switch (parent.dtype()) {
-        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
-        default:
-          return errors::Unimplemented(
-              "CopySliceToElement Unhandled data type: ", element->dtype());
-      }
-    }
-
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
@@ -154,7 +120,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
             const Tensor& t = dataset()->tensors_[i];
             Tensor t_slice(cpu_allocator(), t.dtype(),
                            TensorShape(dataset()->shapes_[i].dim_sizes()));
-            TF_RETURN_IF_ERROR(CopySliceToElement(t, &t_slice, i_));
+            TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
             out_tensors->emplace_back(std::move(t_slice));
           }
           ++i_;

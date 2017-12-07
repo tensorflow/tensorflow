@@ -187,6 +187,26 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testBatchShapeError(self):
+    def generator():
+      yield [1.0, 2.0, 3.0]
+      yield [4.0, 5.0, 6.0]
+      yield [7.0, 8.0, 9.0, 10.0]
+
+    iterator = (dataset_ops.Dataset.from_generator(generator, dtypes.float32,
+                                                   output_shapes=[None])
+                .batch(3)
+                .make_initializable_iterator())
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(iterator.initializer)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"Cannot batch tensors with different shapes in component 0. "
+          r"First element had shape \[3\] and element 2 had shape \[4\]."):
+        sess.run(next_element)
+
   def testPaddedBatchDataset(self):
     seq_lens = array_ops.placeholder(dtypes.int32, shape=[None])
     padded_shape = array_ops.placeholder(dtypes.int64, shape=[1])
