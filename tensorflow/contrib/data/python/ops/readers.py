@@ -179,6 +179,7 @@ def read_batch_features(file_pattern,
     dataset = dataset.shuffle(capacity)
   dataset = dataset.batch(batch_size)
   dataset = dataset.map(lambda x: parsing_ops.parse_example(x, features))
+  dataset = dataset.prefetch(1)
   iterator = dataset.make_one_shot_iterator()
   outputs = iterator.get_next()
   return outputs

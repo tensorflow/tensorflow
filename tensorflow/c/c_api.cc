@@ -1850,6 +1850,16 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
   opts->opts.prefix = prefix;
 }
 
+void TF_ImportGraphDefOptionsSetUniquifyNames(TF_ImportGraphDefOptions* opts,
+                                              unsigned char uniquify_names) {
+  opts->opts.uniquify_names = uniquify_names;
+}
+
+void TF_ImportGraphDefOptionsSetUniquifyPrefix(TF_ImportGraphDefOptions* opts,
+                                               unsigned char uniquify_prefix) {
+  opts->opts.uniquify_prefix = uniquify_prefix;
+}
+
 void TF_ImportGraphDefOptionsAddInputMapping(TF_ImportGraphDefOptions* opts,
                                              const char* src_name,
                                              int src_index, TF_Output dst) {

@@ -150,6 +150,7 @@ tensorflow/contrib/cudnn_rnn/python/ops
 tensorflow/contrib/data
 tensorflow/contrib/data/kernels
 tensorflow/contrib/data/python
+tensorflow/contrib/data/python/kernel_tests
 tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto
@@ -367,6 +368,7 @@ tensorflow/contrib/rnn
 tensorflow/contrib/rnn/kernels
 tensorflow/contrib/rnn/ops
 tensorflow/contrib/rnn/python
+tensorflow/contrib/rnn/python/kernel_tests
 tensorflow/contrib/rnn/python/ops
 tensorflow/contrib/saved_model
 tensorflow/contrib/saved_model/python

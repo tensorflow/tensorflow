@@ -323,6 +323,76 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   EXPECT_EQ(inner_computation->instruction_count(), 8);
 }
 
+TEST_F(HloRematerializationTest, RngNotRematerialized) {
+  // Test that a single rng is not rematerialized:
+  //
+  // Entry computation:
+  //   F32[] %param = {...}
+  //   F32[1024] rng = rng(param)
+  //   F32[1024] tanh = tanh(rng)
+  //   F32[1024] exp = exp(rng)
+  //   F32[1024] add_0 = add(rng, tanh)              // LIVE: add_0 + rng +
+  //                                                 //       tanh + exp
+  //
+  //   F32[1024] add_1 = add(rng, add(exp, add_0))   // LIVE: add_1 + add_0 +
+  //                                                 //       rng + tanh + exp
+  //
+  //   F32[1024] add_2 = add(rng, add(tanh, add_1))  // LIVE: add_2 + add_1 +
+  //                                                 //       rng + tanh + exp
+  auto module = CreateNewModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
+  auto rng = builder.AddInstruction(HloInstruction::CreateRng(
+      vec1024_shape_, RandomDistribution::RNG_BERNOULLI, {param}));
+  auto tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kTanh, rng));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kExp, rng));
+  auto add_0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(vec1024_shape_, HloOpcode::kAdd, rng, tanh));
+  auto add_1 = builder.AddInstruction(HloInstruction::CreateBinary(
+      vec1024_shape_, HloOpcode::kAdd, rng,
+      builder.AddInstruction(HloInstruction::CreateBinary(
+          vec1024_shape_, HloOpcode::kAdd, exp, add_0))));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      vec1024_shape_, HloOpcode::kAdd, rng,
+      builder.AddInstruction(HloInstruction::CreateBinary(
+          vec1024_shape_, HloOpcode::kAdd, tanh, add_1))));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  auto count_rngs = [](const HloComputation* computation) {
+    int64 rng_count = 0;
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kRng) {
+        ++rng_count;
+      }
+    }
+    return rng_count;
+  };
+  // Before rematerialization there should be a single broadcast rng in
+  // the graph.
+  ASSERT_EQ(count_rngs(entry_computation), 1);
+  const int64 original_instruction_count =
+      entry_computation->instruction_count();
+  SequentialHloOrdering::HloModuleSequence sequence;
+  // Pick a memory limit some where between 24KB (initial peak memory including
+  // parameter and output) and 20KB (peak memory possible with
+  // rematerialization).
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, HloRematerialization::RematerializeAndSchedule(
+                        ByteSizeOf,
+                        /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_),
+                        module.get(), &sequence));
+  EXPECT_TRUE(changed);
+  // The rng should not have been rematerialized.
+  EXPECT_EQ(count_rngs(entry_computation), 1);
+  // There should have been rematerialization.
+  EXPECT_GT(entry_computation->instruction_count(), original_instruction_count);
+}
+
 TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   // Test that a single instruction is rematerialized several times. Module:
   //

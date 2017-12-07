@@ -24,19 +24,6 @@ limitations under the License.
 namespace toco {
 
 namespace {
-
-ArrayDataType CommonDataTypeOfAllInputs(const Model& model,
-                                        const Operator& op) {
-  CHECK_GT(op.inputs.size(), 0);
-  const ArrayDataType data_type = model.GetArray(op.inputs[0]).data_type;
-  for (const auto& input : op.inputs) {
-    const auto& array = model.GetArray(input);
-    CHECK(array.data_type == data_type)
-        << " Unexpected: this operator has inputs with different data types.";
-  }
-  return data_type;
-}
-
 void SetDataTypeForAllOutputs(Model* model, Operator* op,
                               ArrayDataType data_type) {
   for (const auto& output : op->outputs) {
@@ -75,34 +62,6 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
   } else if (op->type == OperatorType::kTensorFlowShape) {
     // These operators are assumed to produce int32 outputs.
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kInt32);
-  } else if (op->type == OperatorType::kAveragePool ||
-             op->type == OperatorType::kMaxPool ||
-             op->type == OperatorType::kL2Pool ||
-             op->type == OperatorType::kConv ||
-             op->type == OperatorType::kDepthwiseConv ||
-             op->type == OperatorType::kFullyConnected ||
-             op->type == OperatorType::kTensorFlowMax ||
-             op->type == OperatorType::kTensorFlowMin ||
-             op->type == OperatorType::kPad ||
-             op->type == OperatorType::kStridedSlice ||
-             op->type == OperatorType::kTensorFlowReshape ||
-             op->type == OperatorType::kSlice ||
-             op->type == OperatorType::kSqueeze ||
-             op->type == OperatorType::kTensorFlowSum ||
-             op->type == OperatorType::kTensorFlowSwitch ||
-             op->type == OperatorType::kTensorFlowTile ||
-             op->type == OperatorType::kTensorFlowAll ||
-             op->type == OperatorType::kReorderAxes ||
-             op->type == OperatorType::kTensorFlowConcatV2 ||
-             op->type == OperatorType::kFloor ||
-             op->type == OperatorType::kGather ||
-             op->type == OperatorType::kSpaceToBatchND ||
-             op->type == OperatorType::kBatchToSpaceND ||
-             op->type == OperatorType::kMean) {
-    // These operators produce outputs with the same type as their 1st input
-    CHECK_GT(op->inputs.size(), 0);
-    const ArrayDataType data_type = model->arrays[op->inputs[0]]->data_type;
-    SetDataTypeForAllOutputs(model, op, data_type);
   } else if (op->type == OperatorType::kTensorFlowSplit ||
              op->type == OperatorType::kTensorFlowConcat) {
     // These operators produce an output with the same type as their 2nd input
@@ -125,9 +84,9 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       model->arrays[output]->data_type = data_type;
     }
   } else {
-    // These operators produce an output with the same type as any of their
-    // inputs, which must always have the same type.
-    const ArrayDataType data_type = CommonDataTypeOfAllInputs(*model, *op);
+    // These operators produce outputs with the same type as their 1st input
+    CHECK_GT(op->inputs.size(), 0);
+    const ArrayDataType data_type = model->arrays[op->inputs[0]]->data_type;
     SetDataTypeForAllOutputs(model, op, data_type);
   }
   // Return true if any output data type changed, false if none changed.

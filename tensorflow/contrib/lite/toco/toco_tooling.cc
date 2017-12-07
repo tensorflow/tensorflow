@@ -99,7 +99,7 @@ bool SupportsLstmCell(FileFormat format) {
 }
 
 bool SupportsPreallocatedWorkspace(FileFormat format) {
-  return (format == GRAPHVIZ_DOT || format == TFLITE);
+  return (format == TFLITE);
 }
 
 bool IsRealValued(toco::ArrayDataType type) {

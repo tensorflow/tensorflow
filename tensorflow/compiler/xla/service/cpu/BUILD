@@ -287,10 +287,15 @@ cc_library(
     srcs = ["ir_function.cc"],
     hdrs = ["ir_function.h"],
     deps = [
+        ":ir_emission_utils",
+        ":shape_partition",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
         "@llvm//:core",
     ],
 )
@@ -300,6 +305,7 @@ cc_library(
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
@@ -645,6 +651,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "@llvm//:core",
     ],
 )
 

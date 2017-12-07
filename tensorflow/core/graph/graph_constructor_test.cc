@@ -1806,6 +1806,21 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_2:0");
 
+  // Import with an already-used prefix
+  opts.prefix = "A";
+  opts.uniquify_prefix = true;
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3/A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_3/B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_3/A");
+
+  // Create B_3 node to keep the A/B numbering in sync
+  opts = ImportGraphDefOptions();
+  ExpectOK("node { name: 'B_3' op: 'TestInput' }");
+
   // Import with existing de-duped node names
   opts = ImportGraphDefOptions();
   opts.uniquify_names = true;
@@ -1821,6 +1836,30 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   EXPECT_EQ(results.return_nodes[0]->name(), "A_1_1");
   EXPECT_EQ(results.return_nodes[1]->name(), "B_1_1");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_1_1:0");
+
+  // Import with node names that must be de-duped from names and prefixes that
+  // exist in both the existing graph and the GraphDef being imported.
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("A_4");
+  opts.return_nodes.push_back("B");
+  opts.return_nodes.push_back("B_4/B");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'A_4' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }"
+      "node { name: 'B_4/B' op: 'TestOneInputTwoOutputs' input: ['A_4'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 4);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_5");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_4");
+  EXPECT_EQ(results.return_nodes[2]->name(), "B_5");
+  EXPECT_EQ(results.return_nodes[2]->def().input(0), "A_5:0");
+  EXPECT_EQ(results.return_nodes[3]->name(), "B_4/B");
+  EXPECT_EQ(results.return_nodes[3]->def().input(0), "A_4");
 
   // Create node with prefix and then import node with same name
   ExpectOK("node { name: 'foo/abc' op: 'ABC' }");
@@ -1871,16 +1910,25 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
   ExpectOK(graph_def_str, opts, &refiner, &results);
 
   ASSERT_EQ(results.return_nodes.size(), 2);
-  EXPECT_EQ(results.return_nodes[0]->name(), "A_3");
-  EXPECT_EQ(results.return_nodes[1]->name(), "B_3");
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_6");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_6");
   EXPECT_EQ(results.return_nodes[1]->def().input(0), "A:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames_ColocationGroups) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Create nodes 'A' and 'b"
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }");
 
   // Check that colocation groups are updated
-  opts = ImportGraphDefOptions();
+  ImportGraphDefOptions opts;
   opts.uniquify_names = true;
   opts.return_nodes.push_back("A");
   opts.return_nodes.push_back("B");
-  results = ImportGraphDefResults();
+  ImportGraphDefResults results;
   ExpectOK(
       "node { name: 'A' op: 'TestInput' }"
       "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] "
@@ -1888,14 +1936,48 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
       opts, &refiner, &results);
 
   ASSERT_EQ(results.return_nodes.size(), 2);
-  EXPECT_EQ(results.return_nodes[0]->name(), "A_4");
-  EXPECT_EQ(results.return_nodes[1]->name(), "B_4");
-  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_4:0");
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1");
   const AttrValue* class_attr =
       results.return_nodes[1]->attrs().Find(kColocationAttrName);
   ASSERT_TRUE(class_attr != nullptr);
   ASSERT_EQ(class_attr->list().s_size(), 1);
-  EXPECT_EQ(class_attr->list().s(0), "loc:@A_4");
+  EXPECT_EQ(class_attr->list().s(0), "loc:@A_1");
+
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_2");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
+  class_attr = results.return_nodes[0]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_2");
+
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_3");
+  class_attr = results.return_nodes[0]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_3");
+  class_attr = results.return_nodes[1]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_3");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_WithCycle) {

@@ -361,12 +361,9 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateCrossReplicaSum(const Shape& shape,
-                                      HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCrossReplicaSum, shape));
-  instruction->AppendOperand(operand);
-  return instruction;
+HloInstruction::CreateCrossReplicaSum(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  return CreateNary(shape, HloOpcode::kCrossReplicaSum, operands);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1000,6 +997,7 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
+    case HloOpcode::kRng:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
@@ -1158,8 +1156,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                         *dot_dimension_numbers_);
       break;
     case HloOpcode::kCrossReplicaSum:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateCrossReplicaSum(shape, new_operands[0]);
+      clone = CreateCrossReplicaSum(shape, new_operands);
       break;
     case HloOpcode::kGetTupleElement:
       CHECK_EQ(new_operands.size(), 1);

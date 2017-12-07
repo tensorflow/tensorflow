@@ -243,13 +243,21 @@ uint64 FunctionDefHash(const FunctionDef& fdef);
 // address spaces.
 string Canonicalize(const string& funcname, AttrSlice attrs);
 
+class CallFrameInterface {
+ public:
+  virtual ~CallFrameInterface() {}
+
+  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status SetRetval(int index, const Tensor& val) = 0;
+};
+
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
 //
 // Runtime must arrange accesses to one FunctionCallFrame s.t.
 //   1. SetArgs() happens before any GetArg();
 //   2. GetRetvals happens after all SetRetval();
-class FunctionCallFrame {
+class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
   ~FunctionCallFrame();
@@ -260,8 +268,8 @@ class FunctionCallFrame {
   Status ConsumeRetvals(std::vector<Tensor>* rets);
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const;
-  Status SetRetval(int index, const Tensor& val);
+  Status GetArg(int index, Tensor* val) const override;
+  Status SetRetval(int index, const Tensor& val) override;
 
  private:
   DataTypeVector arg_types_;

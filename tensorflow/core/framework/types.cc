@@ -306,6 +306,18 @@ bool DataTypeCanUseMemcpy(DataType dt) {
   }
 }
 
+bool DataTypeIsFloating(DataType dt) {
+  switch (dt) {
+    case DT_HALF:
+    case DT_BFLOAT16:
+    case DT_FLOAT:
+    case DT_DOUBLE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool DataTypeIsQuantized(DataType dt) {
   switch (dt) {
     case DT_QINT8:

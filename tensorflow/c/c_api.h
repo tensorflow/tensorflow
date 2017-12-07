@@ -889,6 +889,20 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
 
+// Set whether to uniquify imported operation names. If true, imported operation
+// names will be modified if their name already exists in the graph. If false,
+// conflicting names will be treated as an error. Note that this option has no
+// effect if a prefix is set, since the prefix will guarantee all names are
+// unique. Defaults to false.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetUniquifyNames(
+    TF_ImportGraphDefOptions* opts, unsigned char uniquify_names);
+
+// If true, the specified prefix will be modified if it already exists as an
+// operation name or prefix in the graph. If false, a conflicting prefix will be
+// treated as an error. This option has no effect if no prefix is specified.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetUniquifyPrefix(
+    TF_ImportGraphDefOptions* opts, unsigned char uniquify_prefix);
+
 // Set any imported nodes with input `src_name:src_index` to have that input
 // replaced with `dst`. `src_name` refers to a node in the graph to be imported,
 // `dst` references a node already existing in the graph being imported into.

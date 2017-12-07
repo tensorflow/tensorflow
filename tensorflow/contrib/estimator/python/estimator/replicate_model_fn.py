@@ -46,45 +46,7 @@ from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import training_util
 
 
-class Mode(object):
-  """Modes for variables replication used for forcing a particular mode.
-
-  Forcing a mode is meant for performance experimentation purposes rather than
-  for general use cases.
-  """
-
-  AUTO = 0
-  """Use internal heuristics for choosing the best Mode value.
-
-     This mode is supposed to be the most appropriate in most cases given what
-     is known about the system.
-  """
-  # TODO(isaprykin): Query system configuration to choose modes other than
-  # `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often appropriate.
-
-  SHARED_LOCAL_PARAMETER_SERVER = 2
-  """Variables are placed on a single device and shared across all devices.
-
-  Two ways to achieve this replication over available GPUs are supported:
-    1)  If exactly 1 GPU is detected, then variables and operations are placed
-        onto GPU.
-    2)  If more than 1 GPU is detected, then variables are going to be placed on
-        the CPU.  Replicas of operations are placed on each individual GPU.
-  """
-
-  SHARED_ROUND_ROBIN = 3
-  """Variables are placed on all devices in a round-robin fashion.
-
-  Every subsequent variable is placed on the next device.  There is only one
-  copy of each variable that is shared across all devices.
-  """
-
-  # TODO(isaprykin):  Implement `REPLICATED_ALL_REDUCE`.
-  REPLICATED_ALL_REDUCE = 3
-  """Variables are mirrored on all devices."""
-
-
-def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
+def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
@@ -97,11 +59,14 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
   optimizer.
 
   If `devices` are `None`, then all available GPUs are going to be used for
-  replication: `devices=[<all available GPUs>]`.  If no GPUs are available,
-  then the model is going to be placed on the CPU: `devices=['/device:CPU:0']`.
+  replication.  If no GPUs are available, then the model is going to be
+  placed on the CPU.
 
-  Varibles are placed on to `devices` according to the given `mode`. Operations
-  are going for each tower are going to be copied on each device.
+  Two modes of local replication over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
 
   Here is an example of how one might use their `model_fn` to run over GPUs:
     ```python
@@ -145,7 +110,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
     - For all other fields of `EstimatorSpec` the values of the first tower
       are taken.
 
-  On replication of variables:
+  On distribution of variables:
   Variables are not duplicated between towers.  Instead, they are placed on a
   single device as defined above and shared across towers.
 
@@ -163,14 +128,52 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
-    mode: An optional argument that specifies the replication method used for
-      distributing variables across devices.
 
   Returns:
     A replicated version of the supplied `model_fn`. Returned function that
       conforms to the requirements of `Estimator`'s `model_fn` and can be used
       instead of the supplied `model_fn`.
   """
+  return _replicate_model_fn_with_mode(
+      model_fn,
+      optimizer_fn,
+      devices,
+      # TODO(isaprykin): Query system configuration to choose modes other than
+      # `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often appropriate.
+      mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER)
+
+
+class _VariableDistributionMode(object):
+  """Modes for variable distribution used for forcing a particular one.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
+
+  SHARED_LOCAL_PARAMETER_SERVER = 1
+  """Variables are placed on a single device and shared across all devices.
+
+  Two ways to achieve this distribution over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
+  """
+
+  SHARED_ROUND_ROBIN = 2
+  """Variables are placed on all devices in a round-robin fashion.
+
+  Every subsequent variable is placed on the next device.  There is only one
+  copy of each variable that is shared across all devices.
+  """
+
+
+def _replicate_model_fn_with_mode(
+    model_fn,
+    optimizer_fn,
+    devices=None,
+    mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
+  """A version of `replicate_model_fn` that allows to specify a `mode`."""
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
@@ -179,7 +182,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None, mode=Mode.AUTO):
                                         if is_a_single_gpu_case else 'CPU')
 
   ps_devices = [consolidation_device]
-  if mode == Mode.SHARED_ROUND_ROBIN:
+  if mode == _VariableDistributionMode.SHARED_ROUND_ROBIN:
     ps_devices = devices
 
   tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '

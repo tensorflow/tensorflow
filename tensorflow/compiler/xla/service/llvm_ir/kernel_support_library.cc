@@ -65,6 +65,7 @@ void KernelSupportLibrary::If(
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
+    bool enable_fast_math, bool optimize_for_size,
     llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -82,9 +83,10 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     auto* function_type = llvm::FunctionType::get(
         ir_builder->getVoidTy(), arg_types, /*isVarArg=*/false);
 
-    function = llvm::Function::Create(
+    function = llvm_ir::CreateFunction(
         function_type, llvm::GlobalValue::InternalLinkage,
-        llvm_ir::AsStringRef(kernel_name), module);
+        /*enable_fast_math=*/enable_fast_math,
+        /*optimize_for_size=*/optimize_for_size, kernel_name, module);
 
     llvm::IRBuilder<>::InsertPointGuard guard(*ir_builder);
 

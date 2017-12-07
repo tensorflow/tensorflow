@@ -53,23 +53,24 @@ from tensorflow.python.training import device_setter
 from tensorflow.python.training import gradient_descent
 
 
-# TODO(isaprykin):  Parametrize all the tests on replicate_model_fn.Mode when
-#   it's supported.
+# TODO(isaprykin):  Parametrize all the tests on
+#   replicate_model_fn._VariableDistributionMode when it's supported.
 class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
 
-  def test_complete_flow_with_mode_auto(self):
-    return self._complete_flow_with_mode(replicate_model_fn.Mode.AUTO)
+  def test_complete_flow_with_public_version(self):
+    return self._complete_flow_with_mode(mode=None)
 
   def test_complete_flow_with_mode_local_ps_server(self):
     return self._complete_flow_with_mode(
-        replicate_model_fn.Mode.SHARED_LOCAL_PARAMETER_SERVER)
+        replicate_model_fn._VariableDistributionMode.
+        SHARED_LOCAL_PARAMETER_SERVER)
 
   def test_complete_flow_with_mode_round_robin(self):
     return self._complete_flow_with_mode(
-        replicate_model_fn.Mode.SHARED_ROUND_ROBIN)
+        replicate_model_fn._VariableDistributionMode.SHARED_ROUND_ROBIN)
 
   def _complete_flow_with_mode(self, mode):
     n_classes = 3
@@ -119,12 +120,20 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
     def optimizer_fn():
       return optimizers.get_optimizer_instance('Adagrad', learning_rate=0.05)
 
+    if not mode:  # Use the public `replicate_model_fn`.
+      model_fn = replicate_model_fn.replicate_model_fn(
+          estimator.model_fn,
+          optimizer_fn,
+          devices=['/gpu:0', '/gpu:1', '/gpu:2'])
+    else:
+      model_fn = replicate_model_fn._replicate_model_fn_with_mode(
+          estimator.model_fn,
+          optimizer_fn,
+          devices=['/gpu:0', '/gpu:1', '/gpu:2'],
+          mode=mode)
+
     estimator = estimator_lib.Estimator(
-        model_fn=replicate_model_fn.replicate_model_fn(
-            estimator.model_fn,
-            optimizer_fn,
-            devices=['/gpu:0', '/gpu:1', '/gpu:2'],
-            mode=mode),
+        model_fn=model_fn,
         model_dir=estimator.model_dir,
         config=estimator.config,
         params=estimator.params)
