@@ -2493,9 +2493,17 @@ class WhileContext(ControlFlowContext):
     if shape_acc is not None:
       self.AddName(shape_acc.name)
       init_acc.append(shape_acc)
+
+    # Set use_input_shape=False since the accumulator tensors will grow in
+    # size. If use_input_shape=True, the _update_input call below will result in
+    # incompatible shapes.
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
-                        name="b_acc") for x in init_acc]
+                        use_input_shape=False, name="b_acc") for x in init_acc]
+    # Manually set appropriate partial shapes.
+    enter_acc[0].set_shape([None])
+    if values_acc.shape.dims is not None:
+      enter_acc[1].set_shape([None] + values_acc.shape.as_list()[1:])
     self.loop_enters.extend(enter_acc)
 
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
