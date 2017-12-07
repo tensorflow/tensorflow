@@ -345,5 +345,35 @@ class HMCTest(test.TestCase):
   def testAIS12(self):
     self._ais_gets_correct_log_normalizer_wrapper([1, 2])
 
+  def testNanRejection(self):
+    """Tests that an update that yields NaN potentials gets rejected.
+
+    We run HMC with a target distribution that returns NaN
+    log-likelihoods if any element of x < 0, and unit-scale
+    exponential log-likelihoods otherwise. The exponential potential
+    pushes x towards 0, ensuring that any reasonably large update will
+    push us over the edge into NaN territory.
+    """
+    def _unbounded_exponential_log_prob(x):
+      """An exponential distribution with log-likelihood NaN for x < 0."""
+      per_element_potentials = array_ops.where(x < 0,
+                                               np.nan * array_ops.ones_like(x),
+                                               -x)
+      return math_ops.reduce_sum(per_element_potentials)
+
+    with self.test_session() as sess:
+      initial_x = math_ops.linspace(0.01, 5, 10)
+      updated_x, acceptance_probs, _, _ = hmc.kernel(
+          2., 5, initial_x, _unbounded_exponential_log_prob, [0])
+      initial_x_val, updated_x_val, acceptance_probs_val = sess.run(
+          [initial_x, updated_x, acceptance_probs])
+
+      logging.vlog(1, 'initial_x = {}'.format(initial_x_val))
+      logging.vlog(1, 'updated_x = {}'.format(updated_x_val))
+      logging.vlog(1, 'acceptance_probs = {}'.format(acceptance_probs_val))
+
+      self.assertAllEqual(initial_x_val, updated_x_val)
+      self.assertEqual(acceptance_probs_val, 0.)
+
 if __name__ == '__main__':
   test.main()

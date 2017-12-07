@@ -162,7 +162,7 @@ class Profiler(object):
     self._coverage = 0.0
     self._graph = graph
     # pylint: disable=protected-access
-    op_log = tfprof_logger._merge_default_with_oplog(
+    op_log = tfprof_logger.merge_default_with_oplog(
         self._graph, op_log=op_log)
     # pylint: enable=protected-access
 
@@ -182,7 +182,7 @@ class Profiler(object):
       run_meta: RunMetadata proto that contains statistics of a session run.
     """
     # pylint: disable=protected-access
-    op_log = tfprof_logger._merge_default_with_oplog(
+    op_log = tfprof_logger.merge_default_with_oplog(
         self._graph, run_meta=run_meta)
     # pylint: enable=protected-access
     # TODO(xpan): P1: Better to find the current graph.
@@ -315,7 +315,7 @@ def profile(graph,
                .trainable_variables_parameter())
 
   # pylint: disable=protected-access
-  op_log = tfprof_logger._merge_default_with_oplog(
+  op_log = tfprof_logger.merge_default_with_oplog(
       graph, op_log, run_meta, add_trace=cmd == 'code')
   # pylint: enable=protected-access
 
@@ -374,7 +374,7 @@ def advise(graph, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
     options = ALL_ADVICE.copy()
 
   # pylint: disable=protected-access
-  op_log = tfprof_logger._merge_default_with_oplog(
+  op_log = tfprof_logger.merge_default_with_oplog(
       graph, None, run_meta, add_trace=True)
   # pylint: enable=protected-access
 
