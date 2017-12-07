@@ -9,10 +9,7 @@ licenses(["unencumbered"])  # Public Domain
 cc_library(
     name = "sqlite",
     srcs = ["sqlite3.c"],
-    hdrs = [
-        "sqlite3.h",
-        "sqlite3ext.h",
-    ],
+    hdrs = ["sqlite3.h"],
     includes = ["."],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],

@@ -55,25 +55,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "tbsnap",
-    srcs = ["tbsnap.cc"],
-    deps = [
-        "@snappy",
-        "@sqlite_archive//:sqlite",
-    ],
-)
-
-py_test(
-    name = "tbsnap_test",
-    size = "small",
-    srcs = ["tbsnap_test.py"],
-    data = ["libtbsnap.so"],
-    srcs_version = "PY2AND3",
-    tags = ["nomac"],
-    deps = ["//tensorflow/python:client_testlib"],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(["*"]),

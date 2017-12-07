@@ -28,7 +28,6 @@ endif()
 
 set(sqlite_HEADERS
     "${sqlite_BUILD}/sqlite3.h"
-    "${sqlite_BUILD}/sqlite3ext.h"
 )
 
 if (WIN32)
