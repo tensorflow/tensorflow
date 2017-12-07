@@ -75,7 +75,11 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleDot(HloInstruction* dot) override {
-    return CheckBinaryShape(dot);
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferDotOpShape(
+                            dot->operand(0)->shape(), dot->operand(1)->shape(),
+                            dot->dot_dimension_numbers()));
+    return CheckShape(dot, expected);
   }
 
   Status HandleConvolution(HloInstruction* convolution) override {
@@ -89,8 +93,12 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
-                               crs->operand(0)->shape()));
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : crs->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        crs, ShapeInference::InferCrossReplicaSumShape(operand_shapes));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {

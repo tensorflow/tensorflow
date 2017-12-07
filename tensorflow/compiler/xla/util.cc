@@ -191,9 +191,9 @@ std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
   return output;
 }
 
-bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> p) {
-  for (int64 i = 0; i < p.size(); ++i) {
-    if (p[i] != i) {
+bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation) {
+  for (int64 i = 0; i < permutation.size(); ++i) {
+    if (permutation[i] != i) {
       return false;
     }
   }

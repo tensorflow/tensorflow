@@ -80,7 +80,7 @@ class ZipDatasetOp : public DatasetOpKernel {
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      std::vector<NodeBuilder::NodeOut> input_graph_nodes;
+      std::vector<Node*> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
         Node* input_node;

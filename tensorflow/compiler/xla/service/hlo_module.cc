@@ -35,14 +35,15 @@ namespace xla {
 HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle) {}
 
-HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name)
+    : name_(NameUniquer::GetSanitizedName(name)) {}
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
-    : name_(name), config_(config) {}
+    : name_(NameUniquer::GetSanitizedName(name)), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,

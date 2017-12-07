@@ -202,8 +202,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   //   ABCD0 = Pad(ABCD, padding_high=1)
   //   BackwardFilterConv(ABCD0, xyz, padding_low=pading_high=1)
   // We choose the lesser of padding_low and padding_high as the new padding.
-  HloInstruction* transpose = backward_conv->fused_expression_root();
-  HloInstruction* forward_conv = transpose->mutable_operand(0);
+  HloInstruction* forward_conv = backward_conv->fused_expression_root();
   HloInstruction* input = backward_conv->mutable_operand(0);
   Window new_forward_conv_window = forward_conv->window();
   Window new_backward_conv_window = backward_conv->window();
@@ -269,19 +268,10 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
               .ConsumeValueOrDie(),
           padded_input, output, new_forward_conv_window, forward_conv_dnums));
 
-  HloInstruction* new_transpose =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeInference::InferTransposeShape(new_forward_conv->shape(),
-                                              transpose->dimensions())
-              .ConsumeValueOrDie(),
-          new_forward_conv, transpose->dimensions()));
-
-  // Fuse the new forward convolution and the new transpose to the new backward
-  // convolution.
+  // Fuse the new forward convolution to the new backward convolution.
   HloInstruction* new_backward_conv =
       computation->CreateFusionInstructionForBackwardConvolution(
-          {new_transpose, new_forward_conv},
-          HloInstruction::FusionKind::kConvBackwardFilter,
+          {new_forward_conv}, HloInstruction::FusionKind::kConvBackwardFilter,
           new_backward_conv_window, backward_conv_dnums);
 
   VLOG(1) << "Canonicalizing backward filter conv";

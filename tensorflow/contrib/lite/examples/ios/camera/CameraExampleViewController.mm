@@ -123,7 +123,11 @@ static void GetTopN(const uint8_t* prediction, const int prediction_size, const 
   AVCaptureDevice* device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
   AVCaptureDeviceInput* deviceInput =
       [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
-  assert(error == nil);
+
+  if (error != nil) {
+    NSLog(@"Failed to initialize AVCaptureDeviceInput. Note: This app doesn't work with simulator");
+    assert(NO);
+  }
 
   if ([session canAddInput:deviceInput]) [session addInput:deviceInput];
 

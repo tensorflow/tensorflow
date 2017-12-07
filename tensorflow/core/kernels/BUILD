@@ -589,6 +589,7 @@ cc_library(
         ":extract_image_patches_op",
         ":gather_nd_op",
         ":gather_op",
+        ":guarantee_const_op",
         ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
@@ -632,6 +633,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "concat_op",
     prefix = "concat_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "guarantee_const_op",
+    prefix = "guarantee_const_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1183,6 +1190,25 @@ tf_cuda_cc_test(
         ":gather_nd_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "guarantee_const_op_test",
+    size = "small",
+    srcs = ["guarantee_const_op_test.cc"],
+    deps = [
+        ":guarantee_const_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3089,6 +3115,7 @@ cc_library(
         ":batch_norm_op",
         ":bias_op",
         ":conv_ops",
+        ":data_format_ops",
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
@@ -3123,6 +3150,12 @@ NN_DEPS = [
 tf_kernel_library(
     name = "batch_norm_op",
     prefix = "batch_norm_op",
+    deps = NN_DEPS,
+)
+
+tf_kernel_library(
+    name = "data_format_ops",
+    prefix = "data_format_ops",
     deps = NN_DEPS,
 )
 
@@ -3914,6 +3947,8 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl_3.cc",
         "scatter_nd_op_cpu_impl_4.cc",
         "scatter_nd_op_cpu_impl_5.cc",
+        "scatter_nd_op_cpu_impl_6.cc",
+        "scatter_nd_op_cpu_impl_7.cc",
     ],
     hdrs = [
         "scatter_nd_op.h",
@@ -3923,7 +3958,11 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
-    deps = STATE_DEPS + [":dense_update_functor"],
+    deps = STATE_DEPS + [
+        ":dense_update_functor",
+        ":training_op_helpers",
+        ":variable_ops",
+    ],
 )
 
 tf_kernel_library(
@@ -4482,6 +4521,8 @@ filegroup(
         "gather_nd_op_cpu_impl_3.cc",
         "gather_nd_op_cpu_impl_4.cc",
         "gather_nd_op_cpu_impl_5.cc",
+        "gather_nd_op_cpu_impl_6.cc",
+        "gather_nd_op_cpu_impl_7.cc",
         "gather_op.cc",
         "identity_n_op.cc",
         "identity_n_op.h",
@@ -4569,6 +4610,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
@@ -4682,6 +4724,7 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "data_format_ops.cc",
         "decode_wav_op.cc",
         "deep_conv2d.cc",
         "deep_conv2d.h",
@@ -5834,10 +5877,10 @@ cc_library(
     hdrs = ["dataset.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -6125,6 +6168,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "random_dataset_op",
+    srcs = ["random_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -6176,6 +6231,7 @@ tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
     deps = [
+        ":batch_util",
         ":dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -6291,6 +6347,7 @@ tf_kernel_library(
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
+        ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",

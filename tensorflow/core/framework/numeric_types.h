@@ -46,6 +46,10 @@ struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
 
   EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
+    if (isnan(v)) {
+      value = NAN_VALUE;
+      return;
+    }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     value = p[0];
@@ -58,7 +62,7 @@ struct bfloat16 {
   explicit EIGEN_DEVICE_FUNC bfloat16(const T& val)
       : bfloat16(static_cast<float>(val)) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(float) const {
+  EIGEN_DEVICE_FUNC explicit operator float() const {
     float result;
 
     uint16_t* q = reinterpret_cast<uint16_t*>(&result);
@@ -87,6 +91,10 @@ struct bfloat16 {
 
   EIGEN_DEVICE_FUNC explicit operator int() const {
     return static_cast<int>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator long() const {
+    return static_cast<long>(float(*this));
   }
 
   EIGEN_DEVICE_FUNC explicit operator char() const {
@@ -121,15 +129,51 @@ struct bfloat16 {
     return static_cast<double>(float(*this));
   }
 
+  static bfloat16 epsilon() {
+    bfloat16 x;
+    x.value = 0x3c00;  // 0x1.0p-7
+    return x;
+  }
+
   uint16_t value;
+
+  // A value that represents "not a number".
+  static const uint16_t NAN_VALUE = 0x7FC0;
 };
 
-inline bool operator==(const bfloat16 a, const bfloat16 b) {
-  return a.value == b.value;
+inline bfloat16 operator+(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) + static_cast<float>(b));
 }
-
-inline bool operator!=(const bfloat16 a, const bfloat16 b) {
-  return a.value != b.value;
+inline bfloat16 operator-(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) - static_cast<float>(b));
+}
+inline bfloat16 operator*(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) * static_cast<float>(b));
+}
+inline bfloat16 operator/(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) / static_cast<float>(b));
+}
+inline bfloat16 operator-(bfloat16 a) {
+  a.value ^= 0x8000;
+  return a;
+}
+inline bool operator<(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) < static_cast<float>(b);
+}
+inline bool operator<=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) <= static_cast<float>(b);
+}
+inline bool operator==(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) == static_cast<float>(b);
+}
+inline bool operator!=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) != static_cast<float>(b);
+}
+inline bool operator>(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) > static_cast<float>(b);
+}
+inline bool operator>=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) >= static_cast<float>(b);
 }
 
 }  // end namespace tensorflow

@@ -530,7 +530,7 @@ int Main(int argc, char** argv) {
   }
 
   // Capture overall inference time without stat logging overhead. This is the
-  // timing data that can be compared to other libaries.
+  // timing data that can be compared to other libraries.
   SleepSeconds(inter_benchmark_sleep_seconds);
   int64 no_stat_time_us = 0;
   int64 no_stat_num_runs = 0;

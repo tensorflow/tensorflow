@@ -296,6 +296,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # Call the function again, now replacing usages of variables with
       # placeholders. This assumes the variable capturing scope created above
       # knows about all variables.
+      tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
           captures):
         captured_outputs = func(*func_inputs)
@@ -317,7 +318,9 @@ def _graph_callable_internal(func, shape_and_dtypes):
   placeholder_inputs = flat_inputs+ list(extra_placeholders)
 
   func_def_outputs = [x for x in outputs_list if isinstance(x, tf_ops.Tensor)]
-  initializer_function_def = function.make_function_def(
+  initialization_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
+  initializer_function_def, initializer_fn = function.make_function_def(
+      initialization_name,
       tmp_graph,
       initializing_operations,
       placeholder_inputs,
@@ -326,13 +329,13 @@ def _graph_callable_internal(func, shape_and_dtypes):
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    function._register_with_name(f.name, f.definition)  # pylint: disable=protected-access
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               initializer_function_def)
+    function._register(f._c_func)  # pylint: disable=protected-access
+  function._register(initializer_fn)  # pylint: disable=protected-access
   initializer_function = function.GraphModeFunction(
       placeholder_inputs,
       extra_inputs,
       initializer_function_def,
+      initializer_fn,
       tmp_graph,
       initializing_operations,
       func_outputs,
@@ -341,18 +344,20 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   capture_func_def_outputs = [
       x for x in captured_outlist if isinstance(x, tf_ops.Tensor)]
-  captured_function_def = function.make_function_def(
+  captured_function_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
+  captured_function_def, capturing_fn = function.make_function_def(
+      captured_function_name,
       tmp_graph,
       capturing_operations,
       placeholder_inputs,
       capture_func_def_outputs)
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               captured_function_def)
+  function._register(capturing_fn)  # pylint: disable=protected-access
 
   captured_function = function.GraphModeFunction(
       placeholder_inputs,
       extra_inputs,
       captured_function_def,
+      capturing_fn,
       tmp_graph,
       capturing_operations,
       captured_outputs,

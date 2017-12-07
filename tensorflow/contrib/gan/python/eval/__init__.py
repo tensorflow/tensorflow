@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN evaluation module.
+
+This module supports techniques such as Inception Score, Frechet Inception
+distance, and Sliced Wasserstein distance.
+"""
 # pylint: disable=,wildcard-import,unused-import
 
 from __future__ import absolute_import

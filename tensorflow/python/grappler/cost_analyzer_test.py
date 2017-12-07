@@ -89,13 +89,10 @@ class CostAnalysisTest(test.TestCase):
     self.assertTrue(b"MatMul" in report)
     self.assertTrue(b"ApplyAdam" in report)
     self.assertTrue(b"Conv2D" in report)
-    self.assertTrue(b"Conv2DBackpropInput" in report)
     self.assertTrue(b"Conv2DBackpropFilter" in report)
     self.assertTrue(b"Softmax" in report)
 
-    for op_type in [
-        b"MatMul", b"Conv2D", b"Conv2DBackpropInput", b"Conv2DBackpropFilter"
-    ]:
+    for op_type in [b"MatMul", b"Conv2D", b"Conv2DBackpropFilter"]:
       matcher = re.compile(
           br"\s+" + op_type + br",\s*(\d+),\s*(\d+),\s*([\d\.eE+-]+)%,\s*" +
           br"([\d\.eE+-]+)%,\s*(-?\d+),\s*(\d+),", re.MULTILINE)

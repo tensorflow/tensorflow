@@ -676,6 +676,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
 )
@@ -1261,6 +1262,19 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
+    name = "control_flow_util_test",
+    size = "small",
+    srcs = ["control_flow_util_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_ops_gen",
+        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:test_ops",
     ],
 )
 

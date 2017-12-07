@@ -18,6 +18,7 @@ limitations under the License.
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
+%rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
@@ -149,7 +150,7 @@ limitations under the License.
   }
   $1 = &temp;
   $1->resize(PyInt_AsLong($input), nullptr);
-}
+} 
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {

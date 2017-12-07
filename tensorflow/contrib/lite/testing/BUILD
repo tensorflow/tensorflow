@@ -160,6 +160,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "util",
+    testonly = 1,
+    hdrs = ["util.h"],
+)
+
 cc_test(
     name = "test_runner_test",
     srcs = ["test_runner_test.cc"],

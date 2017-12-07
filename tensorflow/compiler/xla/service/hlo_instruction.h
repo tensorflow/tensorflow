@@ -160,6 +160,12 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
+  // dimensions specified in 'dimension_numbers'.
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dimension_numbers);
+
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -169,7 +175,8 @@ class HloInstruction {
 
   // Creates a cross replica sum op.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -421,7 +428,7 @@ class HloInstruction {
   Status RemoveControlDependencyTo(HloInstruction* instruction);
 
   // Returns the set of control predecessors (successors) of this
-  // instruction. Control predecessors (sucessors) must execute before (after)
+  // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const std::vector<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
@@ -915,6 +922,15 @@ class HloInstruction {
   // Returns the dump string of the convolution dimension numbers.
   string ConvolutionDimensionNumbersToString() const;
 
+  // Returns data on the dimension numbers used for a dot operation.
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    CHECK(dot_dimension_numbers_ != nullptr);
+    return *dot_dimension_numbers_;
+  }
+
+  // Returns the dump string of the dot dimension numbers.
+  string DotDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -1173,6 +1189,9 @@ class HloInstruction {
   // Describes the dimension numbers used for a convolution.
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 
+  // Describes the dimension numbers used for a dot.
+  std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
+
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
@@ -1267,9 +1286,12 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
-// Custom stringification functions for protos that live inside HloInstruction.
+// Custom (de)stringification functions for protos that live inside
+// HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomDistributionToString(const RandomDistribution& distribution);
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

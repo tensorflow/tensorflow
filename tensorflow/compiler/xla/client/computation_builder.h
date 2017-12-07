@@ -393,6 +393,11 @@ class ComputationBuilder {
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
 
+  // Enqueues a general dot instruction onto the computation.
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
+
   // Default dimension numbers used for a 2D convolution.
   static constexpr int64 kConvBatchDimension = 0;
   static constexpr int64 kConvFeatureDimension = 1;

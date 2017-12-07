@@ -41,6 +41,25 @@ py_library(
 )
 
 py_library(
+    name = "random_ops",
+    srcs = [
+        "random_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
     name = "readers",
     srcs = [
         "readers.py",
@@ -59,6 +78,19 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_library(
+    name = "shuffle_ops",
+    srcs = [
+        "shuffle_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_ops",
+        ":transformation_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

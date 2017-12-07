@@ -60,6 +60,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 from tensorflow.python.util.protobuf import compare
 
 
@@ -715,25 +716,22 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
-  def _eval_helper(self, tensors):
-    if isinstance(tensors, ops.EagerTensor):
-      return tensors.numpy()
-    if isinstance(tensors, resource_variable_ops.ResourceVariable):
-      return tensors.read_value().numpy()
-
-    if isinstance(tensors, tuple):
-      return tuple([self._eval_helper(t) for t in tensors])
-    elif isinstance(tensors, list):
-      return [self._eval_helper(t) for t in tensors]
-    elif isinstance(tensors, dict):
-      assert not tensors, "Only support empty dict now."
-      return dict()
-    elif tensors is None:
+  def _eval_tensor(self, tensor):
+    if tensor is None:
       return None
-    elif callable(tensors):
-      return self._eval_helper(tensors())
+    elif isinstance(tensor, ops.EagerTensor):
+      return tensor.numpy()
+    elif isinstance(tensor, resource_variable_ops.ResourceVariable):
+      return tensor.read_value().numpy()
+    elif callable(tensor):
+      return self._eval_helper(tensor())
     else:
-      raise ValueError("Unsupported type %s." % type(tensors))
+      raise ValueError("Unsupported type %s." % type(tensor))
+
+  def _eval_helper(self, tensors):
+    if tensors is None:
+      return None
+    return nest.map_structure(self._eval_tensor, tensors)
 
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.

@@ -250,6 +250,8 @@ cc_library(
         ":dot_op_emitter",
         ":external_constant_pool",
         ":ir_emission_utils",
+        ":ir_function",
+        ":parallel_loop_emitter",
         ":shape_partition",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
@@ -277,6 +279,40 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+    ],
+)
+
+cc_library(
+    name = "ir_function",
+    srcs = ["ir_function.cc"],
+    hdrs = ["ir_function.h"],
+    deps = [
+        ":ir_emission_utils",
+        ":shape_partition",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
+    name = "parallel_loop_emitter",
+    srcs = ["parallel_loop_emitter.cc"],
+    hdrs = ["parallel_loop_emitter.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
     ],
 )
 
@@ -615,6 +651,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "@llvm//:core",
     ],
 )
 

@@ -51,6 +51,34 @@ ShapedBuffer::MakeArrayShapedBuffer(const Shape& shape,
   return std::move(shaped_buffer);
 }
 
+/* static */ StatusOr<std::unique_ptr<ShapedBuffer>> ShapedBuffer::Allocate(
+    const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+    const std::function<int64(const Shape&)>& shape_size_fn) {
+  if (!LayoutUtil::HasLayout(shape)) {
+    return InvalidArgument("Shape must have a layout: %s",
+                           ShapeUtil::HumanStringWithLayout(shape).c_str());
+  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  auto shaped_buffer = WrapUnique(
+      new ShapedBuffer(shape, allocator->platform(), device_ordinal));
+
+  // Allocate an appropriate sized buffer for each element in the shape
+  // including the tuple pointer arrays.
+  for (auto& pair : shaped_buffer->shape_index_to_buffer_entry_) {
+    const ShapeIndex& index = pair.first;
+    size_t& buffer_entry = pair.second;
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceMemoryBase memory_base,
+        allocator->Allocate(shaped_buffer->device_ordinal(),
+                            shape_size_fn(ShapeUtil::GetSubshape(
+                                shaped_buffer->shape(), index))));
+    shaped_buffer->buffers_.push_back(memory_base);
+    buffer_entry = shaped_buffer->buffers_.size() - 1;
+  }
+
+  return std::move(shaped_buffer);
+}
+
 ShapedBuffer::ShapedBuffer(const Shape& shape, const se::Platform* platform,
                            int device_ordinal)
     : shape_(shape),
@@ -109,29 +137,10 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
 ScopedShapedBuffer::Allocate(
     const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
     const std::function<int64(const Shape&)>& shape_size_fn) {
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("Shape must have a layout: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  auto shaped_buffer =
-      WrapUnique(new ScopedShapedBuffer(shape, allocator, device_ordinal));
-
-  // Allocate an appropriate sized buffer for each element in the shape
-  // including the tuple pointer arrays.
-  for (auto& pair : shaped_buffer->shape_index_to_buffer_entry_) {
-    const ShapeIndex& index = pair.first;
-    size_t& buffer_entry = pair.second;
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase memory_base,
-                        shaped_buffer->allocator_->Allocate(
-                            shaped_buffer->device_ordinal(),
-                            shape_size_fn(ShapeUtil::GetSubshape(
-                                shaped_buffer->shape(), index))));
-    shaped_buffer->buffers_.push_back(memory_base);
-    buffer_entry = shaped_buffer->buffers_.size() - 1;
-  }
-
-  return std::move(shaped_buffer);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ShapedBuffer> unscoped_buffer,
+      ShapedBuffer::Allocate(shape, allocator, device_ordinal, shape_size_fn));
+  return MakeScoped(unscoped_buffer.get(), allocator);
 }
 
 /* static */

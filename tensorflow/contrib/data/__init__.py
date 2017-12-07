@@ -66,6 +66,7 @@ from tensorflow.contrib.data.python.ops.readers import TextLineDataset
 from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
+from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 
