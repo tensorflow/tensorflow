@@ -36,6 +36,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+const char kPrefix[] = "LayoutOptimizer";
 const char kDim[] = "LayoutOptimizerDim";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
@@ -92,6 +93,15 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Squeeze",
                                           /*"Sum",*/ "Sub"};
   return ops_format_agnostic;
+}
+
+bool IsNodeByLayoutOptimizer(const string& node_name) {
+  const string prefix_pattern = kPrefix;
+  string prefix = node_name.substr(0, prefix_pattern.length());
+  if (prefix.compare(prefix_pattern) == 0) {
+    return true;
+  }
+  return false;
 }
 
 bool IsNodeNHWCToNCHW(const string& node_name) {
@@ -1342,6 +1352,10 @@ class DataLayoutOptimizer : GraphProcessor {
     // This is the first pass where we expand the nodes which support NCHW.
     std::set<string> ops_format_supported = GetOpsFormatSupported();
     for (int i = 0; i < node_size_original; i++) {
+      if (IsNodeByLayoutOptimizer(graph_->node(i).name())) {
+        return Status(error::INVALID_ARGUMENT,
+                      "The graph is already optimized by layout optimizer.");
+      }
       if (ops_format_supported.find(graph_->node(i).op()) !=
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
