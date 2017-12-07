@@ -432,12 +432,15 @@ bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
-bool StreamExecutor::BlockHostUntilDone(Stream *stream) {
-  bool result;
-  SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
+port::Status StreamExecutor::BlockHostUntilDoneWithStatus(Stream *stream) {
+  // TODO(toddw): Change TraceListener::BlockHostUntilDone to record Status
+  // rather than bool.
+  bool trace_result;
+  SCOPED_TRACE(TraceListener::BlockHostUntilDone, &trace_result, stream);
 
-  result = implementation_->BlockHostUntilDone(stream);
-  return result;
+  port::Status status = implementation_->BlockHostUntilDoneWithStatus(stream);
+  trace_result = status.ok();
+  return status;
 }
 
 void *StreamExecutor::Allocate(uint64 size) {
