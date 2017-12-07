@@ -680,6 +680,7 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
                                      const TensorShapeProto& shape,
                                      AttrValue* attr_tensor) {
   TensorProto* t = attr_tensor->mutable_tensor();
+  t->set_dtype(type);
   *t->mutable_tensor_shape() = shape;
   switch (type) {
     SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
@@ -1332,45 +1333,47 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       const TensorShapeProto& output_shape =
           properties.GetOutputProperties(node.name())[0].shape();
-      const TensorShapeProto& x_shape =
-          properties.GetInputProperties(node.name())[0].shape();
+
+      // Simplify element-wise  multiplication by ones or addition of zeros.
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node.name())[1].shape();
       const bool x_is_zero = IsZeros(*x);
-      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      const bool y_is_zero = IsZeros(*y);
+      const bool x_is_one = IsOnes(*x);
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
-
-      // Simplify addition of zeros.
-      if (is_add) {
-        if (x_is_zero && y_matches_output_shape) {
-          // 0 + y = y.
-          ReplaceAddOrMulWithIdentity(1, &node);
-          continue;
-        } else if (y_is_zero && x_matches_output_shape) {
-          // x + 0 = y.
-          ReplaceAddOrMulWithIdentity(0, &node);
-          continue;
-        }
+      if (y_matches_output_shape &&
+          ((is_mul && x_is_one) || (is_add && x_is_zero))) {
+        // 1 * y = y or 0 + y = y.
+        ReplaceAddOrMulWithIdentity(1, &node);
+        continue;
       }
-
-      // Simplify element-wise multiplication by ones.
-      if (is_mul) {
-        if (IsOnes(*x) && y_matches_output_shape) {
-          // 1 * y = y.
-          ReplaceAddOrMulWithIdentity(1, &node);
-          continue;
-        }
-        if (IsOnes(*y) && x_matches_output_shape) {
-          // x * 1 = x.
-          ReplaceAddOrMulWithIdentity(0, &node);
-          continue;
-        }
+      const TensorShapeProto& x_shape =
+          properties.GetInputProperties(node.name())[0].shape();
+      const bool y_is_zero = IsZeros(*y);
+      const bool y_is_one = IsOnes(*y);
+      const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
+      if (x_matches_output_shape &&
+          ((is_mul && y_is_one) || (is_add && y_is_zero))) {
+        // x * 1 = x or x + 0 = x
+        ReplaceAddOrMulWithIdentity(0, &node);
+        continue;
       }
 
       // Simplify multiplication and matmul by zeros.
-      if (x_is_zero || y_is_zero) {
-        TF_RETURN_IF_ERROR(ReplaceAddOrMulWithConstant(0, output_shape, &node));
+      if (!is_add && (x_is_zero || y_is_zero)) {
+        const PartialTensorShape shp(output_shape);
+        if (shp.IsFullyDefined()) {
+          TF_RETURN_IF_ERROR(
+              ReplaceAddOrMulWithConstant(0, output_shape, &node));
+          continue;
+        }
+        // Even if an input shape is only partially known, we may known that it
+        // matches the output shape and thus forward the corresponding zero
+        // input.
+        if (is_mul && x_is_zero && x_matches_output_shape) {
+          ReplaceAddOrMulWithIdentity(0, &node);
+        } else if (is_mul && y_is_zero && y_matches_output_shape) {
+          ReplaceAddOrMulWithIdentity(1, &node);
+        }
       }
     }
   }
