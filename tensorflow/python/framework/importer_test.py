@@ -1110,8 +1110,6 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(987, a[0].get_attr("default_int"))
 
   def testFunctions(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     dtype = dtypes.float32
     @function.Defun(dtype, dtype, dtype, dtype)
     def Grad(x, y, dout1, dout2):  # pylint: disable=unused-argument
@@ -1189,8 +1187,6 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(sess.run("outer:0"), 21)
 
   def testImportInsideDefun(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     g = ops.Graph()
     with g.as_default():
       @function.Defun()
