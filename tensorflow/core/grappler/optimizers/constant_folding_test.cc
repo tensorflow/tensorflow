@@ -88,27 +88,35 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
                                 ops::Placeholder::Shape(TensorShape({3, 2})));
     Output b = ops::Placeholder(s.WithOpName("b"), DT_FLOAT,
                                 ops::Placeholder::Shape(TensorShape({2, 3})));
+    Output bias = ops::Placeholder(s.WithOpName("bias"), DT_FLOAT,
+                                   ops::Placeholder::Shape(TensorShape({2})));
     Output zeros = !use_const ? ops::ZerosLike(s.WithOpName("zeros"), x)
                               : ops::Const(s.WithOpName("zeros"), 0.0f, {2, 2});
-    Output zeros_broadcast =
-        ops::Const(s.WithOpName("zeros_broadcast"), 0.0f, {1, 1});
+    Output zeros_1d = ops::Const(s.WithOpName("zeros_1d"), 0.0f, {2});
     Output ones = !use_const ? ops::OnesLike(s.WithOpName("ones"), x)
                              : ops::Const(s.WithOpName("ones"), 1.0f, {2, 2});
     Output mul1 = ops::Mul(s.WithOpName("mul1"), x, zeros);
     Output mul2 = ops::Mul(s.WithOpName("mul2"), zeros, y);
     Output mul3 = ops::Mul(s.WithOpName("mul3"), x, ones);
     Output mul4 = ops::Mul(s.WithOpName("mul4"), ones, y);
-    Output mul5 = ops::Mul(s.WithOpName("mul5"), x, zeros_broadcast);
-    Output mul6 = ops::Mul(s.WithOpName("mul6"), zeros_broadcast, y);
+    Output mul5 = ops::Mul(s.WithOpName("mul5"), x, zeros_1d);
+    Output mul6 = ops::Mul(s.WithOpName("mul6"), zeros_1d, y);
+    Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
+    Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
     Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);
     Output matmul4 = ops::MatMul(s.WithOpName("matmul4"), zeros, b);
     Output add1 = ops::Add(s.WithOpName("add1"), x, zeros);
     Output add2 = ops::Add(s.WithOpName("add2"), zeros, y);
-    Output addn = ops::AddN(
-        s.WithOpName("addn"),
-        {mul1, mul2, mul3, mul4, mul5, mul6, matmul1, matmul2, add1, add2});
+    Output bias_add1 = ops::BiasAdd(s.WithOpName("bias_add1"), x, zeros_1d);
+    Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
+    Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
+    Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
+    Output addn =
+        ops::AddN(s.WithOpName("addn"),
+                  {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
+                   matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     item.fetch = {"addn", "matmul3", "matmul4"};
@@ -119,7 +127,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Status status = optimizer.Optimize(nullptr, item, &output);
     TF_EXPECT_OK(status);
 
-    EXPECT_EQ(20, output.node_size());
+    EXPECT_EQ(27, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -142,11 +150,19 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
       } else if (name == "mul5") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));
-        EXPECT_EQ("^zeros_broadcast", node.input(1));
+        EXPECT_EQ("^zeros_1d", node.input(1));
       } else if (name == "mul6") {
         EXPECT_EQ("Const", node.op());
-        EXPECT_EQ("^zeros_broadcast", node.input(0));
+        EXPECT_EQ("^zeros_1d", node.input(0));
         EXPECT_EQ("^y", node.input(1));
+      } else if (name == "div1") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
+      } else if (name == "div2") {
+        EXPECT_EQ("Reciprocal", node.op());
+        EXPECT_EQ("y", node.input(0));
+        EXPECT_EQ("^ones", node.input(1));
       } else if (name == "matmul1") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));
@@ -183,6 +199,24 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "bias_add1") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^zeros_1d", node.input(1));
+      } else if (name == "bias_add2") {
+        // We don't eliminate this one, because it requires broadcasting.
+        EXPECT_EQ("BiasAdd", node.op());
+        EXPECT_EQ("zeros", node.input(0));
+        EXPECT_EQ("bias", node.input(1));
+      } else if (name == "sub1") {
+        EXPECT_EQ("Identity", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ("^zeros", node.input(1));
+      } else if (name == "sub2") {
+        // We don't handle this case yet.
+        EXPECT_EQ("Sub", node.op());
+        EXPECT_EQ("zeros", node.input(0));
+        EXPECT_EQ("y", node.input(1));
       }
       const std::set<string> square_zero_const{"mul1", "mul2",    "mul5",
                                                "mul6", "matmul1", "matmul2"};

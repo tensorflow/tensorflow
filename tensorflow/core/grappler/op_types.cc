@@ -35,6 +35,10 @@ bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
+bool IsBiasAdd(const NodeDef& node) {
+  return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
+}
+
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsConcatOffset(const NodeDef& node) { return node.op() == "ConcatOffset"; }
@@ -117,6 +121,11 @@ bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
+}
+
+bool IsAnyDiv(const NodeDef& node) {
+  return node.op() == "RealDiv" || node.op() == "Div" ||
+         node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }

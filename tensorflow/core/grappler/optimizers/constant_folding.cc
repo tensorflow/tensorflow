@@ -1254,8 +1254,8 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   return false;
 }
 
-void ConstantFolding::ReplaceAddOrMulWithIdentity(int input_to_forward,
-                                                  NodeDef* node) {
+void ConstantFolding::ReplaceOperationWithIdentity(int input_to_forward,
+                                                   NodeDef* node) {
   node->set_op("Identity");
   // Propagate the designated input through the identity.
   node->mutable_input()->SwapElements(0, input_to_forward);
@@ -1266,7 +1266,14 @@ void ConstantFolding::ReplaceAddOrMulWithIdentity(int input_to_forward,
   graph_modified_ = true;
 }
 
-Status ConstantFolding::ReplaceAddOrMulWithConstant(
+void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node) {
+  node->set_op("Reciprocal");
+  node->mutable_input()->SwapElements(0, 1);
+  node->set_input(1, AsControlDependency(node->input(1)));
+  graph_modified_ = true;
+}
+
+Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const TensorShapeProto& shape, NodeDef* node) {
   AttrValue tensor_attr;
   AttrValue dtype_attr = node->attr().at("T");
@@ -1317,12 +1324,16 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       *node.mutable_input(1) = AsControlDependency(node.input(1));
     }
 
-    // Simplify multiplication by ones or zeros, and addition of zeros.
+    // Simplify multiplication by ones or zeros, and addition/subtraction of
+    // zeros.
+    // TODO(rmlarsen): Rewrite x / const  -> x * (1/const).
     bool is_mul = IsMul(node);
     bool is_matmul = IsMatMul(node);
-    bool is_add = IsAdd(node);
+    bool is_add = IsAdd(node) || IsBiasAdd(node);
+    bool is_sub = IsSub(node);
+    bool is_div = IsAnyDiv(node);
     if (opt_level_ == RewriterConfig::AGGRESSIVE && use_shape_info &&
-        (is_mul || is_matmul || is_add) &&
+        (is_mul || is_matmul || is_add || is_sub || is_div) &&
         properties.HasInputProperties(node.name()) &&
         properties.HasOutputProperties(node.name())) {
       const NodeDef* x = node_map_->GetNode(node.input(0));
@@ -1334,7 +1345,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const TensorShapeProto& output_shape =
           properties.GetOutputProperties(node.name())[0].shape();
 
-      // Simplify element-wise  multiplication by ones or addition of zeros.
+      // Simplify element-wise  multiplication by ones or addition/subtraction
+      // of zeros.
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node.name())[1].shape();
       const bool x_is_zero = IsZeros(*x);
@@ -1342,37 +1354,50 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
       if (y_matches_output_shape &&
           ((is_mul && x_is_one) || (is_add && x_is_zero))) {
+        // TODO(rmlarsen): Handle subtraction 0 - y.
         // 1 * y = y or 0 + y = y.
-        ReplaceAddOrMulWithIdentity(1, &node);
+        ReplaceOperationWithIdentity(1, &node);
         continue;
       }
+
+      // Replace 1 / y with Reciprocal op.
+      if (y_matches_output_shape && is_div && x_is_one) {
+        ReplaceDivisionOfOnesByReciprocal(&node);
+        continue;
+      }
+
       const TensorShapeProto& x_shape =
           properties.GetInputProperties(node.name())[0].shape();
       const bool y_is_zero = IsZeros(*y);
       const bool y_is_one = IsOnes(*y);
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      if (x_matches_output_shape &&
-          ((is_mul && y_is_one) || (is_add && y_is_zero))) {
-        // x * 1 = x or x + 0 = x
-        ReplaceAddOrMulWithIdentity(0, &node);
+      if (x_matches_output_shape && (((is_mul || is_div) && y_is_one) ||
+                                     ((is_add || is_sub) && y_is_zero))) {
+        // x * 1 = x or x / 1 = x or x +/- 0 = x
+        ReplaceOperationWithIdentity(0, &node);
         continue;
       }
 
       // Simplify multiplication and matmul by zeros.
-      if (!is_add && (x_is_zero || y_is_zero)) {
+      // Also optimize zeros divided by a tensor, but only if we are in
+      // aggressive mode, since we might get rid of divisions by zero.
+      bool optimize_zeros_divided_by_y =
+          is_div && x_is_zero && opt_level_ == RewriterConfig::AGGRESSIVE;
+      if ((x_is_zero || y_is_zero) &&
+          (is_mul || is_matmul || optimize_zeros_divided_by_y)) {
         const PartialTensorShape shp(output_shape);
         if (shp.IsFullyDefined()) {
           TF_RETURN_IF_ERROR(
-              ReplaceAddOrMulWithConstant(0, output_shape, &node));
+              ReplaceOperationWithConstant(0, output_shape, &node));
           continue;
         }
         // Even if an input shape is only partially known, we may known that it
         // matches the output shape and thus forward the corresponding zero
         // input.
-        if (is_mul && x_is_zero && x_matches_output_shape) {
-          ReplaceAddOrMulWithIdentity(0, &node);
+        if ((is_mul || is_div) && x_is_zero && x_matches_output_shape) {
+          ReplaceOperationWithIdentity(0, &node);
         } else if (is_mul && y_is_zero && y_matches_output_shape) {
-          ReplaceAddOrMulWithIdentity(1, &node);
+          ReplaceOperationWithIdentity(1, &node);
         }
       }
     }
