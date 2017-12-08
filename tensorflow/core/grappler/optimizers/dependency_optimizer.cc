@@ -91,6 +91,9 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   if (!IsFreeOfSideEffect(node)) {
     return false;
   }
+  if (node.op() == "ControlTrigger") {
+    return false;
+  }
   if (node.op().rfind("Submodel", 0) == 0) {
     return false;
   }

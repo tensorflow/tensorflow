@@ -740,6 +740,10 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ(1, prop.shape().dim(0).size());
   EXPECT_EQ(2, prop.shape().dim(1).size());
+
+  PartialTensorShape shape(prop.shape());
+  EXPECT_TRUE(shape.IsFullyDefined());
+  EXPECT_FALSE(shape.unknown_rank());
 }
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {
@@ -775,6 +779,10 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
   EXPECT_GE(-2, shape_a.dim(1).size());
   EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  PartialTensorShape shape(shape_a);
+  EXPECT_FALSE(shape.IsFullyDefined());
+  EXPECT_FALSE(shape.unknown_rank());
 
   const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
   const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
