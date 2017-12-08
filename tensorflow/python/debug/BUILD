@@ -31,6 +31,7 @@ py_library(
         ":debug_graphs",
         ":debug_utils",
         ":grpc_debug_server",
+        ":grpc_debug_test_server",
         ":hooks",
         ":local_cli_wrapper",
         "//tensorflow/python:util",
