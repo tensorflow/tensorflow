@@ -495,7 +495,7 @@ void ConvertIdentityOperator(const NodeDef& node,
                              const TensorFlowImportFlags& tf_import_flags,
                              Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
-        node.op() == "PlaceholderWithDefault");
+        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -1154,12 +1154,6 @@ void ConvertCastOperator(const NodeDef& node,
   CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
   const auto tf_src_dtype = GetDataTypeAttr(node, "SrcT");
   const auto tf_dst_dtype = GetDataTypeAttr(node, "DstT");
-  CHECK(tf_src_dtype == DT_UINT8 || tf_src_dtype == DT_INT32 ||
-        tf_src_dtype == DT_FLOAT);
-  CHECK(tf_dst_dtype == DT_UINT8 || tf_dst_dtype == DT_INT32 ||
-        tf_dst_dtype == DT_FLOAT);
-  CHECK_NE(tf_src_dtype, tf_dst_dtype)
-      << "Same input and output data type. No need to cast.";
   auto* op = new CastOperator;
   op->src_data_type = GetArrayDataType(tf_src_dtype);
   op->dst_data_type = GetArrayDataType(tf_dst_dtype);
@@ -1600,7 +1594,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertMatMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Div" || node.op() == "RealDiv") {
       ConvertDivOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Identity" || node.op() == "CheckNumerics") {
+    } else if (node.op() == "Identity" || node.op() == "CheckNumerics" ||
+               node.op() == "StopGradient") {
       ConvertIdentityOperator(node, tf_import_flags, model);
     } else if (node.op() == "FakeQuantWithMinMaxVars") {
       ConvertFakeQuantWithMinMaxVars(node, tf_import_flags, model);

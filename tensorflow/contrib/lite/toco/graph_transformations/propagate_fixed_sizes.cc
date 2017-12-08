@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -1114,6 +1115,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
   for (const auto& output : op->outputs) {
     if (model->arrays[output]->has_shape() &&
         (old_output_dims[output] != model->arrays[output]->shape().dims())) {
+      AddMessageF("Set shape of %s to [%s]", output,
+                  absl::StrJoin(model->arrays[output]->shape().dims(), ","));
       return true;
     }
   }

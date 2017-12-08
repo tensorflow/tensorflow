@@ -50,11 +50,6 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   op->stop_indices = stop_array.GetBuffer<ArrayDataType::kInt32>().data;
   op->strides = stride_array.GetBuffer<ArrayDataType::kInt32>().data;
 
-  // Only 4D arrays are supported for now.
-  CHECK_EQ(op->start_indices.size(), 4);
-  CHECK_EQ(op->stop_indices.size(), 4);
-  CHECK_EQ(op->strides.size(), 4);
-
   // TODO(dkalenichenko): Delete the extra inputs?
 
   return true;
