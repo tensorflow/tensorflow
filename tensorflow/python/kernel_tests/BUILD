@@ -2077,6 +2077,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = [
+        "no_gpu",
+        "no_oss",
+    ],
 )
 
 cuda_py_test(
