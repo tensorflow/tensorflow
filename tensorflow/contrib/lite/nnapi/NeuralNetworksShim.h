@@ -196,9 +196,7 @@ enum {
    *
    * Inputs:
    * 0 ~ n: The list on n input tensors, of shape [D0, D1, ..., Daxis(i), ...,
-   * Dm] n+1: An INT32 value, specifying the concatenation axis. n+2: An INT32
-   * value, and has to be one of the {@link FuseCode} values. Specifies the
-   * activation to invoke on the result of each addition.
+   * Dm] n+1: An INT32 value, specifying the concatenation axis.
    *
    * Outputs:
    * * 0: The output, a tensor of the same type as the input tensors.
