@@ -157,7 +157,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  DependencyOptimizer optimizer;
+  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);

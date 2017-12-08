@@ -393,16 +393,21 @@ void DependencyOptimizer::BuildNodeToIdx() {
 
 Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
-  VLOG(1) << "Graph before optimization:\n" << optimized_graph_->DebugString();
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
 
+  VLOG(1) << "Graph before optimization:\n" << optimized_graph_->DebugString();
   CleanControlInputs();
   const int num_iterations = opt_level_ == RewriterConfig::AGGRESSIVE ? 2 : 1;
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
-    Status topo_sort_status = TopologicalSort(optimized_graph_);
+    Status topo_sort_status;
+    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
+      // Prepare the graph for transitive reduction if enabled.
+      topo_sort_status = TopologicalSort(optimized_graph_);
+    }
+
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
 
