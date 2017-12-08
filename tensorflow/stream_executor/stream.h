@@ -113,7 +113,7 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  Stream &Init();
+  Stream &Init() LOCKS_EXCLUDED(mu_);
 
   // Initializes timer t via the StreamExecutor.
   Stream &InitTimer(Timer *t);
@@ -124,11 +124,11 @@ class Stream {
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
-  Stream *GetOrCreateSubStream();
+  Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later.
-  void ReturnSubStream(Stream *sub_stream);
+  void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
   // or destroyed.
@@ -1903,8 +1903,17 @@ class Stream {
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.
   //
-  // Returns true if the stream is ok().
-  bool BlockHostUntilDone();
+  // Returns an OK status if the blocking was successful and the stream is ok().
+  // Otherwise returns an error describing why the blocking failed.
+  //
+  // TODO(b/70298427): Rename to BlockHostUntilDone, once all callers have been
+  // converted from the bool form.
+  port::Status BlockHostUntilDoneWithStatus() LOCKS_EXCLUDED(mu_);
+
+  // DEPRECATED(b/70298427) - new code should use BlockHostUntilDoneWithStatus()
+  //
+  // Equivalent to BlockHostUntilDoneWithStatus().ok().
+  bool BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
@@ -1960,14 +1969,14 @@ class Stream {
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
 
-  bool InErrorState() const {
+  bool InErrorState() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock{mu_};
     return !ok_;
   }
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) {
+  void CheckError(bool operation_retcode) LOCKS_EXCLUDED(mu_) {
     if (operation_retcode) {
       return;
     }
