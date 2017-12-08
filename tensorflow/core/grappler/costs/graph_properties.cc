@@ -853,6 +853,10 @@ Status GraphProperties::PropagateShapes(
   } while (!new_shapes->empty() &&
            num_resource_iterations++ < max_resource_iterations);
 
+  if (!new_shapes->empty()) {
+    return errors::Internal("Shape inference failed to converge");
+  }
+
   return Status::OK();
 }
 
