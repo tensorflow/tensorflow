@@ -151,9 +151,6 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
-    // Bitcasts can be any shape, as long as the size matches the operand size.
-    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
-                 shape_size_fn_(bitcast->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 
