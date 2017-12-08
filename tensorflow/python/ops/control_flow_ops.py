@@ -643,16 +643,17 @@ def _EnforceShapeInvariant(merge_var, next_var):
              n_values_shape, n_indices_shape, n_shape_shape))
 
 
-def _AddNextAndBackEdge(m, v):
+def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   """Add NextIteration and back edge from v to m."""
   if isinstance(m, ops.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
-    # Make sure the shapes of loop outputs are correct. We do this before
-    # calling _update_input, which will raise a less-helpful error message if
-    # the types don't match.
-    # TODO(skyewm): call this for other cases below (needs testing)
-    _EnforceShapeInvariant(m, v)
+    if enforce_shape_invariant:
+      # Make sure the shapes of loop outputs are correct. We do this before
+      # calling _update_input, which will raise a less-helpful error message if
+      # the types don't match.
+      # TODO(skyewm): call this for other cases below (needs testing)
+      _EnforceShapeInvariant(m, v)
     m.op._update_input(1, v)   # pylint: disable=protected-access
   elif isinstance(m, ops.IndexedSlices):
     # pylint: disable=protected-access
