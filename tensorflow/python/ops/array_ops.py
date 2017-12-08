@@ -44,6 +44,7 @@ See the @{$python/array_ops} guide.
 @@stack
 @@parallel_stack
 @@unstack
+@@repeat
 @@reverse_sequence
 @@reverse
 @@reverse_v2
@@ -2634,3 +2635,17 @@ def quantize(input,  # pylint: disable=redefined-builtin
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
+
+def repeat(input, repeats, axis=None, name=None):
+  if axis is None:
+    return gen_array_ops._repeat_flat(
+        input=input,
+        repeats=repeats,
+        name=name)
+  return gen_array_ops._repeat(
+      input=input,
+      repeats=repeats,
+      axis=axis,
+      name=name)
+
+repeat.__doc__ = gen_array_ops._repeat.__doc__

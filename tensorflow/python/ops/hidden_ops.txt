@@ -20,6 +20,8 @@ PadV2
 ParallelConcat
 Placeholder
 RefIdentity
+Repeat
+RepeatFlat
 Reverse
 SpaceToBatch
 Split
