@@ -1,3 +1,8 @@
+# Release 1.4.1
+
+## Bug Fixes and Other Changes
+* `LinearClassifier` fix for CloudML Engine.
+
 # Release 1.4.0
 
 ## Major Features And Improvements
