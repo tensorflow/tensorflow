@@ -1945,6 +1945,13 @@ class Operation(object):
     else:
       self._add_control_inputs([op])
 
+  def _remove_all_control_inputs(self):
+    """Removes any control inputs to this operation."""
+    if self._c_op:
+      c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
+    else:
+      del self.control_inputs[:]
+
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
     # TODO(skyewm): remove this function when we switch to C API

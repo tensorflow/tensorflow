@@ -485,6 +485,30 @@ class OperationTest(test_util.TensorFlowTestCase):
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
 
+  def testRemoveAllControlInputs(self):
+    a = constant_op.constant(1)
+    with ops.control_dependencies([a]):
+      b = constant_op.constant(2)
+    c = constant_op.constant(3)
+    d = constant_op.constant(4)
+    e = constant_op.constant(5)
+    with ops.control_dependencies([a, c]):
+      f = d + e
+
+    self.assertEqual(a.op.control_inputs, [])
+    self.assertEqual(b.op.control_inputs, [a.op])
+    self.assertEqual(f.op.control_inputs, [a.op, c.op])
+
+    a.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(a.op.control_inputs, [])
+
+    b.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(b.op.control_inputs, [])
+
+    f.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(f.op.control_inputs, [])
+    self.assertEqual(list(f.op.inputs), [d, e])
+
   def testControlInputCycle(self):
     # Non-C API path has a different error message
     if not ops._USE_C_API: return
@@ -747,10 +771,8 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     with g.as_default():
       if ops._USE_C_API:
-        c_op = ops._create_c_op(
-            g, ops._NodeDef("IntOutput", "myop"), [], [])
-        c_op2 = ops._create_c_op(
-            g, ops._NodeDef("IntOutput", "myop_1"), [], [])
+        c_op = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop"), [], [])
+        c_op2 = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop_1"), [], [])
         op = g._create_op_from_tf_operation(c_op)
         op2 = g._create_op_from_tf_operation(c_op2)
       else:

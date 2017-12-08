@@ -1501,7 +1501,7 @@ class ControlFlowContext(object):
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
-      del op.control_inputs[:]
+      op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs
   # pylint: enable=protected-access
