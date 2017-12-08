@@ -1492,10 +1492,12 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 // }
 
 #define OP_REQUIRES(CTX, EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) {        \
-    (CTX)->CtxFailure((STATUS));      \
-    return;                           \
-  }
+  do {                                \
+    if (!TF_PREDICT_TRUE(EXP)) {      \
+      (CTX)->CtxFailure((STATUS));    \
+      return;                         \
+    }                                 \
+  } while (0)
 
 #define OP_REQUIRES_OK(CTX, ...)          \
   do {                                    \
@@ -1507,11 +1509,13 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \
-  if (!TF_PREDICT_TRUE(EXP)) {                        \
-    (CTX)->CtxFailure((STATUS));                      \
-    (CALLBACK)();                                     \
-    return;                                           \
-  }
+  do {                                                \
+    if (!TF_PREDICT_TRUE(EXP)) {                      \
+      (CTX)->CtxFailure((STATUS));                    \
+      (CALLBACK)();                                   \
+      return;                                         \
+    }                                                 \
+  } while (0)
 
 #define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK) \
   do {                                              \
