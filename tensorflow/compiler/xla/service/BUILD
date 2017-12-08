@@ -1892,6 +1892,22 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "hlo_element_type_converter",
+    srcs = ["hlo_element_type_converter.cc"],
+    hdrs = ["hlo_element_type_converter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_evaluator",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "device_memory_allocator",
     srcs = ["device_memory_allocator.cc"],
     hdrs = ["device_memory_allocator.h"],

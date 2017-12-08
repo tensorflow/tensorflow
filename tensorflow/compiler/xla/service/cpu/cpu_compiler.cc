@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -318,6 +319,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       [](const Shape&, const Shape&) { return true; },
       /*enable_dot_strength_reduction=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0

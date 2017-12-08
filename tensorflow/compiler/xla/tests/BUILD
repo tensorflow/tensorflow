@@ -802,8 +802,6 @@ xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
     blacklisted_backends = [
-        "cpu",
-        "cpu_parallel",
         "gpu",
     ],
     shard_count = 40,
