@@ -763,6 +763,54 @@ StatusOr<ComputationDataHandle> UserComputation::AddWhileInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddConditionalInstruction(
+    const ConditionalRequest& conditional_request,
+    const UserComputation& true_computation,
+    const UserComputation& false_computation) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* pred,
+                      LookUpRequest(conditional_request.predicate()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* true_operand,
+                      LookUpRequest(conditional_request.true_operand()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* false_operand,
+                      LookUpRequest(conditional_request.false_operand()));
+
+  VersionedComputationHandle::Version true_computation_version =
+      true_computation.version();
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const ProgramShape> true_computation_shape,
+      true_computation.ComputeProgramShape(true_computation_version));
+
+  VersionedComputationHandle::Version false_computation_version =
+      false_computation.version();
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const ProgramShape> false_computation_shape,
+      false_computation.ComputeProgramShape(false_computation_version));
+
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferConditionalShape(
+                          pred->output_shape(), true_operand->output_shape(),
+                          false_operand->output_shape(),
+                          *true_computation_shape, *false_computation_shape));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = inferred_shape;
+  request.add_embedded_computation_versions(true_computation_version);
+  request.add_embedded_computation_versions(false_computation_version);
+  *request.mutable_request()->mutable_conditional_request() =
+      conditional_request;
+
+  VLOG(1) << "AddConditionalInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << conditional_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddBroadcastInstruction(
     const BroadcastRequest& broadcast_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1791,6 +1839,23 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.predicate(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.true_operand(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.false_operand(), num_parameters,
+                            visited, is_functional);
+      // TODO(b/32495713): We aren't checking the true and false computations
+      // themselves.
+      break;
+    }
+
     case OpRequest::kTernaryOpRequest: {
       const TernaryOpRequest& ternary_op_request =
           request.request().ternary_op_request();
@@ -2019,6 +2084,21 @@ UserComputation::GetEmbeddedComputations(
           break;
         }
 
+        case OpRequest::kConditionalRequest: {
+          CHECK_EQ(2, request.embedded_computation_versions_size());
+          const ConditionalRequest& conditional_request =
+              request.request().conditional_request();
+          const VersionedComputationHandle true_computation_versioned_handle = {
+              conditional_request.true_computation(),
+              request.embedded_computation_versions(0)};
+          computations.push_back(true_computation_versioned_handle);
+          const VersionedComputationHandle false_computation_versioned_handle =
+              {conditional_request.false_computation(),
+               request.embedded_computation_versions(1)};
+          computations.push_back(false_computation_versioned_handle);
+          break;
+        }
+
         default:
           // No embedded computation.
           break;
@@ -2103,6 +2183,16 @@ Status UserComputation::RemapEmbeddedComputations(
             request.mutable_request()->mutable_while_request();
         TF_RETURN_IF_ERROR(update(while_request->mutable_condition()));
         TF_RETURN_IF_ERROR(update(while_request->mutable_body()));
+        break;
+      }
+      case OpRequest::kConditionalRequest: {
+        TF_RET_CHECK(2 == request.embedded_computation_versions_size());
+        ConditionalRequest* conditional_request =
+            request.mutable_request()->mutable_conditional_request();
+        TF_RETURN_IF_ERROR(
+            update(conditional_request->mutable_true_computation()));
+        TF_RETURN_IF_ERROR(
+            update(conditional_request->mutable_false_computation()));
         break;
       }
       default:
@@ -2448,6 +2538,15 @@ static void ForEachOperand(
     case OpRequest::kWhileRequest: {
       const WhileRequest& while_request = request.request().while_request();
       apply(while_request.init());
+      break;
+    }
+
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      apply(conditional_request.predicate());
+      apply(conditional_request.true_operand());
+      apply(conditional_request.false_operand());
       break;
     }
 
@@ -3068,6 +3167,30 @@ void ComputationLowerer::Visit(
       HloInstruction* init = lookup_instruction(while_request.init());
       hlo_instruction = add_instruction(HloInstruction::CreateWhile(
           request.output_shape(), condition, body, init));
+      break;
+    }
+
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      CHECK_EQ(2, request.embedded_computation_versions_size());
+      VersionedComputationHandle::Version true_computation_version =
+          request.embedded_computation_versions(0);
+      HloComputation* true_computation = ResolveComputation(
+          conditional_request.true_computation(), true_computation_version);
+      VersionedComputationHandle::Version false_computation_version =
+          request.embedded_computation_versions(1);
+      HloComputation* false_computation = ResolveComputation(
+          conditional_request.false_computation(), false_computation_version);
+      HloInstruction* predicate =
+          lookup_instruction(conditional_request.predicate());
+      HloInstruction* true_operand =
+          lookup_instruction(conditional_request.true_operand());
+      HloInstruction* false_operand =
+          lookup_instruction(conditional_request.false_operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateConditional(
+          request.output_shape(), predicate, true_operand, true_computation,
+          false_operand, false_computation));
       break;
     }
 

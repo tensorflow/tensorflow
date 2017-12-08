@@ -2511,6 +2511,65 @@ Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
   return DefaultAction(concatenate);
 }
 
+Status IrEmitter::HandleConditional(HloInstruction* conditional) {
+  auto pred = conditional->operand(0);
+  auto true_arg = conditional->operand(1);
+  auto false_arg = conditional->operand(2);
+  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()) &&
+               pred->shape().element_type() == PRED)
+      << "Predicate on a Conditional must be bool; got: "
+      << ShapeUtil::HumanString(pred->shape());
+
+  HloComputation* true_computation = conditional->true_computation();
+  HloComputation* false_computation = conditional->false_computation();
+  TF_RET_CHECK(ShapeUtil::Equal(conditional->shape(),
+                                true_computation->root_instruction()->shape()))
+      << "Shape of conditional should be same as the shape of the true "
+      << "computation; got: " << ShapeUtil::HumanString(conditional->shape())
+      << " and "
+      << ShapeUtil::HumanString(true_computation->root_instruction()->shape());
+
+  TF_RET_CHECK(ShapeUtil::Equal(conditional->shape(),
+                                false_computation->root_instruction()->shape()))
+      << "Shape of conditional should be same as the shape of the false "
+      << "computation; got: " << ShapeUtil::HumanString(conditional->shape())
+      << " and "
+      << ShapeUtil::HumanString(false_computation->root_instruction()->shape());
+
+  llvm::Function* true_function =
+      FindOrDie(emitted_functions_, true_computation);
+  llvm::Function* false_function =
+      FindOrDie(emitted_functions_, false_computation);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(conditional));
+  llvm::Value* conditional_result = GetEmittedValueFor(conditional);
+
+  // Generating:
+  //   if (pred)
+  //     cond_result = true_computation(true_operand)
+  //   else
+  //     cond_result = false_computation(false_operand)
+  llvm::LoadInst* pred_value = ir_builder_.CreateLoad(
+      GetIrArrayFor(pred).GetBasePointer(), "load_predicate_value");
+  llvm::Value* pred_cond = ir_builder_.CreateICmpNE(
+      pred_value,
+      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
+      "boolean_predicate");
+  llvm_ir::LlvmIfData if_data =
+      llvm_ir::EmitIfThenElse(pred_cond, "conditional", &ir_builder_);
+
+  SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
+  EmitArrayFunctionCallInto(true_function, {GetEmittedValueFor(true_arg)},
+                            conditional_result, IrName(conditional, "_true"));
+
+  SetToFirstInsertPoint(if_data.false_block, &ir_builder_);
+  EmitArrayFunctionCallInto(false_function, {GetEmittedValueFor(false_arg)},
+                            conditional_result, IrName(conditional, "_false"));
+
+  SetToFirstInsertPoint(if_data.after_block, &ir_builder_);
+  return Status::OK();
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding

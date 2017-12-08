@@ -438,6 +438,24 @@ xla_test(
 )
 
 xla_test(
+    name = "conditional_test",
+    srcs = ["conditional_test.cc"],
+    # Currently, Conditional is supported only in the CPU backend.
+    backends = ["cpu"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
     name = "unary_op_test",
     srcs = ["unary_op_test.cc"],
     deps = [

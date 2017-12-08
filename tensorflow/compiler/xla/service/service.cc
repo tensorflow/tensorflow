@@ -1389,6 +1389,17 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddConcatenateInstruction(arg->concatenate_request());
       break;
+    case OpRequest::kConditionalRequest: {
+      TF_ASSIGN_OR_RETURN(UserComputation * true_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().true_computation()));
+      TF_ASSIGN_OR_RETURN(UserComputation * false_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().false_computation()));
+      handle_status = computation->AddConditionalInstruction(
+          arg->conditional_request(), *true_computation, *false_computation);
+      break;
+    }
     case OpRequest::kConstantRequest:
       handle_status =
           computation->AddConstantInstruction(arg->constant_request());

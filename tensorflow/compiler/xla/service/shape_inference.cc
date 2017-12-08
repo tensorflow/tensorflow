@@ -2079,6 +2079,64 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return init;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferConditionalShape(
+    const Shape& predicate, const Shape& true_operand,
+    const Shape& false_operand, const ProgramShape& true_computation,
+    const ProgramShape& false_computation) {
+  if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
+    return InvalidArgument("predicate must be a boolean; got %s.",
+                           ShapeUtil::HumanString(predicate).c_str());
+  }
+
+  if (true_computation.parameters_size() != 1) {
+    return InvalidArgument("true_computation must take 1 argument; got %d.",
+                           true_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(true_computation.parameters(0), true_operand)) {
+    auto true_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_operand: %s; true_computation: %s",
+          ShapeUtil::HumanString(true_operand).c_str(),
+          ShapeUtil::HumanString(true_computation).c_str());
+    };
+    return InvalidArgument(
+        "true_operand must match the shape of the only parameter of "
+        "true_computation: got %s.",
+        true_shape_string().c_str());
+  }
+
+  if (false_computation.parameters_size() != 1) {
+    return InvalidArgument("false_computation must take 1 argument; got %d.",
+                           false_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(false_computation.parameters(0), false_operand)) {
+    auto false_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "false_operand: %s; false_computation: %s",
+          ShapeUtil::HumanString(false_operand).c_str(),
+          ShapeUtil::HumanString(false_computation).c_str());
+    };
+    return InvalidArgument(
+        "false_operand must match the shape of the only parameter of "
+        "false_computation: got %s.",
+        false_shape_string().c_str());
+  }
+  if (!ShapeUtil::Compatible(true_computation.result(),
+                             false_computation.result())) {
+    auto shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_computation result: %s; false_computation result: %s.",
+          ShapeUtil::HumanString(true_computation.result()).c_str(),
+          ShapeUtil::HumanString(false_computation.result()).c_str());
+    };
+    return InvalidArgument(
+        "the result of true_computation and false_computation must have the "
+        "same shape: got %s.",
+        shape_string().c_str());
+  }
+  return true_computation.result();
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "operand of broadcast"));

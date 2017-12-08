@@ -389,6 +389,35 @@ Diagram:
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_concatenate.png">
 </div>
 
+## Conditional
+
+See also [`ComputationBuilder::Conditional`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Conditional(pred, true_operand, true_computation, false_operand,
+    false_computation)` </b>
+
+| Arguments           | Type                    | Semantics                   |
+| ------------------- | ----------------------- | --------------------------- |
+| `pred`              | `ComputationDataHandle` | Scalar of type `PRED`       |
+| `true_operand`      | `ComputationDataHandle` | Argument of type `T_0`      |
+| `true_computation`  | `Computation`           | Computation of type `T_0 -> |
+:                     :                         : S`                          :
+| `false_operand`     | `ComputationDataHandle` | Argument of type `T_1`      |
+| `false_computation` | `Computation`           | Computation of type `T_1 -> |
+:                     :                         : S`                          :
+
+Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
+is `false`, and returns the result.
+
+The `true_computation` must take in a single argument of type `T_0` and will be
+invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type `T_1` and will be
+invoked with `false_operand` which must be of the same type. The type of the
+returned value of `true_computation` and `false_computation` must be the same.
+
+Note that only one of `true_computation` and `false_computation` will be
+executed depending on the value of `pred`.
+
 ## Conv (convolution)
 
 See also
