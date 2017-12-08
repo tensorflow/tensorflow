@@ -20,9 +20,8 @@ namespace tflite {
 namespace label_image {
 
 template <class T>
-void get_top_n(T* prediction, const int prediction_size,
-               const size_t num_results, const float threshold,
-               std::vector<std::pair<float, int>>* top_results,
+void get_top_n(T* prediction, int prediction_size, size_t num_results,
+               float threshold, std::vector<std::pair<float, int>>* top_results,
                bool input_floating);
 
 }  // label_image

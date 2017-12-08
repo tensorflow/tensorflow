@@ -20,7 +20,7 @@ limitations under the License.
 using std::string;
 #endif
 
-struct settings {
+struct Settings {
   bool verbose = false;
   bool accel = true;
   bool input_floating = false;
@@ -33,8 +33,5 @@ struct settings {
   string input_layer_type = "uint8_t";
   int number_of_threads = 4;
 };
-
-// #include "tensorflow/contrib/lite/examples/label_image/bitmap_helpers.h"
-// #include "tensorflow/contrib/lite/examples/label_image/get_top_n.h"
 
 #endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H

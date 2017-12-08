@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H
 #define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H
 
+#include "tensorflow/contrib/lite/examples/label_image/label_image.h"
+
 namespace tflite {
 namespace label_image {
 
-#include "tensorflow/contrib/lite/examples/label_image/label_image.h"
-
 uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
-                  int* channels, settings* s);
+                  int* channels, Settings* s);
 
 template <class T>
 void downsize(T* out, uint8_t* in, int image_height, int image_width,
               int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels, settings* s);
+              int wanted_channels, Settings* s);
 
 }  // label_image
 }  // tflite

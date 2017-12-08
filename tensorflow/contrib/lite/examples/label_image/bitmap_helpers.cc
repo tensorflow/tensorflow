@@ -28,10 +28,8 @@ limitations under the License.
 namespace tflite {
 namespace label_image {
 
-
-uint8_t* decode_bmp(const uint8_t* input, const int row_size,
-                    uint8_t* const output, const int width, const int height,
-                    const int channels, bool top_down) {
+uint8_t* decode_bmp(const uint8_t* input, int row_size, uint8_t* const output,
+                    int width, int height, int channels, bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
@@ -73,7 +71,7 @@ uint8_t* decode_bmp(const uint8_t* input, const int row_size,
 }
 
 uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
-                  int* channels, struct settings* s) {
+                  int* channels, Settings* s) {
   int begin, end;
 
   std::ifstream file(input_bmp_name, std::ios::in | std::ios::binary);
@@ -121,7 +119,7 @@ uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
 template <class T>
 void downsize(T* out, uint8_t* in, int image_height, int image_width,
               int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels, settings* s) {
+              int wanted_channels, Settings* s) {
   for (int y = 0; y < wanted_height; ++y) {
     const int in_y = (y * image_height) / wanted_height;
     uint8_t* in_row = in + (in_y * image_width * image_channels);
@@ -142,9 +140,9 @@ void downsize(T* out, uint8_t* in, int image_height, int image_width,
 
 // explicit instantiation
 template void downsize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
-                                int, int, settings*);
+                                int, int, Settings*);
 template void downsize<float>(float*, unsigned char*, int, int, int, int, int,
-                              int, settings*);
+                              int, Settings*);
 
 }  // label_image
 }  // tflite

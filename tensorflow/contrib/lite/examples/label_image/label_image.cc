@@ -70,12 +70,7 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
   return kTfLiteOk;
 }
 
-#if 0
-void RunInference(const string& graph, const string& input_layer_type,
-                  int num_threads, const string& input_bmp_name,
-                  const string& labels_file_name) {
-#endif
-void RunInference(settings* s) {
+void RunInference(Settings* s) {
   if (!s->model_name.c_str()) {
     LOG(ERROR) << "no model file name\n";
     exit(-1);
@@ -221,7 +216,7 @@ void display_usage() {
 }
 
 int Main(int argc, char** argv) {
-  struct settings s;
+  Settings s;
 
   int c;
   while (1) {

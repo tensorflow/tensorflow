@@ -29,7 +29,7 @@ TEST(LabelImageTest, GraceHopper) {
   std::string lena_file =
       "tensorflow/contrib/lite/examples/label_image/testdata/grace_hopper.bmp";
   int height, width, channels;
-  settings s;
+  Settings s;
   uint8_t *data;
 
   data = read_bmp(lena_file, &width, &height, &channels, &s);
