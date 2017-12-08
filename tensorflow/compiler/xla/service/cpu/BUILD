@@ -82,13 +82,13 @@ cc_library(
         ":cpu_copy_insertion",
         ":cpu_executable",
         ":cpu_instruction_fusion",
+        ":cpu_layout_assignment",
         ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":parallel_cpu_executable",
         ":parallel_task_assignment",
         ":simple_orc_jit",
@@ -656,9 +656,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "cpu_layout_assignment",
+    srcs = ["cpu_layout_assignment.cc"],
+    hdrs = ["cpu_layout_assignment.h"],
     deps = [
         ":dot_op_emitter",
         ":ir_emission_utils",
@@ -670,11 +670,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "layout_assignment_test",
+    name = "cpu_layout_assignment_test",
     size = "small",
-    srcs = ["layout_assignment_test.cc"],
+    srcs = ["cpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":cpu_layout_assignment",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
