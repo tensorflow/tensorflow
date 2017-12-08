@@ -496,7 +496,17 @@ class Tensor(_TensorLike):
     Returns:
       A list of `Operation`s.
     """
-    return self._consumers
+    if self._op._c_op:  # pylint: disable=protected-access
+      consumer_names = c_api.TF_OperationOutputConsumers_wrapper(
+          self._as_tf_output())
+      # pylint: disable=protected-access
+      return [
+          self.graph._get_operation_by_name_unsafe(name)
+          for name in consumer_names
+      ]
+      # pylint: enable=protected-access
+    else:
+      return self._consumers
 
   def _add_consumer(self, consumer):
     """Add a consumer to this tensor.
@@ -507,6 +517,9 @@ class Tensor(_TensorLike):
     Raises:
       TypeError: if the consumer is not an Operation.
     """
+    # pylint: disable=protected-access
+    assert not self._op._c_op, "Tensor._add_consumer doesn't work with C API"
+    # pylint: enable=protected-access
     if not isinstance(consumer, Operation):
       raise TypeError("Consumer must be an Operation: %s" % consumer)
     self._consumers.append(consumer)
@@ -1631,9 +1644,11 @@ class Operation(object):
     else:
       self._c_op = None
 
-    # Mark that we consume the inputs.
-    for input_tensor in self.inputs:
-      input_tensor._add_consumer(self)  # pylint: disable=protected-access
+    # Mark that we consume the inputs. This is unnecessary and unsupported with
+    # the C API enabled, since the C API tracks the tensor consumers instead.
+    if not self._c_op:
+      for input_tensor in self.inputs:
+        input_tensor._add_consumer(self)  # pylint: disable=protected-access
 
     # Initialize self._outputs.
     if self._c_op:

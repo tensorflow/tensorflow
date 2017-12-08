@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import warnings
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -632,6 +634,18 @@ class IteratorTest(test.TestCase):
       with self.test_session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(restore_op)
+
+  def testRepeatedGetNextWarning(self):
+    iterator = dataset_ops.Dataset.range(10).make_one_shot_iterator()
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      for _ in range(100):
+        iterator.get_next()
+    self.assertEqual(100 - iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD,
+                     len(w))
+    for warning in w:
+      self.assertTrue(
+          iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE in str(warning.message))
 
 
 if __name__ == "__main__":
