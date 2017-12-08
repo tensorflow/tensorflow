@@ -973,5 +973,16 @@ class DataFormatDimMapTest(test_lib.TestCase):
     self._test(-4, 0)
 
 
+class DataFormatVectorPermuteTest(test_lib.TestCase):
+
+  def test(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 3, 4, 9])
+
+
 if __name__ == "__main__":
   test_lib.main()
