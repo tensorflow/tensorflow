@@ -126,9 +126,6 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
-  // Populate default attrs to the NodeDefs in the GraphDef.
-  TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&graph_def, *graphptr->op_registry(), 0));
 
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
@@ -447,6 +444,15 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     new_item->save_op = saver.save_tensor_name();
     new_item->restore_op = saver.restore_op_name();
     new_item->save_restore_loc_tensor = saver.filename_tensor_name();
+  }
+
+  // Populate default attrs to the NodeDefs in the GraphDef.
+  Status attr_status =
+      AddDefaultAttrsToGraphDef(&new_item->graph, *OpRegistry::Global(), 0);
+  if (!attr_status.ok()) {
+    LOG(ERROR) << "Failed to instantiate default attribute values: "
+               << attr_status.error_message();
+    return nullptr;
   }
 
   // Optimize the graph (function inlining, l1 optimizations, etc).
