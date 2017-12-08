@@ -56,6 +56,7 @@ tf_proto_library(
     cc_grpc_version = 1,
     protodeps = [
         ":debugger_event_metadata_proto",
+        "//tensorflow/core/profiler:protos_all",
     ] + tf_additional_all_protos(),
     visibility = ["//tensorflow:__subpackages__"],
 )

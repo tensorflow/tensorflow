@@ -17,12 +17,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+
+
+# NOTE(mrry): It is legitimate to call `Iterator.get_next()` multiple
+# times, e.g. when you are distributing different elements to multiple
+# devices in a single step. However, a common pitfall arises when
+# users call `Iterator.get_next()` in each iteration of their training
+# loop. `Iterator.get_next()` adds ops to the graph, and executing
+# each op allocates resources (including threads); as a consequence,
+# invoking it in every iteration of a training loop causes slowdown
+# and eventual resource exhaustion. To guard against this outcome, we
+# log a warning when the number of uses crosses a threshold of suspicion.
+GET_NEXT_CALL_WARNING_THRESHOLD = 32
+
+GET_NEXT_CALL_WARNING_MESSAGE = (
+    "An unusually high number of `Iterator.get_next()` calls was detected. "
+    "This often indicates that `Iterator.get_next()` is being called inside "
+    "a training loop, which will cause gradual slowdown and eventual resource "
+    "exhaustion. If this is the case, restructure your code to call "
+    "`next_element = iterator.get_next() once outside the loop, and use "
+    "`next_element` inside the loop.")
 
 
 class Iterator(object):
@@ -56,6 +78,7 @@ class Iterator(object):
     self._output_shapes = output_shapes
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
+    self._get_next_call_count = 0
 
   @staticmethod
   def from_structure(output_types,
@@ -282,6 +305,10 @@ class Iterator(object):
     Returns:
       A nested structure of `tf.Tensor` objects.
     """
+    self._get_next_call_count += 1
+    if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
+      warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
+
     return sparse.deserialize_sparse_tensors(
         nest.pack_sequence_as(self._output_types,
                               gen_dataset_ops.iterator_get_next(

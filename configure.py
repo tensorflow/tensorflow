@@ -36,8 +36,8 @@ _TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            '.tf_configure.bazelrc')
 _TF_WORKSPACE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              'WORKSPACE')
-_DEFAULT_CUDA_VERSION = '8.0'
-_DEFAULT_CUDNN_VERSION = '6'
+_DEFAULT_CUDA_VERSION = '9.0'
+_DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'

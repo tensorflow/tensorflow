@@ -203,13 +203,13 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float32, float_t.dtype)
     self.assertEqual(op, float_t.op)
     self.assertEqual(0, float_t._value_index)
-    self.assertEqual(0, len(float_t._consumers))
+    self.assertEqual(0, len(float_t.consumers()))
     self.assertEqual("myop", float_t._as_node_def_input())
 
     self.assertEqual(dtypes.string, label_str_t.dtype)
     self.assertEqual(op, label_str_t.op)
     self.assertEqual(1, label_str_t._value_index)
-    self.assertEqual(0, len(label_str_t._consumers))
+    self.assertEqual(0, len(label_str_t.consumers()))
     self.assertEqual("myop:1", label_str_t._as_node_def_input())
 
     self.assertProtoEquals("op:'FloatOutputStringOutput' name:'myop'",
@@ -223,8 +223,8 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(op2.inputs))
     self.assertIs(float_t, op2.inputs[0])
 
-    self.assertEqual(1, len(float_t._consumers))
-    self.assertEqual(op2, float_t._consumers[0])
+    self.assertEqual(1, len(float_t.consumers()))
+    self.assertEqual(op2, float_t.consumers()[0])
 
     self.assertProtoEquals("op:'FloatOutput' name:'myop1'", op1.node_def)
     self.assertProtoEquals("op:'FloatInput' name:'myop2' input:'myop1'",
@@ -243,14 +243,14 @@ class OperationTest(test_util.TensorFlowTestCase):
     op3 = test_ops.foo2(float1_t, label2_str_t, label2_str_t, name="myop3").d.op
     self.assertEqual(2, len(op3.values()))
 
-    self.assertEqual(1, len(float1_t._consumers))
-    self.assertEqual(op3, float1_t._consumers[0])
+    self.assertEqual(1, len(float1_t.consumers()))
+    self.assertEqual(op3, float1_t.consumers()[0])
 
-    self.assertEqual(0, len(float2_t._consumers))
+    self.assertEqual(0, len(float2_t.consumers()))
 
-    self.assertEqual(2, len(label2_str_t._consumers))
-    self.assertEqual(op3, label2_str_t._consumers[0])
-    self.assertEqual(op3, label2_str_t._consumers[1])
+    self.assertEqual(2, len(label2_str_t.consumers()))
+    self.assertEqual(op3, label2_str_t.consumers()[0])
+    self.assertEqual(op3, label2_str_t.consumers()[1])
 
     self.assertProtoEquals("""
     op:'Foo2' name:'myop3'
@@ -511,16 +511,22 @@ class OperationTest(test_util.TensorFlowTestCase):
 
     z.op._update_input(0, y)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [y, y])
+    self.assertEquals(x.consumers(), [])
+    self.assertEquals(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
+    self.assertEquals(x.consumers(), [z.op])
+    self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
+    self.assertEquals(x.consumers(), [z.op])
+    self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
 
