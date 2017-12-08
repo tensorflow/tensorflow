@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -396,6 +397,26 @@ const string& LowercasePrimitiveTypeName(PrimitiveType s) {
   static PrimitiveTypeNameGenerator* gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
+
+StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
+  static std::unordered_map<string, PrimitiveType>* name_to_type = [] {
+    static auto* map = new std::unordered_map<string, PrimitiveType>;
+    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+      if (PrimitiveType_IsValid(i)) {
+        auto value = static_cast<PrimitiveType>(i);
+        (*map)[LowercasePrimitiveTypeName(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = name_to_type->find(name);
+  if (found == name_to_type->end()) {
+    return InvalidArgument("Invalid element type string: \"%s\".",
+                           name.c_str());
+  }
+  return found->second;
+}
+
 }  // namespace
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -500,17 +521,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                         comma_list_to_int64s(dimensions_string));
 
     // Extract the primitive element type.
-    PrimitiveType primitive_type = PRIMITIVE_TYPE_INVALID;
-    for (PrimitiveType i =
-             static_cast<PrimitiveType>(PRIMITIVE_TYPE_INVALID + 1);
-         i < TUPLE; i = static_cast<PrimitiveType>(i + 1)) {
-      if (tensorflow::str_util::Lowercase(PrimitiveType_Name(i)) ==
-          element_type_string) {
-        primitive_type = i;
-        break;
-      }
-    }
-    if (primitive_type == PRIMITIVE_TYPE_INVALID) {
+    TF_ASSIGN_OR_RETURN(const PrimitiveType primitive_type,
+                        StringToPrimitiveType(element_type_string));
+    if (primitive_type == PRIMITIVE_TYPE_INVALID || primitive_type == TUPLE ||
+        primitive_type == OPAQUE) {
       return InvalidArgument("Invalid element type string: \"%s\".",
                              element_type_string.c_str());
     }

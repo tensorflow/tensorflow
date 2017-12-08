@@ -1086,6 +1086,8 @@ bool HloParser::SetValueInLiteral(double value, int64 linear_index,
   switch (shape.element_type()) {
     case F16:
       return SetValueInLiteralHelper<half>(value, linear_index, literal);
+    case BF16:
+      return SetValueInLiteralHelper<bfloat16>(value, linear_index, literal);
     case F32:
       return SetValueInLiteralHelper<float>(value, linear_index, literal);
     case F64:
@@ -1124,7 +1126,8 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
     // Skip range checking for non-finite value.
-  } else if (literal->shape().element_type() == F16) {
+  } else if (literal->shape().element_type() == F16 ||
+             literal->shape().element_type() == BF16) {
     if (value > kF16max || value < -kF16max) {
       return TokenError(StrCat(
           "value ", value, " is out of range for literal's primitive type ",

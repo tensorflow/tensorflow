@@ -148,6 +148,17 @@ ENTRY %ConstantF16.v4 () -> f16[] {
 
 )"
 },
+// bf16
+{
+"BF16",
+R"(HloModule BF16:
+
+ENTRY %BF16.v4 () -> bf16[] {
+  ROOT %constant = bf16[] constant(500)
+}
+
+)"
+},
 // constant + constant
 {
 "AddConstants",
