@@ -2637,6 +2637,19 @@ def quantize(input,  # pylint: disable=redefined-builtin
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
 
 def repeat(input, repeats, axis=None, name=None):
+  """Repeat elements of an array
+
+  Args:
+    input: A Tensor.
+    repeats: An 1-D `int` Tensor. The number of repetitions for each element.
+      repeats is broadcasted to fit the shape of the given axis
+    axis: An int. The axis along which to repeat values. By default, use the
+      flattened input array, and return a flat output array.
+    name: name of the op.
+
+  Returns:
+    A Tensor which has the same shape as a, except along the given axis.
+  """
   if axis is None:
     return gen_array_ops._repeat_flat(
         input=input,
@@ -2647,5 +2660,3 @@ def repeat(input, repeats, axis=None, name=None):
       repeats=repeats,
       axis=axis,
       name=name)
-
-repeat.__doc__ = gen_array_ops._repeat.__doc__
