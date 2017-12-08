@@ -861,6 +861,20 @@ TEST_F(LayoutOptimizerTest, SliceNonConst) {
   EXPECT_EQ(perm2->input(2), "LayoutOptimizerGatherAxisConst");
 }
 
+TEST_F(LayoutOptimizerTest, DoNotApplyOptimizerTwice) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto scalar =
+      ops::Const(s.WithOpName("LayoutOptimizerAlreadyApplied"), 3.0f, {});
+  auto mul = ops::Mul(s.WithOpName("mul"), scalar, scalar);
+  auto o = ops::Identity(s.WithOpName("o"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  EXPECT_TRUE(errors::IsInvalidArgument(status));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
