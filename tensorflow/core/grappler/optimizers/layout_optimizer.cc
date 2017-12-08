@@ -354,7 +354,16 @@ class NodeProcessor : public GraphProcessor {
     if (!success) {
       LOG(ERROR) << "Failed to parse TensorProto.";
     }
-    if (tensor.dims() == 1) {
+    if (tensor.dims() == 0) {
+      int value = tensor.scalar<int>()();
+      value = (value >= 0) ? value : value + 4;
+      if (value == 1 || value == 2) {
+        value = value + 1;
+      } else if (value == 3) {
+        value = 1;
+      }
+      tensor.scalar<int>()() = value;
+    } else if (tensor.dims() == 1) {
       if (tensor.flat<int>().size() == 4) {
         int c = tensor.flat<int>()(3);
         tensor.flat<int>()(3) = tensor.flat<int>()(2);
@@ -381,8 +390,12 @@ class NodeProcessor : public GraphProcessor {
           error::INVALID_ARGUMENT,
           strings::StrCat("Unsupported dimension size: ", tensor.dims()));
     }
-    tensor.AsProtoTensorContent(
-        node->mutable_attr()->at({"value"}).mutable_tensor());
+    if (tensor.dims() == 0) {
+      tensor.AsProtoField(node->mutable_attr()->at({"value"}).mutable_tensor());
+    } else {
+      tensor.AsProtoTensorContent(
+          node->mutable_attr()->at({"value"}).mutable_tensor());
+    }
     return Status::OK();
   }
 
@@ -976,7 +989,7 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
     if (IsConstant(*dim_node)) {
-      AddNodeDimConst();
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
     } else {
       AddNodeDataFormatDimMap();
     }
@@ -986,31 +999,6 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   int axis_node_pos_;
 
  private:
-  void AddNodeDimConst() {
-    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
-    auto tensor = dim_node->attr().at({"value"}).tensor();
-    int value = tensor.int_val(0);
-    value = (value >= 0) ? value : value + 4;
-    if (value == 1 || value == 2) {
-      value = value + 1;
-    } else if (value == 3) {
-      value = 1;
-    }
-    // We created a copy of the node, so that we don't modify the original node,
-    // which might be used elsewhere. Note that this copy also copies the
-    // control dependency input in the case this node is inside a loop,
-    // to ensure added_node is in the same frame with node_.
-    NodeDef* added_node = graph_->add_node();
-    *added_node = *dim_node;
-    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
-    node_map_->AddNode(added_node->name(), added_node);
-    added_node->mutable_attr()->at({"value"}).mutable_tensor()->set_int_val(
-        0, value);
-    node_map_->RemoveOutput(node_->input(axis_node_pos_), node_->name());
-    *node_->mutable_input(axis_node_pos_) = added_node->name();
-    node_map_->AddOutput(added_node->name(), node_->name());
-  }
-
   void AddNodeDataFormatDimMap() {
     NodeDef* added_node = graph_->add_node();
     added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
