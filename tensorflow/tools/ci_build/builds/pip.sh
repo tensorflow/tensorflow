@@ -296,19 +296,12 @@ create_activate_virtualenv_and_install_tensorflow() {
     die "FAILED to create virtualenv directory: ${VIRTUALENV_DIR}"
   fi
 
-  if [[ ${PYTHON_BIN_PATH} == *"python3.6"* ]]; then
-    "${PYTHON_BIN_PATH}" -m venv "${VIRTUALENV_FLAGS}" \
-      "${VIRTUALENV_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
-  else
-    # Verify that virtualenv exists
-    if [[ -z $(which virtualenv) ]]; then
-      die "FAILED: virtualenv not available on path"
-    fi
-    virtualenv ${VIRTUALENV_FLAGS} \
-      -p "${PYTHON_BIN_PATH}" "${VIRTUALENV_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
-  fi
+  # Use the virtualenv from the default python version (i.e., python-virtualenv)
+  # to create the virtualenv directory for testing. Use the -p flag to specify
+  # the python version inside the to-be-created virtualenv directory.
+  python -m virtualenv -p "${PYTHON_BIN_PATH}" ${VIRTUALENV_FLAGS} \
+    "${VIRTUALENV_DIR}" || \
+    die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
     die "FAILED: Unable to activate virtualenv in ${VIRTUALENV_DIR}"
