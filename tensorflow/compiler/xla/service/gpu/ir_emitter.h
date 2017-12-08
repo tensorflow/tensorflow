@@ -95,6 +95,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleRng(HloInstruction* random) override;
+  Status HandleConditional(HloInstruction* conditional) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -234,6 +235,7 @@ class IrEmitterUnnested : public IrEmitter {
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter.
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFusion(HloInstruction* fusion) override;

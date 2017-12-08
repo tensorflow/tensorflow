@@ -440,8 +440,11 @@ xla_test(
 xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
-    # Currently, Conditional is supported only in the CPU backend.
-    backends = ["cpu"],
+    # Currently, Conditional is supported only in CPU and GPU backends.
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",
