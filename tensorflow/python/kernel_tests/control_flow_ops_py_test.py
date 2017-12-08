@@ -753,6 +753,15 @@ class ControlFlowTest(test.TestCase):
       r = isum(s, maximum_iterations=3)
       self.assertAllEqual([1+3, 2+3, 3+3, 4+3, 5+3], r.eval())
 
+  def testWhileWithMaximumIterationsAndSingleArgument(self):
+    with self.test_session():
+      r = control_flow_ops.while_loop(
+          lambda i: i < 3,
+          lambda i: i + 1,
+          [0],
+          maximum_iterations=1)
+      self.assertEqual(1, r.eval())
+
   # Have more than 10 parallel iterations and hence exercise k-bound
   # most of the time.
   def testWhile_3(self):
@@ -3013,6 +3022,16 @@ class EagerTest(test.TestCase):
       tensor = constant_op.constant([1, 2, 3, 4, 5])
       self.assertAllEqual(isum(tensor, maximum_iterations=3).numpy(),
                           [1+3, 2+3, 3+3, 4+3, 5+3])
+
+  def testWhileWithMaximumIterationsAndSingleArgument(self):
+    with context.eager_mode():
+      tensor = constant_op.constant(0)
+      r = control_flow_ops.while_loop(
+          lambda i: i < 3,
+          lambda i: i + 1,
+          [tensor],
+          maximum_iterations=1)
+      self.assertEqual(1, r.numpy())
 
   def testWithDependencies(self):
     with context.eager_mode():

@@ -2865,10 +2865,16 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
           0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
-      loop_vars = (counter, loop_vars)
-      cond = lambda i, lv: (  # pylint: disable=g-long-lambda
-          math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
-      body = lambda i, lv: (i + 1, orig_body(*lv))
+      if len(loop_vars) == 1:
+        loop_vars = (counter, loop_vars[0])
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
+        body = lambda i, lv: (i + 1, orig_body(lv))
+      else:
+        loop_vars = (counter, loop_vars)
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
+        body = lambda i, lv: (i + 1, orig_body(*lv))
 
     if context.in_eager_mode():
       while cond(*loop_vars):
