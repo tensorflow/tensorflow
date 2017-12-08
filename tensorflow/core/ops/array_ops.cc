@@ -1722,6 +1722,20 @@ REGISTER_OP("Identity")
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
 
+REGISTER_OP("Snapshot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+      return Status::OK();
+    })
+    .Doc(R"Doc(Returns a copy of the input tensor.)Doc");
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklIdentity")
     .Input("input: T")

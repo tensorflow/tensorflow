@@ -605,6 +605,7 @@ cc_library(
         ":reverse_sequence_op",
         ":shape_ops",
         ":slice_op",
+        ":snapshot_op",
         ":split_op",
         ":split_v_op",
         ":strided_slice_op",
@@ -799,6 +800,12 @@ tf_kernel_library(
     name = "slice_op",
     prefix = "slice_op",
     deps = ARRAY_DEPS + [":strided_slice_op"],
+)
+
+tf_kernel_library(
+    name = "snapshot_op",
+    prefix = "snapshot_op",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
