@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-//#include "absl/strings/string_view_utils.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
@@ -1135,18 +1134,6 @@ void ConvertNoOpOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {}
 
-ArrayDataType GetArrayDataType(tensorflow::DataType tf_data_type) {
-  if (tf_data_type == DT_UINT8) {
-    return ArrayDataType::kUint8;
-  } else if (tf_data_type == DT_INT32) {
-    return ArrayDataType::kInt32;
-  } else if (tf_data_type == DT_FLOAT) {
-    return ArrayDataType::kFloat;
-  } else {
-    return ArrayDataType::kNone;
-  }
-}
-
 void ConvertCastOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -1155,8 +1142,8 @@ void ConvertCastOperator(const NodeDef& node,
   const auto tf_src_dtype = GetDataTypeAttr(node, "SrcT");
   const auto tf_dst_dtype = GetDataTypeAttr(node, "DstT");
   auto* op = new CastOperator;
-  op->src_data_type = GetArrayDataType(tf_src_dtype);
-  op->dst_data_type = GetArrayDataType(tf_dst_dtype);
+  op->src_data_type = ConvertDataType(tf_src_dtype);
+  op->dst_data_type = ConvertDataType(tf_dst_dtype);
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
@@ -1374,6 +1361,142 @@ void ConvertSvdfOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+// This is just bare bones support to get the shapes to propagate.
+void ConvertTransposeConvOperator(const NodeDef& node,
+                                  const TensorFlowImportFlags& tf_import_flags,
+                                  Model* model) {
+  CHECK_EQ(node.op(), "Conv2DBackpropInput");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  auto* op = new TransposeConvOperator;
+  op->inputs.push_back(node.input(2));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  const auto& strides = GetListAttr(node, "strides");
+  CHECK_EQ(strides.i_size(), 4);
+  CHECK_EQ(strides.i(0), 1);
+  op->stride_height = strides.i(1);
+  op->stride_width = strides.i(2);
+  CHECK_EQ(strides.i(3), 1);
+  auto const& padding = GetStringAttr(node, "padding");
+  if (padding == "SAME") {
+    op->padding.type = PaddingType::kSame;
+  } else if (padding == "VALID") {
+    op->padding.type = PaddingType::kValid;
+  } else {
+    LOG(FATAL) << "Only SAME and VALID padding supported on "
+                  "Conv2DBackpropInput nodes.";
+  }
+  model->operators.emplace_back(op);
+}
+
+void ConvertExpandDimsOperator(const NodeDef& node,
+                               const TensorFlowImportFlags& tf_import_flags,
+                               Model* model) {
+  CHECK_EQ(node.op(), "ExpandDims");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new ExpandDimsOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFillOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "Fill");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FillOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFloorDivOperator(const NodeDef& node,
+                             const TensorFlowImportFlags& tf_import_flags,
+                             Model* model) {
+  CHECK_EQ(node.op(), "FloorDiv");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FloorDivOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFloorModOperator(const NodeDef& node,
+                             const TensorFlowImportFlags& tf_import_flags,
+                             Model* model) {
+  CHECK(node.op() == "FloorMod");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FloorModOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertRangeOperator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "Range");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  auto* op = new RangeOperator;
+  if (HasAttr(node, "Tidx")) {
+    const auto dtype = toco::GetDataTypeAttr(node, "Tidx");
+    CHECK(dtype == DT_UINT8 || dtype == DT_INT32 || dtype == DT_INT64 ||
+          dtype == DT_FLOAT);
+    op->dtype = ConvertDataType(dtype);
+  }
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertRankOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "Rank");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  auto* op = new RankOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertStackOperator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK((node.op() == "Stack") || (node.op() == "Pack"));
+  auto* op = new StackOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  CHECK_GE(num_inputs, 1);
+  CHECK_EQ(num_inputs, GetIntAttr(node, "N"));
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  // Both "Stack" and "Pack" have the "axis" attribute.
+  op->axis = GetIntAttr(node, "axis");
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertTransposeOperator(const NodeDef& node,
+                              const TensorFlowImportFlags& tf_import_flags,
+                              Model* model) {
+  CHECK_EQ(node.op(), "Transpose");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new TransposeOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 // Some TensorFlow ops only occur in graph cycles, representing
 // control flow. We do not currently support control flow, so we wouldn't
 // be able to fully support such graphs, including performing inference,
@@ -1568,6 +1691,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertConstOperator(node, tf_import_flags, model);
     } else if (node.op() == "Conv2D") {
       ConvertConvOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Conv2DBackpropInput") {
+      ConvertTransposeConvOperator(node, tf_import_flags, model);
     } else if (node.op() == "DepthwiseConv2dNative") {
       ConvertDepthwiseConvOperator(node, tf_import_flags, model);
     } else if (node.op() == "DepthToSpace") {
@@ -1690,6 +1815,22 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertSvdfOperator(node, tf_import_flags, model);
     } else if (node.op() == "NextIteration") {
       ConvertOperatorSpecialCasedAsRNNBackEdge(node, tf_import_flags, model);
+    } else if (node.op() == "ExpandDims") {
+      ConvertExpandDimsOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Fill") {
+      ConvertFillOperator(node, tf_import_flags, model);
+    } else if (node.op() == "FloorDiv") {
+      ConvertFloorDivOperator(node, tf_import_flags, model);
+    } else if (node.op() == "FloorMod") {
+      ConvertFloorModOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Range") {
+      ConvertRangeOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Rank") {
+      ConvertRankOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Stack" || node.op() == "Pack") {
+      ConvertStackOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Transpose") {
+      ConvertTransposeOperator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

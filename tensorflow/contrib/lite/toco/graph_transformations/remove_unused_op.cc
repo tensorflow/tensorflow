@@ -47,10 +47,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     bool found_output_as_rnn_state_array = false;
     for (const auto& rnn_state : model->flags.rnn_states()) {
       if (output == rnn_state.state_array()) {
-        CHECK(op->type == OperatorType::kTensorFlowUnsupported);
-        CHECK_EQ(static_cast<const TensorFlowUnsupportedOperator*>(op)
-                     ->tensorflow_op,
-                 "Fill");
+        CHECK(op->type == OperatorType::kFill);
         found_output_as_rnn_state_array = true;
         break;
       }
