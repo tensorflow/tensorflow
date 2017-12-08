@@ -122,11 +122,12 @@ def opt_cfg():
               do_constant_folding=True)))
 
 
-def isum(s):
+def isum(s, maximum_iterations=None):
   i = constant_op.constant(0, name="i")
   c = lambda i, s: math_ops.less(i, 10)
   b = lambda i, s: [math_ops.add(i, 1), math_ops.add(i, s)]
-  _, r_s = control_flow_ops.while_loop(c, b, [i, s])
+  _, r_s = control_flow_ops.while_loop(
+      c, b, [i, s], maximum_iterations=maximum_iterations)
   return r_s
 
 
@@ -745,6 +746,12 @@ class ControlFlowTest(test.TestCase):
       s = constant_op.constant(0)
       r = isum(s)
       self.assertAllEqual(45, r.eval())
+
+  def testWhileWithMaximumIterations(self):
+    with self.test_session():
+      s = constant_op.constant([1, 2, 3, 4, 5])
+      r = isum(s, maximum_iterations=3)
+      self.assertAllEqual([1+3, 2+3, 3+3, 4+3, 5+3], r.eval())
 
   # Have more than 10 parallel iterations and hence exercise k-bound
   # most of the time.
@@ -3000,6 +3007,12 @@ class EagerTest(test.TestCase):
       tensor = constant_op.constant([1, 2, 3, 4, 5])
       self.assertAllEqual(isum(tensor).numpy(),
                           [46, 47, 48, 49, 50])
+
+  def testWhileLoopWithMaxIterations(self):
+    with context.eager_mode():
+      tensor = constant_op.constant([1, 2, 3, 4, 5])
+      self.assertAllEqual(isum(tensor, maximum_iterations=3).numpy(),
+                          [1+3, 2+3, 3+3, 4+3, 5+3])
 
   def testWithDependencies(self):
     with context.eager_mode():

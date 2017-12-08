@@ -2726,7 +2726,7 @@ class WhileContext(ControlFlowContext):
 
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
-               name=None):
+               name=None, maximum_iterations=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -2798,6 +2798,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
+    maximum_iterations: Optional maximum number of iterations of the while loop
+      to run.  If provided, the `cond` output is AND-ed with an additional
+      condition ensuring the number of iterations executed is no greater than
+      `maximum_iterations`.
 
   Returns:
     The output tensors for the loop variables after the loop. When the length
@@ -2851,18 +2855,41 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    if maximum_iterations is not None:
+      maximum_iterations = ops.convert_to_tensor(
+          maximum_iterations, name="maximum_iterations")
+      if maximum_iterations.shape.ndims != 0:
+        raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                         maximum_iterations.shape)
+      counter = constant_op.constant(
+          0, dtype=maximum_iterations.dtype, name="iteration_counter")
+      orig_cond = cond
+      orig_body = body
+      loop_vars = (counter, loop_vars)
+      cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+          math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
+      body = lambda i, lv: (i + 1, orig_body(*lv))
+
     if context.in_eager_mode():
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
-      return loop_vars
+      if maximum_iterations is not None:
+        return loop_vars[1]
+      else:
+        return loop_vars
 
     if shape_invariants is not None:
+      if maximum_iterations is not None:
+        shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
     loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
-    return result
+    if maximum_iterations is not None:
+      return result[1]
+    else:
+      return result
 
 
 def _AsTensorList(x, p):
