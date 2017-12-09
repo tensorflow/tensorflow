@@ -39,6 +39,22 @@ class LSTMLayerTest(test.TestCase):
                   'return_sequences': True},
           input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_static_shape_inference_LSTM(self):
+    # Github issue: 15165
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    with self.test_session():
+      inputs = keras.layers.Dense(embedding_dim,
+                                  input_shape=(timesteps, embedding_dim))
+      layer = keras.layers.LSTM(units, return_sequences=True)
+      model = keras.models.Sequential()
+      model.add(inputs)
+      model.add(layer)
+      sequences_shape = model.layers[-1].output.get_shape()
+      self.assertEquals(sequences_shape.as_list(), [None, timesteps, units])
+
   def test_dynamic_behavior_LSTM(self):
     num_samples = 2
     timesteps = 3
