@@ -25,7 +25,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename>
+template <typename T>
 class RepeatOp : public OpKernel {
  public:
   explicit RepeatOp(OpKernelConstruction* ctx)
@@ -80,7 +80,7 @@ class RepeatOp : public OpKernel {
           sizes[2] *= output_shape.dim_size(i);
         }
       }
-      auto input = input_tensor.shaped<int32, 3>(sizes);
+      auto input = input_tensor.shaped<T, 3>(sizes);
 
       if (repeats_flat.size() == 1) {
         output_shape.set_dim(
@@ -94,7 +94,7 @@ class RepeatOp : public OpKernel {
 
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_output(0, output_shape, &output_tensor));
-      auto output = output_tensor->shaped<int32, 3>(sizes);
+      auto output = output_tensor->shaped<T, 3>(sizes);
 
       int offset = 0;
       for (int64 i = 0; i < input.dimension(1); i++) {
@@ -107,7 +107,7 @@ class RepeatOp : public OpKernel {
       }
     } else {
       // If axis is not present, treat input as flat
-      auto input_flat = input_tensor.flat<int32>();
+      auto input_flat = input_tensor.flat<T>();
 
       OP_REQUIRES(
           ctx,
@@ -127,7 +127,7 @@ class RepeatOp : public OpKernel {
         Eigen::array<int64, 2> bcast({1, repeats_flat(0)});
         Eigen::array<int64, 2> output_reshape(
             {input_tensor.NumElements() * repeats_flat(0), 1});
-        auto output_vec = output_tensor->vec<int32>();
+        auto output_vec = output_tensor->vec<T>();
         output_vec = input_flat.reshape(input_reshape)
                          .broadcast(bcast)
                          .reshape(output_reshape);
@@ -137,7 +137,7 @@ class RepeatOp : public OpKernel {
         OP_REQUIRES_OK(ctx,
                        ctx->allocate_output(0, TensorShape({output_size()}),
                                             &output_tensor));
-        auto output_vec = output_tensor->vec<int32>();
+        auto output_vec = output_tensor->vec<T>();
         int64 offset = 0;
         for (int64 i = 0; i < repeats_flat.size(); i++) {
           output_vec
@@ -163,7 +163,7 @@ class RepeatOp : public OpKernel {
       Name("RepeatFlat").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       RepeatOp<type>);
 
-TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_ALL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 }  // namespace tensorflow

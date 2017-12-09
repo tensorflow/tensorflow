@@ -1127,6 +1127,15 @@ class RepeatTest(test_util.TensorFlowTestCase):
       v_np = np.repeat(x, [1, 2, 3, 4])
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  def testRepeatDTypes(self):
+    for dtype in [np.int8, np.int16, np.uint8, np.uint16, np.int32, np.int64]:
+      with self.test_session():
+        x = np.array([[1, 2], [3, 4]], dtype=dtype)
+        v_tf = array_ops.repeat(constant_op.constant(x), 2)
+        v_np = np.repeat(x, 2)
+        self.assertAllEqual(v_tf.eval(), v_np)
+
+
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
