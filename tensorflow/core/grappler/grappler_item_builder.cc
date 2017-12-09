@@ -135,7 +135,10 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
-  return Status::OK();
+  // The default values of attributes might have been stripped by the optimizer.
+  // Add them back.
+  return AddDefaultAttrsToGraphDef(output_graph_def, *graphptr->op_registry(),
+                                   0);
 }
 
 // Applies the same graph pruning logic to the graph as Session.Run in TF.
@@ -446,7 +449,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     new_item->save_restore_loc_tensor = saver.filename_tensor_name();
   }
 
-  // Populate default attrs to the NodeDefs in the GraphDef.
+  // Instantiate all the missing attributes with their default values.
   Status attr_status =
       AddDefaultAttrsToGraphDef(&new_item->graph, *OpRegistry::Global(), 0);
   if (!attr_status.ok()) {
