@@ -45,15 +45,16 @@ class LSTMLayerTest(test.TestCase):
     timesteps = 3
     embedding_dim = 4
     units = 2
-    with self.test_session():
-      inputs = keras.layers.Dense(embedding_dim,
-                                  input_shape=(timesteps, embedding_dim))
-      layer = keras.layers.LSTM(units, return_sequences=True)
-      model = keras.models.Sequential()
-      model.add(inputs)
-      model.add(layer)
-      sequences_shape = model.layers[-1].output.get_shape()
-      self.assertEquals(sequences_shape.as_list(), [None, timesteps, units])
+
+    model = keras.models.Sequential()
+    inputs = keras.layers.Dense(embedding_dim,
+                                input_shape=(timesteps, embedding_dim))
+    model.add(inputs)
+    layer = keras.layers.LSTM(units, return_sequences=True)
+    model.add(layer)
+    outputs = model.layers[-1].output
+    self.assertEquals(outputs.get_shape().as_list(),
+                      [None, timesteps, units])
 
   def test_dynamic_behavior_LSTM(self):
     num_samples = 2
