@@ -69,16 +69,6 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import nest
 
 
-def check_op_order(graph):
-  """Sanity check on the ordering of op id."""
-
-  for op in graph.get_operations():
-    for v in op.inputs:
-      assert v.op._id < op._id or op.type == "Merge", (
-          "The id of %s must be less than the id of %s" % (v.op.name, op.name))
-  return True
-
-
 def check_consumers(graph):
   """Sanity check on the consumer list of the tensors."""
 
@@ -143,7 +133,6 @@ class ControlFlowTest(test.TestCase):
       op = state_ops.assign(v, 9)
       v2 = control_flow_ops.with_dependencies([op], v)
 
-      self.assertTrue(check_op_order(v.graph))
       self.assertTrue(isinstance(v2, ops.Tensor))
       variables.global_variables_initializer().run()
       self.assertEqual(9, v2.eval())
@@ -399,7 +388,6 @@ class ControlFlowTest(test.TestCase):
 
       val = r.values.eval()
       ind = r.indices.eval()
-    self.assertTrue(check_op_order(x.values.graph))
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
 
@@ -446,7 +434,6 @@ class ControlFlowTest(test.TestCase):
 
       val = r.values.eval()
       ind = r.indices.eval()
-    self.assertTrue(check_op_order(x.values.graph))
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
     self.assertTrue(ind.dtype == np.int64)
@@ -475,7 +462,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       result = r.eval()
-    self.assertTrue(check_op_order(x.graph))
     self.assertAllEqual(11, result)
 
   def testCond_1(self):
@@ -489,7 +475,6 @@ class ControlFlowTest(test.TestCase):
           math_ops.less(1, 0), lambda: math_ops.add(x, 1),
           lambda: math_ops.subtract(x, 1))
       result = r.eval()
-    self.assertTrue(check_op_order(x.graph))
     self.assertAllEqual(9, result)
 
   def testCond_3(self):
@@ -502,7 +487,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn3, fn2)
 
       result = r.eval()
-    self.assertTrue(check_op_order(x.graph))
     self.assertAllEqual(12, result)
 
   def testCond_4(self):
@@ -521,7 +505,6 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(len(r), 2)
       result = r[1].eval()
-      self.assertTrue(check_op_order(age.graph))
       self.assertAllEqual(True, result)
       self.assertAllEqual(7, v1.eval())
       self.assertAllEqual(2, v2.eval())
@@ -784,7 +767,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(lambda i, m, c, o: math_ops.less(i, d),
                                       compute, [i, m, c, o])
       result = r[3].eval()
-    self.assertTrue(check_op_order(i.graph))
     self.assertAllEqual(10100, result)
 
   def testWhile_4(self):
@@ -806,7 +788,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(lambda i, m, c, o: math_ops.less(i, s),
                                       compute, [i, m, c, o])
       result = r[3].eval()
-    self.assertTrue(check_op_order(i.graph))
     self.assertAllEqual(42, result)
 
   def testWhile_5(self):
@@ -831,7 +812,6 @@ class ControlFlowTest(test.TestCase):
               tensor_shape.unknown_shape()
           ])
       result = r[2].eval()
-    self.assertTrue(check_op_order(i.graph))
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
 
   def testBufferForwarding(self):
@@ -1277,7 +1257,6 @@ class ControlFlowTest(test.TestCase):
 
       r = control_flow_ops.while_loop(
           loop_iterator, loop_body, [n], parallel_iterations=1)
-      self.assertTrue(check_op_order(n.graph))
       variables.global_variables_initializer().run()
       self.assertEqual(3, r.eval())
       result = select.eval()
@@ -1302,7 +1281,6 @@ class ControlFlowTest(test.TestCase):
 
       r = control_flow_ops.while_loop(
           loop_iterator, loop_body, [n], parallel_iterations=1)
-      self.assertTrue(check_op_order(n.graph))
       variables.global_variables_initializer().run()
       self.assertEqual(3, r.eval())
       result1 = select1.eval()
@@ -1329,7 +1307,6 @@ class ControlFlowTest(test.TestCase):
           parallel_iterations=1)
       variables.global_variables_initializer().run()
       result = r[1].eval()
-    self.assertTrue(check_op_order(n.graph))
     self.assertAllClose(np.array([10.0, 10.0, 10.0]), result)
 
   # b/24814703

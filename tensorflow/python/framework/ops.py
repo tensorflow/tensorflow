@@ -1619,6 +1619,7 @@ class Operation(object):
                           "a Tensor, or IndexedSlices: %s" % c)
         self._control_inputs.append(control_op)
 
+    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
@@ -1671,12 +1672,6 @@ class Operation(object):
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
-    # NOTE(keveman): Control flow context's AddOp could be creating new ops and
-    # setting op.inputs[index] = new_op. Thus the new ops' id could be larger
-    # than this op's id even though this op depend on them. Therefore, delaying
-    # assigning id to this op until all ops this could be dependent on are
-    # created.
-    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
