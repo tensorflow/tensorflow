@@ -2637,8 +2637,9 @@ def spatial_softmax(features,
   Args:
     features: A `Tensor` of size [batch_size, W, H, num_channels]; the
       convolutional feature map.
-    activation_fn: Activation function. The default value is a softmax function.
-      Explicitly set it to None to skip it and maintain a linear activation.
+    activation_fn: Activation function. The default value is a softmax function,
+      both softmax and sigmoid are known to work well. Explicitly set it to None
+      to exclude the activation step entirely if customized behavior is needed.
     temperature: Softmax temperature (optional). If None, a learnable
       temperature is created.
     name: A name for this operation (optional).
