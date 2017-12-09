@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+#ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
