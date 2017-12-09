@@ -312,18 +312,43 @@ TokKind HloLexer::LexNumberOrPattern() {
   return TokKind::kError;
 }
 
-StringPiece HloLexer::GetCurrentLine() const {
-  const char* start = token_start_;
-  const char* end = current_ptr_;
-  if (!CanDereference(start) || !CanDereference(end)) {
+std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
+  unsigned line_no = 1;
+  const char* start = buf_.begin();
+  const char* ptr = start;
+  if (line_no_cache_.last_query && CanDereference(line_no_cache_.last_query) &&
+      line_no_cache_.last_query <= location) {
+    ptr = line_no_cache_.last_query;
+    line_no = line_no_cache_.line_no_of_query;
+  }
+  for (; ptr != location; ptr++) {
+    if (*ptr == '\n') {
+      line_no++;
+    }
+  }
+
+  // Update the line number cache.
+  line_no_cache_.last_query = ptr;
+  line_no_cache_.line_no_of_query = line_no;
+  size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
+  if (line_offset == StringPiece::npos) {
+    line_offset = 0;
+  }
+  return {line_no, ptr - start - line_offset};
+}
+
+StringPiece HloLexer::GetLine(LocTy loc) const {
+  if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
-  while (start > buf_.begin() && *start != '\n') {
-    start--;
-  }
-  while (end < buf_.end() && *end != '\n') {
-    end++;
-  }
+  size_t line_start =
+      StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
+  const char* start = line_start == StringPiece::npos
+                          ? buf_.begin()
+                          : buf_.begin() + line_start + 1;
+  size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
+  const char* end = line_end == StringPiece::npos ? buf_.end() : loc + line_end;
+
   return StringPieceFromPointers(start, end);
 }
 

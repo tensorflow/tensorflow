@@ -710,7 +710,7 @@ class HloParserTest : public ::testing::Test,
   void ExpectEqual() {
     const string& original = GetParam().module_string;
     auto result = Parse(original);
-    TF_EXPECT_OK(result.status());
+    TF_ASSERT_OK(result.status());
     EXPECT_EQ(original,
               result.ValueOrDie()->ToString(/*include_large_constants=*/true));
   }
