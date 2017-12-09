@@ -198,12 +198,12 @@ def add_dict_to_dict(add_from, add_to):
       add_to[key] = add_from[key]
 
 
-# Exclude some libaries in contrib from the documentation altogether.
+# Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
   return {'tf.test': ['mock']}
 
 
-# Exclude members of some libaries.
+# Exclude members of some libraries.
 def _get_default_do_not_descend_map():
   # TODO(wicke): Shrink this list once the modules get sealed.
   return {
