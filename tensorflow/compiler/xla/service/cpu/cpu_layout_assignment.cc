@@ -139,6 +139,10 @@ Status CpuLayoutAssignment::AddBackendConstraints(
         if (constraints->OperandBufferForwarded(instruction, operand_no)) {
           continue;
         }
+        // Skip operands with non-array shapes.
+        if (!ShapeUtil::IsArray(instruction->operand(operand_no)->shape())) {
+          continue;
+        }
         Shape operand_shape(
             row_major_shape(instruction->operand(operand_no)->shape()));
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
