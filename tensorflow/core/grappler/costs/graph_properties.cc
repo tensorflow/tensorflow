@@ -1033,7 +1033,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   }
 
   for (const Node* const node : graph.nodes()) {
-    VLOG(1) << "<Node> " << node->name();
+    VLOG(3) << "Filling in graph properties for node: " << node->name();
     auto ctx = shape_refiner.GetContext(node);
     if (!ctx) {
       continue;
