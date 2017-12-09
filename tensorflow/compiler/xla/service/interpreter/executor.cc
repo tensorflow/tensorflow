@@ -100,9 +100,9 @@ bool InterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-bool InterpreterExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status InterpreterExecutor::BlockHostUntilDoneWithStatus(Stream *stream) {
   AsExecutorStream(stream)->BlockUntilDone();
-  return true;
+  return port::Status::OK();
 }
 
 DeviceDescription *InterpreterExecutor::PopulateDeviceDescription() const {

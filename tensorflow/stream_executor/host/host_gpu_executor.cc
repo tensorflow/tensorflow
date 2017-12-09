@@ -177,9 +177,9 @@ bool HostExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-bool HostExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status HostExecutor::BlockHostUntilDoneWithStatus(Stream *stream) {
   AsHostStream(stream)->BlockUntilDone();
-  return true;
+  return port::Status::OK();
 }
 
 DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
