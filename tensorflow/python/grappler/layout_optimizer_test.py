@@ -225,7 +225,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
                     nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-Sum-0', nodes)
-      self.assertIn('LayoutOptimizerDim-split', nodes)
+      self.assertIn('LayoutOptimizerDataFormatOp-split', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoop(self):

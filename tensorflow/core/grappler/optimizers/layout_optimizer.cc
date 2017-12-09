@@ -37,7 +37,7 @@ namespace grappler {
 namespace {
 
 const char kPrefix[] = "LayoutOptimizer";
-const char kDim[] = "LayoutOptimizerDim";
+const char kDataFormatOp[] = "LayoutOptimizerDataFormatOp";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
@@ -544,6 +544,27 @@ class NodeProcessor : public GraphProcessor {
     return const_node;
   }
 
+  void AddNodeDataFormatOp(const string& op, int input_pos) {
+    NodeDef* added_node = graph_->add_node();
+    added_node->set_name(strings::StrCat(kDataFormatOp, "-", node_->name()));
+    added_node->set_op(op);
+    node_map_->AddNode(added_node->name(), added_node);
+    added_node->set_device(node_->device());
+    AttrValue attr_data_type;
+    attr_data_type.set_type(DT_INT32);
+    added_node->mutable_attr()->insert({"T", attr_data_type});
+    AttrValue attr_format;
+    attr_format.set_s("NHWC");
+    added_node->mutable_attr()->insert({"src_format", attr_format});
+    attr_format.set_s("NCHW");
+    added_node->mutable_attr()->insert({"dst_format", attr_format});
+    *added_node->add_input() = node_->input(input_pos);
+    *node_->mutable_input(input_pos) = added_node->name();
+    node_map_->UpdateOutput(added_node->input(0), node_->name(),
+                            added_node->name());
+    node_map_->AddOutput(added_node->name(), node_->name());
+  }
+
   NodeDef* node_;
   bool is_in_frame_;
 
@@ -730,7 +751,15 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     return input_pos;
   }
 
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
+  Status CustomizedProcessing() override {
+    auto input_size_node = node_map_->GetNode(node_->input(0));
+    if (IsConstant(*input_size_node)) {
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(0));
+    } else {
+      AddNodeDataFormatOp("DataFormatVecPermute", 0);
+    }
+    return Status::OK();
+  }
 };
 
 class FusedBatchNormGradProcessor : public NodeProcessor {
@@ -991,34 +1020,11 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     if (IsConstant(*dim_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
     } else {
-      AddNodeDataFormatDimMap();
+      AddNodeDataFormatOp("DataFormatDimMap", axis_node_pos_);
     }
     return Status::OK();
   }
-
   int axis_node_pos_;
-
- private:
-  void AddNodeDataFormatDimMap() {
-    NodeDef* added_node = graph_->add_node();
-    added_node->set_name(strings::StrCat(kDim, "-", node_->name()));
-    added_node->set_op("DataFormatDimMap");
-    node_map_->AddNode(added_node->name(), added_node);
-    added_node->set_device(node_->device());
-    AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
-    added_node->mutable_attr()->insert({"T", attr_data_type});
-    AttrValue attr_format;
-    attr_format.set_s("NHWC");
-    added_node->mutable_attr()->insert({"src_format", attr_format});
-    attr_format.set_s("NCHW");
-    added_node->mutable_attr()->insert({"dst_format", attr_format});
-    *added_node->add_input() = node_->input(axis_node_pos_);
-    *node_->mutable_input(axis_node_pos_) = added_node->name();
-    node_map_->UpdateOutput(added_node->input(0), node_->name(),
-                            added_node->name());
-    node_map_->AddOutput(added_node->name(), node_->name());
-  }
 };
 
 class PadProcessor : public AgnosticNodeProcessor {

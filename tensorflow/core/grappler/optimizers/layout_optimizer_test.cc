@@ -71,6 +71,12 @@ class LayoutOptimizerTest : public ::testing::Test {
 
   Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
                                    int filter_size, const string& padding) {
+    return SimpleConv2DBackpropInput(s, input_size, filter_size, padding, true);
+  }
+
+  Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
+                                   int filter_size, const string& padding,
+                                   bool const_input_size) {
     int batch_size = 128;
     int input_height = input_size;
     int input_width = input_size;
@@ -100,11 +106,18 @@ class LayoutOptimizerTest : public ::testing::Test {
     Output output =
         ops::Const(s->WithOpName("Output"), Input::Initializer(output_data));
 
-    Output conv_backprop_input = ops::Conv2DBackpropInput(
-        s->WithOpName("Conv2DBackpropInput"), input_sizes, filter, output,
-        {1, stride, stride, 1}, padding);
-    TensorShape input_shape(
-        {batch_size, input_height, input_width, input_depth});
+    Output conv_backprop_input;
+    Output input_sizes_i =
+        ops::Identity(s->WithOpName("InputSizesIdentity"), input_sizes);
+    if (const_input_size) {
+      conv_backprop_input = ops::Conv2DBackpropInput(
+          s->WithOpName("Conv2DBackpropInput"), input_sizes, filter, output,
+          {1, stride, stride, 1}, padding);
+    } else {
+      conv_backprop_input = ops::Conv2DBackpropInput(
+          s->WithOpName("Conv2DBackpropInput"), input_sizes_i, filter, output,
+          {1, stride, stride, 1}, padding);
+    }
     return conv_backprop_input;
   }
 
@@ -169,6 +182,28 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   Tensor input_sizes_expected(DT_INT32, {4});
   test::FillValues<int>(&input_sizes_expected, {128, 3, 7, 7});
   test::ExpectTensorEqual<int>(input_sizes_expected, input_sizes);
+}
+
+TEST_F(LayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", false);
+  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto conv2d_backprop_node = node_map.GetNode("Conv2DBackpropInput");
+  CHECK(conv2d_backprop_node);
+  EXPECT_EQ(conv2d_backprop_node->input(0),
+            "LayoutOptimizerDataFormatOp-Conv2DBackpropInput");
+  auto input_sizes_node =
+      node_map.GetNode("LayoutOptimizerDataFormatOp-Conv2DBackpropInput");
+  CHECK(input_sizes_node);
+  EXPECT_EQ(input_sizes_node->input(0), "InputSizesIdentity");
+  EXPECT_EQ(input_sizes_node->op(), "DataFormatVecPermute");
 }
 
 TEST_F(LayoutOptimizerTest, FilterSizeIsOne) {
@@ -526,9 +561,9 @@ TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDim-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDataFormatOp-split");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto map_node = node_map.GetNode("LayoutOptimizerDim-split");
+  auto map_node = node_map.GetNode("LayoutOptimizerDataFormatOp-split");
   EXPECT_EQ(map_node->op(), "DataFormatDimMap");
   EXPECT_EQ(map_node->input(0), "i1");
 }
@@ -594,8 +629,8 @@ TEST_F(LayoutOptimizerTest, ConcatNonConst) {
   auto concat_node = node_map.GetNode("concat");
   EXPECT_EQ(concat_node->input(0), "split");
   EXPECT_EQ(concat_node->input(1), "split:1");
-  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDim-concat");
-  auto concat_dim = node_map.GetNode("LayoutOptimizerDim-concat");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDataFormatOp-concat");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDataFormatOp-concat");
   EXPECT_EQ(concat_dim->op(), "DataFormatDimMap");
   EXPECT_EQ(concat_dim->input(0), "i");
 }
