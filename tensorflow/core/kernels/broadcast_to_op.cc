@@ -44,13 +44,13 @@ class BroadcastToOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
 
 #define BROADCAST_SHAPE(broadcast, reshape, NDIMS, input_shape, output_shape) \
-for (int i = 0; i < NDIMS; i++) {                                           \
-  OP_REQUIRES(ctx, (broadcast[i] % reshape[i] == 0),                        \
-              errors::InvalidArgument("invalid shape to broadcast from ",   \
-                                      input_shape.DebugString(), " to ",    \
-                                      output_shape.DebugString()));         \
-  broadcast[i] = broadcast[i] / reshape[i];                                 \
-}
+  for (int i = 0; i < NDIMS; i++) {                                           \
+    OP_REQUIRES(ctx, (broadcast[i] % reshape[i] == 0),                        \
+                errors::InvalidArgument("invalid shape to broadcast from ",   \
+                                        input_shape.DebugString(), " to ",    \
+                                        output_shape.DebugString()));         \
+    broadcast[i] = broadcast[i] / reshape[i];                                 \
+  }
 
     switch (output_shape.dims()) {
       case 1: {
