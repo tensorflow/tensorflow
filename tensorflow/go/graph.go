@@ -133,6 +133,20 @@ func (g *Graph) Operation(name string) *Operation {
 	return &Operation{cop, g}
 }
 
+// Operations returns a list of all operations in the graph
+func (g *Graph) Operations() []Operation {
+	var pos C.size_t = 0
+	ops := []Operation{}
+	for {
+		cop := C.TF_GraphNextOperation(g.c, &pos)
+		if cop == nil {
+			break
+		}
+		ops = append(ops, Operation{cop, g})
+	}
+	return ops
+}
+
 // OpSpec is the specification of an Operation to be added to a Graph
 // (using Graph.AddOperation).
 type OpSpec struct {
