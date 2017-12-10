@@ -82,6 +82,7 @@ if [[ $1 == "PI_ONE" ]]; then
 else
   PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
+  --copt=-O3
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
