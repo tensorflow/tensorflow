@@ -384,6 +384,20 @@ REGISTER_OP("UnravelIndex")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
 
+REGISTER_OP("BroadcastTo")
+    .Input("input: T")
+    .Input("shape: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .Doc(R"doc(
+Repeat elements of an array
+
+input: A Tensor to broadcast.
+shape: An 1-D `int` Tensor. The shape of the desired output.
+output: A Tensor.
+)doc");
+
 // --------------------------------------------------------------------------
 // TODO(josh11b): Remove the >= 2 constraint, once we can rewrite the graph
 // in the N == 1 case to remove the node.
