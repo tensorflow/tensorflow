@@ -134,7 +134,7 @@ message ExecProfile {
   // The total number of bytes currently allocated by the allocator if >0.
   int64 allocator_bytes_in_use = 15;
 
-  bool memory_intialized = 16;
+  bool memory_initialized = 16;
 }
 
 message ExecTime {
