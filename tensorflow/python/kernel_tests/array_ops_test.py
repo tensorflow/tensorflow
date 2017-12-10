@@ -1248,18 +1248,18 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(v_tf.eval(), v_np)
 
   def testBroadcastToString(self):
-      with self.test_session():
-        x = np.array(["1", "2", "3"], dtype=np.str)
-        v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
-        v_np = np.broadcast_to(x, [3, 3])
-        self.assertAllEqual(v_tf.eval(), v_np)
+    with self.test_session():
+      x = np.array(["1", "2", "3"], dtype=np.str)
+      v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
+      v_np = np.broadcast_to(x, [3, 3])
+      self.assertAllEqual(v_tf.eval(), v_np)
 
   def testBroadcastToBool(self):
-      with self.test_session():
-        x = np.array([True, False, True], dtype=np.bool)
-        v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
-        v_np = np.broadcast_to(x, [3, 3])
-        self.assertAllEqual(v_tf.eval(), v_np)
+    with self.test_session():
+      x = np.array([True, False, True], dtype=np.bool)
+      v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
+      v_np = np.broadcast_to(x, [3, 3])
+      self.assertAllEqual(v_tf.eval(), v_np)
 
   def testBroadcastToShape(self):
     for input_dim in range(1, 6):
