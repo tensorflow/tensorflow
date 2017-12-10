@@ -104,37 +104,6 @@ cuda_py_test(
 )
 
 py_library(
-    name = "summary_writer",
-    srcs = ["summary_writer.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/summary:gen_summary_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary_op_util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
-cuda_py_test(
-    name = "summary_writer_test",
-    srcs = ["summary_writer_test.py"],
-    additional_deps = [
-        ":summary_writer",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_library(
     name = "metrics",
     srcs = [
         "metrics.py",

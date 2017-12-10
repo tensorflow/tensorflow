@@ -93,8 +93,12 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
-                               crs->operand(0)->shape()));
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : crs->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        crs, ShapeInference::InferCrossReplicaSumShape(operand_shapes));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
@@ -147,13 +151,9 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
-    // Bitcasts that are not the root of a computation can be any shape.
-    // Bitcasts that are the root of a computation must have the same shape
-    // byte size as their operand.
-    if (bitcast->parent()->root_instruction() == bitcast) {
-      TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
-                   shape_size_fn_(bitcast->operand(0)->shape()));
-    }
+    // Bitcasts can be any shape, as long as the size matches the operand size.
+    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
+                 shape_size_fn_(bitcast->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 

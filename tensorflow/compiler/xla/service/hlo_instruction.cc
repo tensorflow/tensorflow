@@ -361,12 +361,9 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateCrossReplicaSum(const Shape& shape,
-                                      HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCrossReplicaSum, shape));
-  instruction->AppendOperand(operand);
-  return instruction;
+HloInstruction::CreateCrossReplicaSum(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  return CreateNary(shape, HloOpcode::kCrossReplicaSum, operands);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1000,6 +997,7 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
+    case HloOpcode::kRng:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
@@ -1158,8 +1156,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                         *dot_dimension_numbers_);
       break;
     case HloOpcode::kCrossReplicaSum:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateCrossReplicaSum(shape, new_operands[0]);
+      clone = CreateCrossReplicaSum(shape, new_operands);
       break;
     case HloOpcode::kGetTupleElement:
       CHECK_EQ(new_operands.size(), 1);
@@ -2059,6 +2056,14 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
+  }
+  if (opcode() == HloOpcode::kRng) {
+    extra.push_back(
+        StrCat("distribution=", RandomDistributionToString(distribution_)));
+  }
+  if (opcode() == HloOpcode::kReducePrecision) {
+    extra.push_back(StrCat("exponent_bits=", exponent_bits_));
+    extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
   return extra;
 }
@@ -3027,6 +3032,28 @@ string OpMetadataToString(const OpMetadata& metadata) {
     result.push_back(StrCat("source_line=", metadata.source_line()));
   }
   return Join(result, " ");
+}
+
+string RandomDistributionToString(const RandomDistribution& distribution) {
+  return tensorflow::str_util::Lowercase(RandomDistribution_Name(distribution));
+}
+
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
+  static std::unordered_map<string, RandomDistribution>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomDistribution>;
+    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
+      if (RandomDistribution_IsValid(i)) {
+        auto value = static_cast<RandomDistribution>(i);
+        (*map)[RandomDistributionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(tensorflow::str_util::Lowercase(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {

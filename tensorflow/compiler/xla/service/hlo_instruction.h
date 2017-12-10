@@ -175,7 +175,8 @@ class HloInstruction {
 
   // Creates a cross replica sum op.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
-      const Shape& shape, HloInstruction* operand);
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -427,7 +428,7 @@ class HloInstruction {
   Status RemoveControlDependencyTo(HloInstruction* instruction);
 
   // Returns the set of control predecessors (successors) of this
-  // instruction. Control predecessors (sucessors) must execute before (after)
+  // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const std::vector<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
@@ -1285,9 +1286,12 @@ string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);
 
-// Custom stringification functions for protos that live inside HloInstruction.
+// Custom (de)stringification functions for protos that live inside
+// HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomDistributionToString(const RandomDistribution& distribution);
+StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

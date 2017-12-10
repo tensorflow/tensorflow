@@ -1,13 +1,12 @@
+package(default_visibility = ["//visibility:public"])
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//visibility:public"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_gen_op_libs",
-    "tf_py_test",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",

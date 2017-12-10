@@ -152,7 +152,7 @@ def truncated_normal(shape,
     mean: A 0-D Tensor or Python value of type `dtype`. The mean of the
       truncated normal distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
-      of the truncated normal distribution.
+      of the normal distribution, before truncation.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
@@ -220,8 +220,8 @@ def random_uniform(shape,
     ValueError: If `dtype` is integral and `maxval` is not specified.
   """
   dtype = dtypes.as_dtype(dtype)
-  if dtype not in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-                   dtypes.int64):
+  if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                   dtypes.float64, dtypes.int32, dtypes.int64):
     raise ValueError("Invalid dtype %r" % dtype)
   if maxval is None:
     if dtype.is_integer:

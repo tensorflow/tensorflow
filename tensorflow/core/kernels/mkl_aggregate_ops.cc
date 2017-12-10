@@ -19,7 +19,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <numeric>
-
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -29,9 +28,16 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-namespace tensorflow {
+#ifdef INTEL_MKL_DNN
+#include "mkldnn.hpp"
+using mkldnn::stream;
+using mkldnn::sum;
+#endif
 
+namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
+
+#ifndef INTEL_MKL_DNN
 
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
@@ -41,17 +47,18 @@ class MklAddNOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const int num = ctx->num_inputs();
     OP_REQUIRES(ctx, num / 2 == 2,
-                errors::InvalidArgument("Only additions of two arguments "
+                errors::InvalidArgument("Only additions of two tensors "
                                         "supported by MKL. Num inputs: ",
                                         num));
 
     MklAddNOpContext mkl_context;
-    const Tensor& input0 = MklGetInput(ctx, 0);
-    GetMklShape(ctx, 0, &(mkl_context.input1_shape));
+    size_t src1_idx = 0, src2_idx = 1;
+    const Tensor& input0 = MklGetInput(ctx, src1_idx);
+    GetMklShape(ctx, src1_idx, &(mkl_context.input1_shape));
     bool input1_in_mkl_format = mkl_context.input1_shape.IsMklTensor();
 
-    const Tensor& input1 = MklGetInput(ctx, 1);
-    GetMklShape(ctx, 1, &(mkl_context.input2_shape));
+    const Tensor& input1 = MklGetInput(ctx, src2_idx);
+    GetMklShape(ctx, src2_idx, &(mkl_context.input2_shape));
     bool input2_in_mkl_format = mkl_context.input2_shape.IsMklTensor();
 
     // handle the case of a scalar
@@ -59,13 +66,12 @@ class MklAddNOp : public OpKernel {
       const TensorShape& o_shape = input0.shape();
       Tensor* out_tensor = nullptr;
       mkl_context.output_shape.SetMklTensor(false);
-      AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
+      AllocateOutputSetMklShape(ctx, src1_idx, &out_tensor, o_shape,
                                 mkl_context.output_shape);
       float user_i1 = (input0.scalar<T>()());
-      ;
       float user_i2 = (input1.scalar<T>()());
-      ;
-      out_tensor->scalar<T>()() = std::plus<float>{}(user_i1, user_i2);
+      out_tensor->scalar<T>()() =
+          std::plus<float>{}(user_i1, user_i2);
       return;
     }
 
@@ -82,8 +88,8 @@ class MklAddNOp : public OpKernel {
       if (o_shape.num_elements() == 0) {
         Tensor* out_tensor = nullptr;
         mkl_context.output_shape.SetMklTensor(false);
-        AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
-                                  mkl_context.output_shape);
+        AllocateOutputSetMklShape(ctx, src1_idx, &out_tensor, o_shape,
+                                 mkl_context.output_shape);
         return;
       }
     }
@@ -92,9 +98,9 @@ class MklAddNOp : public OpKernel {
     mkl_context.in_strides = new size_t[mkl_context.in_dims];
     // Generate size, stride for input if input is in MKL format.
     if (input1_in_mkl_format || input2_in_mkl_format) {
-      const MklShape* tmp_mkl_shape = (input1_in_mkl_format)
-                                          ? &mkl_context.input1_shape
-                                          : &mkl_context.input2_shape;
+      const MklShape* tmp_mkl_shape =
+        (input1_in_mkl_format) ? &mkl_context.input1_shape :
+        &mkl_context.input2_shape;
       for (int i = 0; i < mkl_context.in_dims; i++) {
         mkl_context.in_sizes[i] = tmp_mkl_shape->GetSizes()[i];
         mkl_context.in_strides[i] = tmp_mkl_shape->GetStrides()[i];
@@ -110,7 +116,6 @@ class MklAddNOp : public OpKernel {
             mkl_context.in_strides[i - 1] * mkl_context.in_sizes[i - 1];
       }
     }
-
     std::vector<float> coeff(2, 1.0);
     mkl_context.MklCreateInputLayouts(ctx);
     CHECK_EQ(dnnSumCreate_F32(&mkl_context.Eltwise, mkl_context.attributes, 2,
@@ -127,7 +132,7 @@ class MklAddNOp : public OpKernel {
      mkl_context.output_shape.SetMklLayout(mkl_context.Eltwise, dnnResourceDst);
 
      mkl_context.output_shape.SetTfLayout(
-         mkl_context.in_dims, mkl_context.in_sizes, mkl_context.in_strides);
+        mkl_context.in_dims, mkl_context.in_sizes, mkl_context.in_strides);
      if (input1_in_mkl_format == true) {
       mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
       mkl_context.input1_shape.GetTfToMklDimMap());
@@ -139,12 +144,12 @@ class MklAddNOp : public OpKernel {
                         mkl_context.output_shape.GetMklLayout())) /
                     sizeof(T));
 
-     AllocateOutputSetMklShape(ctx, 0, &output, tf_shape,
+     AllocateOutputSetMklShape(ctx, src1_idx, &output, tf_shape,
                               mkl_context.output_shape);
     } else {
      const TensorShape& o_shape = input1.shape();
      mkl_context.output_shape.SetMklTensor(false);
-     AllocateOutputSetMklShape(ctx, 0, &output, o_shape,
+     AllocateOutputSetMklShape(ctx, src1_idx, &output, o_shape,
                                 mkl_context.output_shape);
     }
 
@@ -172,16 +177,18 @@ class MklAddNOp : public OpKernel {
     void MklCreateInputLayouts(OpKernelContext* context) {
       bool input1_in_mkl_format = input1_shape.IsMklTensor();
       if (!input1_in_mkl_format) {
-        CHECK_EQ(dnnLayoutCreate_F32(&lt_input1, in_dims, in_sizes, in_strides),
-                 E_SUCCESS);
+        CHECK_EQ(
+            dnnLayoutCreate_F32(&lt_input1, in_dims, in_sizes, in_strides),
+            E_SUCCESS);
       } else {
         lt_input1 = static_cast<dnnLayout_t>(input1_shape.GetCurLayout());
       }
 
       bool input2_in_mkl_format = input2_shape.IsMklTensor();
       if (!input2_in_mkl_format) {
-        CHECK_EQ(dnnLayoutCreate_F32(&lt_input2, in_dims, in_sizes, in_strides),
-                 E_SUCCESS);
+        CHECK_EQ(
+            dnnLayoutCreate_F32(&lt_input2, in_dims, in_sizes, in_strides),
+            E_SUCCESS);
       } else {
         lt_input2 = static_cast<dnnLayout_t>(input2_shape.GetCurLayout());
       }
@@ -257,8 +264,8 @@ class MklAddNOp : public OpKernel {
       bool input2_in_mkl_format = input2_shape.IsMklTensor();
       dnnDelete_F32(Eltwise);
       if (!input1_in_mkl_format || !input2_in_mkl_format) {
-        delete[] in_sizes;
-        delete[] in_strides;
+         delete [] in_sizes;
+         delete [] in_strides;
       }
       if (!input1_in_mkl_format) {
          dnnLayoutDelete_F32(lt_input1);
@@ -270,6 +277,151 @@ class MklAddNOp : public OpKernel {
   } MklAddNOpContext;
 };
 
+#else  // INTEL_MKL_DNN
+template <typename Device, typename T>
+class MklAddNOp : public OpKernel {
+ public:
+  ~MklAddNOp() {}
+  explicit MklAddNOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const int num = ctx->num_inputs();
+    // Only additions of 2 input tensors is supported now
+    OP_REQUIRES(ctx, num / 2 == 2,
+                errors::InvalidArgument("Only additions of two tensors "
+                                        "supported by MKL. Num inputs: ",
+                                        num));
+
+    try {
+      auto cpu_engine = engine(engine::cpu, 0);
+      size_t src1_idx = 0, src2_idx = 1;
+      const Tensor& src1_tensor = MklGetInput(ctx, src1_idx);
+      const Tensor& src2_tensor = MklGetInput(ctx, src2_idx);
+
+      MklDnnShape src1_mkl_shape, src2_mkl_shape;
+      GetMklShape(ctx, src1_idx, &src1_mkl_shape);
+      GetMklShape(ctx, src2_idx, &src2_mkl_shape);
+      bool input1_in_mkl_format = src1_mkl_shape.IsMklTensor();
+      bool input2_in_mkl_format = src2_mkl_shape.IsMklTensor();
+      int src1_dims_size = input1_in_mkl_format?
+       src1_mkl_shape.GetDimension(): src1_tensor.dims();
+      int src2_dims_size = input2_in_mkl_format?
+       src2_mkl_shape.GetDimension(): src2_tensor.dims();
+
+      if (!input1_in_mkl_format && src1_dims_size == 0) {
+         Tensor* dst_tensor = nullptr;
+         MklShape mkl_shape_dst;
+         mkl_shape_dst.SetMklTensor(false);
+         AllocateOutputSetMklShape(ctx, src1_idx, &dst_tensor,
+         src1_tensor.shape(), mkl_shape_dst);
+         float user_i1 = (src1_tensor.scalar<T>()());
+         float user_i2 = (src2_tensor.scalar<T>()());
+         dst_tensor->scalar<T>()() =
+           std::plus<float>{}(user_i1, user_i2);
+         return;
+       }
+
+      // If there is nothing to compute, return.
+      if (!input1_in_mkl_format && !input2_in_mkl_format) {
+        if (src1_tensor.shape().num_elements() == 0) {
+           Tensor* dst_tensor = nullptr;
+           MklShape mkl_shape_dst;
+           mkl_shape_dst.SetMklTensor(false);
+           AllocateOutputSetMklShape(ctx, src1_idx, &dst_tensor,
+           src1_tensor.shape(), mkl_shape_dst);
+           return;
+        }
+      }
+
+      // element-wise add operator for tensor input1 and tensor input2
+      std::vector<double> coeff(2, 1.0);
+      MklDnnData<T> src1(&cpu_engine);
+      MklDnnData<T> src2(&cpu_engine);
+      MklDnnData<T> dst(&cpu_engine);
+
+      int tmp_size = input1_in_mkl_format ? src2_dims_size: src1_dims_size;
+      memory::dims dims(tmp_size);
+      memory::dims strides(tmp_size);
+      memory::desc md1({}, memory::data_undef, memory::format_undef);
+      memory::desc md2({}, memory::data_undef, memory::format_undef);
+
+      if ( input1_in_mkl_format || input2_in_mkl_format ) {
+        if ( input1_in_mkl_format ) {
+          md1 = src1_mkl_shape.GetMklLayout();
+          md2 = md1;
+          dst.SetUsrMem(md1);
+        } else {
+          md2 = src2_mkl_shape.GetMklLayout();
+          md1 = md2;
+          dst.SetUsrMem(md2);
+        }
+      } else {
+         dims = TFShapeToMklDnnDims(src1_tensor.shape());
+         strides = CalculateTFStrides(dims);
+         md1 = MklDnnData<T>::CreateBlockedMemDesc(dims, strides);
+         md2 = md1;
+         dst.SetUsrMem(dims, strides);
+      }
+
+      std::vector<memory::primitive_desc> srcs_pd;
+
+      src1.SetUsrMem(md1, &src1_tensor);
+      auto mpd1 = src1.GetUsrMemPrimDesc();
+      srcs_pd.push_back(mpd1);
+
+      src2.SetUsrMem(md2, &src2_tensor);
+      auto mpd2 = src2.GetUsrMemPrimDesc();
+      srcs_pd.push_back(mpd2);
+
+      std::vector<primitive::at> inputs;
+      inputs.push_back(src1.GetOpMem());
+      inputs.push_back(src2.GetOpMem());
+      auto output_pd = dst.GetUsrMemPrimDesc();
+      Tensor* dst_tensor = nullptr;
+      auto sum_pd = sum::primitive_desc(dst.GetUsrMemDesc(), coeff, srcs_pd);
+      auto sum_op = sum(sum_pd, inputs, dst.GetOpMem());
+      if ( input2_in_mkl_format || input1_in_mkl_format ) {
+         MklDnnShape output_mkl_shape;
+         output_mkl_shape.SetMklTensor(true);
+         output_mkl_shape.SetMklLayout(&output_pd);
+         output_mkl_shape.SetElemType(MklDnnType<T>());
+         if ( input1_in_mkl_format ) {
+          output_mkl_shape.SetTfLayout(src1_dims_size,
+          src1_mkl_shape.GetSizesAsMklDnnDims(),
+          src1_mkl_shape.GetTfDataFormat());
+         } else {
+          output_mkl_shape.SetTfLayout(src2_dims_size,
+          src2_mkl_shape.GetSizesAsMklDnnDims(),
+          src2_mkl_shape.GetTfDataFormat());
+         }
+         TensorShape output_tf_shape;
+         output_tf_shape.AddDim((output_pd.get_size() / sizeof(T))
+         + (output_pd.get_size()%sizeof(T) == 0 ? 0 : 1));
+         AllocateOutputSetMklShape(ctx, src1_idx, &dst_tensor, output_tf_shape,
+                                output_mkl_shape);
+      } else {
+         MklShape mkl_shape_dst;
+         mkl_shape_dst.SetMklTensor(false);
+         AllocateOutputSetMklShape(ctx, src1_idx,
+         &dst_tensor, src1_tensor.shape(), mkl_shape_dst);
+      }
+
+      dst.SetUsrMemDataHandle(dst_tensor);
+      std::vector<primitive> net;
+      net.push_back(sum_op);
+      stream(stream::kind::eager).submit(net).wait();
+    } catch (mkldnn::error &e) {
+      string error_msg = "Status: " + std::to_string(e.status) +
+                       ", message: " + string(e.message) +
+                       ", in file " + string(__FILE__) + ":" +
+                       std::to_string(__LINE__);
+      OP_REQUIRES_OK(ctx, errors::Aborted("Operation received an exception:",
+                                            error_msg));
+    }
+  }
+};
+
+#endif
 #define REGISTER_MKL_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("_MklAddN")                          \
                               .Device(DEVICE_CPU)                   \

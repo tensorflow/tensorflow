@@ -160,7 +160,7 @@ class DestroyTemporaryVariableOp : public OpKernel {
   explicit DestroyTemporaryVariableOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES(context, IsRefType(context->input_type(0)),
-                errors::InvalidArgument("lhs input needs to be a ref type"))
+                errors::InvalidArgument("lhs input needs to be a ref type"));
     OP_REQUIRES_OK(context, context->GetAttr("var_name", &var_name_));
     OP_REQUIRES(context, var_name_ != "",
                 errors::InvalidArgument("Missing var_name attribute"));

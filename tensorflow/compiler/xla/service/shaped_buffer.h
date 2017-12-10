@@ -43,6 +43,14 @@ class ShapedBuffer {
       const Shape& shape, const perftools::gputools::Platform* platform,
       int device_ordinal, const perftools::gputools::DeviceMemoryBase& buffer);
 
+  // Return a newly allocated ShapedBuffer of an arbitrary shape. Array buffers
+  // (leaves in the shape) are allocated and uninitialized. Tuple buffers (if
+  // any) are allocated and initialized to the backend-specific representation
+  // of an array of pointers to the tuple elements.
+  static StatusOr<std::unique_ptr<ShapedBuffer>> Allocate(
+      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+      const std::function<int64(const Shape&)>& shape_size_fn);
+
   ShapedBuffer(const Shape& shape,
                const perftools::gputools::Platform* platform,
                int device_ordinal);
@@ -110,10 +118,7 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 // destructed.
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
-  // Return a newly allocated ScopedShapedBuffer of an arbitrary shape. Array
-  // buffers (leaves in the shape) are allocated and uninitialized. Tuple
-  // buffers (if any) are allocated and initialized to the backend-specific
-  // representation of an array of pointers to the tuple elements.
+  // Identical to ShapedBuffer::Allocate.
   static StatusOr<std::unique_ptr<ScopedShapedBuffer>> Allocate(
       const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
       const std::function<int64(const Shape&)>& shape_size_fn);

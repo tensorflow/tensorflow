@@ -1080,7 +1080,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
                       LookUpRequest(cross_replica_sum_request.operand()));
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCrossReplicaSumShape(
-                                       operand->output_shape()));
+                                       {&operand->output_shape()}));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
@@ -2788,7 +2788,7 @@ void ComputationLowerer::Visit(
       HloInstruction* operand =
           lookup_instruction(cross_replica_sum_request.operand());
       hlo_instruction = add_instruction(HloInstruction::CreateCrossReplicaSum(
-          request.output_shape(), operand));
+          request.output_shape(), {operand}));
       break;
     }
 

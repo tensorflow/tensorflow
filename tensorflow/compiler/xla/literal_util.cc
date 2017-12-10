@@ -715,7 +715,13 @@ string Literal::ToString(bool print_layout) const {
     pieces.push_back("}");
   } else {
     pieces.push_back(shape_to_string(shape()));
-    pieces.push_back(" {...}");
+    pieces.push_back(" {");
+    EachCellAsString(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+          pieces.push_back(" ");
+          pieces.push_back(value);
+        });
+    pieces.push_back("}");
   }
 
   return tensorflow::str_util::Join(pieces, "");

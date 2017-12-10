@@ -219,6 +219,10 @@ class FakeLibCurl : public LibCurl {
   }
   void curl_free(void* p) override { port::Free(p); }
 
+  const char* curl_easy_strerror(CURLcode errornum) override {
+    return "<unimplemented>";
+  }
+
   // Variables defining the behavior of this fake.
   string response_content_;
   uint64 response_code_;

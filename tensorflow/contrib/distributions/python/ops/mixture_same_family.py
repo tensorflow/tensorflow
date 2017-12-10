@@ -320,13 +320,14 @@ class MixtureSameFamily(distribution.Distribution):
         return array_ops.shape(d.batch_shape_tensor())[0]
       dist_batch_ndims = _get_ndims(self)
       cat_batch_ndims = _get_ndims(self.mixture_distribution)
-      bnd = distribution_util.pick_vector(
+      pad_ndims = distribution_util.pick_vector(
           self.mixture_distribution.is_scalar_batch(),
-          [dist_batch_ndims], [cat_batch_ndims])[0]
+          [dist_batch_ndims],
+          [dist_batch_ndims - cat_batch_ndims])[0]
       s = array_ops.shape(x)
       x = array_ops.reshape(x, shape=array_ops.concat([
           s[:-1],
-          array_ops.ones([bnd], dtype=dtypes.int32),
+          array_ops.ones([pad_ndims], dtype=dtypes.int32),
           s[-1:],
           array_ops.ones([self._event_ndims], dtype=dtypes.int32),
       ], axis=0))

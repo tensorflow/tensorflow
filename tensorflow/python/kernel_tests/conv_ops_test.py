@@ -311,7 +311,7 @@ class Conv2DTest(test.TestCase):
           print("expected = ", e_value)
           print("actual = ", c_value)
           self.assertAllClose(
-              e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-6)
+              e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides, padding,
                     expected):

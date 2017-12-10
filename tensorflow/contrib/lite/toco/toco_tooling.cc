@@ -99,7 +99,7 @@ bool SupportsLstmCell(FileFormat format) {
 }
 
 bool SupportsPreallocatedWorkspace(FileFormat format) {
-  return (format == GRAPHVIZ_DOT || format == TFLITE);
+  return (format == TFLITE);
 }
 
 bool IsRealValued(toco::ArrayDataType type) {
@@ -202,11 +202,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     // See the doc for --reorder_across_fake_quant: that flag is needed to
     // support some existing models, e.g. WordLens, that have FakeQuant
     // nodes in the wrong places.
-    // We currently unconditionally enable that behavior when the output
-    // format is DarwiNN because the DarwiNN test code does not make it
-    // easy to pass a new toco flag. Once that is resolved on the DarwiNN
-    // tests side, the special-casing of DarwiNN here can go away.
-    // TODO(benoitjacob): so drop it when we can.
+    // TODO(benoitjacob): drop special casing when we can.
     if ((quantize_output && toco_flags.reorder_across_fake_quant())) {
       transformations.Add(new DropFakeQuant);
     }

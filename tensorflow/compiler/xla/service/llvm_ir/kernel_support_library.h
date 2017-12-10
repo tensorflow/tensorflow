@@ -134,18 +134,21 @@ class KernelSupportLibrary {
   // that function is re-used.  In that sense we're using the llvm::Module as a
   // cache of outlined kernels, keyed by function name.
   static void EmitAndCallOutlinedKernel(
+      bool enable_fast_math, bool optimize_for_size,
       llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
       ArgumentVector arguments,
       const std::function<void(ArgumentVector)>& kernel_body_generator);
 
   // Thin wrapper around the more general EmitAndCallOutlinedKernel above.
   static void EmitAndCallOutlinedKernel(
+      bool enable_fast_math, bool optimize_for_size,
       llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
       llvm::Value* arg0, llvm::Value* arg1, llvm::Value* arg2,
       const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*)>&
           kernel_body_generator) {
     EmitAndCallOutlinedKernel(
-        ir_builder, kernel_name, {arg0, arg1, arg2}, [&](ArgumentVector args) {
+        enable_fast_math, optimize_for_size, ir_builder, kernel_name,
+        {arg0, arg1, arg2}, [&](ArgumentVector args) {
           kernel_body_generator(args[0], args[1], args[2]);
         });
   }

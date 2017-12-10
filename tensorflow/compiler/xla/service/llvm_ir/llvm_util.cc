@@ -676,5 +676,32 @@ Status DumpIRToDirectory(const string& directory_name,
   return f->Close();
 }
 
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module) {
+  llvm::Function* function =
+      llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
+  function->setCallingConv(llvm::CallingConv::C);
+  function->addFnAttr("no-frame-pointer-elim", "false");
+
+  if (enable_fast_math) {
+    function->addFnAttr("unsafe-fp-math", "true");
+    function->addFnAttr("no-infs-fp-math", "true");
+    function->addFnAttr("no-nans-fp-math", "true");
+    function->addFnAttr("no-signed-zeros-fp-math", "true");
+  }
+
+  // Add the optize attribute to the function if optimizing for size. This
+  // controls internal behavior of some optimization passes (e.g. loop
+  // unrolling).
+  if (optimize_for_size) {
+    function->addFnAttr(llvm::Attribute::OptimizeForSize);
+  }
+
+  return function;
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

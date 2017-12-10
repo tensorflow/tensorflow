@@ -88,12 +88,12 @@ py_library(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/dnn_linear_combined_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
-        "notap",  # b/62204861
         "notsan",
     ],
     deps = [

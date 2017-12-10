@@ -212,7 +212,10 @@ py_test(
     size = "small",
     srcs = ["iterator_ops_cluster_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "oss_serial",
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/core:protos_all_py",
@@ -390,7 +393,7 @@ py_test(
 
 py_test(
     name = "sequence_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["sequence_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

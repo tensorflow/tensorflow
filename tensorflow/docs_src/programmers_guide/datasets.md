@@ -735,7 +735,7 @@ def dataset_input_fn():
     parsed = tf.parse_single_example(record, keys_to_features)
 
     # Perform additional preprocessing on the parsed data.
-    image = tf.decode_jpeg(parsed["image_data"])
+    image = tf.image.decode_jpeg(parsed["image_data"])
     image = tf.reshape(image, [299, 299, 1])
     label = tf.cast(parsed["label"], tf.int32)
 

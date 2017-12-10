@@ -143,6 +143,10 @@ the Android NDK and SDK must be installed on your system.
 
 ##### Edit WORKSPACE
 
+NOTE: As long as you have the SDK and NDK installed, the `./configure` script
+will create these rules for you. Answer "Yes" when the script asks to
+automatically configure the `./WORKSPACE`.
+
 The Android entries in
 [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L36) must be uncommented
 with the paths filled in appropriately depending on where you installed the NDK
@@ -164,7 +168,7 @@ download-models.gradle.
 
 **Optional**: If you wish to place the models in your assets manually, remove
 all of the `model_files` entries from the `assets` list in `tensorflow_demo`
-found in the `[BUILD](BUILD)` file. Then download and extract the archives
+found in the [`BUILD`](BUILD#L92) file. Then download and extract the archives
 yourself to the `assets` directory in the source tree:
 
 ```bash

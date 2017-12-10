@@ -374,6 +374,19 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
+std::vector<const char*> TF_OperationOutputConsumers_wrapper(
+    TF_Output oper_out) {
+  int num_consumers = TF_OperationOutputNumConsumers(oper_out);
+  std::vector<TF_Input> consumers(num_consumers);
+  TF_OperationOutputConsumers(oper_out, consumers.data(), num_consumers);
+
+  std::vector<const char*> consumer_names(num_consumers);
+  for (int i = 0; i < num_consumers; ++i) {
+    consumer_names[i] = TF_OperationName(consumers[i].oper);
+  }
+  return consumer_names;
+}
+
 TF_Function* TF_GraphToFunction_wrapper(
     const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
     const std::vector<TF_Operation*>* opers,
