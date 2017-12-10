@@ -1132,7 +1132,7 @@ class DnnSupport {
   //    space in order to speed up the convolution operation.
   //  algorithm: an integer to specify which algorithm should be used for the
   //    operation. kDefaultAlgorithm means the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpretted by the
+  //    by default. The coding of the algorithm is be interpreted by the
   //    underlying implementation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
