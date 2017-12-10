@@ -145,6 +145,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
     "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/ops/quantized_conv_ops_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/ops/quantized_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/platform/build_info_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
