@@ -25,7 +25,7 @@ namespace tensorflow {
 template <typename T>
 class BCastArgsOp : public OpKernel {
  public:
-  explicit BCastArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) { }
+  explicit BCastArgsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OP_REQUIRES(
