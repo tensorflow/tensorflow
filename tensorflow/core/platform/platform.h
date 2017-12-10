@@ -53,10 +53,6 @@ limitations under the License.
 //
 // It also makes DTINT64 unavailable (required by SparseToDense op)
 
-#if !defined(__ARM_RPI__)
-#define IS_MOBILE_PLATFORM
-#endif
-
 // Require an outside macro to tell us if we're building for Raspberry Pi.
 #if !defined(RASPBERRY_PI)
 #define IS_MOBILE_PLATFORM

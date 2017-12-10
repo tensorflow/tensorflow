@@ -60,7 +60,7 @@ toolchain {
   compiler_flag: "-mfloat-abi=hard"
 
   # Local change to disable IS_MOBILE_PLATFORM
-  compiler_flag: "-D__ARM_RPI__"
+  compiler_flag: "-DRASPBERRY_PI"
 
   # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1"
   # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2"
@@ -228,7 +228,7 @@ toolchain {
   compiler_flag: "-mfloat-abi=hard"
 
   # Local change to disable IS_MOBILE_PLATFORM
-  compiler_flag: "-D__ARM_RPI__"
+  compiler_flag: "-DRASPBERRY_PI"
 
   # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1"
   # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2"
@@ -396,7 +396,7 @@ toolchain {
   compiler_flag: "-mfloat-abi=hard"
 
   # Local change to disable IS_MOBILE_PLATFORM
-  compiler_flag: "-D__ARM_RPI__"
+  compiler_flag: "-DRASPBERRY_PI"
 
   compiler_flag: "-nostdinc"
   # compiler_flag: "-isystem"
