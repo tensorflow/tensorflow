@@ -843,6 +843,15 @@ TEST_F(NaryGradTest, SquaredDifference) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, Pow) {
+  TensorShape x_shape({3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // fix exponent to avoid overflow
+  auto y = Pow(scope_, x, Const(scope_, {1.f, 2.f, 3.f}));
+  TensorShape y_shape({3});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
 TEST_F(NaryGradTest, Maximum) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
