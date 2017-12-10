@@ -114,6 +114,7 @@ pylint --rcfile=/tmp/pylintrc myfile.py
 * [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
 * [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
 * [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
+* [Google Objective-C Style Guide](http://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
 

@@ -468,15 +468,17 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
 
     kinetic_1 = 0.5 * math_ops.reduce_sum(math_ops.square(new_m), event_dims)
 
-    # TODO(mhoffman): It seems like there may be an opportunity for nans here.
-    # I'm delaying addressing this because we're going to refactor this part
-    # to use the more general Metropolis abstraction anyway.
-    acceptance_probs = math_ops.exp(math_ops.minimum(0., log_potential_0 -
-                                                     log_potential_1 +
-                                                     kinetic_0 - kinetic_1))
+    energy_change = log_potential_1 - log_potential_0 + kinetic_1 - kinetic_0
+    # Treat NaN as infinite energy (and therefore guaranteed rejection).
+    energy_change = array_ops.where(
+        math_ops.is_nan(energy_change),
+        array_ops.fill(array_ops.shape(energy_change),
+                       energy_change.dtype.as_numpy_dtype(np.inf)),
+        energy_change)
+    acceptance_probs = math_ops.exp(math_ops.minimum(0., -energy_change))
     accepted = math_ops.cast(
         random_ops.random_uniform(array_ops.shape(acceptance_probs)) <
-        acceptance_probs, np.float32)
+        acceptance_probs, log_potential_0.dtype)
     new_log_prob = (-log_potential_0 * (1. - accepted) -
                     log_potential_1 * accepted)
 
@@ -485,7 +487,9 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
     reduced_shape = array_ops.shape(math_ops.reduce_sum(x, event_dims,
                                                         keep_dims=True))
     accepted = array_ops.reshape(accepted, reduced_shape)
+    accepted = math_ops.cast(accepted, x.dtype)
     new_x = x * (1. - accepted) + new_x * accepted
+    accepted = math_ops.cast(accepted, accepted.dtype)
     new_grad = -grad_0 * (1. - accepted) - grad_1 * accepted
 
   return new_x, acceptance_probs, new_log_prob, new_grad
@@ -525,6 +529,7 @@ def leapfrog_integrator(step_size, n_steps, initial_position, initial_momentum,
       Has shape matching `initial_position`.
 
   Example: Simple quadratic potential.
+
   ```python
   def potential_and_grad(position):
     return tf.reduce_sum(0.5 * tf.square(position)), position
@@ -600,6 +605,7 @@ def leapfrog_step(step_size, position, momentum, potential_and_grad, grad,
       Has shape matching `position`.
 
   Example: Simple quadratic potential.
+
   ```python
   def potential_and_grad(position):
     # Simple quadratic potential

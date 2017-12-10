@@ -38,6 +38,7 @@ diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
 eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
+expm = gen_linalg_ops._matrix_exponential
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 lstsq = linalg_ops.matrix_solve_ls

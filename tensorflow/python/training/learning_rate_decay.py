@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
+
 def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
                       staircase=False, name=None):
   """Applies exponential decay to the learning rate.
@@ -164,13 +165,13 @@ def piecewise_constant(x, boundaries, values, name=None):
         raise ValueError(
             "Values must have elements all with the same dtype (%s vs %s)." % (
                 values[0].dtype.base_dtype, v.dtype.base_dtype))
-    pred_fn_pairs = {}
-    pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
-    pred_fn_pairs[x > boundaries[-1]] = lambda: values[-1]
+    pred_fn_pairs = []
+    pred_fn_pairs.append((x <= boundaries[0], lambda: values[0]))
+    pred_fn_pairs.append((x > boundaries[-1], lambda: values[-1]))
     for low, high, v in zip(boundaries[:-1], boundaries[1:], values[1:-1]):
       # Need to bind v here; can do this with lambda v=v: ...
       pred = (x > low) & (x <= high)
-      pred_fn_pairs[pred] = lambda v=v: v
+      pred_fn_pairs.append((pred, lambda v=v: v))
 
     # The default isn't needed here because our conditions are mutually
     # exclusive and exhaustive, but tf.case requires it.
@@ -361,7 +362,13 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
   The function returns the decayed learning rate.  It is computed as:
 
   ```python
-  decayed_learning_rate = learning_rate / (1 + decay_rate * t)
+  decayed_learning_rate = learning_rate / (1 + decay_rate * global_step / decay_step)
+  ```
+
+  or, if `staircase` is `True`, as:
+
+  ```python
+  decayed_learning_rate = learning_rate / (1 + decay_rate * floor(global_step / decay_step))
   ```
 
   Example: decay 1/t with a rate of 0.5:
@@ -370,8 +377,9 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
   ...
   global_step = tf.Variable(0, trainable=False)
   learning_rate = 0.1
-  k = 0.5
-  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, k)
+  decay_steps = 1.0
+  decay_rate = 0.5
+  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate)
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (

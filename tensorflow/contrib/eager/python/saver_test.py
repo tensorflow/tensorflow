@@ -30,6 +30,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import adam
+from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
+from tensorflow.python.training import rmsprop
 
 
 class SaverTest(test.TestCase):
@@ -203,6 +207,43 @@ class SaverTest(test.TestCase):
           self.assertEqual(
               3, model2(array_ops.constant(2, dtype=dtypes.float32)).numpy())
 
+
+class GetOptimizerTests(test.TestCase):
+
+  def _optimizer_test_template(self, optimizer):
+    """Checks save and restore. Returns the optimizer variables."""
+    v = resource_variable_ops.ResourceVariable([[2., 3.]], name='v')
+    loss_fn = lambda: v[0, 0] ** 2 + v[0, 1] ** 2
+    optimizer.minimize(loss_fn)
+    optimizer_variables = _saver.get_optimizer_variables(optimizer)
+    saver = _saver.Saver(optimizer_variables + [v])
+    checkpoint_path = saver.save(self.get_temp_dir())
+    optimizer.minimize(loss_fn)
+    after_first_minimize = v.numpy()
+    # After we restore, the next step should be exactly the same as the one we
+    # just did.
+    saver.restore(checkpoint_path)
+    optimizer.minimize(loss_fn)
+    self.assertAllEqual(after_first_minimize, v.numpy())
+    return optimizer_variables
+
+  def testAdam(self):
+    optimizer = adam.AdamOptimizer(0.1)
+    self._optimizer_test_template(optimizer)
+
+  def testGradientDescent(self):
+    optimizer = gradient_descent.GradientDescentOptimizer(0.02)
+    self.assertEqual(0, len(self._optimizer_test_template(optimizer)))
+
+  def testMomentum(self):
+    optimizer = momentum.MomentumOptimizer(
+        learning_rate=0.03,
+        momentum=0.5)
+    self._optimizer_test_template(optimizer)
+
+  def testRMSProp(self):
+    optimizer = rmsprop.RMSPropOptimizer(0.01)
+    self._optimizer_test_template(optimizer)
 
 if __name__ == '__main__':
   test.main()

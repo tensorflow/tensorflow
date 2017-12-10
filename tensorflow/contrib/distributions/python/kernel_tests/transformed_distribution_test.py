@@ -200,6 +200,27 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllEqual([2], multi_logit_normal.event_shape)
       self.assertAllEqual([2], multi_logit_normal.event_shape_tensor().eval())
 
+  def testCastLogDetJacobian(self):
+    """Test log_prob when Jacobian and log_prob dtypes do not match."""
+
+    with self.test_session():
+      # Create an identity bijector whose jacobians have dtype int32
+      int_identity = bs.Inline(
+          forward_fn=array_ops.identity,
+          inverse_fn=array_ops.identity,
+          inverse_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
+          forward_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
+          is_constant_jacobian=True)
+      normal = self._cls()(
+          distribution=ds.Normal(loc=0., scale=1.),
+          bijector=int_identity,
+          validate_args=True)
+
+      y = normal.sample()
+      normal.log_prob(y).eval()
+      normal.prob(y).eval()
+      normal.entropy().eval()
+
   def testEntropy(self):
     with self.test_session():
       shift = np.array([[-1, 0, 1], [-1, -2, -3]], dtype=np.float32)

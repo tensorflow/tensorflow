@@ -263,6 +263,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     case S32:
     case S64:
     case F16:
+    case BF16:
     case F32:
     case F64:
       return true;
@@ -552,6 +553,16 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
 }
 
+/* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringElementType);
+  }
+  return SameDimensions(lhs, rhs);
+}
+
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
                                            int64 dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));
@@ -591,6 +602,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return sizeof(uint32);
     case U64:
       return sizeof(uint64);
+    case BF16:
+      return sizeof(float) / 2;
     case F16:
       return sizeof(float) / 2;
     case F32:
@@ -681,9 +694,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return LayoutUtil::ValidateLayoutInShape(shape);
 }
 
-/* static */ Shape ShapeUtil::ChangeElementType(const Shape& shape,
+/* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = shape;
+  Shape new_shape = original;
   new_shape.set_element_type(type);
   return new_shape;
 }

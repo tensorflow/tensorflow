@@ -138,7 +138,10 @@ class FIFOManager : public ReadyNodeManager {
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() override { return nodes_.front(); }
+  const NodeDef* GetCurrNode() override {
+    CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
+    return nodes_.front();
+  }
   void RemoveCurrNode() override { nodes_.pop_front(); }
   bool Empty() const override { return nodes_.empty(); }
 
@@ -156,18 +159,23 @@ class LIFOManager : public ReadyNodeManager {
   ~LIFOManager() override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
-    curr_pos_ = nodes_.end();
-    curr_pos_--;
-    return nodes_.back();
+    CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
+    if (curr_pos_ == nodes_.end()) {
+      curr_pos_ = --(nodes_.rbegin().base());  // Last one in the list.
+    }
+    // Once curr_pos_ is set to a valid entry in the list, we keep using the
+    // cached curr_pos_ until RemoveCurrNode() is called. AddNode() will not
+    // change the GetCurrNode() return value.
+    return *curr_pos_;
   }
   void RemoveCurrNode() override {
-    if (curr_pos_ != nodes_.end()) {
-      nodes_.erase(curr_pos_);
-    } else if (!nodes_.empty()) {
-      nodes_.pop_back();
-    }
-    curr_pos_ = nodes_.end();
-    curr_pos_--;
+    // Make sure we have curr_pos_ ready to be removed.
+    GetCurrNode();
+    // Note curr_pos_ may not be pointing the last element if some nodes are
+    // added.
+    nodes_.erase(curr_pos_);
+
+    curr_pos_ = nodes_.end();  // Reset curr_pos_.
   }
   bool Empty() const override { return nodes_.empty(); }
 
@@ -322,7 +330,10 @@ class VirtualScheduler {
 
   // Stats:
   std::map<string, int> op_counts_;  // Op counts with key with input shape.
-  std::map<string, int> op_costs_;   // Individual op costs (with input shapes).
+  // Individual op costs (with input shapes).
+  // Boolean field for whether the cost is accurate.
+  std::map<string, std::pair<int, bool>> op_costs_;
+
   Costs graph_costs_;                // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 

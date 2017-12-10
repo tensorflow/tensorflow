@@ -91,6 +91,67 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     return spectral_ops.rfft(framed_signals, [fft_length])
 
 
+def inverse_stft_window_fn(frame_step,
+                           forward_window_fn=functools.partial(
+                               window_ops.hann_window, periodic=True),
+                           name=None):
+  """Generates a window function that can be used in `inverse_stft`.
+
+  Constructs a window that is equal to the forward window with a further
+  pointwise amplitude correction.  `inverse_stft_window_fn` is equivalent to
+  `forward_window_fn` in the case where it would produce an exact inverse.
+
+  See examples in `inverse_stft` documentation for usage.
+
+  Args:
+    frame_step: An integer scalar `Tensor`. The number of samples to step.
+    forward_window_fn: window_fn used in the forward transform, `stft`.
+    name: An optional name for the operation.
+
+  Returns:
+    A callable that takes a window length and a `dtype` keyword argument and
+      returns a `[window_length]` `Tensor` of samples in the provided datatype.
+      The returned window is suitable for reconstructing original waveform in
+      inverse_stft.
+  """
+  with ops.name_scope(name, 'inverse_stft_window_fn', [forward_window_fn]):
+    frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
+    frame_step.shape.assert_has_rank(0)
+
+  def inverse_stft_window_fn_inner(frame_length, dtype):
+    """Computes a window that can be used in `inverse_stft`.
+
+    Args:
+      frame_length: An integer scalar `Tensor`. The window length in samples.
+      dtype: Data type of waveform passed to `stft`.
+
+    Returns:
+      A window suitable for reconstructing original waveform in `inverse_stft`.
+
+    Raises:
+      ValueError: If `frame_length` is not scalar, `forward_window_fn` is not a
+      callable that takes a window length and a `dtype` keyword argument and
+      returns a `[window_length]` `Tensor` of samples in the provided datatype
+      `frame_step` is not scalar, or `frame_step` is not scalar.
+    """
+    with ops.name_scope(name, 'inverse_stft_window_fn', [forward_window_fn]):
+      frame_length = ops.convert_to_tensor(frame_length, name='frame_length')
+      frame_length.shape.assert_has_rank(0)
+
+      # Use equation 7 from Griffin + Lim.
+      forward_window = forward_window_fn(frame_length, dtype=dtype)
+      denom = math_ops.square(forward_window)
+      overlaps = -(-frame_length // frame_step)  # Ceiling division.
+      denom = array_ops.pad(denom, [(0, overlaps * frame_step - frame_length)])
+      denom = array_ops.reshape(denom, [overlaps, frame_step])
+      denom = math_ops.reduce_sum(denom, 0, keep_dims=True)
+      denom = array_ops.tile(denom, [overlaps, 1])
+      denom = array_ops.reshape(denom, [overlaps * frame_step])
+
+      return forward_window / denom[:frame_length]
+  return inverse_stft_window_fn_inner
+
+
 def inverse_stft(stfts,
                  frame_length,
                  frame_step,
@@ -99,6 +160,38 @@ def inverse_stft(stfts,
                                              periodic=True),
                  name=None):
   """Computes the inverse [Short-time Fourier Transform][stft] of `stfts`.
+
+  To reconstruct an original waveform, a complimentary window function should
+  be used in inverse_stft. Such a window function can be constructed with
+  tf.contrib.signal.inverse_stft_window_fn.
+
+  Example:
+
+  ```python
+  frame_length = 400
+  frame_step = 160
+  waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
+  stft = tf.contrib.signal.stft(waveform, frame_length, frame_step)
+  inverse_stft = tf.contrib.signal.inverse_stft(
+      stft, frame_length, frame_step,
+      window_fn=tf.contrib.signal.inverse_stft_window_fn(frame_step))
+  ```
+
+  if a custom window_fn is used in stft, it must be passed to
+  inverse_stft_window_fn:
+
+  ```python
+  frame_length = 400
+  frame_step = 160
+  window_fn = functools.partial(window_ops.hamming_window, periodic=True),
+  waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
+  stft = tf.contrib.signal.stft(
+      waveform, frame_length, frame_step, window_fn=window_fn)
+  inverse_stft = tf.contrib.signal.inverse_stft(
+      stft, frame_length, frame_step,
+      window_fn=tf.contrib.signal.inverse_stft_window_fn(
+         frame_step, forward_window_fn=window_fn))
+  ```
 
   Implemented with GPU-compatible ops and supports gradients.
 

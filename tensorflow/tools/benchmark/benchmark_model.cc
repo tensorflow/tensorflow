@@ -530,7 +530,7 @@ int Main(int argc, char** argv) {
   }
 
   // Capture overall inference time without stat logging overhead. This is the
-  // timing data that can be compared to other libaries.
+  // timing data that can be compared to other libraries.
   SleepSeconds(inter_benchmark_sleep_seconds);
   int64 no_stat_time_us = 0;
   int64 no_stat_num_runs = 0;
@@ -622,7 +622,7 @@ int Main(int argc, char** argv) {
     RecordBenchmarkEntry(output_prefix, benchmark_name, "meta-first-inference",
                          warmup_runs, warmup_time_us / 1000000.0);
 
-    // Time from starting to intialize TF to getting the first result back.
+    // Time from starting to initialize TF to getting the first result back.
     // This also assumes that only one warmup run is performed.
     RecordBenchmarkEntry(
         output_prefix, benchmark_name, "meta-init-plus-first-inference", 1,

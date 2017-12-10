@@ -151,7 +151,6 @@ py_library(
     srcs = ["optimize_for_inference_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":strip_unused",
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",

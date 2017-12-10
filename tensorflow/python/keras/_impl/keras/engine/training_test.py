@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import unittest
+
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
@@ -640,6 +643,19 @@ class LossMaskingTest(test.TestCase):
 
 class TestDynamicTrainability(test.TestCase):
 
+  def test_trainable_warning(self):
+    with self.test_session():
+      x = np.random.random((5, 3))
+      y = np.random.random((5, 2))
+
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.trainable = False
+      model.compile('rmsprop', 'mse')
+      model.trainable = True
+      model.train_on_batch(x, y)
+      self.assertRaises(Warning)
+
   def test_trainable_argument(self):
     with self.test_session():
       x = np.random.random((5, 3))
@@ -770,6 +786,9 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestGeneratorMethods(test.TestCase):
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_methods(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))

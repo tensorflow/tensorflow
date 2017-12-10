@@ -88,6 +88,8 @@ py_binary(
     tags = ["no_pip"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:model",
         "//third_party/py/numpy",
     ],
 )
@@ -98,7 +100,11 @@ py_test(
     srcs = ["lstm_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
-    deps = [":lstm"],
+    deps = [
+        ":lstm",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
 )
 
 filegroup(

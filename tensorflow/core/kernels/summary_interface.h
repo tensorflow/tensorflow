@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/util/event.pb.h"
 
@@ -45,6 +46,9 @@ class SummaryWriterInterface : public ResourceBase {
 
   virtual Status WriteAudio(int64 global_step, Tensor t, const string& tag,
                             int max_outputs_, float sample_rate) = 0;
+
+  virtual Status WriteGraph(int64 global_step,
+                            std::unique_ptr<GraphDef> graph) = 0;
 
   virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;
 };

@@ -52,7 +52,7 @@ class Masking(Layer):
   Example:
 
   Consider a Numpy data array `x` of shape `(samples, timesteps, features)`,
-  to be fed to a LSTM layer.
+  to be fed to an LSTM layer.
   You want to mask timestep #3 and #5 because you lack data for
   these timesteps. You can:
 
@@ -121,7 +121,11 @@ class Dropout(tf_core_layers.Dropout, Layer):
     return output
 
   def get_config(self):
-    config = {'rate': self.rate}
+    config = {
+        'rate': self.rate,
+        'noise_shape': self.noise_shape,
+        'seed': self.seed
+    }
     base_config = super(Dropout, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -383,20 +387,18 @@ class Reshape(Layer):
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    output_shape = [input_shape[0]]
-    output_shape += self._fix_unknown_dimension(input_shape[1:],
-                                                self.target_shape)
+    if None in input_shape[1:]:
+      output_shape = [input_shape[0]]
+      # input shape (partially) unknown? replace -1's with None's
+      output_shape += tuple(s if s != -1 else None for s in self.target_shape)
+    else:
+      output_shape = [input_shape[0]]
+      output_shape += self._fix_unknown_dimension(input_shape[1:],
+                                                  self.target_shape)
     return tensor_shape.TensorShape(output_shape)
 
   def call(self, inputs):
-    # In case the target shape is not fully defined,
-    # we need access to the shape of x.
-    target_shape = self.target_shape
-    if -1 in target_shape:
-      # target shape not fully defined
-      target_shape = self._compute_output_shape(inputs.get_shape())
-      target_shape = target_shape.as_list()[1:]
-    return K.reshape(inputs, (-1,) + tuple(target_shape))
+    return K.reshape(inputs, (K.shape(inputs)[0],) + self.target_shape)
 
   def get_config(self):
     config = {'target_shape': self.target_shape}
@@ -595,6 +597,7 @@ class Lambda(Layer):
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
+    config = config.copy()
     globs = globals()
     if custom_objects:
       globs = dict(list(globs.items()) + list(custom_objects.items()))

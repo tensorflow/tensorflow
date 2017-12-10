@@ -165,3 +165,17 @@ class Saver(object):
     """
     with ops.device("/device:CPU:0"):
       self._saver.restore(None, file_prefix)
+
+
+def get_optimizer_variables(optimizer):
+  """Returns a list of variables for the given `tf.train.Optimizer`.
+
+  Equivalent to `optimizer.variables()`.
+
+  Args:
+    optimizer: An instance of `tf.train.Optimizer` which has created variables
+      (typically after a call to `Optimizer.minimize`).
+  Returns:
+    A list of variables which have been created by the `Optimizer`.
+  """
+  return optimizer.variables()

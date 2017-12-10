@@ -208,8 +208,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     }
 
     // Give the device an opportunity to rewrite its subgraph.
-    TF_RETURN_IF_ERROR(
-        unit->device->MaybeRewriteGraph(gdef.library(), &subgraph));
+    TF_RETURN_IF_ERROR(unit->device->MaybeRewriteGraph(&subgraph));
 
     // Top-level nodes in the graph uses the op segment to cache
     // kernels. Therefore, as long as the executor is alive, we need
@@ -337,8 +336,8 @@ Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
     keys.push_back(p.first);
     tensors_to_send.push_back(p.second);
   }
-  Status s = SendTensorsToRendezvous(rendezvous, Rendezvous::Args(), keys,
-                                     tensors_to_send);
+  Status s =
+      SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   rendezvous->Unref();
   return s;
 }
@@ -362,7 +361,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
     received_keys->push_back(p.second);
   }
   RecvOutputsFromRendezvousAsync(
-      rendezvous, Rendezvous::Args(), keys, received_keys,
+      rendezvous, nullptr, {}, keys, received_keys,
       [done, rendezvous, received_keys, out, keys](const Status s) {
         rendezvous->Unref();
         for (int i = 0; i < keys.size(); ++i) {
@@ -420,8 +419,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       keys.push_back(p.first);
       tensors_to_send.push_back(p.second);
     }
-    s = SendTensorsToRendezvous(rendezvous, Rendezvous::Args(), keys,
-                                tensors_to_send);
+    s = SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   }
 
   if (!s.ok()) {

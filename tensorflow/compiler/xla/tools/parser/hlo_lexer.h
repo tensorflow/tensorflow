@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/tools/parser/hlo_token.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
@@ -37,11 +37,17 @@ class HloLexer {
   }
 
   TokKind Lex() { return current_kind_ = LexToken(); }
+
   TokKind GetKind() const { return current_kind_; }
   string GetStrVal() const {
     switch (GetKind()) {
       case TokKind::kName:
       case TokKind::kAttributeName:
+      case TokKind::kDimLabels:
+      case TokKind::kDxD:
+      case TokKind::kPad:
+      case TokKind::kString:
+      case TokKind::kIdent:
         return str_val_;
       default:
         LOG(FATAL) << "This token does not have string value";
@@ -50,10 +56,6 @@ class HloLexer {
   Shape GetShapeVal() const {
     CHECK(GetKind() == TokKind::kShape);
     return shape_val_;
-  }
-  HloOpcode GetOpcodeVal() const {
-    CHECK(GetKind() == TokKind::kOpcode);
-    return opcode_val_;
   }
   int64 GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt);
@@ -92,7 +94,9 @@ class HloLexer {
   TokKind LexPercent();
   TokKind LexShape();
   TokKind LexConstant();
-  TokKind LexDigitOrNegative();
+  TokKind LexNumberOrPattern();
+  TokKind LexComment();
+  TokKind LexString();
 
   const tensorflow::StringPiece buf_;
   const char* current_ptr_;
@@ -102,7 +106,6 @@ class HloLexer {
   TokKind current_kind_;
   string str_val_;
   Shape shape_val_;
-  HloOpcode opcode_val_;
   int64 int64_val_;
   double decimal_val_;
 };

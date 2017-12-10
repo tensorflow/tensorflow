@@ -57,8 +57,10 @@ __all__ = [
     'run_inception',
     'inception_score',
     'classifier_score',
+    'classifier_score_from_logits',
     'frechet_inception_distance',
     'frechet_classifier_distance',
+    'frechet_classifier_distance_from_activations',
     'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
 
@@ -130,10 +132,10 @@ def preprocess_image(
   with ops.name_scope(scope, 'preprocess', [images, height, width]):
     if not images.dtype.is_floating:
       images = math_ops.to_float(images)
-    images = (images - 128.0) / 128.0
     if is_single:
       images = array_ops.expand_dims(images, axis=0)
     resized = image_ops.resize_bilinear(images, [height, width])
+    resized = (resized - 128.0) / 128.0
     if is_single:
       resized = array_ops.squeeze(resized, axis=0)
     return resized
@@ -222,13 +224,13 @@ def run_inception(images,
     image_size: Required image width and height. See unit tests for the default
       values.
     input_tensor: Name of input Tensor.
-    output_tensor: Name of output Tensor. This function will compute activations
-      at the specified layer. Examples include INCEPTION_V3_OUTPUT and
-      INCEPTION_V3_FINAL_POOL which would result in this function computing
+    output_tensor: Name or list of output Tensors. This function will compute
+      activations at the specified layer. Examples include INCEPTION_V3_OUTPUT
+      and INCEPTION_V3_FINAL_POOL which would result in this function computing
       the final logits or the penultimate pooling layer.
 
   Returns:
-    Logits.
+    Tensor or Tensors corresponding to computed `output_tensor`.
 
   Raises:
     ValueError: If images are not the correct size.
@@ -244,8 +246,14 @@ def run_inception(images,
 
   activations = run_image_classifier(images, graph_def, input_tensor,
                                      output_tensor)
-  if array_ops.rank(activations) != 2:
-    activations = layers.flatten(activations)
+  if isinstance(activations, list):
+    for i, activation in enumerate(activations):
+      if array_ops.rank(activation) != 2:
+        activations[i] = layers.flatten(activation)
+  else:
+    if array_ops.rank(activations) != 2:
+      activations = layers.flatten(activations)
+
   return activations
 
 
@@ -257,23 +265,26 @@ def run_image_classifier(tensor, graph_def, input_tensor,
     tensor: An Input tensor.
     graph_def: A GraphDef proto.
     input_tensor: Name of input tensor in graph def.
-    output_tensor: Name of output tensor in graph def.
+    output_tensor: A tensor name or list of tensor names in graph def.
     scope: Name scope for classifier.
 
   Returns:
-    Classifier output. Shape depends on the classifier used, but is often
-    [batch, classes].
+    Classifier output if `output_tensor` is a string, or a list of outputs if
+    `output_tensor` is a list.
 
   Raises:
-    ValueError: If `image_size` is not `None`, and `tensor` are not the correct
-      size.
+    ValueError: If `input_tensor` or `output_tensor` aren't in the graph_def.
   """
   input_map = {input_tensor: tensor}
-  return_elements = [output_tensor]
-  classifier_output = importer.import_graph_def(
-      graph_def, input_map, return_elements, name=scope)[0]
+  is_singleton = isinstance(output_tensor, str)
+  if is_singleton:
+    output_tensor = [output_tensor]
+  classifier_outputs = importer.import_graph_def(
+      graph_def, input_map, output_tensor, name=scope)
+  if is_singleton:
+    classifier_outputs = classifier_outputs[0]
 
-  return classifier_output
+  return classifier_outputs
 
 
 def classifier_score(images, classifier_fn, num_batches=1):
@@ -297,7 +308,8 @@ def classifier_score(images, classifier_fn, num_batches=1):
       efficiently run them through the classifier network.
 
   Returns:
-    The classifier score. A floating-point scalar.
+    The classifier score. A floating-point scalar of the same type as the output
+    of `classifier_fn`.
   """
   generated_images_list = array_ops.split(
       images, num_or_size_splits=num_batches)
@@ -311,12 +323,36 @@ def classifier_score(images, classifier_fn, num_batches=1):
       swap_memory=True,
       name='RunClassifier')
   logits = array_ops.concat(array_ops.unstack(logits), 0)
+
+  return classifier_score_from_logits(logits)
+
+
+def classifier_score_from_logits(logits):
+  """Classifier score for evaluating a conditional generative model.
+
+  This is based on the Inception Score, but for an arbitrary classifier.
+
+  This technique is described in detail in https://arxiv.org/abs/1606.03498. In
+  summary, this function calculates
+
+  exp( E[ KL(p(y|x) || p(y)) ] )
+
+  which captures how different the network's classification prediction is from
+  the prior distribution over classes.
+
+  Args:
+    logits: A 2D Tensor of logits.
+
+  Returns:
+    The classifier score. A floating-point scalar of the same type as the output
+    of `logits`.
+  """
   logits.shape.assert_has_rank(2)
 
   # Use maximum precision for best results.
   logits_dtype = logits.dtype
   if logits_dtype != dtypes.float64:
-    logits = math_ops.cast(logits, dtypes.float64)
+    logits = math_ops.to_double(logits)
 
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
@@ -326,7 +362,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
   final_score = math_ops.exp(log_score)
 
   if logits_dtype != dtypes.float64:
-    final_score = math_ops.cast(final_score, dtypes.float64)
+    final_score = math_ops.cast(final_score, logits_dtype)
   return final_score
 
 
@@ -415,7 +451,8 @@ def frechet_classifier_distance(real_images,
       efficiently run them through the classifier network.
 
   Returns:
-    The Frechet Inception distance. A floating-point scalar.
+    The Frechet Inception distance. A floating-point scalar of the same type
+    as the output of `classifier_fn`
   """
 
   real_images_list = array_ops.split(
@@ -440,20 +477,65 @@ def frechet_classifier_distance(real_images,
   # Ensure the activations have the right shapes.
   real_a = array_ops.concat(array_ops.unstack(real_a), 0)
   gen_a = array_ops.concat(array_ops.unstack(gen_a), 0)
-  real_a.shape.assert_has_rank(2)
-  gen_a.shape.assert_has_rank(2)
+
+  return frechet_classifier_distance_from_activations(real_a, gen_a)
+
+
+def frechet_classifier_distance_from_activations(
+    real_activations, generated_activations):
+  """Classifier distance for evaluating a generative model.
+
+  This is based on the Frechet Inception distance, but for an arbitrary
+  classifier.
+
+  This technique is described in detail in https://arxiv.org/abs/1706.08500.
+  Given two Gaussian distribution with means m and m_w and covariance matrices
+  C and C_w, this function calcuates
+
+  |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
+
+  which captures how different the distributions of real images and generated
+  images (or more accurately, their visual features) are. Note that unlike the
+  Inception score, this is a true distance and utilizes information about real
+  world images.
+
+  Note that when computed using sample means and sample covariance matrices,
+  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
+  even if the two distributions are the same, for a small sample size, the
+  expected Frechet distance is large). It is important to use the same
+  sample size to compute frechet classifier distance when comparing two
+  generative models.
+
+  Args:
+    real_activations: Real images to use to compute Frechet Inception distance.
+    generated_activations: Generated images to use to compute Frechet Inception
+      distance.
+
+  Returns:
+    The Frechet Inception distance. A floating-point scalar of the same type
+    as the output of the activations.
+  """
+  real_activations.shape.assert_has_rank(2)
+  generated_activations.shape.assert_has_rank(2)
+
+  activations_dtype = real_activations.dtype
+  if activations_dtype != dtypes.float64:
+    real_activations = math_ops.to_double(real_activations)
+    generated_activations = math_ops.to_double(generated_activations)
 
   # Compute mean and covariance matrices of activations.
-  m = math_ops.reduce_mean(real_a, 0)
-  m_v = math_ops.reduce_mean(gen_a, 0)
-  num_examples = math_ops.to_float(array_ops.shape(real_a)[0])
+  m = math_ops.reduce_mean(real_activations, 0)
+  m_v = math_ops.reduce_mean(generated_activations, 0)
+  num_examples = math_ops.to_double(array_ops.shape(real_activations)[0])
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
+  real_centered = real_activations - m
   sigma = math_ops.matmul(
-      real_a - m, real_a - m, transpose_a=True) / (num_examples - 1)
+      real_centered, real_centered, transpose_a=True) / (num_examples - 1)
 
+  gen_centered = generated_activations - m_v
   sigma_v = math_ops.matmul(
-      gen_a - m_v, gen_a - m_v, transpose_a=True) / (num_examples - 1)
+      gen_centered, gen_centered, transpose_a=True) / (num_examples - 1)
 
   # Find the Tr(sqrt(sigma sigma_v)) component of FID
   sqrt_trace_component = trace_sqrt_product(sigma, sigma_v)
@@ -467,6 +549,8 @@ def frechet_classifier_distance(real_images,
   # Next the distance between means.
   mean = math_ops.square(linalg_ops.norm(m - m_v))  # This uses the L2 norm.
   fid = trace + mean
+  if activations_dtype != dtypes.float64:
+    fid = math_ops.cast(fid, activations_dtype)
 
   return fid
 

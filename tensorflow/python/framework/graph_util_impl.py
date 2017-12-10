@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Helpers to manipulate a tensor graph in python.
 """
 
@@ -108,6 +107,46 @@ def _node_name(n):
     return n.split(":")[0]
 
 
+def _extract_graph_summary(graph_def):
+  """Extracts useful information from the graph and returns them."""
+  name_to_input_name = {}  # Keyed by the dest node name.
+  name_to_node = {}  # Keyed by node name.
+
+  # Keeps track of node sequences. It is important to still output the
+  # operations in the original order.
+  name_to_seq_num = {}  # Keyed by node name.
+  seq = 0
+  for node in graph_def.node:
+    n = _node_name(node.name)
+    name_to_node[n] = node
+    name_to_input_name[n] = [_node_name(x) for x in node.input]
+    name_to_seq_num[n] = seq
+    seq += 1
+  return name_to_input_name, name_to_node, name_to_seq_num
+
+
+def _assert_nodes_are_present(name_to_node, nodes):
+  """Assert that nodes are present in the graph."""
+  for d in nodes:
+    assert d in name_to_node, "%s is not in graph" % d
+
+
+def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
+  """Breadth first search for reachable nodes from target nodes."""
+  nodes_to_keep = set()
+  # Breadth first search to find all the nodes that we should keep.
+  next_to_visit = target_nodes[:]
+  while next_to_visit:
+    n = next_to_visit[0]
+    del next_to_visit[0]
+    if n in nodes_to_keep:
+      # Already visited this node.
+      continue
+    nodes_to_keep.add(n)
+    next_to_visit += name_to_input_name[n]
+  return nodes_to_keep
+
+
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
 
@@ -127,40 +166,18 @@ def extract_sub_graph(graph_def, dest_nodes):
   if isinstance(dest_nodes, six.string_types):
     raise TypeError("dest_nodes must be a list.")
 
-  edges = {}  # Keyed by the dest node name.
-  name_to_node_map = {}  # Keyed by node name.
+  name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
+      graph_def)
+  _assert_nodes_are_present(name_to_node, dest_nodes)
 
-  # Keeps track of node sequences. It is important to still output the
-  # operations in the original order.
-  node_seq = {}  # Keyed by node name.
-  seq = 0
-  for node in graph_def.node:
-    n = _node_name(node.name)
-    name_to_node_map[n] = node
-    edges[n] = [_node_name(x) for x in node.input]
-    node_seq[n] = seq
-    seq += 1
+  nodes_to_keep = _bfs_for_reachable_nodes(dest_nodes, name_to_input_name)
 
-  for d in dest_nodes:
-    assert d in name_to_node_map, "%s is not in graph" % d
-
-  nodes_to_keep = set()
-  # Breadth first search to find all the nodes that we should keep.
-  next_to_visit = dest_nodes[:]
-  while next_to_visit:
-    n = next_to_visit[0]
-    del next_to_visit[0]
-    if n in nodes_to_keep:
-      # Already visited this node.
-      continue
-    nodes_to_keep.add(n)
-    next_to_visit += edges[n]
-
-  nodes_to_keep_list = sorted(list(nodes_to_keep), key=lambda n: node_seq[n])
+  nodes_to_keep_list = sorted(
+      list(nodes_to_keep), key=lambda n: name_to_seq_num[n])
   # Now construct the output GraphDef
   out = graph_pb2.GraphDef()
   for n in nodes_to_keep_list:
-    out.node.extend([copy.deepcopy(name_to_node_map[n])])
+    out.node.extend([copy.deepcopy(name_to_node[n])])
   out.library.CopyFrom(graph_def.library)
   out.versions.CopyFrom(graph_def.versions)
 
@@ -181,7 +198,9 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
-def convert_variables_to_constants(sess, input_graph_def, output_node_names,
+def convert_variables_to_constants(sess,
+                                   input_graph_def,
+                                   output_node_names,
                                    variable_names_whitelist=None,
                                    variable_names_blacklist=None):
   """Replaces all the variables in a graph with constants of the same values.
@@ -237,10 +256,10 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
       dtype = input_node.attr["dtype"]
       data = found_variables[input_node.name]
       output_node.attr["dtype"].CopyFrom(dtype)
-      output_node.attr["value"].CopyFrom(attr_value_pb2.AttrValue(
-          tensor=tensor_util.make_tensor_proto(data,
-                                               dtype=dtype.type,
-                                               shape=data.shape)))
+      output_node.attr["value"].CopyFrom(
+          attr_value_pb2.AttrValue(
+              tensor=tensor_util.make_tensor_proto(
+                  data, dtype=dtype.type, shape=data.shape)))
       how_many_converted += 1
     else:
       output_node.CopyFrom(input_node)

@@ -144,8 +144,10 @@ class BufferValueMap {
   // Move the given value into the given buffer.
   void MoveValueToBuffer(const HloValue& value, BufferNumber buffer_number) {
     BufferNumber old_buffer_number = value_to_buffer_number_.at(&value);
-    buffers_.at(old_buffer_number).erase(&value);
-    if (buffers_.at(old_buffer_number).empty()) {
+    tensorflow::gtl::FlatSet<const HloValue*>& old_value_set =
+        buffers_.at(old_buffer_number);
+    old_value_set.erase(&value);
+    if (old_value_set.empty()) {
       buffers_.erase(old_buffer_number);
     }
 
@@ -175,7 +177,7 @@ class BufferValueMap {
     // Value is init of a while (use is while).
     std::vector<BufferNumber> aliased_buffers;
     for (const HloUse& use : value.uses()) {
-      VLOG(1) << "use of value " << value.ToShortString() << ": " << use;
+      VLOG(2) << "use of value " << value.ToShortString() << ": " << use;
       if (use.instruction->opcode() == HloOpcode::kWhile) {
         // Determine the while value that this shares a buffer with.
         const HloValue& while_value =
@@ -411,7 +413,7 @@ string HloAliasAnalysis::ToString() const {
 /* static */
 StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     HloModule* module) {
-  VLOG(1) << "HloAliasAnalysis::Run on module " << module->name();
+  VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = WrapUnique(new HloAliasAnalysis(module));
@@ -444,7 +446,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 
   TF_DCHECK_OK(alias_analysis->Verify());
 
-  XLA_VLOG_LINES(1, alias_analysis->ToString());
+  XLA_VLOG_LINES(2, alias_analysis->ToString());
   return std::move(alias_analysis);
 }
 

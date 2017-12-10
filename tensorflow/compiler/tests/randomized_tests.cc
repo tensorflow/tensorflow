@@ -1551,7 +1551,6 @@ TEST_F(OpTest, DepthToSpace) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DNative) {
-  if (1) return;
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -1575,7 +1574,6 @@ TEST_F(OpTest, DepthwiseConv2DNative) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
-  if (1) return;
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -1603,7 +1601,6 @@ TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
 }
 
 TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
-  if (1) return;
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
     std::uniform_int_distribution<int> random_int(1, 5);
@@ -1631,7 +1628,6 @@ TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
 }
 
 TEST_F(OpTest, Diag) {
-  if (1) return;
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims;
@@ -2461,6 +2457,36 @@ TEST_F(OpTest, Reshape) {
             .Input(test::AsTensor<int32>(
                 std::vector<int32>(dims_after.begin(), dims_after.end())))
             .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, ResizeBilinear) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinear")
+            .RandomInput(DT_FLOAT, in_dims)
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(out_dims.begin(), out_dims.end())))
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
+  });
+}
+
+TEST_F(OpTest, ResizeBilinearGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinearGrad")
+            .RandomInput(DT_FLOAT, in_dims)
+            .RandomInput(DT_FLOAT,
+                         {in_dims[0], out_dims[0], out_dims[1], in_dims[3]})
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
   });
 }
 
