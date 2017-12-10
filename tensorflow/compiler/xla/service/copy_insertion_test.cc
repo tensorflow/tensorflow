@@ -339,7 +339,7 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
            ShapeUtil::MakeShape(F32, {42})}),
       "param0"));
 
-  // The return value of the computation is the zero-th elemnt of the nested
+  // The return value of the computation is the zero-th element of the nested
   // tuple. This element is itself a tuple.
   auto gte = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       ShapeUtil::GetSubshape(param->shape(), {0}), param, 0));
