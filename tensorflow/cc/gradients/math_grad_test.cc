@@ -870,8 +870,7 @@ TEST_F(NaryGradTest, Select) {
   TensorShape y_shape({3, 4});
   auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  auto condition = Greater(scope_, x1, Const(scope_, 0.f));
-  auto y = Where3(scope_, condition, x1, x2);
+  auto y = Where3(scope_, Greater(scope_, x1, x2), x1, x2);
   RunTest({x1, x2}, {x_shape, x_shape}, {y}, {y_shape});
 }
 
