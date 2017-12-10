@@ -342,7 +342,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                  kernel);
   }
 
-  // Try to instantiate this function for the func/attr. Maybe its
+  // Try to instantiate this function for the func/attr. Maybe it's
   // cached already.
   Handle handle;
   TF_RETURN_IF_ERROR(Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
