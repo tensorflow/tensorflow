@@ -19,7 +19,7 @@ tf_cc_binary(
     linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
-            "-lm", # some builtin ops, e.g., tanh, need -lm
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
         ],
         "//conditions:default": [],
     }),
