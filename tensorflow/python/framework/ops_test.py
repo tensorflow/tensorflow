@@ -1762,6 +1762,37 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
+  def testNames(self):
+    with ops.name_scope("foo") as foo:
+      self.assertEqual("foo/", foo)
+      with ops.name_scope("foo2") as foo2:
+        self.assertEqual("foo/foo2/", foo2)
+      with ops.name_scope(None) as empty1:
+        self.assertEqual("", empty1)
+        with ops.name_scope("foo3") as foo3:
+          self.assertEqual("foo3/", foo3)
+      with ops.name_scope("") as empty2:
+        self.assertEqual("", empty2)
+    with ops.name_scope("foo/") as outer_foo:
+      self.assertEqual("foo/", outer_foo)
+      with ops.name_scope("") as empty3:
+        self.assertEqual("", empty3)
+      with ops.name_scope("foo4") as foo4:
+        self.assertEqual("foo/foo4/", foo4)
+      with ops.name_scope("foo5//") as foo5:
+        self.assertEqual("foo5//", foo5)
+        with ops.name_scope("foo6") as foo6:
+          self.assertEqual("foo5//foo6/", foo6)
+      with ops.name_scope("/") as foo7:
+        self.assertEqual("/", foo7)
+      with ops.name_scope("//") as foo8:
+        self.assertEqual("//", foo8)
+      with ops.name_scope("a//b/c") as foo9:
+        self.assertEqual("foo/a//b/c/", foo9)
+    with ops.name_scope("a//b/c") as foo10:
+      self.assertEqual("a//b/c/", foo10)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testEagerDefaultScopeName(self):
     with ops.name_scope(None, "default") as scope:
       self.assertEqual(scope, "default/")

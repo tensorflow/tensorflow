@@ -5352,11 +5352,18 @@ class name_scope(object):  # pylint: disable=invalid-name
     """
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
-      if self._name:
-        scope_name = (self._old_name + self._name + "/"
-                      if self._old_name else self._name + "/")
-      else:
+      if not self._name:
         scope_name = ""
+      else:
+        if self._name[-1] == "/":
+          # A trailing slash breaks out of nested name scopes, indicating a
+          # fully specified scope name, for compatibility with Graph.name_scope.
+          scope_name = self._name
+        else:
+          name_with_trailing_slash = self._name + "/"
+          scope_name = (
+              self._old_name + name_with_trailing_slash
+              if self._old_name else name_with_trailing_slash)
       self._ctx.scope_name = scope_name
       return scope_name
     else:
