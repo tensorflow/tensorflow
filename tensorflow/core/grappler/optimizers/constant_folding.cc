@@ -1304,6 +1304,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
 Status ConstantFolding::SimplifyGraph(GraphDef* output,
                                       const GraphProperties& properties,
                                       bool use_shape_info) {
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (auto& node : *output->mutable_node()) {
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
@@ -1321,8 +1322,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       *node.mutable_input(1) = AsControlDependency(node.input(1));
     }
     const bool safe_to_use_shapes =
-        use_shape_info &&
-        (feed_nodes_.empty() || opt_level_ == RewriterConfig::AGGRESSIVE);
+        use_shape_info && (feed_nodes_.empty() || is_aggressive);
     if (safe_to_use_shapes && IsSimplifiableReshape(node, properties)) {
       DataType output_type = node.attr().at("T").type();
       node.set_op("Identity");
@@ -1339,8 +1339,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     bool is_add = IsAdd(node) || IsBiasAdd(node);
     bool is_sub = IsSub(node);
     bool is_div = IsAnyDiv(node);
-    if (opt_level_ == RewriterConfig::AGGRESSIVE && use_shape_info &&
-        (is_mul || is_matmul || is_add || is_sub || is_div) &&
+    if (use_shape_info && (is_mul || is_matmul || is_add || is_sub || is_div) &&
         properties.HasInputProperties(node.name()) &&
         properties.HasOutputProperties(node.name())) {
       const NodeDef* x = node_map_->GetNode(node.input(0));
@@ -1378,8 +1377,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const bool y_is_zero = IsZeros(*y);
       const bool y_is_one = IsOnes(*y);
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
-      if (x_matches_output_shape && (((is_mul || is_div) && y_is_one) ||
-                                     ((is_add || is_sub) && y_is_zero))) {
+      if (x_matches_output_shape &&
+          (((is_mul || is_div) && y_is_one) ||
+           ((is_add || is_sub) && y_is_zero && is_aggressive))) {
         // x * 1 = x or x / 1 = x or x +/- 0 = x
         ReplaceOperationWithIdentity(0, &node);
         continue;
@@ -1388,8 +1388,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       // Simplify multiplication and matmul by zeros.
       // Also optimize zeros divided by a tensor, but only if we are in
       // aggressive mode, since we might get rid of divisions by zero.
-      bool optimize_zeros_divided_by_y =
-          is_div && x_is_zero && opt_level_ == RewriterConfig::AGGRESSIVE;
+      bool optimize_zeros_divided_by_y = is_div && x_is_zero && is_aggressive;
       if ((x_is_zero || y_is_zero) &&
           (is_mul || is_matmul || optimize_zeros_divided_by_y)) {
         const PartialTensorShape shp(output_shape);
