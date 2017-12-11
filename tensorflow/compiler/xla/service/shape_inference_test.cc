@@ -1062,7 +1062,7 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersFails) {
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("batch dimension numbers and sizes must match"));
+              HasSubstr("batch dimension numbers must precede non-batch"));
 }
 
 // BatchMatMul with out-of-range dimension numbers fails.

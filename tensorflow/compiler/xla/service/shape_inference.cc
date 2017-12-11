@@ -559,6 +559,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 // Batch Dimensions:
 // *) Same number of batch dimensions on both lhs and rhs.
 // *) Same batch dimension numbers (and sizes) on both lhs and rhs.
+// *) Batch dimension numbers must be ordered before contracting and
+//    non-contracting/non-batch dimension numbers.
 //
 // Non-Contracting-Non-Batch Dimensions:
 // *) Can be 0 (matrix-vector) or 1 (matrix-matrix).
@@ -630,6 +632,19 @@ Status ValidateDotDimensionNumbers(
     return InvalidArgument(
         "batch and contracting dimension number mismatch "
         "with rank ");
+  }
+
+  // Check that batch dimension numbers are ordered before all others, and
+  // that they are monotonically increasing.
+  std::vector<int64> batch_dim_numbers(lhs_batch_dimensions.size());
+  std::iota(batch_dim_numbers.begin(), batch_dim_numbers.end(), 0);
+  if (!std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  lhs_batch_dimensions.begin()) ||
+      !std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  rhs_batch_dimensions.begin())) {
+    return InvalidArgument(
+        "batch dimension numbers must precede non-batch dimensions and be"
+        "monotonically increasing.");
   }
 
   return Status::OK();
