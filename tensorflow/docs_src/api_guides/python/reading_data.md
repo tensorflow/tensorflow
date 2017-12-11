@@ -175,14 +175,25 @@ For example,
 [`tensorflow/examples/how_tos/reading_data/convert_to_records.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/convert_to_records.py)
 converts MNIST data to this format.
 
-To read a file of TFRecords, use
-@{tf.TFRecordReader} with
-the @{tf.parse_single_example}
-decoder. The `parse_single_example` op decodes the example protocol buffers into
-tensors. An MNIST example using the data produced by `convert_to_records` can be
-found in
-[`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py),
-which you can compare with the `fully_connected_feed` version.
+The recommended way to read a TFRecord file is with a @{tf.data.TFRecordDataset}, [as in this example](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py):
+
+``` python
+    dataset = tf.data.TFRecordDataset(filename)
+    dataset = dataset.repeat(num_epochs)
+
+    # map takes a python function and applies it to every sample
+    dataset = dataset.map(decode)
+```
+
+To acomplish the same task with a queue based input pipeline requires the following code 
+(using the same `decode` function from the above example): 
+
+``` python
+  filename_queue = tf.train.string_input_producer([filename], num_epochs=num_epochs)
+  reader = tf.TFRecordReader()
+  _, serialized_example = reader.read(filename_queue)
+  image,label = decode(serialized_example)
+```
 
 ### Preprocessing
 
