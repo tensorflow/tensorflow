@@ -1653,6 +1653,7 @@ bool HloParser::ParseWindow(Window* window) {
   std::vector<std::vector<int64>> pad;
   std::vector<int64> lhs_dilate;
   std::vector<int64> rhs_dilate;
+  std::vector<int64> rhs_reversal;
   while (lexer_.GetKind() != TokKind::kRbrace) {
     LocTy attr_loc = lexer_.GetLoc();
     string field_name;
@@ -1674,6 +1675,9 @@ bool HloParser::ParseWindow(Window* window) {
       }
       if (field_name == "pad") {
         return ParseWindowPad(&pad);
+      }
+      if (field_name == "rhs_reversal") {
+        return ParseDxD("rhs_reversal", &rhs_reversal);
       }
       return Error(loc, StrCat("unexpected attribute name: ", field_name));
     }();
@@ -1711,6 +1715,8 @@ bool HloParser::ParseWindow(Window* window) {
         lhs_dilate.empty() ? 1 : lhs_dilate[i]);
     window->mutable_dimensions(i)->set_window_dilation(
         rhs_dilate.empty() ? 1 : rhs_dilate[i]);
+    window->mutable_dimensions(i)->set_window_reversal(
+        rhs_reversal.empty() ? false : (rhs_reversal[i] == 1));
   }
   return ParseToken(TokKind::kRbrace, "expected '}' to end window attribute");
 }

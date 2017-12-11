@@ -369,6 +369,19 @@ ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
 
 )"
 },
+// convolution backward
+{
+"ConvolutionBackward",
+R"(HloModule ConvolveBackward_module:
+
+ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f32[128,14,14,512] {
+  %input = f32[128,7,7,512]{0,3,2,1} parameter(0)
+  %filter = f32[3,3,512,512]{3,2,1,0} parameter(1)
+  ROOT %convolution-base-dilated = f32[128,14,14,512]{0,3,2,1} convolution(f32[128,7,7,512]{0,3,2,1} %input, f32[3,3,512,512]{3,2,1,0} %filter), window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
+}
+
+)"
+},
 // reverse(constant)
 {
 "Reverse4D",
