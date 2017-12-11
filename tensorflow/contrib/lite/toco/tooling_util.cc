@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/core/platform/logging.h"
 
-
 namespace toco {
 
 string LogName(const Operator& op) {
@@ -996,8 +995,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
               << dst_input_array->shape().dims(i);
         }
       } else {
-        dst_input_array->mutable_shape()->CopyFrom(
-            specified_input_array.shape());
+        *dst_input_array->mutable_shape() = specified_input_array.shape();
       }
     }
 
