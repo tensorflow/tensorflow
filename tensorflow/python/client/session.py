@@ -126,6 +126,12 @@ _REGISTERED_EXPANSIONS = [
      lambda feed: [feed])]
 # pylint: enable=g-long-lambda
 
+
+def _convert_to_numpy_obj(numpy_dtype, obj):
+  """Explicitly convert obj based on numpy type except for string type."""
+  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+
+
 def register_session_run_conversion_functions(tensor_type, fetch_function,
     feed_function=None, feed_function_for_partial_run=None):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
@@ -1072,12 +1078,14 @@ class BaseSession(SessionInterface):
                             'strings, lists, numpy ndarrays, or TensorHandles.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
-          if isinstance(subfeed_val,
-                        int) and subfeed_dtype(subfeed_val) != subfeed_val:
+          if isinstance(subfeed_val, int) and _convert_to_numpy_obj(
+              subfeed_dtype, subfeed_val) != subfeed_val:
             raise TypeError(
-                'Type of feed value ' + str(subfeed_val) + ' is not'
-                ' compatible with Tensor type ' + str(subfeed_dtype) + '.'
-                ' Try explicitly setting the type of the feed tensor'
+                'Type of feed value ' + str(subfeed_val) + ' with type ' +
+                str(type(subfeed_val)) +
+                ' is not compatible with Tensor type ' +
+                str(subfeed_dtype) +
+                '. Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
           is_tensor_handle_feed = isinstance(subfeed_val,
