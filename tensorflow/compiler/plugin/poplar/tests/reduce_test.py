@@ -71,6 +71,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,1,10,10], name="a")
                 output = tf.nn.avg_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='SAME', name="avg")
 
                 fd = {
@@ -85,6 +86,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float16, [1,1,10,10], name="a")
                 output = tf.nn.avg_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='SAME')
 
                 fd = {
@@ -99,6 +101,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,1,10,10], name="a")
                 output = tf.nn.avg_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='VALID')
 
                 fd = {
@@ -113,6 +116,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float16, [1,1,10,10], name="a")
                 output = tf.nn.avg_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='VALID')
 
                 fd = {
@@ -127,6 +131,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,1,10,10], name="a")
                 output = tf.nn.max_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='SAME', name="max")
 
                 fd = {
@@ -141,6 +146,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,1,10,10], name="a")
                 output = tf.nn.max_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                                        data_format='NCHW',
                                         padding='VALID', name="max")
 
                 fd = {
@@ -149,6 +155,36 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                 result = sess.run(output, fd)
                 self.assertAllClose(result,
                                     np.ones([1,1,3,3]))
+
+    def testAvgPoolSamePaddingWithStridesF32Dim12(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float32, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        data_format='NHWC',
+                                        padding='SAME', name="avg")
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,5,5,1]))
+
+    def testAvgPoolValidPaddingWithStridesF32Dim12(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float32, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        data_format='NHWC',
+                                        padding='VALID', name="avg")
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,3,3,1]))
 
 if __name__ == "__main__":
     import time

@@ -371,8 +371,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
                           Bernoulli(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
       sequence.add(prog);
     }
-    else if (name == "avgpool_same" ||
-             name == "avgpool_valid") {
+    else if (name == "avgpool") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
                           CreatePoplibsWindowReduction(*graph_,
