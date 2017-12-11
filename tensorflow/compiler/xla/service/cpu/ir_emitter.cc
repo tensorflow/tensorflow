@@ -808,6 +808,19 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     return Unimplemented("Dot with batch dimensions not implemented.");
   }
 
+  if (dnums.lhs_contracting_dimensions_size() != 1) {
+    // This is disallowed by ShapeInference today.
+    return Unimplemented(
+        "Dot with multiple contracting dimensions not implemented.");
+  }
+
+  if (dnums.lhs_contracting_dimensions(0) !=
+          std::min(lhs->shape().dimensions_size() - 1, 1) ||
+      dnums.rhs_contracting_dimensions(0) != 0) {
+    return Unimplemented(
+        "Dot with non-standard contracting dimensions not implemented.");
+  }
+
   llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
 
