@@ -1743,6 +1743,12 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
 
+  def testAutoConvertAndCheckData(self):
+    with self.test_session() as sess:
+      a = array_ops.placeholder(dtype=dtypes.string)
+      with self.assertRaisesRegexp(
+          TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):
+        sess.run(a, feed_dict={a: 1})
 
 class GraphMutationTest(test_util.TensorFlowTestCase):
 
