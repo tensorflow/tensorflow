@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -541,6 +542,7 @@ class FusedBatchNormOp : public OpKernel {
     Tensor* y = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, x.shape(), &y));
+
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, scale.shape(), &batch_mean));
@@ -553,6 +555,14 @@ class FusedBatchNormOp : public OpKernel {
     Tensor* saved_maybe_inv_var = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(4, scale.shape(),
                                                      &saved_maybe_inv_var));
+    // If there is nothing to compute, return.
+    if (x.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, T> f;
+      // Return zero mean/variance when input is empty.
+      f(context->eigen_device<Device>(), batch_mean->flat<T>());
+      f(context->eigen_device<Device>(), batch_var->flat<T>());
+      return;
+    }
 
     functor::FusedBatchNorm<Device, T, U>()(
         context, x, scale, offset, estimated_mean, estimated_variance, epsilon_,
@@ -655,6 +665,14 @@ class FusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
     FillZeros<Device>(placeholder_2);
+
+    // If there is nothing to compute, return.
+    if (x.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, T> f;
+      f(context->eigen_device<Device>(), scale_backprop->flat<T>());
+      f(context->eigen_device<Device>(), offset_backprop->flat<T>());
+      return;
+    }
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(
