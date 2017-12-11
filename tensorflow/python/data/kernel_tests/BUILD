@@ -103,6 +103,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
+    grpc_enabled = True,
 )
 
 tf_py_test(
@@ -336,6 +337,7 @@ tf_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
     ],
+    grpc_enabled = True,
 )
 
 tf_py_test(
@@ -356,6 +358,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",

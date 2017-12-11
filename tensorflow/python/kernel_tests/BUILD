@@ -483,6 +483,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
+    grpc_enabled = True,
 )
 
 tf_py_test(
@@ -1443,6 +1444,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    grpc_enabled = True,
     tags = ["no_windows"],
 )
 
