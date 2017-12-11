@@ -116,6 +116,7 @@ class BaseGPUDevice : public LocalDevice {
   const bool sync_every_op_ = false;
   const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
