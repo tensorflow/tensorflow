@@ -43,7 +43,10 @@ class GraphPropertiesTest : public ::testing::Test {
     TF_CHECK_OK(cluster_->Provision());
   }
 
-  void TearDown() override { cluster_.reset(); }
+  void TearDown() override {
+    TF_CHECK_OK(cluster_->Shutdown());
+    cluster_.reset();
+  }
 
  protected:
   // Returns a string form of <p>, suitable for comparing type and shape.
