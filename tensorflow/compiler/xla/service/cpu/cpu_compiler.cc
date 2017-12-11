@@ -602,7 +602,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           llvm::Function * ir_function,
           ir_emitter.EmitComputation(
               embedded_computation, embedded_computation->name(),
-              /*is_entry_computation=*/computation_is_parallel,
+              /*is_top_level_computation=*/computation_is_parallel,
               /*instruction_order=*/nullptr));
       // If this computation is parallel, remember it in the function name map.
       // This way we know what function to execute when we try to run code for
@@ -684,7 +684,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -693,7 +693,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, function_name_prefix,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     string function_name = llvm_ir::AsString(entry_function->getName());
@@ -858,7 +858,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -866,7 +866,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));

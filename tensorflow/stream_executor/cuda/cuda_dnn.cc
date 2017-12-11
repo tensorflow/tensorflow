@@ -561,7 +561,7 @@ static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
     bool ret;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                               /*default=*/false, &ret));
+                                               /*default_val=*/false, &ret));
     return !ret;
   }();
   return is_enabled;
