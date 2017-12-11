@@ -311,6 +311,30 @@ class TensorArrayGatherOp : public XlaOpKernel {
 
     xla::ComputationDataHandle ta = resource->value;
 
+    std::vector<int64> const_indices;
+    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    if (status.ok()) {
+      bool is_simple_gather = true;
+      for (auto i = 0; i < const_indices.size(); i++) {
+        if (const_indices[i] != i) {
+          is_simple_gather = false;
+          break;
+        }
+      }
+
+      if (is_simple_gather) {
+        std::vector<int64> begin(ta_shape.dims(), 0);
+        std::vector<int64> strides(ta_shape.dims(), 1);
+        std::vector<int64> end(ta_shape.dims(), 1);
+        end[0] = const_indices.size();
+        for (auto i = 1; i < ta_shape.dims(); i++) {
+          end[i] = ta_shape.dim_size(i);
+        }
+        ctx->SetOutput(0, b->Slice(ta, begin, end, strides));
+        return;
+      }
+    }
+
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
         ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, index_type, b);
     ctx->SetOutput(0, gather);
@@ -352,29 +376,49 @@ class TensorArrayScatterOp : public XlaOpKernel {
     const xla::ComputationDataHandle value = ctx->Input(2);
     const xla::ComputationDataHandle flow = ctx->Input(3);
 
-    auto slice_dims = value_shape.dim_sizes();
-    slice_dims[0] = 1LL;
+    bool is_simple = false;
 
-    std::vector<int64> value_starts(value_shape.dims(), 0);
-    auto value_ends = value_shape.dim_sizes();
-
-    std::vector<int64> value_strides(value_shape.dims(), 1);
-
-    // For every (index, value) pair, update the corresponding TensorArray
-    // storage.
-    for (int i = 0; i < num_indices; ++i) {
-      // Slice out part of the value.
-      value_starts[0] = i;
-      value_ends[0] = i + 1;
-      auto slice = b->Slice(value, value_starts, value_ends, value_strides);
-
-      // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-      auto index = b->Slice(indices, {i}, {i + 1}, {1});
-      auto start_indices =
-          b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
-      ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
+    std::vector<int64> const_indices;
+    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    if (status.ok() && num_indices==value_shape.dim_size(0)) {
+      is_simple = true;
+      for (auto i = 0; i < num_indices; i++) {
+        if (const_indices[i] != i) {
+          is_simple = false;
+          break;
+        }
+      }
     }
+
+    if (is_simple) {
+      ta = b->Add(ta, value);
+
+    } else {
+      auto slice_dims = value_shape.dim_sizes();
+      slice_dims[0] = 1LL;
+
+      std::vector<int64> value_starts(value_shape.dims(), 0);
+      auto value_ends = value_shape.dim_sizes();
+
+      std::vector<int64> value_strides(value_shape.dims(), 1);
+
+      // For every (index, value) pair, update the corresponding TensorArray
+      // storage.
+      for (int i = 0; i < num_indices; ++i) {
+        // Slice out part of the value.
+        value_starts[0] = i;
+        value_ends[0] = i + 1;
+        auto slice = b->Slice(value, value_starts, value_ends, value_strides);
+
+        // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
+        auto index = b->Slice(indices, {i}, {i + 1}, {1});
+        auto start_indices =
+                b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+                       xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+        ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
+      }
+    }
+
 
     resource->value = ta;
     ctx->SetOutput(0, flow);

@@ -39,8 +39,9 @@ static const char* names[] = {
   "norm",
   "uniform",
   "bernoulli",
-  "avgpool_same",
-  "avgpool_valid",
+  "avgpool",
+  "avgpool",
+  "avgpool",
   "depthwise_conv",
   "conv_with_reverse",
   "bias_apply",
@@ -153,13 +154,23 @@ static const std::vector<HloMatcherPattern> patterns = {
 
   // Average pool (valid)
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
-   {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
+   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Average pool (same)
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
-   {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
+   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kBroadcast, true, nullptr, {4}},
+   {HloOpcode::kReduceWindow, true, nullptr, {5, 7}},
+   {HloOpcode::kBroadcast, true, nullptr, {6}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Average pool (same) - broadcast converted to reshape
+  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, Is2DReductionWindow, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kReshape, true, nullptr, {4}},
    {HloOpcode::kReduceWindow, true, nullptr, {5, 7}},

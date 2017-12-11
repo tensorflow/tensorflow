@@ -46,5 +46,36 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
         self.assertAllEqual([[1.0, 3.0]], d1)
         self.assertAllEqual([[7.0, -8.5]], d2)
 
+
+  def testTensorArrayScatterGather(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as session:
+
+        in1 = tf.placeholder(tf.float32, [5, 2])
+        in2 = tf.placeholder(tf.float32, [2])
+
+        ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32,
+          tensor_array_name="ta",
+          size=5)
+
+        tb = tensor_array_ops.TensorArray(
+          dtype=tf.float32,
+          tensor_array_name="tb",
+          size=5)
+
+        ta = ta.unstack(in1)
+        tb = tb.write(0, ta.read(0) + in2)
+        tb = tb.write(1, ta.read(1) + in2)
+        tb = tb.write(2, ta.read(2) + in2)
+        tb = tb.write(3, ta.read(3) + in2)
+        tb = tb.write(4, ta.read(4) + in2)
+        out = tb.gather(range(4))
+
+        v = session.run(out, feed_dict={in1: [[1,1],[2,2],[3,3],[4,4],[5,5]],
+                                        in2: [1,1]})
+
+        self.assertAllEqual([[2,2],[3,3],[4,4],[5,5]], v)
+
 if __name__ == "__main__":
     googletest.main()

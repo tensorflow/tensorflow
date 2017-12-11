@@ -416,28 +416,70 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
     poplar::Tensor to_reduce;
     TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
+    // Find which dimensions are being reduced
     const Window& window(pooling_inst->window());
-    std::vector<std::size_t> kernel_shape = {
-            (std::size_t)window.dimensions(2).size(),
-            (std::size_t)window.dimensions(3).size()
-    };
-    std::vector<unsigned> stride = {
-            (unsigned)window.dimensions(2).stride(),
-            (unsigned)window.dimensions(3).stride()
-    };
-    std::vector<int> padding_lower = {
-            (int)window.dimensions(2).padding_low(),
-            (int)window.dimensions(3).padding_low()
-    };
-    std::vector<int> padding_upper = {
-            (int)window.dimensions(2).padding_high(),
-            (int)window.dimensions(3).padding_high()
-    };
+    std::set<unsigned int> reduction_dims;
+    for (int64 i=0; i<window.dimensions_size(); i++) {
+      auto& d = window.dimensions(i);
+      if (d.size() != 1 ||
+          d.stride() != 1 ||
+          d.padding_low() != 0 ||
+          d.padding_high() != 0) {
+        reduction_dims.insert(i);
+      }
+    }
+
+    if (reduction_dims.size() == 0) {
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, to_reduce));
+      return prog;
+    }
+
+    if (reduction_dims.size() == 1) {
+      if (reduction_dims.count(window.dimensions_size()-1) == 0) {
+        reduction_dims.insert(window.dimensions_size()-1);
+      } else {
+        reduction_dims.insert(window.dimensions_size()-2);
+      }
+    }
+
+    if (reduction_dims.size() != 2) {
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          "poplar pooling only supports 2D pooling");
+    }
+
+    std::vector<std::size_t> kernel_shape;
+    std::vector<unsigned> stride;
+    std::vector<int> padding_lower;
+    std::vector<int> padding_upper;
+    for (auto i=reduction_dims.begin(); i!=reduction_dims.end(); i++) {
+      auto& d = window.dimensions(*i);
+      kernel_shape.push_back((std::size_t)d.size());
+      stride.push_back((unsigned)d.stride());
+      padding_lower.push_back((int)d.padding_low());
+      padding_upper.push_back((int)d.padding_high());
+    }
+
+    std::vector<unsigned int> shuffle_in;
+    for (int i=0; i<window.dimensions_size(); i++) {
+      if (reduction_dims.count(i) == 0) {
+        shuffle_in.push_back(i);
+      }
+    }
+    shuffle_in.insert(shuffle_in.end(),
+                      reduction_dims.begin(),
+                      reduction_dims.end());
+    to_reduce = to_reduce.dimShuffle(shuffle_in);
 
     out = popnn::pooling::pool(graph, reduction_type,
                                kernel_shape, stride,
                                padding_lower, padding_upper,
                                to_reduce, prog, inst->name());
+
+    std::vector<unsigned int> shuffle_out(shuffle_in.size());
+    for (int i=0; i<window.dimensions_size(); i++) {
+      shuffle_out[shuffle_in[i]] = i;
+    }
+    out = out.dimShuffle(shuffle_out);
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   }
