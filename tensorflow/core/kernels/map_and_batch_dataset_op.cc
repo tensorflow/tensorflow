@@ -253,7 +253,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         (*ctx->runner())(std::bind(
             [=](std::vector<Tensor> input_element) {
               dataset()->captured_func_->RunAsync(
-                  opts, input_element, &result->return_values,
+                  opts, std::move(input_element), &result->return_values,
                   [this, step_container, runner, result, batch_result,
                    offset](Status ret_status) {
                     delete step_container;
