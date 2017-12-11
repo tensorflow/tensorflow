@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_VERBS
 
 #include "tensorflow/contrib/verbs/rdma.h"
-#include <fcntl.h>
 #include <cstdlib>
 #include <fcntl.h>
 #include "tensorflow/contrib/verbs/verbs_util.h"
@@ -468,10 +467,19 @@ void RdmaAdapter::Process_CQ() {
         rc->Recv();
         // imm_data is the index of RX buffer in the buffer table.
         uint32_t imm_data = wc_[i].imm_data;
-        RdmaBuffer* rb = rc->FindBuffer(imm_data);
+        RdmaBuffer* rb;
         RdmaMessage rm;
-        RdmaMessage::ParseMessage(rm, rb->buffer_);
-        VLOG(2) << "recv RDMA message: " << MessageTypeToString(rm.type_);
+        if (imm_data == RDMA_IMM_DATA_MESSAGE) {
+          rb = rc->rx_message_buffer_;
+          RdmaMessage::ParseMessage(rm, rb->buffer_);
+          RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
+                      << ": Received " << MessageTypeToString(rm.type_) << " "
+                      << "#" << rm.request_index_ << ": " << rm.name_;
+        } else if (imm_data == RDMA_IMM_DATA_ACK) {
+          rm.type_ = RDMA_MESSAGE_ACK;
+        } else {
+          rm.type_ = RDMA_MESSAGE_TENSOR_WRITE;
+        }
 
         if (rm.type_ == RDMA_MESSAGE_ACK) {
           // receive an ack to a message
@@ -487,6 +495,7 @@ void RdmaAdapter::Process_CQ() {
           RdmaBuffer* tb = rc->FindOrCreateBuffer(rm.name_);
           string key_with_step_id =
               VerbsUtil::AppendStepidToKey(rm.name_, rm.step_id_);
+          ((RdmaTensorBuffer*)tb)->AddOrUpdateResponse(rm);
           tb->EnqueueItem(key_with_step_id);
           // send the next tensor
           worker_env_->compute_pool->Schedule([tb]() { tb->SendNextItem(); });
@@ -506,24 +515,9 @@ void RdmaAdapter::Process_CQ() {
           RdmaBuffer* ab = rc->tx_ack_buffer_;
           ab->SendNextItem();
           // find or create the buffer
-          RdmaBuffer* tb = rc->FindOrCreateBuffer(rm.name_, TENSOR);
-          RemoteMR rmr;
-          rmr.remote_addr = rm.remote_addr_;
-          rmr.rkey = rm.rkey_;
-          tb->SetRemoteMR(rmr, true);
-          tb->CreateCPUBuffer(rm.buffer_size_);
-          // create RDMA_MESSAGE_BUFFER_RESPONSE message
-          RdmaMessage br;
-          br.type_ = RDMA_MESSAGE_BUFFER_RESPONSE;
-          br.name_size_ = rm.name_.size();
-          br.name_ = rm.name_;
-          br.buffer_size_ = rm.buffer_size_;
-          br.remote_addr_ = reinterpret_cast<uint64_t>(tb->buffer_);
-          br.rkey_ = tb->self_->rkey;
-          string message = RdmaMessage::CreateMessage(br);
-          RdmaBuffer* mb = rc->tx_message_buffer_;
-          mb->EnqueueItem(message);
-          mb->SendNextItem();
+          RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
+          request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
+                                      rm.is_dead_, rm.tensor_bytes_);
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE) {
           // remote creates a buffer and responds
           // send ack to release remote tx message buffer
@@ -532,33 +526,55 @@ void RdmaAdapter::Process_CQ() {
           // find buffer
           RdmaTensorBuffer* tb =
               reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
-          CHECK(rm.buffer_size_ == tb->size_)
-              << "rm.buffer_size = " << rm.buffer_size_
-              << "tb->size_ = " << tb->size_ << "rm.name_ = " << rm.name_;
-          RemoteMR rmr;
-          rmr.remote_addr = rm.remote_addr_;
-          rmr.rkey = rm.rkey_;
-          tb->SetRemoteMR(rmr, true);
+          tb->AddOrUpdateResponse(rm);
           tb->SetBufferStatus(local, idle);
           tb->SetBufferStatus(remote, idle);
           worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
         } else if (rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) {
           // tensor RDMA write completed
-          worker_env_->compute_pool->Schedule([rm, rc]() {
-            string key_with_step_id =
-                VerbsUtil::AppendStepidToKey(rm.name_, rm.step_id_);
-            rc->RunRecvCallback(key_with_step_id);
+          worker_env_->compute_pool->Schedule([imm_data, rc]() {
+            uint32_t request_index = imm_data;
+            RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
+            request->RecvTensorContent();
           });
         }
       } else if (wc_[i].opcode == IBV_WC_RDMA_WRITE) {
-        RdmaBuffer* rb = reinterpret_cast<RdmaBuffer*>(wc_[i].wr_id);
-        rb->SetBufferStatus(local, idle);
-        RdmaMessage rm;
-        RdmaMessage::ParseMessage(rm, rb->buffer_);
-        VLOG(2) << "sent RDMA message: " << MessageTypeToString(rm.type_);
-        if (rm.type_ != RDMA_MESSAGE_ACK) {
-          worker_env_->compute_pool->Schedule([rb]() { rb->SendNextItem(); });
+        RdmaWriteID* wr_id = reinterpret_cast<RdmaWriteID*>(wc_[i].wr_id);
+        RDMA_LOG(2) << "Write complete of type " << wr_id->write_type;
+        switch (wr_id->write_type) {
+          case RDMA_WRITE_ID_ACK: {
+            RdmaBuffer* rb =
+                reinterpret_cast<RdmaBuffer*>(wr_id->write_context);
+            rb->SetBufferStatus(local, idle);
+            break;
+          }
+          case RDMA_WRITE_ID_MESSAGE: {
+            RdmaBuffer* rb =
+                reinterpret_cast<RdmaBuffer*>(wr_id->write_context);
+            rb->SetBufferStatus(local, idle);
+            worker_env_->compute_pool->Schedule([rb]() { rb->SendNextItem(); });
+            break;
+          }
+          case RDMA_WRITE_ID_TENSOR_DMA: {
+            TensorBuffer* src_buffer =
+                reinterpret_cast<TensorBuffer*>(wr_id->write_context);
+            if (src_buffer != nullptr) {
+              src_buffer->Unref();
+            }
+            break;
+          }
+          case RDMA_WRITE_ID_TENSOR_PROTO: {
+            RemoteAddressContext* remote =
+                reinterpret_cast<RemoteAddressContext*>(wr_id->write_context);
+            ibv_dereg_mr(remote->mr);
+            free(remote->address);
+            delete remote;
+            break;
+          }
+          default:
+            break;
         }
+        delete wr_id;
       }
     }
   }
@@ -588,8 +604,10 @@ int RdmaChannel::PingPostSend() {
 
 RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
                          const string remote_name)
-    : adapter_(adapter), local_name_(local_name), remote_name_(remote_name) {
-
+    : adapter_(adapter),
+      local_name_(local_name),
+      remote_name_(remote_name),
+      request_serial_(0) {
   struct ibv_sge list;
 
   mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, kPingBuffSize,
@@ -794,10 +812,16 @@ RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name,
 //   recv_done: the callback associated with the tensor.
 // Returns:
 //   None
-void RdmaChannel::InsertRecvCallback(const string& key,
-                                     std::function<void()> recv_done) {
+RdmaTensorRequest* RdmaChannel::InsertTensorRequest(
+    const string& key, int64 step_id, Device* dst_dev,
+    const Rendezvous::Args recv_args,
+    const RdmaTensorRequest::RecvDoneCallback& done) {
   mutex_lock lock{ct_mu_};
-  callback_table_.insert({key, recv_done});
+  uint32_t request_index = request_serial_++ & 0x7FFFFFFF;
+  RdmaTensorRequest request(request_index, key, step_id, this, dst_dev,
+                            recv_args, done);
+  auto it = request_table_.emplace(request_index, request);
+  return &it.first->second;
 }
 
 // Remove callback from the callback_table.
@@ -805,9 +829,9 @@ void RdmaChannel::InsertRecvCallback(const string& key,
 //   key: the name of the tensor
 // Returns:
 //   None
-void RdmaChannel::RemoveRecvCallback(const string& key) {
+void RdmaChannel::RemoveTensorRequest(uint32_t request_index) {
   mutex_lock lock{ct_mu_};
-  callback_table_.erase(key);
+  request_table_.erase(request_index);
 }
 
 // Run named callback in the callback_table.
@@ -815,15 +839,11 @@ void RdmaChannel::RemoveRecvCallback(const string& key) {
 //   key: the name of the tensor
 // Returns:
 //   None
-void RdmaChannel::RunRecvCallback(const string& key) {
-  std::function<void()> recv_done;
-  {
-    mutex_lock lock{ct_mu_};
-    CallbackTable::iterator iter = callback_table_.find(key);
-    CHECK(iter != callback_table_.end());
-    recv_done = iter->second;
-  }
-  recv_done();
+RdmaTensorRequest* RdmaChannel::GetTensorRequest(uint32_t request_index) {
+  mutex_lock lock{ct_mu_};
+  RequestTable::iterator iter = request_table_.find(request_index);
+  CHECK(iter != request_table_.end());
+  return &iter->second;
 }
 
 void RdmaChannel::Connect() {
@@ -963,24 +983,36 @@ void RdmaBuffer::EnqueueItem(string item) {
 
 // Rdma-Write the content of the buffer
 void RdmaBuffer::Write(uint32_t imm_data, size_t buffer_size) {
+  RdmaWriteIDType write_type = (imm_data == RDMA_IMM_DATA_ACK)
+                                   ? RDMA_WRITE_ID_ACK
+                                   : RDMA_WRITE_ID_MESSAGE;
+  Write(channel_, imm_data, buffer_size, (uint64_t)buffer_, self_->lkey,
+        remote_.remote_addr, remote_.rkey, write_type, this);
+}
+
+// Generalized Write method
+void RdmaBuffer::Write(const RdmaChannel* channel, uint32_t imm_data,
+                       size_t buffer_size, uint64_t src_addr, uint32_t lkey,
+                       uint64_t remote_addr, uint32_t rkey,
+                       RdmaWriteIDType write_type, void* write_context) {
   struct ibv_sge list;
-  list.addr = (uint64_t)buffer_;
+  list.addr = src_addr;
   list.length = buffer_size;
-  list.lkey = self_->lkey;
+  list.lkey = lkey;
 
   struct ibv_send_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr_id = (uint64_t) this;
+  wr.wr_id = (uint64_t) new RdmaWriteID(write_type, write_context);
   wr.sg_list = &list;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
   wr.send_flags = IBV_SEND_SIGNALED;
   wr.imm_data = imm_data;
-  wr.wr.rdma.remote_addr = (uint64_t)remote_.remote_addr;
-  wr.wr.rdma.rkey = remote_.rkey;
+  wr.wr.rdma.remote_addr = remote_addr;
+  wr.wr.rdma.rkey = rkey;
 
   struct ibv_send_wr* bad_wr;
-  CHECK(!ibv_post_send(channel_->qp_, &wr, &bad_wr)) << "Failed to post send";
+  CHECK(!ibv_post_send(channel->qp_, &wr, &bad_wr)) << "Failed to post send";
 }
 
 RdmaAckBuffer::RdmaAckBuffer(RdmaChannel* channel, string name)
@@ -1000,7 +1032,7 @@ RdmaTensorBuffer::~RdmaTensorBuffer() {
 
 // Send the next ack from the buffer's job queue.
 void RdmaAckBuffer::SendNextItem() {
-  uint32_t imm_data = LookupBufferIndex("rx_ack_buffer");
+  uint32_t imm_data = RDMA_IMM_DATA_ACK;
   RdmaMessage rm;
   rm.name_ = "rx_ack_buffer";
   rm.type_ = RDMA_MESSAGE_ACK;
@@ -1012,7 +1044,7 @@ void RdmaAckBuffer::SendNextItem() {
 
 // Send the next message from the buffer's job queue.
 void RdmaMessageBuffer::SendNextItem() {
-  uint32_t imm_data = LookupBufferIndex("rx_message_buffer");
+  uint32_t imm_data = RDMA_IMM_DATA_MESSAGE;
   mu_.lock();
   if (!queue_.empty() && (local_status_ == idle) && (remote_status_ == idle)) {
     local_status_ = busy;
@@ -1029,6 +1061,66 @@ void RdmaMessageBuffer::SendNextItem() {
   }
 }
 
+/*  static */
+bool RdmaTensorBuffer::TensorMetaDataChanged(const RdmaMessage& rm,
+                                             const Tensor& in, bool is_dead,
+                                             size_t tensor_bytes) {
+  return (rm.data_type_ != in.dtype()) || (rm.tensor_shape_ != in.shape()) ||
+         (rm.is_dead_ != is_dead) || (rm.tensor_bytes_ != tensor_bytes);
+}
+
+/*  static */
+bool RdmaTensorBuffer::TensorIsEmpty(const Tensor& in) {
+  return DataTypeCanUseMemcpy(in.dtype()) && (in.TotalBytes() == 0);
+}
+
+/*  static */
+void RdmaTensorBuffer::CountCopies(const std::string& key, void* src_addr,
+                                   void* dst_addr, size_t tensor_bytes,
+                                   bool is_gpu_to_cpu) {
+#ifdef RDMA_COUNT_COPIES
+  static uint64_t numGPUToCPUCopies = 0;
+  static uint64_t numGPUToCPUCopiedBytes = 0;
+  static uint64_t numCPUToGPUCopies = 0;
+  static uint64_t numCPUToGPUCopiedBytes = 0;
+  static uint64_t numTotalCopies = 0;
+
+  if (is_gpu_to_cpu) {
+    ++numGPUToCPUCopies;
+    numGPUToCPUCopiedBytes += tensor_bytes;
+  } else {
+    ++numCPUToGPUCopies;
+    numCPUToGPUCopiedBytes += tensor_bytes;
+  }
+  if ((++numTotalCopies % 0x400) == 0) {
+    RDMA_LOG(0) << "Tensor copies:"
+                << " GPU to CPU: " << numGPUToCPUCopies
+                << " (" << numGPUToCPUCopiedBytes << " Bytes)"
+                << " CPU to GPU: " << numCPUToGPUCopies
+                << " (" << numCPUToGPUCopiedBytes << " Bytes)";
+  }
+  RDMA_LOG(2) << "Copying tensor " << key
+              << " From: " << src_addr << " To: " << dst_addr;
+#endif
+}
+
+void RdmaTensorBuffer::AddOrUpdateResponse(const RdmaMessage& rm) {
+  mutex_lock lock{mu_};
+  responses_[rm.step_id_] = RdmaTensorResponse(rm);
+}
+
+RdmaTensorResponse* RdmaTensorBuffer::GetResponse(int64 step_id) {
+  mutex_lock lock{mu_};
+  auto it = responses_.find(step_id);
+  CHECK(it != responses_.end());
+  return &it->second;
+}
+
+void RdmaTensorBuffer::RemoveResponse(int64 step_id) {
+  mutex_lock lock{mu_};
+  responses_.erase(step_id);
+}
+
 Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
     const string& key_with_step_id, const string& key, int64 step_id,
     const Rendezvous::ParsedKey& parsed) {
@@ -1037,7 +1129,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
       const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
     CHECK(status.ok()) << "RecvLocalAsync was not ok, key" << key_with_step_id
                        << " error message: " << status.error_message();
-    size_t buffer_size = RdmaMessage::kMessageTotalBytes;
+    size_t buffer_size = 0;
     size_t tensor_bytes = 0;
     // Figures out which device the tensor is hosted on.
     Device* src_dev = nullptr;
@@ -1078,6 +1170,10 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         copy = Tensor(alloc, in.dtype(), in.shape());
         tensor_bytes = in.TotalBytes();
         buffer_size += tensor_bytes;
+
+        CountCopies(key, (void*)DMAHelper::base(&in),
+                    (void*)DMAHelper::base(&copy), tensor_bytes, true);
+
         GPUUtil::CopyGPUTensorToCPU(
             src_dev, send_args.device_context, &in, &copy,
             [this, copy, tensor_bytes, buffer_size, key, in, step_id,
@@ -1117,7 +1213,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
       }
       buffer_size += tensor_bytes;
       PostCopyOperations(can_memcpy, buffer_size, tensor_bytes, key, in,
-                         step_id, is_dead, key_with_step_id, &copy, &proto,
+                         step_id, is_dead, key_with_step_id, nullptr, &proto,
                          &copy_buf, send_args, recv_args);
     }
   };
@@ -1193,6 +1289,8 @@ void RdmaTensorBuffer::PostCopyOperations(
     const string& key_with_step_id, const Tensor* copy,
     const TensorProto* proto, const StringPiece* copy_buf,
     const Rendezvous::Args& send_args, const Rendezvous::Args& recv_args) {
+  RdmaTensorResponse response = *GetResponse(step_id);
+  uint32_t request_index = response.rm_.request_index_;
   // prepare message
   RdmaMessage rm;
   rm.name_size_ = key.size();
@@ -1202,14 +1300,17 @@ void RdmaTensorBuffer::PostCopyOperations(
   rm.step_id_ = step_id;
   rm.is_dead_ = is_dead;
   rm.tensor_bytes_ = tensor_bytes;
-  rm.buffer_size_ = buffer_size;
+  rm.request_index_ = request_index;
   mu_.lock();
-  if (local_status_ == none || (buffer_size > size_ && local_status_ == idle &&
-                                remote_status_ == idle)) {
-    if ((local_status_ != none) && (buffer_size > size_)) {
-      VLOG(2) << "Extend RDMA buffer from " << size_ << " to " << buffer_size;
+  bool first_time = response.rm_.data_type_ == DT_INVALID;
+  bool meta_data_changed =
+      TensorMetaDataChanged(response.rm_, in, is_dead, tensor_bytes);
+  if (first_time || meta_data_changed) {
+    if (first_time) {
+      RDMA_LOG(2) << "Sending meta-data for the first time: " << key;
+    } else if (meta_data_changed) {
+      RDMA_LOG(2) << "Meta data changed: " << key;
     }
-    CreateCPUBuffer(buffer_size, false);
     // Need to be received again, put into the re-recv queue and the table
     requeue.push(key_with_step_id);
     ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
@@ -1218,54 +1319,71 @@ void RdmaTensorBuffer::PostCopyOperations(
     // no longer used: put back the key since it is not sent;
     // ask the remote to create the same buffer
     rm.type_ = RDMA_MESSAGE_BUFFER_REQUEST;
-    rm.remote_addr_ = reinterpret_cast<uint64_t>(buffer_);
-    rm.rkey_ = self_->rkey;
+    // rm.remote_addr_ = reinterpret_cast<uint64_t>(buffer_);
+    // rm.rkey_ = self_->rkey;
+    RDMA_LOG(1) << "Step 0x" << std::hex << step_id << std::dec
+                << ": Sending  RDMA_MESSAGE_BUFFER_REQUEST #"
+                << rm.request_index_ << ": " << key << "("
+                << " shape = " << rm.tensor_shape_.DebugString() << "."
+                << " data-type = " << DataTypeString(rm.data_type_) << "."
+                << " is-dead = " << rm.is_dead_ << ")";
     string message = RdmaMessage::CreateMessage(rm);
     channel_->tx_message_buffer_->EnqueueItem(message);
     channel_->tx_message_buffer_->SendNextItem();
-  } else if ((local_status_ == idle) && (remote_status_ == idle)) {
+  } else {
     // both buffers are ready, send the tensor
     local_status_ = busy;
     remote_status_ = busy;
     // local/remote_status_ won't be set back to idle
     // unitl Write() is successful
     mu_.unlock();
-    if (!((buffer_size == size_ && rm.data_type_ != DT_STRING) ||
-          (buffer_size <= size_ && rm.data_type_ == DT_STRING))) {
-      VLOG(2) << "Tensor and buffer size do not agree,"
-              << " buffer_size = " << size_
-              << " requested tensor size = " << buffer_size << in.DebugString();
-    }
-    uint32_t imm_data = LookupBufferIndex(key);
-    rm.type_ = RDMA_MESSAGE_TENSOR_WRITE;
-    string message = RdmaMessage::CreateMessage(rm);
-    memcpy(buffer_, message.data(), message.size());
+    uint32_t imm_data = request_index;
+    RemoveResponse(step_id);
+    RdmaWriteIDType write_type;
+    void* wr_context = nullptr;
+    void* src_addr = nullptr;
+    ibv_mr* mr = nullptr;
     if (!is_dead) {
       // copy the tensor buffer content
-      void* output = static_cast<void*>(static_cast<char*>(buffer_) +
-                                        RdmaMessage::kTensorBufferStartIndex);
-      CHECK(tensor_bytes + RdmaMessage::kTensorBufferStartIndex <= size_);
       if (can_memcpy) {
-        CHECK(copy != NULL) << "callback missing pointer to copy tensor";
-        CHECK(copy_buf != NULL) << "callback missing pointer to copy buffer";
-        CHECK(copy_buf->size() == tensor_bytes)
-            << "unexpected tensor size: " << copy_buf->size()
-            << " != " << tensor_bytes;
-        memcpy(output, copy_buf->data(), tensor_bytes);
+        TensorBuffer* tensor_buffer =
+            (TensorBuffer*)DMAHelper::buffer((copy != nullptr) ? copy : &in);
+        if (tensor_buffer != nullptr) {
+          tensor_buffer->Ref();  // Keep buffer alive until write is complete
+          src_addr = tensor_buffer->data();
+          write_type = RDMA_WRITE_ID_TENSOR_DMA;
+          wr_context = tensor_buffer;
+          mr = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr,
+                                                           tensor_bytes);
+        } else {
+          buffer_size = 0;
+          write_type = RDMA_WRITE_ID_EMPTY_TENSOR;
+        }
       } else {
         CHECK(proto != NULL) << "callback missing pointer to proto tensor";
-        proto->SerializeToArray(output, tensor_bytes);
+        src_addr = malloc(tensor_bytes);
+        mr = ibv_reg_mr(channel_->adapter_->pd_, src_addr, tensor_bytes,
+                        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        proto->SerializeToArray(src_addr, tensor_bytes);
+        write_type = RDMA_WRITE_ID_TENSOR_PROTO;
+        wr_context = new RemoteAddressContext(src_addr, mr);
       }
     } else {
-      buffer_size = RdmaMessage::kMessageTotalBytes;
+      buffer_size = 0;
+      write_type = RDMA_WRITE_ID_EMPTY_TENSOR;
     }
-    Write(imm_data, buffer_size);
-  } else {
-    // Need to be received again, put into the re-recv queue and the table
-    requeue.push(key_with_step_id);
-    ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
-    retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
-    mu_.unlock();
+
+    uint32_t lkey = (mr == nullptr) ? 0 : mr->lkey;
+    RDMA_LOG(1) << "Step 0x" << std::hex << step_id << std::dec
+                << ": Sending  RDMA_MESSAGE_TENSOR_WRITE #" << request_index
+                << " from " << std::hex << src_addr << " (0x" << lkey << ")"
+                << " to " << response.rm_.remote_addr_
+                << " (0x" << response.rm_.rkey_ << "): " << key
+                << " (size: 0x" << std::hex << tensor_bytes << ")";
+
+    Write(channel_, imm_data, buffer_size, (uint64_t)src_addr, lkey,
+          response.rm_.remote_addr_, response.rm_.rkey_, write_type,
+          wr_context);
   }
 }
 
@@ -1276,43 +1394,44 @@ void RdmaTensorBuffer::PostCopyOperations(
 //   message in string format
 string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   // Rdma Message format
-  // type|name_size|name|step_id|buffer_size|remote_addr|rkey|is_dead|...
-  //   1B|    2B   | 512|  8B   |    8B     |       8B  | 4B |    1B |...
-  // ...|data_type|tensor_shape|tensor_bytes|tensor_buffer
-  // ...|   XB    |    XB      |    8B      |...
+  // type|name_size|name|step_id|request_index|remote_addr|rkey|is_dead|...
+  //   1B|    2B   | 512|  8B   |     8B      |       8B  | 4B |    1B |...
+  // ...|data_type|tensor_shape|tensor_bytes|
+  // ...|   XB    |    XB      |    8B      |
   //
-  // ACK:             type|13|"rx_ack_buffer"
-  // TENSOR_REQUEST:  type|name_size|tensor_name|step_id
-  // TENSOR_WRITE:    type|name_size|tensor_name|step_id|...|is_dead
-  //                 |data_type|tensor_shape|tensor_bytes
-  // BUFFER_IDLE:     type|name_size|buffer_name
-  // BUFFER_REQUEST:
-  // type|name_size|buffer_name|...|buffer_size|remote_addr|rkey|
-  // BUFFER_RESPONSE:
-  // type|name_size|buffer_name|...|buffer_size|remote_addr|rkey|
+  // ACK:             Imm-type: ACK
+  // TENSOR_REQUEST:  Imm-type: MESSAGE
+  //                  Fields: type, request_index, name, step_id, remote_addr,
+  //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
+  // BUFFER_REQUEST:  Imm-type: MESSAGE
+  //                  Fields: type, request_index, is_dead, data_type,
+  //                      tensor_shape, tensor_bytes
+  // BUFFER_RESPONSE: Imm-type: MESSAGE
+  //                  Fields: type, request_index, name, step_id, remote_addr,
+  //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
+  // TENSOR_WRITE:    Imm-type: request_index
+  // BUFFER_IDLE:     OBSOLETE. Will be removed in the next commits.
   char message[kMessageTotalBytes];
   // type
   message[kTypeStartIndex] = static_cast<char>(rm.type_) & 0xff;
-  // size of name
-  memcpy(&message[kNameSizeStartIndex], &rm.name_size_, sizeof(rm.name_size_));
-  // name
-  memcpy(&message[kNameStartIndex], rm.name_.data(), rm.name_.size());
-  // buffer_size, remote_addr, rkey
-  if ((rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
+  // request index
+  memcpy(&message[kRequestIndexStartIndex], &rm.request_index_,
+         sizeof(rm.request_index_));
+  // name, step_id, remote_addr, rkey
+  if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
       (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
-    memcpy(&message[kBufferSizeStartIndex], &rm.buffer_size_,
-           sizeof(rm.buffer_size_));
+    memcpy(&message[kNameSizeStartIndex], &rm.name_size_,
+           sizeof(rm.name_size_));
+    memcpy(&message[kNameStartIndex], rm.name_.data(), rm.name_.size());
     memcpy(&message[kRemoteAddrStartIndex], &rm.remote_addr_,
            sizeof(rm.remote_addr_));
     memcpy(&message[kRkeyStartIndex], &rm.rkey_, sizeof(rm.rkey_));
-  }
-  // step_id
-  if ((rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) ||
-      (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST)) {
     memcpy(&message[kStepIdStartIndex], &rm.step_id_, sizeof(rm.step_id_));
   }
   // is_dead, data_type, tensor_shape, tensor_bytes
-  if (rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) {
+  if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
+      (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
+      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
     memcpy(&message[kIsDeadStartIndex], &rm.is_dead_, sizeof(rm.is_dead_));
 
     memcpy(&message[kDataTypeStartIndex], &rm.data_type_,
@@ -1335,26 +1454,24 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
   char* message = static_cast<char*>(buffer);
   // type
   rm.type_ = static_cast<RdmaMessageType>(message[kTypeStartIndex]);
-  // name_size_
-  memcpy(&rm.name_size_, &message[kNameSizeStartIndex], sizeof(rm.name_size_));
-  // name
-  rm.name_ = string(&message[kNameStartIndex], rm.name_size_);
-  // buffer_size, remote_addr, rkey
-  if ((rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
+  // request index
+  memcpy(&rm.request_index_, &message[kRequestIndexStartIndex],
+         sizeof(rm.request_index_));
+  // name, step_id, remote_addr, rkey
+  if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
       (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
-    memcpy(&rm.buffer_size_, &message[kBufferSizeStartIndex],
-           sizeof(rm.buffer_size_));
+    memcpy(&rm.name_size_, &message[kNameSizeStartIndex],
+           sizeof(rm.name_size_));
+    rm.name_ = string(&message[kNameStartIndex], rm.name_size_);
     memcpy(&rm.remote_addr_, &message[kRemoteAddrStartIndex],
            sizeof(rm.remote_addr_));
     memcpy(&rm.rkey_, &message[kRkeyStartIndex], sizeof(rm.rkey_));
-  }
-  // step_id
-  if ((rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) ||
-      (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST)) {
     memcpy(&rm.step_id_, &message[kStepIdStartIndex], sizeof(rm.step_id_));
   }
   // data_type, tensor_bytes, tensor_shape, is_dead
-  if (rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) {
+  if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
+      (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
+      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
     memcpy(&rm.is_dead_, &message[kIsDeadStartIndex], sizeof(rm.is_dead_));
     memcpy(&rm.data_type_, &message[kDataTypeStartIndex],
            sizeof(rm.data_type_));
@@ -1363,6 +1480,245 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
     memcpy(&rm.tensor_bytes_, &message[kTensorBytesStartIndex],
            sizeof(rm.tensor_bytes_));
   }
+}
+
+//*****************************************************************************
+// RdmaMemoryMgr
+//*****************************************************************************
+
+ibv_mr* RdmaMemoryMgr::FindMemoryRegion(void* addr, size_t length) {
+  mutex_lock l(mrs_mu_);
+  auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+  if (iter == std::end(mrs_) || iter->get()->addr > addr) {
+    return nullptr;
+  } else {
+    return iter->get();
+  }
+}
+
+void RdmaMemoryMgr::InsertMemoryRegion(void* addr, size_t length,
+                                       const std::string& allocator_name) {
+  if (length == 0) return;
+  ibv_mr* mr = ibv_reg_mr(pd_, addr, length,
+                          IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+  RDMA_LOG(1) << "Insert memory region 0x" << std::hex << mr->rkey << ". ["
+              << addr << "-" << (void*)((uint64_t)addr + length - 1) << "]"
+              << " SIZE: 0x" << length << " (" << allocator_name << ").";
+  if (mr != nullptr) {
+    mutex_lock l(mrs_mu_);
+    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+    mrs_.insert(iter, {mr, &MRDeleter});
+  } else {
+    LOG(WARNING) << "Cannot register memory region";
+  }
+}
+
+void RdmaMemoryMgr::EvictMemoryRegion(void* addr, size_t length) {
+  if (length == 0) return;
+  mutex_lock l(mrs_mu_);
+  auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+  if (iter != std::end(mrs_) && iter->get()->addr == addr) {
+    mrs_.erase(iter);
+    RDMA_LOG(1) << "Evict memory region 0x" << std::hex << iter->get()->rkey;
+
+  } else {
+    LOG(WARNING) << "Failed to de-register memory region";
+  }
+}
+
+const TensorMetaData* RdmaMemoryMgr::GetTensorMetaData(
+    const std::string& tensor_name) {
+  mutex_lock l(tensor_meta_data_mu_);
+  auto it = tensors_meta_data_.find(tensor_name);
+  if (it == tensors_meta_data_.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+const TensorMetaData* RdmaMemoryMgr::SetTensorMetaData(
+    const std::string& tensor_name, DataType dtype, const TensorShape& shape,
+    bool is_dead, size_t proto_size) {
+  mutex_lock l(tensor_meta_data_mu_);
+  TensorMetaData& meta_data = tensors_meta_data_[tensor_name];
+  meta_data.data_type_ = dtype;
+  meta_data.tensor_shape_ = shape;
+  meta_data.proto_size_ = proto_size;
+  meta_data.is_dead_ = is_dead;
+  return &meta_data;
+}
+
+//*****************************************************************************
+// RdmaTensorRequest
+//*****************************************************************************
+
+RdmaTensorRequest::RdmaTensorRequest(
+    uint32_t index, const string& key, int64 step_id, RdmaChannel* channel,
+    Device* dst_dev, const Rendezvous::Args recv_args,
+    const RdmaTensorRequest::RecvDoneCallback& done)
+    : index_(index),
+      key_(key),
+      step_id_(step_id),
+      channel_(channel),
+      dst_dev_(dst_dev),
+      recv_args_(recv_args),
+      meta_data_(RdmaMemoryMgr::Singleton().GetTensorMetaData(key)),
+      result_tensor_(nullptr),
+      proxy_tensor_(nullptr),
+      rdma_addr_(nullptr),
+      mr_(nullptr),
+      done_(done) {}
+
+RdmaTensorRequest::~RdmaTensorRequest() { DeallocateTensors(); }
+
+void RdmaTensorRequest::Done(const Status& s) {
+  Tensor val = std::move(*result_tensor_);
+  Rendezvous::Args recv_args = std::move(recv_args_);
+  bool is_dead = meta_data_->is_dead_;
+  RecvDoneCallback done = done_;
+  DeallocateTensors();
+  channel_->RemoveTensorRequest(index_);
+  done(s, Rendezvous::Args(), recv_args, val, is_dead);
+}
+
+void RdmaTensorRequest::DeallocateTensors() {
+  if (result_tensor_ != nullptr) {
+    delete result_tensor_;
+    result_tensor_ = nullptr;
+  }
+  if (proxy_tensor_ != nullptr) {
+    delete proxy_tensor_;
+    proxy_tensor_ = nullptr;
+  }
+}
+
+bool RdmaTensorRequest::AllocateTensors() {
+  result_tensor_ =
+      new Tensor(dst_dev_->GetAllocator(recv_args_.alloc_attrs),
+                 meta_data_->data_type_, meta_data_->tensor_shape_);
+
+  size_t tensor_size = result_tensor_->TotalBytes();
+  bool can_memcpy = DataTypeCanUseMemcpy(result_tensor_->dtype());
+  if (can_memcpy) {
+    if (tensor_size == 0) {
+      return true;
+    }
+    rdma_addr_ = DMAHelper::base(result_tensor_);
+    mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(rdma_addr_, tensor_size);
+#if GOOGLE_CUDA
+    if (mr_ == nullptr) {
+      // Can't RDMA directly to result. Use a proxy.
+      proxy_tensor_ =
+          new Tensor(ProcessState::singleton()->GetCUDAHostAllocator(0),
+                     result_tensor_->dtype(), result_tensor_->shape());
+      rdma_addr_ = DMAHelper::base(proxy_tensor_);
+      mr_ =
+          RdmaMemoryMgr::Singleton().FindMemoryRegion(rdma_addr_, tensor_size);
+    }
+#endif
+  } else {
+    uint32_t proto_size = meta_data_->proto_size_;
+    rdma_addr_ = malloc(proto_size);
+    mr_ = ibv_reg_mr(RdmaMemoryMgr::Singleton().pd_, rdma_addr_, proto_size,
+                     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+  }
+  CHECK(mr_ != nullptr) << " No memory region found for address " << rdma_addr_
+                        << ": " << key_;
+  return true;
+}
+
+void RdmaTensorRequest::Send(RdmaMessageType message_type) {
+  // append key to message queue
+  RdmaBuffer* rb = channel_->tx_message_buffer_;
+  RdmaMessage rm;
+  rm.type_ = message_type;
+  rm.request_index_ = index_;
+  rm.name_size_ = key_.size();
+  rm.name_ = key_;
+  rm.step_id_ = step_id_;
+  rm.remote_addr_ = (uint64_t)rdma_addr_;
+  if (meta_data_ != nullptr) {
+    rm.data_type_ = meta_data_->data_type_;
+    rm.tensor_shape_ = meta_data_->tensor_shape_;
+    rm.is_dead_ = meta_data_->is_dead_;
+    rm.tensor_bytes_ = meta_data_->proto_size_;
+  } else {
+    rm.data_type_ = DT_INVALID;
+  }
+  rm.rkey_ = (mr_ == nullptr) ? 0 : mr_->rkey;
+
+  RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
+              << ": Sending  " << MessageTypeToString(message_type)
+              << " #" << index_ << ": "
+              << rm.name_ << " on " << rdma_addr_
+              << " (rkey: 0x" << std::hex << rm.rkey_ << ")";
+
+  string message = RdmaMessage::CreateMessage(rm);
+  rb->EnqueueItem(message);
+  rb->SendNextItem();
+}
+
+void RdmaTensorRequest::RecvTensorMetaData(DataType dtype, TensorShape shape,
+                                           bool is_dead, size_t proto_size) {
+  meta_data_ = RdmaMemoryMgr::Singleton().SetTensorMetaData(
+      key_, dtype, shape, is_dead, proto_size);
+
+  DeallocateTensors();
+  if (!AllocateTensors()) {
+    return;
+  }
+  Send(RDMA_MESSAGE_BUFFER_RESPONSE);
+}
+
+void RdmaTensorRequest::RecvTensorContent() {
+  bool can_memcpy = DataTypeCanUseMemcpy(meta_data_->data_type_);
+  size_t message_size =
+      can_memcpy ? result_tensor_->TotalBytes() : meta_data_->proto_size_;
+  RDMA_LOG(1) << "Step 0x" << std::hex << step_id_ << std::dec
+              << ": Received RDMA_MESSAGE_TENSOR_WRITE #" << index_ << ": "
+              << key_ << " (Size: 0x" << std::hex << message_size << ")";
+
+  Tensor val;
+
+#if GOOGLE_CUDA
+  if (proxy_tensor_ != nullptr) {
+    RdmaTensorBuffer::CountCopies(key_, (void*)DMAHelper::base(proxy_tensor_),
+                                  (void*)DMAHelper::base(result_tensor_),
+                                  result_tensor_->TotalBytes(), false);
+    GPUUtil::CopyCPUTensorToGPU(proxy_tensor_, recv_args_.device_context,
+                                dst_dev_, result_tensor_,
+                                [this](const Status& s) {
+                                  CHECK(s.ok()) << "copy tensor to gpu sync";
+                                  delete proxy_tensor_;
+                                  proxy_tensor_ = nullptr;
+                                  Done(s);
+                                });
+    return;
+  }
+#endif
+
+  if (can_memcpy) {
+    Done(Status::OK());
+  } else {
+    RDMA_LOG(2) << "Decoding proto: " << key_
+                << " (Size: " << meta_data_->proto_size_ << ")";
+    TensorProto proto;
+    CHECK(ParseProtoUnlimited(&proto, rdma_addr_, meta_data_->proto_size_))
+        << "fail to parse proto from array";
+    ibv_dereg_mr(mr_);
+    free(rdma_addr_);
+    Status s = dst_dev_->MakeTensorFromProto(proto, recv_args_.alloc_attrs,
+                                             result_tensor_);
+    Done(s);
+  }
+}
+
+void RdmaTensorRequest::Start() {
+  meta_data_ = RdmaMemoryMgr::Singleton().GetTensorMetaData(key_);
+  if (meta_data_ != nullptr) {
+    AllocateTensors();
+  }
+  Send(RDMA_MESSAGE_TENSOR_REQUEST);
 }
 
 }  // end namespace tensorflow
