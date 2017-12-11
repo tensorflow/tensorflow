@@ -40,10 +40,8 @@ const char kPrefix[] = "LayoutOptimizer";
 const char kDataFormatOp[] = "LayoutOptimizerDataFormatOp";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
-const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
 const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
 const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
-const char kPermVecNHWCToNCHW[] = "LayoutOptimizerPermVecNHWCToNCHW";
 const char kReshapeNHWCToNCHW[] = "LayoutOptimizerReshapeNHWCToNCHW";
 const char kReshapeConst[] = "LayoutOptimizerReshapeConst";
 const char kReductionConst[] = "LayoutOptimizerReductionConst";
@@ -544,14 +542,15 @@ class NodeProcessor : public GraphProcessor {
     return const_node;
   }
 
-  void AddNodeDataFormatOp(const string& op, int input_pos) {
+  void AddNodeDataFormatOp(const string& op, int input_pos, DataType dtype) {
     NodeDef* added_node = graph_->add_node();
-    added_node->set_name(strings::StrCat(kDataFormatOp, "-", node_->name()));
+    added_node->set_name(
+        strings::StrCat(kDataFormatOp, "_", node_->name(), "_", input_pos));
     added_node->set_op(op);
     node_map_->AddNode(added_node->name(), added_node);
     added_node->set_device(node_->device());
     AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
+    attr_data_type.set_type(dtype);
     added_node->mutable_attr()->insert({"T", attr_data_type});
     AttrValue attr_format;
     attr_format.set_s("NHWC");
@@ -756,7 +755,7 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     if (IsConstant(*input_size_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(0));
     } else {
-      AddNodeDataFormatOp("DataFormatVecPermute", 0);
+      AddNodeDataFormatOp("DataFormatVecPermute", 0, DT_INT32);
     }
     return Status::OK();
   }
@@ -1020,7 +1019,9 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     if (IsConstant(*dim_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
     } else {
-      AddNodeDataFormatOp("DataFormatDimMap", axis_node_pos_);
+      DataType dtype =
+          (IsSplit(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
+      AddNodeDataFormatOp("DataFormatDimMap", axis_node_pos_, dtype);
     }
     return Status::OK();
   }
@@ -1103,107 +1104,13 @@ class SliceProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
-      string base_name = strings::StrCat(node_->name(), "-input", i);
-      string node_name =
-          AddPrefixToNodeName(base_name, kPermVecNHWCToNCHW, "-");
-      TF_RETURN_IF_ERROR(HasAttribute(*node_, "Index"));
-      AddNodePermVec(node_name, node_->input(i), node_->device(),
-                     node_->attr().at("Index").type(), true);
-      node_map_->UpdateOutput(node_->input(i), node_->name(), node_name);
-      node_map_->AddOutput(node_name, node_->name());
-      *node_->mutable_input(i) = node_name;
-    }
-    return Status::OK();
-  }
-
- private:
-  NodeDef* AddNodeGatherAxisConst(const string& suffix,
-                                  const string& depended_node,
-                                  const string& device) {
-    auto const_node = AddNodeConstScalar(
-        strings::StrCat(kGatherAxisConst, "-", suffix), device, DT_INT32, 0);
-    // This is to ensure the Slice node and the const node are
-    // in the same frame.
-    *const_node->add_input() = AsControlDependency(depended_node);
-    return const_node;
-  }
-
-  string GetOrAddNodeGatherAxisConst() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodeGatherAxisConst(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kGatherAxisConst;
-    }
-    return const_name;
-  }
-
-  string GetOrAddNodePermNHWCToNCHW() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodePermNHWCToNCHW(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNHWCToNCHW;
-    }
-    return const_name;
-  }
-
-  string GetOrAddNodePermNCHWToNHWC() {
-    string const_name;
-    if (is_in_frame_) {
-      auto const_node = AddNodePermNCHWToNHWC(
-          node_->name(), NodeName(node_->input(0)), node_->device());
-      const_name = const_node->name();
-    } else {
-      const_name = kPermNCHWToNHWC;
-    }
-    return const_name;
-  }
-
-  void AddNodePermVec(const string& node_name, const string& input_name,
-                      const string& device, DataType data_type,
-                      bool NHWCToNCHW) {
-    NodeDef* node = graph_->add_node();
-    node_map_->AddNode(node_name, node);
-    node->set_name(node_name);
-    node->set_device(device);
-    *node->add_input() = input_name;
-    *node->add_input() = NHWCToNCHW ? GetOrAddNodePermNHWCToNCHW()
-                                    : GetOrAddNodePermNCHWToNHWC();
-    *node->add_input() = GetOrAddNodeGatherAxisConst();
-    node->set_op("GatherV2");
-
-    AttrValue attr_type_indices;
-    attr_type_indices.set_type(DT_INT32);
-    node->mutable_attr()->insert({"Tindices", attr_type_indices});
-
-    AttrValue attr_type_axis;
-    attr_type_axis.set_type(DT_INT32);
-    node->mutable_attr()->insert({"Taxis", attr_type_axis});
-
-    AttrValue attr_type_params;
-    attr_type_params.set_type(data_type);
-    node->mutable_attr()->insert({"Tparams", attr_type_params});
-  }
-};
-
-// Specialized SliceProcessor, used if the second and third input are const
-// nodes, which could be the case if a constant folding pass is applied
-// before this optimization.
-class SliceProcessorConst : public AgnosticNodeProcessor {
- public:
-  explicit SliceProcessorConst(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  Status CustomizedProcessing() override {
-    // Skip the first input, which is the data to be sliced.
-    for (int i = 1; i < node_->input_size(); i++) {
-      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      auto index_node = node_map_->GetNode(node_->input(i));
+      if (IsConstant(*index_node)) {
+        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      } else {
+        AddNodeDataFormatOp("DataFormatVecPermute", i,
+                            node_->attr().at("Index").type());
+      }
     }
     return Status::OK();
   }
@@ -1332,10 +1239,6 @@ class DataLayoutOptimizer : GraphProcessor {
     return AddNodePermConst(kPermNCHWToNHWC, "", {0, 2, 3, 1});
   }
 
-  NodeDef* AddNodeGatherAxisConst() {
-    return AddNodeConstScalar(kGatherAxisConst, "", DT_INT32, 0);
-  }
-
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
   Status Expand() {
     int node_size_original = graph_->node_size();
@@ -1393,7 +1296,6 @@ class DataLayoutOptimizer : GraphProcessor {
     if (graph_->node_size() > node_size_original) {
       NodeDef* n = AddNodePermNHWCToNCHW();
       n = AddNodePermNCHWToNHWC();
-      n = AddNodeGatherAxisConst();
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
@@ -1415,13 +1317,7 @@ class DataLayoutOptimizer : GraphProcessor {
           } else if (IsReluGrad(*node)) {
             node_processor.reset(new ReluGradProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
-            auto input1 = node_map_->GetNode(NodeName(node->input(1)));
-            auto input2 = node_map_->GetNode(NodeName(node->input(2)));
-            if (IsConstant(*input1) && IsConstant(*input2)) {
-              node_processor.reset(new SliceProcessorConst(opt_cxt));
-            } else {
-              node_processor.reset(new SliceProcessor(opt_cxt));
-            }
+            node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
             node_processor.reset(new SplitProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {

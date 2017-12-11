@@ -198,9 +198,9 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   auto conv2d_backprop_node = node_map.GetNode("Conv2DBackpropInput");
   CHECK(conv2d_backprop_node);
   EXPECT_EQ(conv2d_backprop_node->input(0),
-            "LayoutOptimizerDataFormatOp-Conv2DBackpropInput");
+            "LayoutOptimizerDataFormatOp_Conv2DBackpropInput_0");
   auto input_sizes_node =
-      node_map.GetNode("LayoutOptimizerDataFormatOp-Conv2DBackpropInput");
+      node_map.GetNode("LayoutOptimizerDataFormatOp_Conv2DBackpropInput_0");
   CHECK(input_sizes_node);
   EXPECT_EQ(input_sizes_node->input(0), "InputSizesIdentity");
   EXPECT_EQ(input_sizes_node->op(), "DataFormatVecPermute");
@@ -561,9 +561,9 @@ TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto split_node = node_map.GetNode("split");
-  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDataFormatOp-split");
+  EXPECT_EQ(split_node->input(0), "LayoutOptimizerDataFormatOp_split_0");
   EXPECT_EQ(split_node->input(1), "Conv2D");
-  auto map_node = node_map.GetNode("LayoutOptimizerDataFormatOp-split");
+  auto map_node = node_map.GetNode("LayoutOptimizerDataFormatOp_split_0");
   EXPECT_EQ(map_node->op(), "DataFormatDimMap");
   EXPECT_EQ(map_node->input(0), "i1");
 }
@@ -629,8 +629,8 @@ TEST_F(LayoutOptimizerTest, ConcatNonConst) {
   auto concat_node = node_map.GetNode("concat");
   EXPECT_EQ(concat_node->input(0), "split");
   EXPECT_EQ(concat_node->input(1), "split:1");
-  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDataFormatOp-concat");
-  auto concat_dim = node_map.GetNode("LayoutOptimizerDataFormatOp-concat");
+  EXPECT_EQ(concat_node->input(2), "LayoutOptimizerDataFormatOp_concat_2");
+  auto concat_dim = node_map.GetNode("LayoutOptimizerDataFormatOp_concat_2");
   EXPECT_EQ(concat_dim->op(), "DataFormatDimMap");
   EXPECT_EQ(concat_dim->input(0), "i");
 }
@@ -878,22 +878,14 @@ TEST_F(LayoutOptimizerTest, SliceNonConst) {
   NodeMap node_map(&output);
   auto slice_node = node_map.GetNode("slice");
   EXPECT_EQ(slice_node->input(0), "Conv2D");
-  EXPECT_EQ(slice_node->input(1),
-            "LayoutOptimizerPermVecNHWCToNCHW-slice-input1");
-  EXPECT_EQ(slice_node->input(2),
-            "LayoutOptimizerPermVecNHWCToNCHW-slice-input2");
-
-  auto perm1 =
-      node_map.GetNode("LayoutOptimizerPermVecNHWCToNCHW-slice-input1");
+  EXPECT_EQ(slice_node->input(1), "LayoutOptimizerDataFormatOp_slice_1");
+  EXPECT_EQ(slice_node->input(2), "LayoutOptimizerDataFormatOp_slice_2");
+  auto perm1 = node_map.GetNode("LayoutOptimizerDataFormatOp_slice_1");
+  EXPECT_EQ(perm1->op(), "DataFormatVecPermute");
   EXPECT_EQ(perm1->input(0), "ibegin");
-  EXPECT_EQ(perm1->input(1), "LayoutOptimizerPermConstNHWCToNCHW");
-  EXPECT_EQ(perm1->input(2), "LayoutOptimizerGatherAxisConst");
-
-  auto perm2 =
-      node_map.GetNode("LayoutOptimizerPermVecNHWCToNCHW-slice-input2");
+  auto perm2 = node_map.GetNode("LayoutOptimizerDataFormatOp_slice_2");
+  EXPECT_EQ(perm1->op(), "DataFormatVecPermute");
   EXPECT_EQ(perm2->input(0), "isize");
-  EXPECT_EQ(perm2->input(1), "LayoutOptimizerPermConstNHWCToNCHW");
-  EXPECT_EQ(perm2->input(2), "LayoutOptimizerGatherAxisConst");
 }
 
 TEST_F(LayoutOptimizerTest, DoNotApplyOptimizerTwice) {
