@@ -299,7 +299,7 @@ create_activate_virtualenv_and_install_tensorflow() {
   # Use the virtualenv from the default python version (i.e., python-virtualenv)
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
-  python -m virtualenv -p "${PYTHON_BIN_PATH}" ${VIRTUALENV_FLAGS} \
+  ${PYTHON_BIN_PATH} -m virtualenv -p "${PYTHON_BIN_PATH}" ${VIRTUALENV_FLAGS} \
     "${VIRTUALENV_DIR}" || \
     die "FAILED: Unable to create virtualenv"
 
