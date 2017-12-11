@@ -100,10 +100,11 @@ def cnn_model_fn(features, labels, mode):
   onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
   loss = tf.losses.softmax_cross_entropy(
       onehot_labels=onehot_labels, logits=logits)
+  tf.summary.scalar('loss', loss)
 
   # Configure the Training Op (for TRAIN mode)
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
     train_op = optimizer.minimize(
         loss=loss,
         global_step=tf.train.get_global_step())
