@@ -52,16 +52,16 @@ bool IsAveragePool(const HloInstruction *inst) {
   return inst->metadata().op_type() == "AvgPool";
 }
 
-bool IsReductionWindowNYXC(const HloInstruction *inst) {
+bool IsReductionWindowNCYX(const HloInstruction *inst) {
   const Window &window(inst->window());
   if (window.dimensions(0).size() != 1 ||
       window.dimensions(0).stride() != 1 ||
       window.dimensions(0).padding_low() != 0 ||
       window.dimensions(0).padding_high() != 0 ||
-      window.dimensions(3).size() != 1 ||
-      window.dimensions(3).stride() != 1 ||
-      window.dimensions(3).padding_low() != 0 ||
-      window.dimensions(3).padding_high() != 0) {
+      window.dimensions(1).size() != 1 ||
+      window.dimensions(1).stride() != 1 ||
+      window.dimensions(1).padding_low() != 0 ||
+      window.dimensions(1).padding_high() != 0) {
     return false;
   }
   return true;
