@@ -80,10 +80,10 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
 
 void ExecStep::AddMemoryStats(const string& dev,
                               const NodeExecStats& step_stat) {
-  if (exec_.memory_intialized()) {
+  if (exec_.memory_initialized()) {
     return;
   }
-  exec_.set_memory_intialized(true);
+  exec_.set_memory_initialized(true);
 
   int accelerator_allocator_cnt = 0;
   for (const auto& mem : step_stat.memory()) {

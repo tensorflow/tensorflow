@@ -62,7 +62,9 @@ class DatasetDataProvider(data_provider.DataProvider):
                seed=None,
                scope=None):
     """Creates a DatasetDataProvider.
-
+    Note: if `num_epochs` is not `None`,  local counter `epochs` will be created
+    by relevant function. Use `local_variables_initializer()` to initialize
+    local variables.
     Args:
       dataset: An instance of the Dataset class.
       num_readers: The number of parallel readers to use.

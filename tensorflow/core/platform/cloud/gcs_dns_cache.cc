@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
-
+#ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <Windows.h>
+#endif
 #include <sys/types.h>
 
 namespace tensorflow {
@@ -26,6 +31,20 @@ namespace {
 constexpr char kStorageHost[] = "storage.googleapis.com";
 constexpr char kWwwHost[] = "www.googleapis.com";
 
+inline void print_getaddrinfo_error(const string& name, int error_code) {
+#ifndef _WIN32
+  if (error_code == EAI_SYSTEM) {
+    LOG(ERROR) << "Error resolving " << name
+               << " (EAI_SYSTEM): " << strerror(errno);
+  } else {
+    LOG(ERROR) << "Error resolving " << name << ": "
+               << gai_strerror(error_code);
+  }
+#else
+  // TODO:WSAGetLastError is better than gai_strerror
+  LOG(ERROR) << "Error resolving " << name << ": " << gai_strerror(error_code);
+#endif
+}
 }  // namespace
 
 GcsDnsCache::GcsDnsCache(Env* env, int64 refresh_rate_secs)
@@ -77,7 +96,7 @@ Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 
   std::vector<string> output;
   if (return_code == 0) {
-    for (addrinfo* i = result; i != nullptr; i = i->ai_next) {
+    for (const addrinfo* i = result; i != nullptr; i = i->ai_next) {
       if (i->ai_family != AF_INET || i->ai_addr->sa_family != AF_INET) {
         LOG(WARNING) << "Non-IPv4 address returned. ai_family: " << i->ai_family
                      << ". sa_family: " << i->ai_addr->sa_family << ".";
@@ -96,13 +115,7 @@ Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
       }
     }
   } else {
-    if (return_code == EAI_SYSTEM) {
-      LOG(ERROR) << "Error resolving " << name
-                 << " (EAI_SYSTEM): " << strerror(errno);
-    } else {
-      LOG(ERROR) << "Error resolving " << name << ": "
-                 << gai_strerror(return_code);
-    }
+    print_getaddrinfo_error(name, return_code);
   }
   if (result != nullptr) {
     freeaddrinfo(result);

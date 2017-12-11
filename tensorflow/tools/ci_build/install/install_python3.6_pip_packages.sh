@@ -36,6 +36,8 @@ pip3.6 -V
 which pip3.6
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
+pip3 install --upgrade virtualenv
+
 set -e
 # Install six.
 pip3 install --upgrade absl-py
