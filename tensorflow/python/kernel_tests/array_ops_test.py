@@ -1237,40 +1237,6 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
                                                "cannot be a resource variable"):
         guarantee_a.eval()
 
-class BroadcastToTest(test_util.TensorFlowTestCase):
-
-  def testBroadcastToBasic(self):
-    for dtype in [np.uint8, np.uint16, np.int8, np.int16, np.int32, np.int64]:
-      with self.test_session():
-        x = np.array([1, 2, 3], dtype=dtype)
-        v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
-        v_np = np.broadcast_to(x, [3, 3])
-        self.assertAllEqual(v_tf.eval(), v_np)
-
-  def testBroadcastToString(self):
-    with self.test_session():
-      x = np.array(["1", "2", "3"], dtype=np.str)
-      v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
-      v_np = np.broadcast_to(x, [3, 3])
-      self.assertAllEqual(v_tf.eval(), v_np)
-
-  def testBroadcastToBool(self):
-    with self.test_session():
-      x = np.array([True, False, True], dtype=np.bool)
-      v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
-      v_np = np.broadcast_to(x, [3, 3])
-      self.assertAllEqual(v_tf.eval(), v_np)
-
-  def testBroadcastToShape(self):
-    for input_dim in range(1, 6):
-      for output_dim in range(input_dim, 6):
-        with self.test_session():
-          input_shape = [2] * input_dim
-          output_shape = [2] * output_dim
-          x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
-          v_tf = array_ops.broadcast_to(constant_op.constant(x), output_shape)
-          v_np = np.broadcast_to(x, output_shape)
-          self.assertAllEqual(v_tf.eval(), v_np)
 
 class SnapshotOpTest(test_util.TensorFlowTestCase):
 
