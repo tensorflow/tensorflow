@@ -74,6 +74,13 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         # check shape inference when shape input is constant
         self.assertAllEqual(shape, v_np.shape)
 
+  def testBroadcastToScalar(self):
+    with self.test_session():
+      x = np.array(1, dtype=np.int32)
+      v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])
+      v_np = np.broadcast_to(x, [3, 3])
+      self.assertAllEqual(v_tf.eval(), v_np)
+
 
 if __name__ == "__main__":
   test_lib.main()

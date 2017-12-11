@@ -61,6 +61,9 @@ class BroadcastToOp : public OpKernel {
 
         auto output = output_tensor->tensor<T, 1>();
         switch (input_shape.dims()) {
+          case 0: {
+            output.setConstant(input_tensor.scalar<T>()());
+          } break;
           case 1: {
             auto input = input_tensor.tensor<T, 1>();
             output = input.broadcast(broadcast);
@@ -80,6 +83,9 @@ class BroadcastToOp : public OpKernel {
 
         auto output = output_tensor->tensor<T, 2>();
         switch (input_shape.dims()) {
+          case 0: {
+            output.setConstant(input_tensor.scalar<T>()());
+          } break;
           case 1: {
             auto input = input_tensor.tensor<T, 1>();
             output = input.reshape(reshape).broadcast(broadcast);
@@ -103,6 +109,9 @@ class BroadcastToOp : public OpKernel {
 
         auto output = output_tensor->tensor<T, 3>();
         switch (input_shape.dims()) {
+          case 0: {
+            output.setConstant(input_tensor.scalar<T>()());
+          } break;
           case 1: {
             auto input = input_tensor.tensor<T, 1>();
             output = input.reshape(reshape).broadcast(broadcast);
@@ -130,6 +139,9 @@ class BroadcastToOp : public OpKernel {
 
         auto output = output_tensor->tensor<T, 4>();
         switch (input_shape.dims()) {
+          case 0: {
+            output.setConstant(input_tensor.scalar<T>()());
+          } break;
           case 1: {
             auto input = input_tensor.tensor<T, 1>();
             output = input.reshape(reshape).broadcast(broadcast);
@@ -161,6 +173,9 @@ class BroadcastToOp : public OpKernel {
 
         auto output = output_tensor->tensor<T, 5>();
         switch (input_shape.dims()) {
+          case 0: {
+            output.setConstant(input_tensor.scalar<T>()());
+          } break;
           case 1: {
             auto input = input_tensor.tensor<T, 1>();
             output = input.reshape(reshape).broadcast(broadcast);
