@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 #define TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 
-#include <stddef.h>
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -69,6 +69,13 @@ class Sqlite {
   /// beforehand. This is a no-op if already closed
   Status Close();
 
+  /// \brief Enables WAL mode with less fsync or log a warning.
+  ///
+  /// The synchronous pragma is only set to NORMAL if WAL mode was
+  /// successfully enabled. This must be called immediately after
+  /// creating the object.
+  void UseWriteAheadLogWithReducedDurabilityIfPossible();
+
   /// \brief Creates SQLite statement.
   ///
   /// Call result.status() to determine whether or not this operation
@@ -78,8 +85,9 @@ class Sqlite {
   SqliteStatement Prepare(const string& sql);
 
  private:
-  explicit Sqlite(sqlite3* db);
+  explicit Sqlite(sqlite3* db, const string& uri);
   sqlite3* db_;
+  string uri_;
   TF_DISALLOW_COPY_AND_ASSIGN(Sqlite);
 };
 
@@ -103,7 +111,7 @@ class SqliteStatement {
   SqliteStatement& operator=(SqliteStatement&& other);
 
   /// \brief Returns true if statement is not empty.
-  operator bool() const { return stmt_ != nullptr; }
+  explicit operator bool() const { return stmt_ != nullptr; }
 
   /// \brief Returns SQLite result code state.
   ///
