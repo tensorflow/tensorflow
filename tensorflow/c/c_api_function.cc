@@ -226,6 +226,11 @@ Status FillFunctionBody(
       }
       node_def->add_input(strings::StrCat("^", normalized));
     }
+
+    // A function is stateful if any of its nodes are stateful.
+    if (node->op_def().is_stateful()) {
+      fdef->mutable_signature()->set_is_stateful(true);
+    }
   }
   return Status::OK();
 }
