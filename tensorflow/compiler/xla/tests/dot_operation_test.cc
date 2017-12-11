@@ -334,9 +334,7 @@ XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1_FT) {
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = false;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestSquareMatrixDot<float>(false, false);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFT) {
@@ -347,10 +345,24 @@ XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTF) {
   TestSquareMatrixDot<float>(true, false);
 }
 
-TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = true;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
+  TestSquareMatrixDot<float>(true, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFF) {
+  TestSquareMatrixDot<complex64>(false, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFT) {
+  TestSquareMatrixDot<complex64>(false, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTF) {
+  TestSquareMatrixDot<complex64>(true, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTT) {
+  TestSquareMatrixDot<complex64>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF64) {

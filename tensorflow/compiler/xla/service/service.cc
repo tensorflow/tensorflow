@@ -1081,7 +1081,8 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> shaped_buffer,
       ShapedBuffer::Allocate(
-          shape, execute_backend_->memory_allocator(), master_device_ordinal,
+          execute_backend_->transfer_manager()->HostShapeToDeviceShape(shape),
+          execute_backend_->memory_allocator(), master_device_ordinal,
           [this](const Shape& shape) {
             return execute_backend_->transfer_manager()->GetByteSizeRequirement(
                 shape);

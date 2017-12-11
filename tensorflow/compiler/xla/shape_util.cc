@@ -330,6 +330,14 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return MakeTupleShape(new_elements);
 }
 
+// Returns the shape of a real or imaginary component.
+/* static */ Shape ShapeUtil::ComplexComponentShape(
+    const Shape& complex_shape) {
+  CHECK(ElementIsComplex(complex_shape)) << HumanString(complex_shape);
+  return ChangeElementType(complex_shape, primitive_util::ComplexComponentType(
+                                              complex_shape.element_type()));
+}
+
 /* static */ bool ShapeUtil::ShapeIs(const Shape& shape,
                                      PrimitiveType element_type,
                                      std::initializer_list<int64> dimensions) {
