@@ -396,6 +396,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       (shape_node2->op() != "Shape" && !IsReallyConstant(*shape_node2))) {
     return Status::OK();
   }
+
   int64 min_id = 0;
   BCast::Vec shape1;
   if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
@@ -498,13 +499,19 @@ Status ConstantFolding::MaterializeReductionIndices(
   if (output_props.size() != 1) {
     return Status::OK();
   }
+  const bool keep_dims =
+      node->attr().count("keep_dims") && node->attr().at("keep_dims").b();
   const OpInfo::TensorProperties& output_prop = output_props[0];
   PartialTensorShape output_shape(output_prop.shape());
   if (output_shape.num_elements() != 1) {
     bool full_reduction = false;
     for (const NodeDef* fanout : node_map_->GetOutputs(node->name())) {
-      if (!IsReshape(*fanout)) {
-        continue;
+      if (!IsReshape(*fanout) && !keep_dims) {
+        // Depending on how it's setup, a full reduction will generate a tensor
+        // of shape [], [1], [1, 1], [1, 1, ...]. If keep_dims isn't true, we
+        // rely on the existence of a reshape node following the reduction to
+        // ensure that the fanout is fed a scalar of the right shape.
+        return Status::OK();
       }
       const std::vector<OpInfo::TensorProperties>& reshape_props =
           properties.GetOutputProperties(fanout->name());
