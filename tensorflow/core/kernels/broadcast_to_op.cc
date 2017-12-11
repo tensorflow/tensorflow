@@ -211,6 +211,8 @@ class BroadcastToOp : public OpKernel {
   }
 };
 
+// As MakeShape is able to handle both DT_INT32 and DT_INT64,
+// no need to have TypeConstraint for `Tidx`
 #define REGISTER_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BroadcastTo").Device(DEVICE_CPU).TypeConstraint<type>("T"), \

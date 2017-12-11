@@ -386,9 +386,10 @@ REGISTER_OP("UnravelIndex")
 
 REGISTER_OP("BroadcastTo")
     .Input("input: T")
-    .Input("shape: int32")
+    .Input("shape: Tidx")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
     .Doc(R"doc(
 Repeat elements of an array
