@@ -264,7 +264,7 @@ class LazyBestFitHeap : public HeapAlgorithm {
   enum { kLazyAllocOffset = -1 };
 
   struct OrderChunkByIncreasingSize {
-    bool operator()(const Chunk& a, const Chunk& b) {
+    bool operator()(const Chunk& a, const Chunk& b) const {
       if (a.size != b.size) return a.size < b.size;
       return a.offset < b.offset;
     }
