@@ -183,6 +183,23 @@ tensorflow::TF_OperationOutputConsumers_wrapper {
   }
 }
 
+%ignore TF_ImportGraphDefResultsMissingUnusedInputMappings;
+%unignore TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+
+%typemap(out) std::vector<string>
+TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+  for (size_t i = 0; i < $1.size(); ++i) {
+    const string& input_str = $1[i];
+    PyList_SET_ITEM($result, i, PyBytes_FromStringAndSize(input_str.data(),
+                                                          input_str.size()));
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()

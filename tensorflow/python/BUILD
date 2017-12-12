@@ -3018,6 +3018,7 @@ tf_cuda_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/py/numpy:headers",

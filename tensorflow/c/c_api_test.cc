@@ -773,7 +773,7 @@ TEST(CAPI, ImportGraphDef_WithReturnOutputs) {
   TF_DeleteStatus(s);
 }
 
-TEST(CAPI, ImportGraphDef_UnusedInputMappings) {
+TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -816,7 +816,7 @@ TEST(CAPI, ImportGraphDef_UnusedInputMappings) {
   int num_unused_input_mappings;
   const char** src_names;
   int* src_indexes;
-  TF_ImportGraphDefResultsUnusedInputMappings(
+  TF_ImportGraphDefResultsMissingUnusedInputMappings(
       results, &num_unused_input_mappings, &src_names, &src_indexes);
   ASSERT_EQ(1, num_unused_input_mappings);
   EXPECT_EQ(string("fake"), string(src_names[0]));
