@@ -269,7 +269,7 @@ Status Env::CopyFile(const string& src, const string& target) {
   if (src_fs == target_fs) {
     return src_fs->CopyFile(src, target);
   }
-  return tensorflow::CopyFile(src_fs, src, target_fs, target);
+  return FileSystemCopyFile(src_fs, src, target_fs, target);
 }
 
 string Env::GetExecutablePath() {
@@ -375,8 +375,8 @@ Status WriteStringToFile(Env* env, const string& fname,
   return s;
 }
 
-Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
-                const string& target) {
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target) {
   std::unique_ptr<RandomAccessFile> src_file;
   TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 

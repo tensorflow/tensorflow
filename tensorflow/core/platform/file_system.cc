@@ -263,7 +263,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
 }
 
 Status FileSystem::CopyFile(const string& src, const string& target) {
-  return ::tensorflow::CopyFile(this, src, this, target);
+  return FileSystemCopyFile(this, src, this, target);
 }
 
 }  // namespace tensorflow

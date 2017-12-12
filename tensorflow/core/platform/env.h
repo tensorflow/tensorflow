@@ -379,8 +379,8 @@ struct ThreadOptions {
 
 /// A utility routine: copy contents of `src` in file system `src_fs`
 /// to `target` in file system `target_fs`.
-Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
-                const string& target);
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target);
 
 /// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);
