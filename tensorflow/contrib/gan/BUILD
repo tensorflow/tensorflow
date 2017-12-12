@@ -56,6 +56,7 @@ py_test(
     srcs = ["python/train_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":features",
         ":namedtuples",
         ":train",
         "//tensorflow/contrib/framework:framework_py",
