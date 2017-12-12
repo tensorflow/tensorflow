@@ -162,7 +162,7 @@ void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { other->BlockHostUntilDone(); });
+      [other]() { SE_CHECK_OK(other->BlockHostUntilDoneWithStatus()); });
   AsHostStream(dependent)->BlockUntilDone();
   return true;
 }
