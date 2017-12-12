@@ -300,6 +300,25 @@ bool HloParser::ParseComputation() {
       is_entry_computation
           ? module_->AddEntryComputation(builder->Build(root))
           : module_->AddEmbeddedComputation(builder->Build(root));
+
+  // The parameters and result layouts were set to default layout. Here we set
+  // the layouts to what the hlo text says.
+  if (is_entry_computation) {
+    for (int i = 0; i < computation->num_parameters(); i++) {
+      const Shape& param_shape = computation->parameter_instruction(i)->shape();
+      if (param_shape.has_layout()) {
+        module_->mutable_entry_computation_layout()
+            ->mutable_parameter_layout(i)
+            ->ResetLayout(param_shape.layout());
+      }
+    }
+    const Shape& result_shape = computation->root_instruction()->shape();
+    if (result_shape.has_layout()) {
+      module_->mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ResetLayout(result_shape.layout());
+    }
+  }
   return AddComputation(name, computation, name_loc);
 }
 
