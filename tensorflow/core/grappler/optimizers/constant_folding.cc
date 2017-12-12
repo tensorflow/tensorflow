@@ -423,6 +423,9 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   if (!bcast.IsValid()) {
     return Status::OK();
   }
+  // Beware: the reduction dimensions are valid iff we assume that two distinct
+  // symbolic dimensions can't be equal. This is often but not always true, so
+  // this optimization isn't safe.
   BCast::Vec reduce_dims[2];
   reduce_dims[0] = bcast.grad_x_reduce_idx();
   reduce_dims[1] = bcast.grad_y_reduce_idx();
@@ -570,11 +573,12 @@ Status ConstantFolding::MaterializeReductionIndices(
 
 Status ConstantFolding::MaterializeConstants(
     const GraphProperties& properties) {
+  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   const int node_count = graph_->node_size();
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_->mutable_node(i);
     const string& op = node.op();
-    if (op == "BroadcastGradientArgs") {
+    if (is_aggressive && op == "BroadcastGradientArgs") {
       TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
     } else if (IsReduction(node)) {
       TF_RETURN_IF_ERROR(MaterializeReductionIndices(&node, properties));
