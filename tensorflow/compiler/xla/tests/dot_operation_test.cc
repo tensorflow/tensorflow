@@ -573,5 +573,95 @@ TEST_F(DotOperationTest, TransposeFolding) {
   }
 }
 
+TEST_F(DotOperationTest, DotOfConcatOptimizationWithConstLHS) {
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+
+  std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
+      {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
+  auto rhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
+                                     "rhs_arg_0");
+  auto rhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {3, 2}),
+                                     "rhs_arg_1");
+  auto rhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {1, 2}),
+                                     "rhs_arg_2");
+  auto result = builder.Dot(
+      lhs_constant, builder.ConcatInDim({rhs_arg_0, rhs_arg_1, rhs_arg_2}, 0));
+
+  std::unique_ptr<Array2D<float>> arg_0_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}}));
+  std::unique_ptr<Array2D<float>> arg_1_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}));
+  std::unique_ptr<Array2D<float>> arg_2_value_array(
+      new Array2D<float>({{1.0, 2.0}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_0_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_0_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_1_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_1_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_2_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_2_value_array)));
+
+  Array2D<float> expected({{53.0, 74.0}, {45.0, 66.0}});
+  ComputeAndCompareR2<float>(
+      &builder, expected,
+      {arg_0_value.get(), arg_1_value.get(), arg_2_value.get()}, error_spec_);
+}
+
+TEST_F(DotOperationTest, DotOfConcatOptimizationWithConstRHS) {
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+
+  std::unique_ptr<Array2D<float>> constant_rhs_array(
+      new Array2D<float>({{1.0, 2.0},
+                          {3.0, 4.0},
+                          {5.0, 6.0},
+                          {6.0, 5.0},
+                          {4.0, 3.0},
+                          {2.0, 1.0}}));
+
+  ComputationBuilder builder(client_, TestName());
+  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
+  auto lhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
+                                     "lhs_arg_0");
+  auto lhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {2, 3}),
+                                     "lhs_arg_1");
+  auto lhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {2, 1}),
+                                     "lhs_arg_2");
+  auto result = builder.Dot(
+      builder.ConcatInDim({lhs_arg_0, lhs_arg_1, lhs_arg_2}, 1), rhs_constant);
+
+  std::unique_ptr<Array2D<float>> arg_0_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}}));
+  std::unique_ptr<Array2D<float>> arg_1_value_array(
+      new Array2D<float>({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
+  std::unique_ptr<Array2D<float>> arg_2_value_array(
+      new Array2D<float>({{1.0}, {2.0}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_0_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_0_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_1_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_1_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_2_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_2_value_array)));
+
+  Array2D<float> expected({{38.0, 36.0}, {93.0, 91.0}});
+  ComputeAndCompareR2<float>(
+      &builder, expected,
+      {arg_0_value.get(), arg_1_value.get(), arg_2_value.get()}, error_spec_);
+}
 }  // namespace
 }  // namespace xla
