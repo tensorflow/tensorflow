@@ -1,0 +1,45 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2010
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Opencv-tensorflow-test", "Opencv-tensorflow-test.vcxproj", "{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Tensorflow-interface-test", "Tensorflow-interface-test.vcxproj", "{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x64.ActiveCfg = Debug|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x64.Build.0 = Debug|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x64.Deploy.0 = Debug|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x86.ActiveCfg = Debug|Win32
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x86.Build.0 = Debug|Win32
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Debug|x86.Deploy.0 = Debug|Win32
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x64.ActiveCfg = Release|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x64.Build.0 = Release|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x64.Deploy.0 = Release|x64
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x86.ActiveCfg = Release|Win32
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x86.Build.0 = Release|Win32
+		{9E5D294F-6AE3-4F62-84FF-3CAA27E6CC38}.Release|x86.Deploy.0 = Release|Win32
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Debug|x64.ActiveCfg = Debug|x64
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Debug|x64.Build.0 = Debug|x64
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Debug|x86.ActiveCfg = Debug|Win32
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Debug|x86.Build.0 = Debug|Win32
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Release|x64.ActiveCfg = Release|x64
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Release|x64.Build.0 = Release|x64
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Release|x86.ActiveCfg = Release|Win32
+		{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DC932825-C2A5-48CF-A1FD-5BBB2A9D6F91}
+	EndGlobalSection
+EndGlobal
