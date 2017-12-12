@@ -345,6 +345,7 @@ py_test(
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # flaky b/70524820
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
