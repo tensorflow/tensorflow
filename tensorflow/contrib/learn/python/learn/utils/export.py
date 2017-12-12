@@ -295,7 +295,7 @@ def _export_estimator(estimator,
   checkpoint_path = (checkpoint_path or
                      tf_saver.latest_checkpoint(estimator._model_dir))
   with ops.Graph().as_default() as g:
-    contrib_variables.create_global_step(g)
+    training_util.create_global_step(g)
 
     if use_deprecated_input_fn:
       examples = array_ops.placeholder(dtype=dtypes.string,
