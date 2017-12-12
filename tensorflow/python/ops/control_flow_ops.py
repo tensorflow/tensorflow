@@ -590,6 +590,8 @@ def _EnforceShapeInvariant(merge_var, next_var):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
+      # TODO(skyewm): get original loop input that caused the shape error and
+      # report its name instead of the merge node's.
       raise ValueError(
           "The shape for %s is not an invariant for the loop. It enters "
           "the loop with shape %s, but has shape %s after one iteration. "
@@ -641,11 +643,17 @@ def _EnforceShapeInvariant(merge_var, next_var):
              n_values_shape, n_indices_shape, n_shape_shape))
 
 
-def _AddNextAndBackEdge(m, v):
+def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   """Add NextIteration and back edge from v to m."""
   if isinstance(m, ops.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
+    if enforce_shape_invariant:
+      # Make sure the shapes of loop outputs are correct. We do this before
+      # calling _update_input, which will raise a less-helpful error message if
+      # the types don't match.
+      # TODO(skyewm): call this for other cases below (needs testing)
+      _EnforceShapeInvariant(m, v)
     m.op._update_input(1, v)   # pylint: disable=protected-access
   elif isinstance(m, ops.IndexedSlices):
     # pylint: disable=protected-access
@@ -1493,7 +1501,7 @@ class ControlFlowContext(object):
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
-      del op.control_inputs[:]
+      op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs
   # pylint: enable=protected-access
@@ -2493,9 +2501,17 @@ class WhileContext(ControlFlowContext):
     if shape_acc is not None:
       self.AddName(shape_acc.name)
       init_acc.append(shape_acc)
+
+    # Set use_input_shape=False since the accumulator tensors will grow in
+    # size. If use_input_shape=True, the _update_input call below will result in
+    # incompatible shapes.
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
-                        name="b_acc") for x in init_acc]
+                        use_input_shape=False, name="b_acc") for x in init_acc]
+    # Manually set appropriate partial shapes.
+    enter_acc[0].set_shape([None])
+    if values_acc.shape.dims is not None:
+      enter_acc[1].set_shape([None] + values_acc.shape.as_list()[1:])
     self.loop_enters.extend(enter_acc)
 
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
@@ -2649,11 +2665,6 @@ class WhileContext(ControlFlowContext):
     exit_vars = [exit(x[0]) for x in switch_vars]
     self._loop_exits = exit_vars
 
-    # Make sure the shapes of loop outputs are correct.
-    for m_var, n_var in zip(merge_vars, next_vars):
-      if isinstance(m_var, ops.Tensor):
-        _EnforceShapeInvariant(m_var, n_var)
-
     # Exit the loop.
     self.ExitResult(exit_vars)
 
@@ -2715,7 +2726,7 @@ class WhileContext(ControlFlowContext):
 
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
-               name=None):
+               name=None, maximum_iterations=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -2787,6 +2798,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
+    maximum_iterations: Optional maximum number of iterations of the while loop
+      to run.  If provided, the `cond` output is AND-ed with an additional
+      condition ensuring the number of iterations executed is no greater than
+      `maximum_iterations`.
 
   Returns:
     The output tensors for the loop variables after the loop. When the length
@@ -2840,18 +2855,47 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    if maximum_iterations is not None:
+      maximum_iterations = ops.convert_to_tensor(
+          maximum_iterations, name="maximum_iterations")
+      if maximum_iterations.shape.ndims != 0:
+        raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                         maximum_iterations.shape)
+      counter = constant_op.constant(
+          0, dtype=maximum_iterations.dtype, name="iteration_counter")
+      orig_cond = cond
+      orig_body = body
+      if len(loop_vars) == 1:
+        loop_vars = (counter, loop_vars[0])
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
+        body = lambda i, lv: (i + 1, orig_body(lv))
+      else:
+        loop_vars = (counter, loop_vars)
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
+        body = lambda i, lv: (i + 1, orig_body(*lv))
+
     if context.in_eager_mode():
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
-      return loop_vars
+      if maximum_iterations is not None:
+        return loop_vars[1]
+      else:
+        return loop_vars
 
     if shape_invariants is not None:
+      if maximum_iterations is not None:
+        shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
     loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
-    return result
+    if maximum_iterations is not None:
+      return result[1]
+    else:
+      return result
 
 
 def _AsTensorList(x, p):

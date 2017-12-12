@@ -16,9 +16,9 @@ and familiar names; for example a *vector* is a 1-dimensional array and a
 ## BatchNormGrad
 
 See also
-[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-<b> Warning: Not implemented yet. </b>
+[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h)
+and [the original batch normalization paper](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
 
 Calculates gradients of batch norm.
 
@@ -56,7 +56,7 @@ The three gradients are defined by the following formulas:
 The inputs `mean` and `variance` represents moments value
 across batch and spatial dimensions.
 
-The output type is a tuple of three ComputationDataHandles:
+The output type is a tuple of three handles:
 
 |Outputs       | Type                    | Semantics                           |
 |------------- | ----------------------- | ------------------------------------|
@@ -70,9 +70,9 @@ The output type is a tuple of three ComputationDataHandles:
 ## BatchNormInference
 
 See also
-[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-<b> Warning: Not implemented yet. </b>
+[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[the original batch normalization paper](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -92,7 +92,7 @@ Normalizes an array across batch and spatial dimensions.
 
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
-across all the other dimensions and use the mean and variance to normalize each
+across all the other dimensions and uses the mean and variance to normalize each
 element in `operand`. The `feature_index` must be a valid index for the feature
 dimension in `operand`.
 
@@ -101,7 +101,7 @@ computing `mean` and `variance` for each batch. It uses the input `mean` and
 `variance` instead as estimated values. The purpose of this op is to reduce
 latency in inference, hence the name `BatchNormInference`.
 
-The output is a n dimensional, normalized array with the same shape as input
+The output is an n-dimensional, normalized array with the same shape as input
 `operand`.
 
 ## BatchNormTraining
@@ -110,8 +110,6 @@ See also
 [`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
 [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
-
-<b> Warning: Not implemented on GPU backend yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -129,10 +127,9 @@ Normalizes an array across batch and spatial dimensions.
 | `feature_index` | `int64`                 | Index to feature dimension       |
 :                 :                         : in `operand`                     :
 
-
 For each feature in the feature dimension (`feature_index` is the index for the
 feature dimension in `operand`), the operation calculates the mean and variance
-across all the other dimensions and use the mean and variance to normalize each
+across all the other dimensions and uses the mean and variance to normalize each
 element in `operand`. The `feature_index` must be a valid index for the feature
 dimension in `operand`.
 
@@ -151,7 +148,7 @@ assuming `operand` is an 4 dimensional array):
 
 The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
 
-The output type is a tuple of three ComputationDataHandles:
+The output type is a tuple of three `ComputationDataHandle`s:
 
 | Outputs      | Type                    | Semantics                            |
 | ------------ | ----------------------- | -------------------------------------|
@@ -389,6 +386,35 @@ Diagram:
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_concatenate.png">
 </div>
 
+## Conditional
+
+See also [`ComputationBuilder::Conditional`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> `Conditional(pred, true_operand, true_computation, false_operand,
+    false_computation)` </b>
+
+| Arguments           | Type                    | Semantics                   |
+| ------------------- | ----------------------- | --------------------------- |
+| `pred`              | `ComputationDataHandle` | Scalar of type `PRED`       |
+| `true_operand`      | `ComputationDataHandle` | Argument of type `T_0`      |
+| `true_computation`  | `Computation`           | Computation of type `T_0 -> |
+:                     :                         : S`                          :
+| `false_operand`     | `ComputationDataHandle` | Argument of type `T_1`      |
+| `false_computation` | `Computation`           | Computation of type `T_1 -> |
+:                     :                         : S`                          :
+
+Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
+is `false`, and returns the result.
+
+The `true_computation` must take in a single argument of type `T_0` and will be
+invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type `T_1` and will be
+invoked with `false_operand` which must be of the same type. The type of the
+returned value of `true_computation` and `false_computation` must be the same.
+
+Note that only one of `true_computation` and `false_computation` will be
+executed depending on the value of `pred`.
+
 ## Conv (convolution)
 
 See also
@@ -559,9 +585,9 @@ Computes a sum across replicas.
 | `operand`    | `ComputationDataHandle` | Array to sum across replicas.      |
 
 The output shape is the same as the input shape. For example, if there are two
-replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.1)`
+replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
 respectively on the two replicas, then the output value from this op will be
-`(4.0, 7.6)` on both replicas.
+`(4.0, 7.75)` on both replicas.
 
 Computing the result of CrossReplicaSum requires having one input from each
 replica, so if one replica executes a CrossReplicaSum node more times than

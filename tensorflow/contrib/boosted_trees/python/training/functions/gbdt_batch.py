@@ -322,9 +322,11 @@ class GradientBoostedDecisionTreeModel(object):
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
     self._attempted_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="attempted_trees")
     self._finalized_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="finalized_trees")
     if not features:
       raise ValueError("Features dictionary must be specified.")
     (fc_names, dense_floats, sparse_float_indices, sparse_float_values,

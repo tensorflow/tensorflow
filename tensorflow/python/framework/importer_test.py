@@ -356,22 +356,23 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b.inputs[0], a.outputs[0])
 
   def testTypeMismatchInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      # TODO(skyewm): improve error message
+      error_msg = ("Input 0 of node import/B was passed int32 from import/A:0 "
+                   "incompatible with expected float.")
+    else:
+      error_msg = ("Cannot convert a tensor of type int32 to an input of type "
+                   "float")
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
-      self.assertTrue(
-          "Cannot convert a tensor of type int32 to an input of type float" in
-          str(e.exception))
 
   def testShapeWhitelist(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     # Barrier's shape is an output vector of 2, but the
     # graph says it's a scalar.  This is currently whitelisted.
     with ops.Graph().as_default():
@@ -379,14 +380,14 @@ class ImportGraphDefTest(test.TestCase):
           self._MakeGraphDef("""
           node { name: 'A' op: 'Barrier'
                  attr { key: '_output_shapes'
-                        value { list { shape { } } } } }
+                        value { list { shape { } } } }
+                 attr { key: 'component_types'
+                        value { list { type: DT_FLOAT } } } }
           """),
           return_elements=["A"],
           name="import")
 
   def testShapeWhitelistViolation(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     # L2 loss produces a scalar shape, but the graph
     # has the wrong shape, so raise an error.
     with ops.Graph().as_default():
@@ -406,41 +407,49 @@ class ImportGraphDefTest(test.TestCase):
             "Shapes () and (43,) are not compatible" in str(e.exception))
 
   def testInvalidSignatureTooManyInputsInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      # TODO(skyewm): improve error message
+      error_msg = "NodeDef expected inputs '' do not match 1 inputs specified"
+    else:
+      error_msg = r"More inputs specified \('A:0'\) than the op expects"
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'None' input: 'A:0' }
             """))
-      self.assertTrue("More inputs specified ('A:0') than the op expects" in
-                      str(e.exception))
 
   def testInvalidSignatureNotEnoughInputsInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      # TODO(skyewm): improve error message
+      error_msg = ("NodeDef expected inputs 'int32, float' do not match 1 "
+                   "inputs specified")
+    else:
+      error_msg = (r"Input types mismatch \(expected 'int32, float32' but "
+                   r"got 'int32'\)")
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'IntInputFloatInput' input: 'A:0' }
             """))
-      self.assertTrue("Input types mismatch (expected 'int32, float32' but "
-                      "got 'int32')" in str(e.exception))
 
   def testMissingInputOpInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = "Node 'B': Unknown input node 'A:0'"
+    else:
+      error_msg = "Input tensor 'A:0' not found"
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
-      self.assertTrue("Input tensor 'A:0' not found" in str(e.exception))
 
   def testMissingInputOpInGraphDefButAppearsInInputMap(self):
     with ops.Graph().as_default():
@@ -454,95 +463,111 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b.inputs[0], feed_a_0)
 
   def testMissingInputTensorInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = ("Node 'B': Connecting to invalid output 1 of source node A "
+                   "which has 1 outputs")
+    else:
+      error_msg = "Input tensor 'A:1' not found"
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'FloatOutput' }
             node { name: 'B' op: 'FloatInput' input: 'A:1' }
             """))
-      self.assertTrue("Input tensor 'A:1' not found" in str(e.exception))
 
   def testMissingControlInputInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = r"Node 'B': Unknown input node '\^A'"
+    else:
+      error_msg = r"Control input '\^A' not found"
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: '^A' }
             """))
-      self.assertTrue("Control input '^A' not found" in str(e.exception))
 
   def testInvalidTensorNameOutputIndexInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = "Node 'B': Unknown input node 'A:B'"
+    else:
+      error_msg = "Cannot convert 'A:B' to a tensor name."
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B' }
             """))
-      self.assertEqual("Cannot convert 'A:B' to a tensor name.",
-                       str(e.exception))
 
   def testInvalidTensorNameInGraphDef(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = "Node 'B': Unknown input node 'A:B:0'"
+    else:
+      error_msg = "Cannot convert 'A:B:0' to a tensor name."
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'B' op: 'None' input: 'A:B:0' }
             """))
-      self.assertEqual("Cannot convert 'A:B:0' to a tensor name.",
-                       str(e.exception))
 
   def testMissingReturnOperation(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = "Requested return node 'B' not found in graph def"
+    else:
+      error_msg = "return_element 'B' not found in graph_def."
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'None' }
             """),
             return_elements=["B"])
-      self.assertTrue(
-          "return_element 'B' not found in graph_def." in str(e.exception))
 
   def testMissingReturnTensor(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = (r"Invalid return output 1 of node 'A', which has 1 "
+                   r"output\(s\)")
+    else:
+      error_msg = "return_element 'A:1' not found in graph_def."
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["A:1"])
-      self.assertTrue(
-          "return_element 'A:1' not found in graph_def." in str(e.exception))
 
-      with self.assertRaises(ValueError) as e:
+      if ops._USE_C_API:
+        error_msg = "Requested return tensor 'B:0' not found in graph def"
+      else:
+        error_msg = "return_element 'B:0' not found in graph_def."
+
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["B:0"])
-      self.assertTrue(
-          "return_element 'B:0' not found in graph_def." in str(e.exception))
 
-      with self.assertRaises(ValueError) as e:
+      if ops._USE_C_API:
+        error_msg = "Cannot convert 'A:B:0' to a tensor name."
+      else:
+        error_msg = "return_element 'A:B:0' not found in graph_def."
+
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             """),
             return_elements=["A:B:0"])
-      self.assertTrue(
-          "return_element 'A:B:0' not found in graph_def." in str(e.exception))
 
   def testMissingInputMap(self):
     if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
@@ -818,10 +843,9 @@ class ImportGraphDefTest(test.TestCase):
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
-      with self.assertRaises(TypeError) as e:
+      with self.assertRaisesRegexp(
+          TypeError, "return_elements must be a list of strings."):
         importer.import_graph_def(self._MakeGraphDef(""), return_elements=[7])
-      self.assertEqual("return_elements must be a list of strings.",
-                       str(e.exception))
 
       if ops._USE_C_API:
         error_msg = "Cannot convert 'a:b:c' to a tensor name."
@@ -832,17 +856,19 @@ class ImportGraphDefTest(test.TestCase):
                                   return_elements=["a:b:c"])
 
   def testDuplicateOperationNames(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
+    if ops._USE_C_API:
+      error_msg = "Node 'A' is not unique"
+    else:
+      error_msg = "Duplicate name 'A' in GraphDef."
 
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(ValueError, error_msg):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             node { name: 'B' op: 'IntOutput' }
             node { name: 'A' op: 'IntOutput' }
             """))
-      self.assertEqual("Duplicate name 'A' in GraphDef.", str(e.exception))
 
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
@@ -855,8 +881,6 @@ class ImportGraphDefTest(test.TestCase):
       self.assertAllEqual(pack.outputs[0].eval(), [5.0, 5.0])
 
   def testWithDevice(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default() as g:
       # No device.
       a = constant_op.constant(3.0, name="a")
@@ -900,8 +924,6 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(c.device + "/device:GPU:0", c5.device)
 
   def testWithDeviceFunctionDependingOnInputs(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default() as g:
       with ops.device("/job:ps"):
         v1 = constant_op.constant(1.0)
@@ -927,8 +949,6 @@ class ImportGraphDefTest(test.TestCase):
     self.assertEqual(2, len(ops_with_two_inputs))
 
   def testGradient(self):
-    if ops._USE_C_API: return  # TODO(skyewm): get_shape() doesn't work
-
     with ops.Graph().as_default() as g:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=[None, 100], name="input")
@@ -1006,23 +1026,26 @@ class ImportGraphDefTest(test.TestCase):
             sess.run(x)
 
   def testVersionHigh(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default() as g:
       pat = (r"GraphDef min consumer version %d above current version %d "
              r"for TensorFlow \S+\.  Please upgrade TensorFlow\.$" %
              (1 << 30, versions.GRAPH_DEF_VERSION))
-      importer.import_graph_def(self._MakeGraphDef("", min_consumer=1 << 30))
-      x = constant_op.constant(
-          7)  # Need at least one op to get a C++ graph generated
-      with self.test_session(graph=g) as sess:
-        with self.assertRaisesRegexp(Exception, pat):
-          sess.run(x)
+
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(ValueError, pat):
+          importer.import_graph_def(self._MakeGraphDef("",
+                                                       min_consumer=1 << 30))
+      else:
+        # Python API only throws when graph is run
+        importer.import_graph_def(self._MakeGraphDef("", min_consumer=1 << 30))
+        x = constant_op.constant(
+            7)  # Need at least one op to get a C++ graph generated
+        with self.test_session(graph=g) as sess:
+          with self.assertRaisesRegexp(Exception, pat):
+            sess.run(x)
 
   def testVersionAppliesToOpConstruction(self):
     """These tests rely on shape fns in test_ops.cc."""
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       importer.import_graph_def(
           self._MakeGraphDef(
@@ -1087,8 +1110,6 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(987, a[0].get_attr("default_int"))
 
   def testFunctions(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     dtype = dtypes.float32
     @function.Defun(dtype, dtype, dtype, dtype)
     def Grad(x, y, dout1, dout2):  # pylint: disable=unused-argument
@@ -1166,8 +1187,6 @@ class ImportGraphDefTest(test.TestCase):
         self.assertEqual(sess.run("outer:0"), 21)
 
   def testImportInsideDefun(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     g = ops.Graph()
     with g.as_default():
       @function.Defun()

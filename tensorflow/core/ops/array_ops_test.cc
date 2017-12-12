@@ -521,7 +521,7 @@ TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
   INFER_ERROR("Dimensions must be equal, but are 2 and 3", op, "[2,3];[3]");
 
   // Output matches input.
-  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;?", "in0");
   INFER_OK(op, "[1,2,2];[1,2]", "in0");
   INFER_OK(op, "[1,2,3];?", "in0");
   INFER_OK(op, "[1,3,2];?", "in0");
@@ -1619,7 +1619,7 @@ TEST(ArrayOpsTest, UnchangedWithQuantizationScalars_ShapeFn) {
 TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannel) {
   ShapeInferenceTestOp op("FakeQuantWithMinMaxVarsPerChannel");
 
-  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[?];?;?", "in0");
   INFER_OK(op, "[1,?,3];[3];[3]", "in0");
   INFER_OK(op, "[3];[3];[3]", "in0");
@@ -1638,7 +1638,7 @@ TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannel) {
 TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient) {
   ShapeInferenceTestOp op("FakeQuantWithMinMaxVarsPerChannelGradient");
 
-  INFER_OK(op, "?;?;?;?", "?;[?];[?]");
+  INFER_OK(op, "?;?;?;?", "in0;[?];[?]");
   INFER_OK(op, "[3];[3];[3];[3]", "in0;in3;in3");
   INFER_OK(op, "[1,3];[1,3];[3];[3]", "in0;in3;in3");
   INFER_OK(op, "[1,2,3,4];[1,2,3,4];[4];[4]", "in0;in3;in3");

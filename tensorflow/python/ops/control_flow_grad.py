@@ -53,7 +53,8 @@ def _SwitchGrad(op, *grad):
       # TODO(yuanbyu): Perform shape inference with this new input.
       if grad[1] is not None:
         # pylint: disable=protected-access
-        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1],
+                                             enforce_shape_invariant=False)
         # pylint: enable=protected-access
       return None, None
     elif grad[0] is not None:

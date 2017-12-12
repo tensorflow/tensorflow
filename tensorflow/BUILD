@@ -602,6 +602,7 @@ filegroup(
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/data:all_files",
+        "//tensorflow/python/data/kernel_tests:all_files",
         "//tensorflow/python/data/ops:all_files",
         "//tensorflow/python/data/util:all_files",
         "//tensorflow/python/debug:all_files",

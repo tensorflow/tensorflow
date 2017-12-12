@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -1122,6 +1123,16 @@ class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "cannot be a resource variable"):
         guarantee_a.eval()
+
+
+class SnapshotOpTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
+        y = gen_array_ops._snapshot(x)
+        self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 
 if __name__ == "__main__":

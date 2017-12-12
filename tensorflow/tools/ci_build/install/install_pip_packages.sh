@@ -27,6 +27,9 @@ easy_install3 -U pip
 pip2 install wheel
 pip3 install wheel
 
+pip2 install virtualenv
+pip3 install virtualenv
+
 # Install six.
 pip2 install --upgrade six==1.10.0
 pip3 install --upgrade six==1.10.0

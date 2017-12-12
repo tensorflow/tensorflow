@@ -220,6 +220,12 @@ class UserComputation {
       const UserComputation& condition_computation,
       const UserComputation& body_computation);
 
+  // Enqueues a conditional instruction on this user computation.
+  StatusOr<ComputationDataHandle> AddConditionalInstruction(
+      const ConditionalRequest& conditional_request,
+      const UserComputation& true_computation,
+      const UserComputation& false_computation);
+
   // Enqueues a Send instruction onto this user computation.
   Status AddSendInstruction(const SendRequest& send_request);
 

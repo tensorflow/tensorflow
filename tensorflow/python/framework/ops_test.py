@@ -485,6 +485,30 @@ class OperationTest(test_util.TensorFlowTestCase):
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
 
+  def testRemoveAllControlInputs(self):
+    a = constant_op.constant(1)
+    with ops.control_dependencies([a]):
+      b = constant_op.constant(2)
+    c = constant_op.constant(3)
+    d = constant_op.constant(4)
+    e = constant_op.constant(5)
+    with ops.control_dependencies([a, c]):
+      f = d + e
+
+    self.assertEqual(a.op.control_inputs, [])
+    self.assertEqual(b.op.control_inputs, [a.op])
+    self.assertEqual(f.op.control_inputs, [a.op, c.op])
+
+    a.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(a.op.control_inputs, [])
+
+    b.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(b.op.control_inputs, [])
+
+    f.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(f.op.control_inputs, [])
+    self.assertEqual(list(f.op.inputs), [d, e])
+
   def testControlInputCycle(self):
     # Non-C API path has a different error message
     if not ops._USE_C_API: return
@@ -742,6 +766,29 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.type, "Identity")
     self.assertEqual(len(op.outputs), 1)
     self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+
+  def testUniqueName(self):
+    g = ops.Graph()
+    with g.as_default():
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop"), [], [])
+        c_op2 = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop_1"), [], [])
+        op = g._create_op_from_tf_operation(c_op)
+        op2 = g._create_op_from_tf_operation(c_op2)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = test_ops.int_output(name="myop").op
+        op2 = test_ops.int_output(name="myop_1").op
+
+      # Create ops with same names as op1 and op2. We expect the new names to be
+      # uniquified.
+      op3 = test_ops.int_output(name="myop").op
+      op4 = test_ops.int_output(name="myop_1").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op2.name, "myop_1")
+    self.assertEqual(op3.name, "myop_2")
+    self.assertEqual(op4.name, "myop_1_1")
 
   def testCond(self):
     g = ops.Graph()
@@ -1713,6 +1760,37 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 @test_util.with_c_api
 class OpScopeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNames(self):
+    with ops.name_scope("foo") as foo:
+      self.assertEqual("foo/", foo)
+      with ops.name_scope("foo2") as foo2:
+        self.assertEqual("foo/foo2/", foo2)
+      with ops.name_scope(None) as empty1:
+        self.assertEqual("", empty1)
+        with ops.name_scope("foo3") as foo3:
+          self.assertEqual("foo3/", foo3)
+      with ops.name_scope("") as empty2:
+        self.assertEqual("", empty2)
+    with ops.name_scope("foo/") as outer_foo:
+      self.assertEqual("foo/", outer_foo)
+      with ops.name_scope("") as empty3:
+        self.assertEqual("", empty3)
+      with ops.name_scope("foo4") as foo4:
+        self.assertEqual("foo/foo4/", foo4)
+      with ops.name_scope("foo5//") as foo5:
+        self.assertEqual("foo5//", foo5)
+        with ops.name_scope("foo6") as foo6:
+          self.assertEqual("foo5//foo6/", foo6)
+      with ops.name_scope("/") as foo7:
+        self.assertEqual("/", foo7)
+      with ops.name_scope("//") as foo8:
+        self.assertEqual("//", foo8)
+      with ops.name_scope("a//b/c") as foo9:
+        self.assertEqual("foo/a//b/c/", foo9)
+    with ops.name_scope("a//b/c") as foo10:
+      self.assertEqual("a//b/c/", foo10)
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerDefaultScopeName(self):
