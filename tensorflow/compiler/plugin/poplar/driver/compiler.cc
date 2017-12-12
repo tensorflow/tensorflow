@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -238,6 +239,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   VLOG(1) << "Begin HloPasses: " << module->name();
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<BatchNormRewriter>(true, true, true, false);
+  pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<HloCSE>(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
