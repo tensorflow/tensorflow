@@ -74,7 +74,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
         return "Invalid"
 
     with self.assertRaisesRegexp(TypeError, "Invalid"):
-      pywrap_tensorflow.EventsWriter(b"foo").WriteEvent(_Invalid())
+      pywrap_tensorflow.EventsWriter("foo").WriteEvent(_Invalid())
 
 
 if __name__ == "__main__":
