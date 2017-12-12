@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -203,6 +204,15 @@ struct BatchNormTestParam {
   int64 feature_index;
   float random_value_mean;
   float random_value_var;
+
+  friend ::std::ostream& operator<<(::std::ostream& os,
+                                    const BatchNormTestParam& p) {
+    os << "bounds={" << tensorflow::str_util::Join(p.bounds, ", ") << "}, ";
+    os << "feature_index=" << p.feature_index << ", ";
+    os << "random_value_mean=" << p.random_value_mean << ", ";
+    os << "random_value_var=" << p.random_value_var;
+    return os;
+  }
 };
 
 // Tests to test the fused operation of BatchNorm.
