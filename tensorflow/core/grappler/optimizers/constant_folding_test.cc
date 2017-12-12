@@ -232,6 +232,74 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
   }
 }
 
+TEST_F(ConstantFoldingTest, StrengthReduce_Reciprocal) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output cf_half = ops::Const(s.WithOpName("cf_half"), 0.5f, {1});
+  Output xf = ops::Placeholder(s.WithOpName("xf"), DT_FLOAT,
+                               ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output xi = ops::Placeholder(s.WithOpName("xi"), DT_INT32,
+                               ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output ci = ops::Const(s.WithOpName("ci"), 2, {1});
+  Output cf = ops::Const(s.WithOpName("cf"), 2.0f, {1});
+  Output div_i = ops::Div(s.WithOpName("div_i"), xi, ci);
+  Output div_f = ops::Div(s.WithOpName("div_f"), xf, cf);
+  Output realdiv = ops::RealDiv(s.WithOpName("realdiv"), xf, cf);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div_f", "div_i", "realdiv"};
+  ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                            nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(8, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    const string& name = node.name();
+    if (name == "div_i") {
+      // Integer division is unchanged.
+      EXPECT_EQ("Div", node.op());
+      EXPECT_EQ("xi", node.input(0));
+      EXPECT_EQ("ci", node.input(1));
+    } else if (name == "div_f") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("ConstantFolding/div_f_recip", node.input(1));
+    } else if (name == "realdiv") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ("xf", node.input(0));
+      EXPECT_EQ("ConstantFolding/realdiv_recip", node.input(1));
+    } else if (name == "ConstantFolding/div_f_recip") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      TensorProto t = node.attr().at("value").tensor();
+      EXPECT_EQ(DT_FLOAT, t.dtype());
+      EXPECT_EQ(1, t.tensor_shape().dim_size());
+      EXPECT_EQ(1, t.tensor_shape().dim(0).size());
+    } else if (name == "ConstantFolding/realdiv_recip") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
+      TensorProto t = node.attr().at("value").tensor();
+      EXPECT_EQ(DT_FLOAT, t.dtype());
+      EXPECT_EQ(1, t.tensor_shape().dim_size());
+      EXPECT_EQ(1, t.tensor_shape().dim(0).size());
+    }
+  }
+
+  // Check that the reciprocals have the expected value.
+  std::vector<string> fetch = {"cf_half"};
+  auto tensor_expected = EvaluateNodes(item.graph, fetch);
+  EXPECT_EQ(fetch.size(), tensor_expected.size());
+  fetch = {"ConstantFolding/div_f_recip", "ConstantFolding/realdiv_recip"};
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(fetch.size(), tensors.size());
+  for (int i = 0; i < fetch.size(); i++) {
+    test::ExpectTensorEqual<float>(tensor_expected[0], tensors[i]);
+  }
+}
+
 TEST_F(ConstantFoldingTest, NeutralElement_PartialShape_UnknownOutputShape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x_known =

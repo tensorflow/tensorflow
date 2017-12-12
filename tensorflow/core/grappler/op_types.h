@@ -24,6 +24,7 @@ namespace grappler {
 
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
+bool IsAnyDiv(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
@@ -37,6 +38,7 @@ bool IsDepthwiseConv2dNative(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
+bool IsDiv(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
 bool IsExit(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);
@@ -49,7 +51,6 @@ bool IsNextIteration(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
-bool IsAnyDiv(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsReluGrad(const NodeDef& node);
 bool IsRecv(const NodeDef& node);
