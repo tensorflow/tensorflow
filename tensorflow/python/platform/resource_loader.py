@@ -14,7 +14,9 @@
 # ==============================================================================
 """Resource management library.
 
+@@get_abs_data_path
 @@get_data_files_path
+@@get_grandparent
 @@get_path_to_datafile
 @@get_root_dir_with_all_resources
 @@load_resource
@@ -31,6 +33,41 @@ from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.all_util import remove_undocumented
 
 
+def get_grandparent(path, degree):
+  """Get a files grandparent of the given degree.
+
+  Args:
+    path: a string resource path to the file.
+    degree: a integer indicating the grandparents degree.
+
+  Returns:
+    The absolute path for the grandparent.
+  """
+  for _ in range(degree):
+    path = _os.path.join(path, _os.pardir)
+
+  path = _os.path.abspath(path)
+  return path
+
+
+def get_abs_data_path(path, depth, frame=0):
+  """Get the absolute path relative to a file upwards the callstack.
+
+  Args:
+    path: a string resource path relative to the parent of tensorflow/.
+    depth: a integer indicating the depth of the file.
+    frame: a integer indicating the position in the callstack.
+
+  Returns:
+    The absolute path for the given relative path.
+  """
+  root = get_data_files_path(1 + frame)
+  root = get_grandparent(root, depth)
+  path = _os.path.join(root, path)
+  path = _os.path.abspath(path)
+  return path
+
+
 def load_resource(path):
   """Load the resource at given path, where path is relative to tensorflow/.
 
@@ -43,23 +80,22 @@ def load_resource(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  tensorflow_root = (_os.path.join(
-      _os.path.dirname(__file__), _os.pardir, _os.pardir))
-  path = _os.path.join(tensorflow_root, path)
-  path = _os.path.abspath(path)
+  root = get_grandparent(os_.path.dirname(__file__), 2)
+  path = _os.path.join(root, path)
+
   with open(path, 'rb') as f:
     return f.read()
 
 
 # pylint: disable=protected-access
-def get_data_files_path():
+def get_data_files_path(frame=0):
   """Get a direct path to the data files colocated with the script.
 
   Returns:
     The directory where files specified in data attribute of py_test
     and py_binary are stored.
   """
-  return _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
+  return _os.path.dirname(_inspect.getfile(_sys._getframe(1 + frame)))
 
 
 def get_root_dir_with_all_resources():
@@ -116,8 +152,8 @@ def get_path_to_datafile(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  data_files_path = _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
-  return _os.path.join(data_files_path, path)
+  root = get_data_files_path(1)
+  return _os.path.join(root, path)
 
 
 def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
