@@ -161,6 +161,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
+  // NOTE(mrry): This overload is currently only implemented for local function
+  // execution.
+  // TODO(b/70346412): Implement support for remote function execution when
+  // passing a call frame.
+  void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
+           DoneCallback done) override;
 
   bool IsStateful(const string& function) override;
 
@@ -689,12 +695,6 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
-  Item* item = nullptr;
-  Status s = GetOrCreateItem(handle, &item);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
   DCHECK(run_opts.runner != nullptr);
 
   Executor::Args* exec_args = new Executor::Args;
@@ -706,7 +706,16 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   exec_args->step_container = run_opts.step_container;
   exec_args->runner = *run_opts.runner;
 
+  Item* item = nullptr;
+  Status s = GetOrCreateItem(handle, &item);
+  if (!s.ok()) {
+    delete exec_args;
+    done(s);
+    return;
+  }
+
   if (run_opts.remote_execution) {
+    // NOTE(mrry): `RunRemote()` will set `exec_args->call_frame` for us.
     RunRemote(run_opts, handle, args, rets, exec_args, item, done);
     return;
   }
@@ -736,6 +745,66 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
         delete exec_args;
         done(s);
       });
+}
+
+void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
+                                     CallFrameInterface* frame,
+                                     DoneCallback done) {
+  if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
+    done(errors::Cancelled(""));
+    return;
+  }
+  if (!parent_->IsInstantiatedOnDevice(device_name_, handle) ||
+      opts.remote_execution) {
+    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
+    return;
+  }
+
+  Options run_opts = opts;
+  if (opts.create_rendezvous) {
+    Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
+    run_opts.rendezvous = rendezvous;
+    run_opts.create_rendezvous = false;
+    done = std::bind(
+        [rendezvous](DoneCallback done,
+                     // Begin unbound arguments.
+                     const Status& status) {
+          rendezvous->Unref();
+          done(status);
+        },
+        std::move(done), std::placeholders::_1);
+  }
+
+  Item* item = nullptr;
+  Status s = GetOrCreateItem(handle, &item);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  DCHECK(run_opts.runner != nullptr);
+
+  Executor::Args* exec_args = new Executor::Args;
+  // Inherit the step_id from the caller.
+  exec_args->step_id = run_opts.step_id;
+  exec_args->rendezvous = run_opts.rendezvous;
+  exec_args->stats_collector = run_opts.stats_collector;
+  exec_args->cancellation_manager = run_opts.cancellation_manager;
+  exec_args->step_container = run_opts.step_container;
+  exec_args->runner = *run_opts.runner;
+  exec_args->call_frame = frame;
+
+  item->exec->RunAsync(
+      // Executor args
+      *exec_args,
+      // Done callback.
+      std::bind(
+          [item, frame, exec_args](DoneCallback done,
+                                   // Start unbound arguments.
+                                   const Status& status) {
+            delete exec_args;
+            done(status);
+          },
+          std::move(done), std::placeholders::_1));
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {

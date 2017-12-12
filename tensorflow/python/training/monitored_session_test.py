@@ -36,7 +36,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -1968,19 +1967,6 @@ class MonitoredSessionTest(test.TestCase):
           self.assertNear(1.3, session.run_step_fn(step_fn), 0.1)
           self.assertEqual(2, trace_the_exception['side_effect_counter'])
           self.assertNear(0.62, session.run(graph_state), 0.1)
-
-  def test_saver_on_a_gpu(self):
-    if not test_util.is_gpu_available():
-      return
-    with ops.Graph().as_default():
-      with self.test_session():
-        with ops.device('/gpu:0'):
-          variables.Variable(0)
-        saver_lib.Saver()
-
-        # TODO(b/36964652): Reproduces the issue that needs to be fixed.
-        with self.assertRaises(errors_impl.InvalidArgumentError):
-          monitored_session.MonitoredSession()
 
 
 class SingularMonitoredSessionTest(test.TestCase):

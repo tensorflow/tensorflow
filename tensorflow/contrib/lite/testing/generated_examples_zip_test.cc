@@ -102,7 +102,7 @@ class ZipEnvironment : public ::testing::Environment {
     tensorflow::SubProcess proc;
     string unzip_binary =
         "/usr/bin/unzip";
-    proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip.c_str()});
+    proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip});
     proc.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     proc.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     if (!proc.Start())

@@ -1988,29 +1988,26 @@ def _to_sparse_input(input_tensor, ignore_value=None):
   if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
     return input_tensor
   with ops.name_scope(None, 'to_sparse_input', (input_tensor, ignore_value,)):
-    input_rank = input_tensor.get_shape().ndims
-    if input_rank is None:
-      # TODO(b/32318825): Implement dense_to_sparse_tensor for undefined rank.
-      raise ValueError('Undefined input_tensor shape.')
     if ignore_value is None:
-      ignore_value = '' if input_tensor.dtype == dtypes.string else -1
-    dense_shape = math_ops.cast(array_ops.shape(input_tensor), dtypes.int64)
-    indices = array_ops.where(math_ops.not_equal(
-        input_tensor, math_ops.cast(ignore_value, input_tensor.dtype)))
-    # Flattens the tensor and indices for use with gather.
-    flat_tensor = array_ops.reshape(input_tensor, [-1])
-    flat_indices = indices[:, input_rank - 1]
-    # Computes the correct flattened indices for 2d (or higher) tensors.
-    if input_rank > 1:
-      higher_dims = indices[:, :input_rank - 1]
-      shape_offsets = array_ops.stack(
-          _shape_offsets(array_ops.unstack(dense_shape)[1:]))
-      offsets = math_ops.reduce_sum(
-          math_ops.multiply(higher_dims, shape_offsets),
-          reduction_indices=[1])
-      flat_indices = math_ops.add(flat_indices, offsets)
-    values = array_ops.gather(flat_tensor, flat_indices)
-    return sparse_tensor_lib.SparseTensor(indices, values, dense_shape)
+      if input_tensor.dtype == dtypes.string:
+        # Exception due to TF strings are converted to numpy objects by default.
+        ignore_value = ''
+      elif input_tensor.dtype.is_integer:
+        ignore_value = -1  # -1 has a special meaning of missing feature
+      else:
+        # NOTE: `as_numpy_dtype` is a property, so with the parentheses this is
+        # constructing a new numpy object of the given type, which yields the
+        # default value for that type.
+        ignore_value = input_tensor.dtype.as_numpy_dtype()
+    ignore_value = math_ops.cast(
+        ignore_value, input_tensor.dtype, name='ignore_value')
+    indices = array_ops.where(
+        math_ops.not_equal(input_tensor, ignore_value), name='indices')
+    return sparse_tensor_lib.SparseTensor(
+        indices=indices,
+        values=array_ops.gather_nd(input_tensor, indices, name='values'),
+        dense_shape=array_ops.shape(
+            input_tensor, out_type=dtypes.int64, name='dense_shape'))
 
 
 def _clean_feature_columns(feature_columns):

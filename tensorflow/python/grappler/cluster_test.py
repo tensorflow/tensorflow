@@ -43,7 +43,7 @@ class ClusterTest(test.TestCase):
       op_perfs, run_time, step_stats = grappler_cluster.MeasureCosts(
           grappler_item)
       self.assertTrue(run_time > 0)
-      self.assertEqual(len(op_perfs), 10)
+      self.assertEqual(len(op_perfs), 9)
       self.assertTrue(step_stats.dev_stats)
 
   def testNoDetailedStats(self):
@@ -105,6 +105,23 @@ class ClusterTest(test.TestCase):
       op_perfs, run_time, _ = grappler_cluster.MeasureCosts(grappler_item)
       self.assertGreater(run_time, 0)
       self.assertEqual(len(op_perfs), 15)
+
+  def testContext(self):
+    with ops.Graph().as_default() as g:
+      a = random_ops.random_uniform(shape=())
+      b = random_ops.random_uniform(shape=())
+      c = a + b
+      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+      train_op.append(c)
+      mg = meta_graph.create_meta_graph_def(graph=g)
+      grappler_item = item.Item(mg)
+
+    with cluster.Provision(
+        disable_detailed_stats=False, disable_timeline=False) as gcluster:
+      op_perfs, run_time, step_stats = gcluster.MeasureCosts(grappler_item)
+      self.assertTrue(run_time > 0)
+      self.assertEqual(len(op_perfs), 9)
+      self.assertTrue(step_stats.dev_stats)
 
 
 if __name__ == '__main__':

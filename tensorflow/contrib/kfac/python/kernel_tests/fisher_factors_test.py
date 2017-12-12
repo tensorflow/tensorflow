@@ -77,6 +77,9 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def instantiate_covariance(self):
     pass
 
+  def make_inverse_update_ops(self):
+    return []
+
 
 class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
   """Dummy class to test the non-abstract methods on ff.InverseProvidingFactor.

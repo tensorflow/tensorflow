@@ -447,7 +447,7 @@ NodeDef* ArithmeticOptimizer::AddNode(const string& name,
       AddPrefixToNodeName(name, kArithmeticOptimizer);
   node_map_->AddNode(NodeName(name_with_prefix), new_node);
   if (node_to_copy != nullptr) {
-    new_node->CopyFrom(*node_to_copy);
+    *new_node = *node_to_copy;
   }
   new_node->set_name(name_with_prefix);
   return new_node;

@@ -81,22 +81,22 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "variable_clipping_optimizer_test",
     srcs = ["python/training/variable_clipping_optimizer_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # Flaky: b/29892493
-        "notap",  # data race due to b/62910646
-    ],
-    deps = [
+    additional_deps = [
         ":opt_py",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
+    ],
+    grpc_enabled = True,
+    tags = [
+        "manual",  # Flaky: b/29892493
+        "notap",  # data race due to b/62910646
     ],
 )
 
@@ -169,6 +169,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Flaky due to port collisions
     ],

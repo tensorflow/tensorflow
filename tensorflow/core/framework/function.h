@@ -247,6 +247,9 @@ class CallFrameInterface {
  public:
   virtual ~CallFrameInterface() {}
 
+  virtual size_t num_args() const = 0;
+  virtual size_t num_retvals() const = 0;
+
   virtual Status GetArg(int index, Tensor* val) const = 0;
   virtual Status SetRetval(int index, const Tensor& val) = 0;
 };
@@ -266,6 +269,9 @@ class FunctionCallFrame : public CallFrameInterface {
   Status SetArgs(gtl::ArraySlice<Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
   Status ConsumeRetvals(std::vector<Tensor>* rets);
+
+  size_t num_args() const override { return arg_types_.size(); }
+  size_t num_retvals() const override { return ret_types_.size(); }
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const override;
@@ -464,6 +470,8 @@ class FunctionLibraryRuntime {
   virtual void Run(const Options& opts, Handle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
+  virtual void Run(const Options& opts, Handle handle,
+                   CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   // Creates a "kernel" for the given node def "ndef".
   //
