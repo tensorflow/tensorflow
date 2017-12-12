@@ -452,18 +452,25 @@ class ContextTest(test_util.TensorFlowTestCase):
               c.to_proto(),
               control_flow_ops.CondContext.from_proto(c.to_proto()).to_proto())
 
-  def testWhileContext(self):
+  def _testWhileContextHelper(self, maximum_iterations=None):
     with self.test_session() as sess:
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
-      control_flow_ops.while_loop(c, b, [i])
+      control_flow_ops.while_loop(
+          c, b, [i], maximum_iterations=maximum_iterations)
       for op in sess.graph.get_operations():
-        c = op._get_control_flow_context()
-        if c:
-          self.assertProtoEquals(
-              c.to_proto(),
-              control_flow_ops.WhileContext.from_proto(c.to_proto()).to_proto())
+        context = op._get_control_flow_context()
+        if context:
+          self.assertProtoEquals(context.to_proto(),
+                                 control_flow_ops.WhileContext.from_proto(
+                                     context.to_proto()).to_proto())
+
+  def testWhileContext(self):
+    self._testWhileContextHelper()
+
+  def testWhileContextWithMaximumIterations(self):
+    self._testWhileContextHelper(maximum_iterations=10)
 
   def testControlContextImportScope(self):
     with self.test_session():

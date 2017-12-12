@@ -748,22 +748,26 @@ class GradLoopState(object):
 
       outer_grad_ctxt = outer_grad_state.grad_context
       outer_grad_ctxt.Enter()
-      self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
-                                        forward_ctxt.back_prop,
-                                        forward_ctxt.swap_memory,
-                                        forward_ctxt.name,
-                                        self)
+      self._grad_context = WhileContext(
+          maximum_iterations=forward_ctxt.maximum_iterations,
+          parallel_iterations=forward_ctxt.parallel_iterations,
+          back_prop=forward_ctxt.back_prop,
+          swap_memory=forward_ctxt.swap_memory,
+          name=forward_ctxt.name,
+          grad_state=self)
       real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
       self._grad_index = self._grad_context.AddBackpropLoopCounter(
           real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
       if outer_forward_ctxt: outer_forward_ctxt.Enter()
-      self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
-                                        forward_ctxt.back_prop,
-                                        forward_ctxt.swap_memory,
-                                        forward_ctxt.name,
-                                        self)
+      self._grad_context = WhileContext(
+          maximum_iterations=forward_ctxt.maximum_iterations,
+          parallel_iterations=forward_ctxt.parallel_iterations,
+          back_prop=forward_ctxt.back_prop,
+          swap_memory=forward_ctxt.swap_memory,
+          name=forward_ctxt.name,
+          grad_state=self)
       self._grad_index = self._grad_context.AddBackpropLoopCounter(
           cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
@@ -893,9 +897,14 @@ class GradLoopState(object):
     with ops.control_dependencies(None):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
+        maximum_iterations = self.forward_context.maximum_iterations
+        if maximum_iterations is None:
+          maximum_iterations = constant_op.constant(-1, dtypes.int32)
         # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack_v2(-1, value.dtype.base_dtype,
-                                          name="f_acc")
+        acc = gen_data_flow_ops._stack_v2(
+            max_size=maximum_iterations,
+            elem_type=value.dtype.base_dtype,
+            name="f_acc")
         # pylint: enable=protected-access
       if curr_ctxt: curr_ctxt.Exit()
 
@@ -1767,6 +1776,7 @@ def _UnpackIfSingleton(res):
     return res
 
 
+# pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
 @deprecation.deprecated_args(
     None,
@@ -1943,6 +1953,7 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
       merges = _UnpackIfSingleton(merges)
     return merges
 # pylint: enable=g-doc-args
+# pylint: enable=redefined-outer-name
 
 
 def _resource_safe_shape(t):
@@ -1960,12 +1971,19 @@ def _resource_safe_shape(t):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
-               name="while_context", grad_state=None, context_def=None,
+  def __init__(self,
+               maximum_iterations=None,
+               parallel_iterations=10,
+               back_prop=True,
+               swap_memory=False,
+               name="while_context",
+               grad_state=None,
+               context_def=None,
                import_scope=None):
     """"Creates a `WhileContext`.
 
     Args:
+      maximum_iterations: Optional upper bound on number of loop iterations.
       parallel_iterations: The number of iterations allowed to run in parallel.
       back_prop: Whether backprop is enabled for this while loop.
       swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -1980,16 +1998,17 @@ class WhileContext(ControlFlowContext):
       self._init_from_proto(context_def, import_scope=import_scope)
     else:
       ControlFlowContext.__init__(self)
-      self._init_from_args(parallel_iterations, back_prop, swap_memory,
-                           name)
+      self._init_from_args(maximum_iterations, parallel_iterations, back_prop,
+                           swap_memory, name)
     # The gradient loop state.
     self._grad_state = grad_state
 
-  def _init_from_args(self, parallel_iterations, back_prop, swap_memory,
-                      name):
+  def _init_from_args(self, maximum_iterations, parallel_iterations, back_prop,
+                      swap_memory, name):
     """Creates a new `WhileContext` from arguments.
 
     Args:
+      maximum_iterations: Optional upper bound on number of loop iterations.
       parallel_iterations: The number of iterations allowed to run in parallel.
       back_prop: Whether backprop is enabled for this while loop.
       swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -2002,6 +2021,7 @@ class WhileContext(ControlFlowContext):
       raise ValueError("`parallel_iterations` must be a positive integer: "
                        "%s" % parallel_iterations)
     self._name = ops.get_default_graph().unique_name(name)
+    self._maximum_iterations = maximum_iterations
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
     self._swap_memory = swap_memory
@@ -2029,6 +2049,12 @@ class WhileContext(ControlFlowContext):
     g = ops.get_default_graph()
     self._name = ops.prepend_name_scope(
         context_def.context_name, import_scope)
+    if context_def.maximum_iterations_name:
+      self._maximum_iterations = g.as_graph_element(
+          ops.prepend_name_scope(context_def.maximum_iterations_name,
+                                 import_scope))
+    else:
+      self._maximum_iterations = None
     self._parallel_iterations = context_def.parallel_iterations
     self._back_prop = context_def.back_prop
     self._swap_memory = context_def.swap_memory
@@ -2055,6 +2081,11 @@ class WhileContext(ControlFlowContext):
   @property
   def name(self):
     return self._name
+
+  @property
+  def maximum_iterations(self):
+    """The maximum number of iterations that will be executed."""
+    return self._maximum_iterations
 
   @property
   def parallel_iterations(self):
@@ -2106,6 +2137,9 @@ class WhileContext(ControlFlowContext):
       context_def.context_name = ops.strip_name_scope(
           self.name, export_scope)
       context_def.parallel_iterations = self._parallel_iterations
+      if self._maximum_iterations is not None:
+        context_def.maximum_iterations_name = ops.strip_name_scope(
+            self._maximum_iterations.name, export_scope)
       context_def.back_prop = self._back_prop
       context_def.swap_memory = self._swap_memory
       context_def.pivot_for_pred_name = ops.strip_name_scope(
@@ -2724,6 +2758,7 @@ class WhileContext(ControlFlowContext):
     return True
 
 
+# pylint: disable=redefined-outer-name
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
                name=None, maximum_iterations=None):
@@ -2889,13 +2924,18 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
         shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
+    loop_context = WhileContext(
+        maximum_iterations=maximum_iterations,
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     if maximum_iterations is not None:
       return result[1]
     else:
       return result
+# pylint: enable=redefined-outer-name
 
 
 def _AsTensorList(x, p):
