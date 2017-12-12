@@ -60,6 +60,14 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
   return model;
 }
 
+std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
+    const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+  std::unique_ptr<FlatBufferModel> model;
+  model.reset(new FlatBufferModel(model_spec, error_reporter));
+  if (!model->initialized()) model.reset();
+  return model;
+}
+
 FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
                                  ErrorReporter* error_reporter, bool use_nnapi)
     : error_reporter_(error_reporter ? error_reporter
@@ -97,6 +105,13 @@ FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
   if (!allocation_->valid()) return;
 
   model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+}
+
+FlatBufferModel::FlatBufferModel(const Model* model,
+                                 ErrorReporter* error_reporter)
+    : error_reporter_(error_reporter ? error_reporter
+                                     : DefaultErrorReporter()) {
+  model_ = model;
 }
 
 FlatBufferModel::~FlatBufferModel() { delete allocation_; }

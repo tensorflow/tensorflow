@@ -35,7 +35,8 @@ namespace xla {
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
-// explicitly built, or loaded from a serialization file (e.g., hlo proto file).
+// explicitly built, or loaded from a serialization file (e.g., hlo proto
+// file), or parsed from a hlo textual IR string.
 class HloRunner {
  public:
   HloRunner();
@@ -43,6 +44,12 @@ class HloRunner {
   HloRunner(::perftools::gputools::Platform* platform);
 
   ~HloRunner();
+
+  // Converts an HloModule from the given hlo textual IR string (in
+  // HloModule::ToString format).
+  static StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
+      const tensorflow::StringPiece hlo_string,
+      const DebugOptions& debug_options);
 
   // Reads the proto file in xla.HloProto format, creates and returns the
   // HloModule. Will try to parse the filename as binary proto, then try as
@@ -65,7 +72,8 @@ class HloRunner {
   // Executes the given module with given literals as input and returns the
   // result as a Literal. The LiteralPtr type accepts Literal* or
   // std::unique_ptr<Literal>.
-  // If run_hlo_passes is true, the module will be executed without Hlo
+  //
+  // If run_hlo_passes is false, the module will be executed without Hlo
   // optimization.
   template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Execute(

@@ -53,7 +53,7 @@ class ReduceWindowTestBase : public ClientLibraryTestBase {
  public:
   ErrorSpec DefaultErrorSpec() const {
     if (use_bfloat16()) {
-      return ErrorSpec(1e-1, 3e-2);
+      return ErrorSpec(1e-1, 5e-2);
     } else {
       return ErrorSpec(1e-3, 1e-3);
     }

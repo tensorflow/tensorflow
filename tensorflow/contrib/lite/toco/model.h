@@ -41,6 +41,10 @@ enum class OperatorType {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kExpandDims,
+  kFill,
+  kFloorDiv,
+  kFloorMod,
   kFullyConnected,
   kL2Normalization,
   kL2Pool,
@@ -50,17 +54,21 @@ enum class OperatorType {
   kMaxPool,
   kFakeQuant,
   kMul,
+  kRange,
+  kRank,
   kRelu,
   kRelu1,
   kRelu6,
   kSoftmax,
   kSub,
   kTanh,
+  kTransposeConv,
   kCast,
   kFloor,
   kGather,
   kResizeBilinear,
   kSpaceToBatchND,
+  kStack,
   kBatchToSpaceND,
   kPad,
   kStridedSlice,
@@ -98,6 +106,7 @@ enum class OperatorType {
   kTensorFlowSum,
   kTensorFlowSwitch,
   kTensorFlowTile,
+  kTranspose,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -302,6 +311,10 @@ struct ConvOperator : Operator {
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+  // A dilation_rate of 0 is invalid and this field is an optional attribute.
+  // Thus initializing it to 1 to allow default conv behavior when the
+  // attribute is not present.
+  int dilation_rate = 1;
 };
 
 // Depthwise-separable convolution operator.
@@ -754,6 +767,102 @@ struct SqueezeOperator : Operator {
   std::vector<int> squeeze_dims;
 };
 
+// Inputs:
+//   inputs[0]: required: the input activations array
+//   inputs[1]: required: the Conv weights
+//   channel.
+//
+// Outputs:
+//   outputs[0]: required: the output activations array
+//
+// TensorFlow equivalent: Conv2DBackpropInput
+struct TransposeConvOperator : Operator {
+  TransposeConvOperator() : Operator(OperatorType::kTransposeConv) {}
+  Padding padding;
+  int stride_width = 0;
+  int stride_height = 0;
+};
+
+// Given a tensor input, this operation inserts a dimension of 1 at the
+// dimension index axis of input's shape. The dimension index axis starts at
+// zero; if you specify a negative number for axis it is counted backward from
+// the end.
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//   inputs[1]: required: 0-D (scalar). Specifies the dimension index at which
+//   to expand the shape of input
+//
+// TensorFlow equivalent: ExpandDims
+struct ExpandDimsOperator : Operator {
+  ExpandDimsOperator() : Operator(OperatorType::kExpandDims) {}
+};
+
+// Ceates a tensor of shape dims and fills it with the given scalar value.
+// Output type will be the same as the given scalar value.
+//
+// Inputs:
+//   inputs[0]: required: 1-D (int32) - the shape of the output tensor
+//   inputs[1]: required: 0-D (scalar) - value to fill the tensor with
+//
+// TensorFlow equivalent: Fill
+struct FillOperator : Operator {
+  FillOperator() : Operator(OperatorType::kFill) {}
+};
+
+// Element-wise floor division operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: FloorDiv
+struct FloorDivOperator : Operator {
+  FloorDivOperator() : Operator(OperatorType::kFloorDiv) {}
+};
+
+// Element-wise floor mod operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: FloorMod
+struct FloorModOperator : Operator {
+  FloorModOperator() : Operator(OperatorType::kFloorMod) {}
+};
+
+// Creates a sequence of numbers that begins at start and extends by increments
+// of delta up to but not including limit.
+//
+// The dtype of the resulting tensor is inferred from the inputs unless it is
+// provided explicitly.
+//
+// Inputs:
+//   inputs[0]: required: the start
+//   inputs[1]: required: the limit
+//   inputs[2]: required: the delta
+//
+// TensorFlow equivalent: Range
+struct RangeOperator : Operator {
+  RangeOperator() : Operator(OperatorType::kRange) {}
+  ArrayDataType dtype = ArrayDataType::kNone;
+};
+
+// Rank operator. Extracts the rank of the tensor.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// This operation outputs a 0-D integer tensor representing the rank of
+// the input.
+//
+// TensorFlow equivalent: Rank.  We currently assume that the output is int32
+// and not int64.  The output type could be stored herein.
+struct RankOperator : Operator {
+  RankOperator() : Operator(OperatorType::kRank) {}
+};
+
 // Element-wise reciprocal-square-root (x^-0.5) operator.
 //
 // Inputs:
@@ -762,6 +871,21 @@ struct SqueezeOperator : Operator {
 // TensorFlow equivalent: Rsqrt
 struct TensorFlowRsqrtOperator : Operator {
   TensorFlowRsqrtOperator() : Operator(OperatorType::kTensorFlowRsqrt) {}
+};
+
+// Stacks a list of rank-R tensors into one rank-(R+1) tensor.
+//
+// Packs the list of tensors in values into a tensor with rank one higher than
+// each tensor in values, by packing them along the axis dimension. Given a list
+// of length N of tensors of shape (A, B, C);.
+//
+// Inputs: this operator accepts any number >= 1 of inputs.
+//   inputs[i]: the i-th array to merge.
+//
+// TensorFlow equivalent: Stack or Pack
+struct StackOperator : Operator {
+  StackOperator() : Operator(OperatorType::kStack) {}
+  int axis = 0;
 };
 
 // Shape operator. Extracts the shape of the tensor.
@@ -796,6 +920,19 @@ struct TensorFlowSqrtOperator : Operator {
 // TensorFlow equivalent: Square
 struct TensorFlowSquareOperator : Operator {
   TensorFlowSquareOperator() : Operator(OperatorType::kTensorFlowSquare) {}
+};
+
+// Transposes a tensor.
+//
+// By default, this operation performs a regular matrix transpose on 2-D input
+// tensors.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Transpose
+struct TransposeOperator : Operator {
+  TransposeOperator() : Operator(OperatorType::kTranspose) {}
 };
 
 // Element-wise subtraction operator.

@@ -233,7 +233,6 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
 )
@@ -281,10 +280,14 @@ cc_library(
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
+        ":safe_ptr",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
@@ -3144,130 +3147,124 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_test",
     size = "small",
     srcs = ["training/server_lib_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_multiple_containers_test",
     size = "small",
     srcs = ["training/server_lib_multiple_containers_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_same_variables_clear_container_test",
     size = "small",
     srcs = ["training/server_lib_same_variables_clear_container_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_same_variables_clear_test",
     size = "small",
     srcs = ["training/server_lib_same_variables_clear_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_same_variables_no_clear_test",
     size = "small",
     srcs = ["training/server_lib_same_variables_no_clear_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
-py_test(
+tf_py_test(
     name = "server_lib_sparse_job_test",
     size = "small",
     srcs = ["training/server_lib_sparse_job_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
         ":data_flow_ops",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":training",
         ":variables",
-        "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
 )
 
 cuda_py_test(
@@ -3287,6 +3284,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "oss_serial",
@@ -3305,6 +3303,7 @@ tf_py_test(
         ":training",
         ":variables",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "notsan",  # data race due to b/62910646
@@ -3335,17 +3334,11 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-py_test(
+tf_py_test(
     name = "session_test",
     size = "small",
     srcs = ["client/session_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_gpu",
-        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
-        "no_windows",
-    ],
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":control_flow_ops",
@@ -3363,21 +3356,19 @@ py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+    grpc_enabled = True,
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+        "no_windows",
+    ],
 )
 
-py_test(
+tf_py_test(
     name = "session_clusterspec_prop_test",
     size = "small",
     srcs = ["client/session_clusterspec_prop_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_gpu",
-        "no_oss",
-        "no_pip",
-        "no_pip_gpu",
-        "notap",
-    ],
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":client_testlib",
@@ -3392,37 +3383,40 @@ py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    grpc_enabled = True,
+    tags = [
+        "no_gpu",
+        "no_oss",
+        "no_pip",
+        "no_pip_gpu",
+        "notap",
+    ],
 )
 
-py_test(
+tf_py_test(
     name = "session_list_devices_test",
     size = "small",
     srcs = ["client/session_list_devices_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_gpu",
-        "no_pip_gpu",
-        "notsan",  # data race due to b/62910646
-    ],
-    deps = [
+    additional_deps = [
         ":client",
         ":framework",
         ":framework_test_lib",
         ":platform_test",
         ":training",
     ],
+    grpc_enabled = True,
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",
+        "notsan",  # data race due to b/62910646
+    ],
 )
 
-py_test(
+tf_py_test(
     name = "session_partial_run_test",
     size = "small",
     srcs = ["client/session_partial_run_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_gpu",
-        "no_windows",
-    ],
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client",
         ":errors",
@@ -3434,6 +3428,11 @@ py_test(
         ":training",
         ":util",
         "@six_archive//:six",
+    ],
+    grpc_enabled = True,
+    tags = [
+        "no_gpu",
+        "no_windows",
     ],
 )
 
@@ -3634,6 +3633,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
+    tags = ["multi_gpu"],
 )
 
 py_test(
@@ -3690,20 +3690,18 @@ cuda_py_test(
         ":training",
         ":variables",
     ],
+    grpc_enabled = True,
     main = "training/session_manager_test.py",
 )
 
-py_test(
+tf_py_test(
     name = "supervisor_test",
     size = "small",
     srcs = ["training/supervisor_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client_testlib",
         ":errors",
-        ":extra_py_tests_deps",
         ":framework",
         ":framework_for_generated_wrappers",
         ":io_ops",
@@ -3714,6 +3712,8 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
     ],
+    grpc_enabled = True,
+    tags = ["no_windows"],
 )
 
 py_test(
@@ -3787,11 +3787,16 @@ py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "monitored_session_test",
     size = "medium",
     srcs = ["training/monitored_session_test.py"],
-    additional_deps = [
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+        "notsan",  # b/67945581
+    ],
+    deps = [
         ":array_ops",
         ":client_testlib",
         ":control_flow_ops",
@@ -3805,11 +3810,6 @@ cuda_py_test(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
-    ],
-    tags = [
-        "multi_gpu",
-        "no_windows",
-        "notsan",  # b/67945581
     ],
 )
 
@@ -4327,6 +4327,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    grpc_enabled = True,
     main = "client/session_benchmark.py",
 )
 

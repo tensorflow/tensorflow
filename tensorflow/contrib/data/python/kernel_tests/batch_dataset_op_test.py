@@ -577,7 +577,7 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
-  def testBatchAndMapDataset(self):
+  def _testBatchAndMapDatasetHelper(self, num_parallel_batches=1):
     """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset ->
     # RepeatDataset(count) -> BatchAndMapDataset(square_3, batch_size).
@@ -593,7 +593,10 @@ class BatchDatasetTest(test.TestCase):
 
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components).repeat(count).apply(
-            batching.map_and_batch(_map_fn, batch_size))
+            batching.map_and_batch(
+                map_func=_map_fn,
+                batch_size=batch_size,
+                num_parallel_batches=num_parallel_batches))
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -639,6 +642,16 @@ class BatchDatasetTest(test.TestCase):
       # Empty batch should be an initialization time error.
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
+
+  def testBatchAndMapDataset(self):
+    return self._testBatchAndMapDatasetHelper()
+
+  def testBatchAndMapDatasetWithParallelBatching(self):
+    # TODO(b/70299909): This test surfaces a bug in the `map_and_batch`
+    # transformation, which manifests as premature EOF. Fix it.
+    #
+    # return self._testBatchAndMapDatasetHelper(num_parallel_batches=10)
+    pass
 
   def testMapAndBatchSparse(self):
 

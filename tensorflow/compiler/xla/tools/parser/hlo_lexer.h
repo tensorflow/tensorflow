@@ -66,8 +66,16 @@ class HloLexer {
     return decimal_val_;
   }
 
-  // Returns the line of text that is currently being lexed.
-  tensorflow::StringPiece GetCurrentLine() const;
+  typedef const char* LocTy;
+
+  // Returns the location of the current token.
+  LocTy GetLoc() const { return token_start_; }
+
+  // Returns the line and column of a location in the buffer.
+  std::pair<unsigned, unsigned> GetLineAndColumn(LocTy location) const;
+
+  // Returns the whole line given the location.
+  tensorflow::StringPiece GetLine(LocTy loc) const;
 
  private:
   // Returns the current character. If it's neither the end of input buffer nor
@@ -108,6 +116,13 @@ class HloLexer {
   Shape shape_val_;
   int64 int64_val_;
   double decimal_val_;
+
+  struct LineNoCacheTy {
+    const char* last_query;
+    unsigned line_no_of_query;
+  };
+  // This caches the line number of the previous query.
+  mutable LineNoCacheTy line_no_cache_{nullptr, 0};
 };
 
 }  // namespace tools

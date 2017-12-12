@@ -286,6 +286,23 @@ class Dataset(object):
     sess.run(value)  # (2, array([1, 1]))
     ```
 
+    NOTE: The current implementation of `Dataset.from_generator()` uses
+    @{tf.py_func} and inherits the same constraints. In particular, it
+    requires the `Dataset`- and `Iterator`-related operations to be placed
+    on a device in the same process as the Python program that called
+    `Dataset.from_generator()`. The body of `generator` will not be
+    serialized in a `GraphDef`, and you should not use this method if you
+    need to serialize your model and restore it in a different environment.
+
+    NOTE: If `generator` depends on mutable global variables or other external
+    state, be aware that the runtime may invoke `generator` multiple times
+    (in order to support repeating the `Dataset`) and at any time
+    between the call to `Dataset.from_generator()` and the production of the
+    first element from the generator. Mutating global variables or external
+    state can cause undefined behavior, and we recommend that you explicitly
+    cache any external state in `generator` before calling
+    `Dataset.from_generator()`.
+
     Args:
       generator: A callable object that takes no arguments and returns an
         object that supports the `iter()` protocol.

@@ -82,13 +82,13 @@ cc_library(
         ":cpu_copy_insertion",
         ":cpu_executable",
         ":cpu_instruction_fusion",
+        ":cpu_layout_assignment",
         ":cpu_options",
         ":cpu_parallelization_preparation",
         ":disassembler",
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":parallel_cpu_executable",
         ":parallel_task_assignment",
         ":simple_orc_jit",
@@ -104,12 +104,14 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -656,9 +658,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "cpu_layout_assignment",
+    srcs = ["cpu_layout_assignment.cc"],
+    hdrs = ["cpu_layout_assignment.h"],
     deps = [
         ":dot_op_emitter",
         ":ir_emission_utils",
@@ -670,11 +672,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "layout_assignment_test",
+    name = "cpu_layout_assignment_test",
     size = "small",
-    srcs = ["layout_assignment_test.cc"],
+    srcs = ["cpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":cpu_layout_assignment",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",

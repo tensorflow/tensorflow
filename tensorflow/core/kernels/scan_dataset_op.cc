@@ -143,8 +143,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> state_and_output;
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
-        Status s =
-            dataset()->captured_func_->Run(opts, args, &state_and_output);
+        Status s = dataset()->captured_func_->Run(opts, std::move(args),
+                                                  &state_and_output);
         if (s.ok()) {
           state_.clear();
           size_t i = 0;

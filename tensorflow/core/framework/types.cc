@@ -318,6 +318,16 @@ bool DataTypeIsFloating(DataType dt) {
   }
 }
 
+bool DataTypeIsComplex(DataType dt) {
+  switch (dt) {
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool DataTypeIsQuantized(DataType dt) {
   switch (dt) {
     case DT_QINT8:

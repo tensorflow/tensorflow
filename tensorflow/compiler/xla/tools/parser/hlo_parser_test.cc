@@ -148,6 +148,17 @@ ENTRY %ConstantF16.v4 () -> f16[] {
 
 )"
 },
+// bf16
+{
+"BF16",
+R"(HloModule BF16:
+
+ENTRY %BF16.v4 () -> bf16[] {
+  ROOT %constant = bf16[] constant(500)
+}
+
+)"
+},
 // constant + constant
 {
 "AddConstants",
@@ -354,6 +365,19 @@ ENTRY %ConvolveR2.v3 (input: f32[1,2], filter: f32[1,1]) -> f32[1,2] {
   %input = f32[1,2]{1,0} parameter(0)
   %filter = f32[1,1]{1,0} parameter(1)
   ROOT %convolution = f32[1,2]{0,1} convolution(f32[1,2]{1,0} %input, f32[1,1]{1,0} %filter), dim_labels=bf_io->bf
+}
+
+)"
+},
+// convolution backward
+{
+"ConvolutionBackward",
+R"(HloModule ConvolveBackward_module:
+
+ENTRY %ConvolveBackward (input: f32[128,7,7,512], filter: f32[3,3,512,512]) -> f32[128,14,14,512] {
+  %input = f32[128,7,7,512]{0,3,2,1} parameter(0)
+  %filter = f32[3,3,512,512]{3,2,1,0} parameter(1)
+  ROOT %convolution-base-dilated = f32[128,14,14,512]{0,3,2,1} convolution(f32[128,7,7,512]{0,3,2,1} %input, f32[3,3,512,512]{3,2,1,0} %filter), window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
 }
 
 )"
@@ -699,7 +723,7 @@ class HloParserTest : public ::testing::Test,
   void ExpectEqual() {
     const string& original = GetParam().module_string;
     auto result = Parse(original);
-    TF_EXPECT_OK(result.status());
+    TF_ASSERT_OK(result.status());
     EXPECT_EQ(original,
               result.ValueOrDie()->ToString(/*include_large_constants=*/true));
   }

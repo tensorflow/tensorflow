@@ -51,23 +51,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_parallelization_preparation.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -272,7 +274,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
-
+  pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvCanonicalization>();
   {
     auto& pass =
@@ -318,6 +320,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       [](const Shape&, const Shape&) { return true; },
       /*enable_dot_strength_reduction=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
@@ -600,7 +603,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           llvm::Function * ir_function,
           ir_emitter.EmitComputation(
               embedded_computation, embedded_computation->name(),
-              /*is_entry_computation=*/computation_is_parallel,
+              /*is_top_level_computation=*/computation_is_parallel,
               /*instruction_order=*/nullptr));
       // If this computation is parallel, remember it in the function name map.
       // This way we know what function to execute when we try to run code for
@@ -682,7 +685,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -691,7 +694,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, function_name_prefix,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     string function_name = llvm_ir::AsString(entry_function->getName());
@@ -856,7 +859,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -864,7 +867,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));

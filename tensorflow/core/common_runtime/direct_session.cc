@@ -521,9 +521,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = &step_cancellation_manager;
-  args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
-  };
+
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
@@ -584,7 +582,24 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::Cancelled("Run call was cancelled");
   }
 
+  Executor::Args::Runner default_runner = [this,
+                                           pool](Executor::Args::Closure c) {
+    SchedClosure(pool, std::move(c));
+  };
   for (const auto& item : executors_and_keys->items) {
+    // TODO(zhengxq): support partial run.
+    // TODO(zhengxq): support other session types.
+    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    //     less threads to the main compute pool by default.
+    thread::ThreadPool* device_thread_pool =
+        item.device->tensorflow_device_thread_pool();
+    if (!device_thread_pool) {
+      args.runner = default_runner;
+    } else {
+      args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
+        SchedClosure(device_thread_pool, std::move(c));
+      };
+    }
     item.executor->RunAsync(args, barrier->Get());
   }
 
@@ -1222,6 +1237,7 @@ Status DirectSession::GetOrCreateExecutors(
     // NewLocalExecutor takes ownership of partition_graph.
     item->graph = partition_graph.get();
     item->executor = nullptr;
+    item->device = device;
     Executor* executor;
     TF_RETURN_IF_ERROR(
         NewLocalExecutor(params, partition_graph.release(), &executor));
