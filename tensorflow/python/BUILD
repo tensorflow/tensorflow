@@ -204,11 +204,11 @@ cc_library(
     srcs = ["grappler/model_analyzer.cc"],
     hdrs = ["grappler/model_analyzer.h"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/costs:utils",
     ],
 )
 
