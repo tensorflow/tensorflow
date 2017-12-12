@@ -97,8 +97,8 @@ def _get_workers(num_workers, steps, workers):
         )
         train_op = [
           opt.apply_gradients(
-            zip([grads_0, grads_1],
-                [var_0, var_1]), global_step)
+            [[grads_0, var_0],
+             [grads_1, var_1]], global_step)
         ]
       easgd_hook = opt.make_session_run_hook()
       # Creates MonitoredSession
