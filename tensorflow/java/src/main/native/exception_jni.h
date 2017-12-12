@@ -33,7 +33,7 @@ extern const char kUnsupportedOperationException[];
 void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 
 // If status is not TF_OK, then throw an appropriate exception.
-// Returns true iff TF_GetCode(status) == TF_OK.
+// Returns true if TF_GetCode(status) == TF_OK.
 bool throwExceptionIfNotOK(JNIEnv* env, const TF_Status* status);
 
 #ifdef __cplusplus
