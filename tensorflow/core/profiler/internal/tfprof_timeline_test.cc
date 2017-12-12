@@ -71,7 +71,7 @@ TEST_F(TFProfTimelineTest, GraphView) {
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
-  EXPECT_EQ(7932146665024565912ull, Hash64(dump_str));
+  EXPECT_EQ(16556121177519539380ull, Hash64(dump_str));
 }
 
 TEST_F(TFProfTimelineTest, ScopeView) {

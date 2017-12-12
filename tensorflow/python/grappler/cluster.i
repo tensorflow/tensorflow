@@ -134,13 +134,17 @@ static GCluster TF_NewVirtualCluster(
   }
   tensorflow::grappler::Cluster*cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
+  PyGILState_STATE gstate = PyGILState_Ensure();
   tensorflow::Status status = cluster_->Provision();
+  PyGILState_Release(gstate);
   tensorflow::Set_TF_Status_from_Status(out_status, status);
   return GCluster(cluster_);
 }
 
 static void TF_ShutdownCluster(GCluster cluster) {
+  PyGILState_STATE gstate = PyGILState_Ensure();
   cluster->Shutdown();
+  PyGILState_Release(gstate);
 }
 
 tensorflow::Status _GetOpPerformanceDataAndRunTime(

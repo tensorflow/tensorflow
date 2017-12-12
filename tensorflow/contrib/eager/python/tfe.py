@@ -23,6 +23,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@list_devices
 @@num_gpus
 
+@@py_func
 @@defun
 @@implicit_gradients
 @@implicit_value_and_gradients
@@ -101,8 +102,10 @@ from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore
+from tensorflow.python.ops import script_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
+py_func = script_ops.eager_py_func
 defun = function.defun
 implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad

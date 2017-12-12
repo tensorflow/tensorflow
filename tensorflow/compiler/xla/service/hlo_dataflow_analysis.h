@@ -146,6 +146,7 @@ class HloDataflowAnalysis {
   // the instruction value set changed.
   bool UpdateBitcastValueSet(HloInstruction* bitcast);
   bool UpdateCallValueSet(HloInstruction* call);
+  bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);

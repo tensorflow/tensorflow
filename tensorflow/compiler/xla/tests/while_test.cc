@@ -911,8 +911,7 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   }
 }
 
-// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
-TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithTupleElement)) {
+TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   ComputationBuilder outer(client_, "outer");
@@ -948,8 +947,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithTupleElement)) {
                          ErrorSpec(1e-6));
 }
 
-// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
-TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithBroadcast)) {
+TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   ComputationBuilder outer(client_, "outer");

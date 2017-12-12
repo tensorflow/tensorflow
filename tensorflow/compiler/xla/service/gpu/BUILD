@@ -431,11 +431,11 @@ cc_library(
         ":fusion_merger",
         ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_layout_assignment",
         ":hlo_schedule",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
@@ -449,6 +449,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
@@ -492,9 +493,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "gpu_layout_assignment",
+    srcs = ["gpu_layout_assignment.cc"],
+    hdrs = ["gpu_layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -508,10 +509,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "layout_assignment_test",
-    srcs = ["layout_assignment_test.cc"],
+    name = "gpu_layout_assignment_test",
+    srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":gpu_layout_assignment",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",

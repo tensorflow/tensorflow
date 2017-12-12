@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/captured_function.h"
 #include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -247,48 +247,59 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                   .IgnoreError();
             });
         opts.step_container = step_container;
-        opts.runner = ctx->runner();
-        dataset()->captured_func_->RunAsync(
-            opts, input_element, &result->return_values,
-            [this, result, step_container, batch_result,
-             offset](Status ret_status) {
-              delete step_container;
-              result->status.Update(ret_status);
-              if (ret_status.ok()) {
-                EnsureOutputAllocated(batch_result, result->return_values);
-                const size_t num_components = result->return_values.size();
-                for (size_t i = 0; i < num_components; ++i) {
-                  const Tensor& tensor = result->return_values[i];
-                  Tensor* batch = &(batch_result->output)[i];
-                  if (tensor.NumElements() !=
-                      (batch->NumElements() / batch->dim_size(0))) {
-                    TensorShape batch_shape = batch->shape();
-                    batch_shape.RemoveDim(0);
-                    result->status.Update(errors::InvalidArgument(
-                        "Cannot add tensor to the batch: number of "
-                        "elements does not match. Shapes are: [tensor]: ",
-                        tensor.shape().DebugString(),
-                        ", [batch]: ", batch_shape.DebugString()));
-                    break;
-                  }
-                  // TODO(mrry): Add a version of DoParallelConcat that allows
-                  // us to move `tensor` where possible, to speed up string
-                  // tensor batching.
-                  Status copy_status = ::tensorflow::functor::DoParallelConcat(
-                      *dataset()->device_, tensor, offset, batch);
-                  if (!copy_status.ok()) {
-                    result->status.Update(copy_status);
-                    break;
-                  }
-                }
-              }
-              // NOTE(mrry): We clear the return values here to release any
-              // memory associated with them and to paralellize the destruction
-              // of the tensors (which can be surprisingly expensive for
-              // map functions with large numbers of return values).
-              result->return_values.clear();
-              batch_result->counter->DecrementCount();
-            });
+        std::function<void(std::function<void()>)>* runner =
+            new std::function<void(std::function<void()>)>(*ctx->runner());
+        opts.runner = runner;
+        (*ctx->runner())(std::bind(
+            [=](std::vector<Tensor> input_element) {
+              dataset()->captured_func_->RunAsync(
+                  opts, std::move(input_element), &result->return_values,
+                  [this, step_container, runner, result, batch_result,
+                   offset](Status ret_status) {
+                    delete step_container;
+                    delete runner;
+                    result->status.Update(ret_status);
+                    if (ret_status.ok()) {
+                      EnsureOutputAllocated(batch_result,
+                                            result->return_values);
+                      const size_t num_components =
+                          result->return_values.size();
+                      for (size_t i = 0; i < num_components; ++i) {
+                        const Tensor& tensor = result->return_values[i];
+                        Tensor* batch = &(batch_result->output)[i];
+                        if (tensor.NumElements() !=
+                            (batch->NumElements() / batch->dim_size(0))) {
+                          TensorShape batch_shape = batch->shape();
+                          batch_shape.RemoveDim(0);
+                          result->status.Update(errors::InvalidArgument(
+                              "Cannot add tensor to the batch: number of "
+                              "elements does not match. Shapes are: [tensor]: ",
+                              tensor.shape().DebugString(),
+                              ", [batch]: ", batch_shape.DebugString()));
+                          break;
+                        }
+                        // TODO(mrry): Add a version of DoParallelConcat that
+                        // allows us to move `tensor` where possible, to speed
+                        // up string tensor batching.
+                        Status copy_status =
+                            ::tensorflow::functor::DoParallelConcat(
+                                *dataset()->device_, tensor, offset, batch);
+                        if (!copy_status.ok()) {
+                          result->status.Update(copy_status);
+                          break;
+                        }
+                      }
+                    }
+                    // NOTE(mrry): We clear the return values here to release
+                    // any memory associated with them and to paralellize the
+                    // destruction of the tensors (which can be surprisingly
+                    // expensive for map functions with large numbers of return
+                    // values).
+                    result->return_values.clear();
+                    batch_result->counter->DecrementCount();
+                  });
+            },
+            std::move(input_element)));
       }
 
       void StartInvocationBatch(IteratorContext* ctx, int64 batch_index)

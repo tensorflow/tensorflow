@@ -35,6 +35,19 @@ void PopulateWithRandomFloatingPointData(Literal* literal) {
       }));
 }
 
+// The standard library does not have a case for bfloat16, unsurprisingly, so we
+// handle that one specially.
+template <>
+void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal) {
+  CHECK_EQ(literal->shape().element_type(), BF16);
+  std::minstd_rand0 engine;
+  std::uniform_real_distribution<float> generator(0.0f, 1.0f);
+  TF_CHECK_OK(literal->Populate<bfloat16>(
+      [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+        return static_cast<bfloat16>(generator(engine));
+      }));
+}
+
 template <typename IntT>
 void PopulateWithRandomIntegralData(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(),
@@ -171,6 +184,9 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape) {
   }
   std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
   switch (shape.element_type()) {
+    case BF16:
+      PopulateWithRandomFloatingPointData<bfloat16>(literal.get());
+      break;
     case F32:
       PopulateWithRandomFloatingPointData<float>(literal.get());
       break;
