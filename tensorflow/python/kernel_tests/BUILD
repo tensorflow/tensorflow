@@ -2083,11 +2083,11 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    shard_count = 2,
     tags = [
         "no_gpu",
         "no_oss",
     ],
-    shard_count = 2,
 )
 
 cuda_py_test(
