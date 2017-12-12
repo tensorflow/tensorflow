@@ -230,7 +230,11 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
     profile->MergeFrom(execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    if (stream->ok()) {
+      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
+      // illegal.
+      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    }
 
     // TODO(b/28123297): On GPU we end up including transfer time in
     // the compute time this way. Instead, we should get the correct
