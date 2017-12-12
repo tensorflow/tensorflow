@@ -1346,7 +1346,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     const bool is_any_div = IsAnyDiv(*node);
     // Simplify multiplication by ones or zeros, and addition/subtraction of
     // zeros.
-    if (use_shape_info &&
+    if (is_aggressive && use_shape_info &&
         (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
         properties.HasInputProperties(node->name()) &&
         properties.HasOutputProperties(node->name())) {
@@ -1422,7 +1422,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // Strength reduce floating point division by a constant Div(x, const) to
     // multiplication by the reciprocal Mul(x, Reciprocal(const)). This in turn
     // will be constant folded to Mul(x, 1.0/const).
-    if (node->input_size() >= 2 && (IsRealDiv(*node) || IsDiv(*node))) {
+    if (is_aggressive && node->input_size() >= 2 &&
+        (IsRealDiv(*node) || IsDiv(*node))) {
       const string& const_input = node->input(1);
       const NodeDef* denom = node_map_->GetNode(const_input);
       CHECK(denom != nullptr);
