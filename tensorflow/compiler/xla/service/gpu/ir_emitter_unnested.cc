@@ -261,6 +261,11 @@ Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
   return IrEmitter::HandleDot(dot);
 }
 
+Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
+  thunk_sequence_->push_back(BuildKernelThunk(conditional));
+  return IrEmitter::HandleConditional(conditional);
+}
+
 Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
   if (ImplementedAsDnnConvolution(*convolution)) {
     thunk_sequence_->emplace_back(BuildConvolutionThunk(convolution));

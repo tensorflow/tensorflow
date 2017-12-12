@@ -140,6 +140,7 @@ class DbTest(summary_test_util.SummaryDbTest):
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()
+    writer = self.create_db_writer()
 
     def adder(x, y):
       state_ops.assign_add(step, 1)
@@ -150,7 +151,7 @@ class DbTest(summary_test_util.SummaryDbTest):
       return sum_
 
     with summary_ops.always_record_summaries():
-      with self.create_db_writer().as_default():
+      with writer.as_default():
         self.assertEqual(5, adder(int64(2), int64(3)).numpy())
 
     six.assertCountEqual(self, [1, 1, 1],
@@ -162,7 +163,7 @@ class DbTest(summary_test_util.SummaryDbTest):
     sum_id = get_one(self.db, 'SELECT tag_id FROM Tags WHERE tag_name = "sum"')
 
     with summary_ops.always_record_summaries():
-      with self.create_db_writer().as_default():
+      with writer.as_default():
         self.assertEqual(9, adder(int64(4), int64(5)).numpy())
 
     six.assertCountEqual(self, [1, 1, 1, 2, 2, 2],

@@ -559,6 +559,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 // Batch Dimensions:
 // *) Same number of batch dimensions on both lhs and rhs.
 // *) Same batch dimension numbers (and sizes) on both lhs and rhs.
+// *) Batch dimension numbers must be ordered before contracting and
+//    non-contracting/non-batch dimension numbers.
 //
 // Non-Contracting-Non-Batch Dimensions:
 // *) Can be 0 (matrix-vector) or 1 (matrix-matrix).
@@ -630,6 +632,19 @@ Status ValidateDotDimensionNumbers(
     return InvalidArgument(
         "batch and contracting dimension number mismatch "
         "with rank ");
+  }
+
+  // Check that batch dimension numbers are ordered before all others, and
+  // that they are monotonically increasing.
+  std::vector<int64> batch_dim_numbers(lhs_batch_dimensions.size());
+  std::iota(batch_dim_numbers.begin(), batch_dim_numbers.end(), 0);
+  if (!std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  lhs_batch_dimensions.begin()) ||
+      !std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  rhs_batch_dimensions.begin())) {
+    return InvalidArgument(
+        "batch dimension numbers must precede non-batch dimensions and be"
+        "monotonically increasing.");
   }
 
   return Status::OK();
@@ -2077,6 +2092,64 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
 
   return init;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferConditionalShape(
+    const Shape& predicate, const Shape& true_operand,
+    const Shape& false_operand, const ProgramShape& true_computation,
+    const ProgramShape& false_computation) {
+  if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
+    return InvalidArgument("predicate must be a boolean; got %s.",
+                           ShapeUtil::HumanString(predicate).c_str());
+  }
+
+  if (true_computation.parameters_size() != 1) {
+    return InvalidArgument("true_computation must take 1 argument; got %d.",
+                           true_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(true_computation.parameters(0), true_operand)) {
+    auto true_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_operand: %s; true_computation: %s",
+          ShapeUtil::HumanString(true_operand).c_str(),
+          ShapeUtil::HumanString(true_computation).c_str());
+    };
+    return InvalidArgument(
+        "true_operand must match the shape of the only parameter of "
+        "true_computation: got %s.",
+        true_shape_string().c_str());
+  }
+
+  if (false_computation.parameters_size() != 1) {
+    return InvalidArgument("false_computation must take 1 argument; got %d.",
+                           false_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(false_computation.parameters(0), false_operand)) {
+    auto false_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "false_operand: %s; false_computation: %s",
+          ShapeUtil::HumanString(false_operand).c_str(),
+          ShapeUtil::HumanString(false_computation).c_str());
+    };
+    return InvalidArgument(
+        "false_operand must match the shape of the only parameter of "
+        "false_computation: got %s.",
+        false_shape_string().c_str());
+  }
+  if (!ShapeUtil::Compatible(true_computation.result(),
+                             false_computation.result())) {
+    auto shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_computation result: %s; false_computation result: %s.",
+          ShapeUtil::HumanString(true_computation.result()).c_str(),
+          ShapeUtil::HumanString(false_computation.result()).c_str());
+    };
+    return InvalidArgument(
+        "the result of true_computation and false_computation must have the "
+        "same shape: got %s.",
+        shape_string().c_str());
+  }
+  return true_computation.result();
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(

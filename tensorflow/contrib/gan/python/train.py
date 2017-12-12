@@ -215,7 +215,8 @@ def infogan_model(
       disc_scope,
       lambda x, y: discriminator_fn(x, y)[0],  # conform to non-InfoGAN API
       structured_generator_inputs,
-      predicted_distributions)
+      predicted_distributions,
+      discriminator_fn)
 
 
 def acgan_model(

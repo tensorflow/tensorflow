@@ -441,6 +441,15 @@ Stack Overflow and specify the `tensorflow` tag.
   <td>Invoking `python` or `ipython` generates the following error:
   <pre>ImportError: cannot import name pywrap_tensorflow</pre></td>
 </tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/questions/45276830">45276830</a></td>
+  <td><pre>external/local_config_cc/BUILD:50:5: in apple_cc_toolchain rule
+  @local_config_cc//:cc-compiler-darwin_x86_64: Xcode version must be specified
+  to use an Apple CROSSTOOL.</pre>
+  </td>
+</tr>
+
 </table>
 
 ## Tested source configurations

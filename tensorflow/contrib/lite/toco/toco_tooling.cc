@@ -51,6 +51,7 @@ void CheckUnsupportedOperations(const Model& model) {
 void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
+  transformations->Add(new ConvertExpandDimsToReshape);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);

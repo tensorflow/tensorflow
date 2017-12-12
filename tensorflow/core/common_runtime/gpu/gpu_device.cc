@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -304,6 +305,46 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->event_mgr = em_.get();
   gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
+
+  // Whether and how the GPU device uses its own threadpool.
+  // This option is experimental. Once we confirm the best setting, we
+  // may change the default behavior and completely remove this flag.
+  // Default values might change in future releases.
+  // Possible values:
+  //   * global: GPU uses threads shared with CPU in the main compute
+  //          thread-pool. This is currently the default.
+  //   * gpu_private: GPU uses threads dedicated to this device.
+  //   * gpu_shared: All GPUs share a dedicated thread pool.
+  string gpu_thread_mode;
+  TF_RETURN_IF_ERROR(
+      ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
+  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  if (gpu_thread_mode != "global") {
+    int64 gpu_thread_count = -1;
+    // Default to two threads. One for device compute and another for memory
+    // copies.
+    TF_RETURN_IF_ERROR(
+        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &gpu_thread_count));
+    if (gpu_thread_mode == "gpu_private") {
+      // TODO(zhengxq): since these threads only serve a single GPU device,
+      //   we should set the device context once for each thread, and avoid
+      //   setting them for each kernel.
+      // TODO(zhengxq): pin the thread to the same socket of the target GPU.
+      thread_pool_.reset(new thread::ThreadPool(
+          options.env, strings::StrCat("gpu_private_", gpu_id_),
+          static_cast<int32>(gpu_thread_count)));
+      set_tensorflow_device_thread_pool(thread_pool_.get());
+    } else if (gpu_thread_mode == "gpu_shared") {
+      static thread::ThreadPool* thread_pool = new thread::ThreadPool(
+          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+      set_tensorflow_device_thread_pool(thread_pool);
+    } else {
+      string error_message =
+          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+      LOG(WARNING) << error_message;
+      return errors::InvalidArgument(error_message);
+    }
+  }
 
   return Status::OK();
 }
