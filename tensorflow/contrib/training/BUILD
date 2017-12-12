@@ -23,6 +23,7 @@ py_library(
         "python/training/evaluation.py",
         "python/training/feeding_queue_runner.py",
         "python/training/hparam.py",
+        "python/training/partial_restore_session.py",
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
@@ -145,6 +146,30 @@ py_test(
     deps = [
         ":training_py",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "partial_restore_session_test",
+    size = "small",
+    srcs = ["python/training/partial_restore_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/testing:testing_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
