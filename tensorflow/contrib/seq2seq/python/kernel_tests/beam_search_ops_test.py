@@ -36,24 +36,26 @@ class GatherTreeTest(test.TestCase):
 
   def testGatherTreeOne(self):
     # (max_time = 4, batch_size = 1, beams = 3)
+    end_token = 10
     step_ids = _transpose_batch_time(
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
         [[[0, 0, 0], [0, 1, 1], [2, 1, 2], [-1, -1, -1]]])
     max_sequence_lengths = [3]
-    expected_result = _transpose_batch_time(
-        [[[2, 2, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
+    expected_result = _transpose_batch_time([[[2, 2, 2], [6, 5, 6], [7, 8, 9],
+                                              [10, 10, 10]]])
     beams = beam_search_ops.gather_tree(
         step_ids=step_ids,
         parent_ids=parent_ids,
         max_sequence_lengths=max_sequence_lengths,
-        end_token=10)
+        end_token=end_token)
     with self.test_session(use_gpu=True):
       self.assertAllEqual(expected_result, beams.eval())
 
   def testBadParentValuesOnCPU(self):
     # (batch_size = 1, max_time = 4, beams = 3)
     # bad parent in beam 1 time 1
+    end_token = 10
     step_ids = _transpose_batch_time(
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
@@ -64,7 +66,7 @@ class GatherTreeTest(test.TestCase):
           step_ids=step_ids,
           parent_ids=parent_ids,
           max_sequence_lengths=max_sequence_lengths,
-          end_token=10)
+          end_token=end_token)
     with self.test_session():
       with self.assertRaisesOpError(
           r"parent id -1 at \(batch, time, beam\) == \(0, 0, 1\)"):
@@ -77,19 +79,20 @@ class GatherTreeTest(test.TestCase):
       return
     # (max_time = 4, batch_size = 1, beams = 3)
     # bad parent in beam 1 time 1; appears as a negative index at time 0
+    end_token = 10
     step_ids = _transpose_batch_time(
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
         [[[0, 0, 0], [0, -1, 1], [2, 1, 2], [-1, -1, -1]]])
     max_sequence_lengths = [3]
-    expected_result = _transpose_batch_time(
-        [[[2, -1, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
+    expected_result = _transpose_batch_time([[[2, -1, 2], [6, 5, 6], [7, 8, 9],
+                                              [10, 10, 10]]])
     with ops.device("/device:GPU:0"):
       beams = beam_search_ops.gather_tree(
           step_ids=step_ids,
           parent_ids=parent_ids,
           max_sequence_lengths=max_sequence_lengths,
-          end_token=10)
+          end_token=end_token)
     with self.test_session(use_gpu=True):
       self.assertAllEqual(expected_result, beams.eval())
 
@@ -115,24 +118,24 @@ class GatherTreeTest(test.TestCase):
       self.assertEqual((max_time, batch_size, beam_width), beams.shape)
       beams_value = beams.eval()
       for b in range(batch_size):
-        # Past max_sequence_lengths[b], we emit all -1s.
+        # Past max_sequence_lengths[b], we emit all end tokens.
         b_value = beams_value[max_sequence_lengths[b]:, b, :]
-        self.assertAllClose(b_value, -1. * np.ones_like(b_value))
+        self.assertAllClose(b_value, end_token * np.ones_like(b_value))
       for batch, beam in itertools.product(
           range(batch_size), range(beam_width)):
         v = np.squeeze(beams_value[:, batch, beam])
         if end_token in v:
+          found_bad = np.where(v == -1)[0]
+          self.assertEqual(0, len(found_bad))
           found = np.where(v == end_token)[0]
-          # Should be up to 1 instance of end_token per beam.
-          self.assertEqual(len(found), 1)
-          found = found[0]
+          found = found[0]  # First occurrence of end_token.
           # If an end_token is found, everything before it should be a
           # valid id and everything after it should be -1.
           if found > 0:
             self.assertAllEqual(
                 v[:found - 1] >= 0, np.ones_like(v[:found - 1], dtype=bool))
-          self.assertAllClose(
-              v[found + 1:], -1 * np.ones_like(v[found + 1:]))
+          self.assertAllClose(v[found + 1:],
+                              end_token * np.ones_like(v[found + 1:]))
 
 
 if __name__ == "__main__":

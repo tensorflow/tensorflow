@@ -280,20 +280,20 @@ tf_java_test(
     ],
 )
 
-java_test(
-    name = "OperatorProcessorTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/processor/OperatorProcessorTest.java"],
-    javacopts = JAVACOPTS,
-    resources = [":processor_test_resources"],
-    test_class = "org.tensorflow.processor.OperatorProcessorTest",
-    deps = [
-        ":processor_library",
-        "@com_google_testing_compile",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
+#java_test(
+#    name = "OperatorProcessorTest",
+#    size = "small",
+#    srcs = ["src/test/java/org/tensorflow/processor/OperatorProcessorTest.java"],
+#    javacopts = JAVACOPTS,
+#    resources = [":processor_test_resources"],
+#    test_class = "org.tensorflow.processor.OperatorProcessorTest",
+#    deps = [
+#        ":processor_library",
+#        "//third_party/java/junit",
+#        "@com_google_testing_compile",
+#        "@com_google_truth",
+#    ],
+#)
 
 filegroup(
     name = "processor_test_resources",

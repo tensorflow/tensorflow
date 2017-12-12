@@ -18,6 +18,9 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/numeric_types.h"
+#define MKL_Complex8 tensorflow::complex64
+#define MKL_Complex16 tensorflow::complex128
 #include "mkl_trans.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
@@ -41,7 +44,7 @@ namespace tensorflow {
 
 namespace {
 template <typename T>
-void MKLTranspose2D(const char trans, const Tensor& in, Tensor* out) {}
+Status MKLTranspose2D(const char trans, const Tensor& in, Tensor* out);
 
 // Documentation here: https://software.intel.com/en-us/node/520863
 // Parameters: (ordering:row-major, operation:transpose, num_rows, num_cols,
@@ -54,70 +57,73 @@ void MKLTranspose2D(const char trans, const Tensor& in, Tensor* out) {}
     mkl_##PREFIX##omatcopy('R', trans, in.dim_size(0), in.dim_size(1), 1,     \
                            in.flat<T>().data(), in.dim_size(1),               \
                            out->flat<T>().data(), in.dim_size(0));            \
-    return Status::OK();
+    return Status::OK();                                                      \
   }
 
-  INSTANTIATE(float, s)
-  INSTANTIATE(double, d)
-  INSTANTIATE(complex64, c)
-  INSTANTIATE(complex128, z)
+INSTANTIATE(float, s)
+INSTANTIATE(double, d)
+INSTANTIATE(complex64, c)
+INSTANTIATE(complex128, z)
 #undef INSTANTIATE
 
-  static const char kMKLTranspose = 'T';
-  static const char kMKLConjugateTranspose = 'C';
+static const char kMKLTranspose = 'T';
+static const char kMKLConjugateTranspose = 'C';
 
-  }  // namespace tensorflow
+}  // namespace
 
-  Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                        gtl::ArraySlice<int32> perm,
-                                        Tensor* out) {
-    if (in.dims() == 2) {
-      switch (in.dtype()) {
-        case DT_FLOAT:
-          return MKLTranspose2D<float>(kMKLTranspose, in, out);
-        case DT_DOUBLE:
-          return MKLTranspose2D<double>(kMKLTranspose, in, out);
-        case DT_COMPLEX64:
-          return MKLTranspose2D<complex64>(kMKLTranspose, in, out);
-        case DT_COMPLEX128:
-          return MKLTranspose2D<complex128>(kMKLTranspose, in, out);
-        default:
-          break;
-      }
+Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                                      gtl::ArraySlice<int32> perm,
+                                      Tensor* out) {
+  if (in.dims() == 2) {
+    if (perm[0] == 0 && perm[1] == 1) {
+      return Status::OK();
     }
-    // Fallback to eigen if transpose parameters not supported by MKL
-    typedef Eigen::ThreadPoolDevice CPUDevice;
-    return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
-                                     out);
-  }
-
-  Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
-                                                 const Tensor& in,
-                                                 gtl::ArraySlice<int32> perm,
-                                                 Tensor* out) {
-    if (in.dims() == 2) {
-      // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
-      // for any transpose that can be reduced to swapping the last two
-      // dimensions in a rank-3 tensor. We can even run each outer dimension in
-      // a separate thread.
-      switch (in.dtype()) {
-        case DT_FLOAT:
-          return MKLTranspose2D<float>(kMKLTranspose, in, out);
-        case DT_DOUBLE:
-          return MKLTranspose2D<double>(kMKLTranspose, in, out);
-        case DT_COMPLEX64:
-          return MKLTranspose2D<complex64>(kMKLConjugateTranspose, in, out);
-        case DT_COMPLEX128:
-          return MKLTranspose2D<complex128>(kMKLConjugateTranspose, in, out);
-        default:
-          break;
-      }
+    switch (in.dtype()) {
+      case DT_FLOAT:
+        return MKLTranspose2D<float>(kMKLTranspose, in, out);
+      case DT_DOUBLE:
+        return MKLTranspose2D<double>(kMKLTranspose, in, out);
+      case DT_COMPLEX64:
+        return MKLTranspose2D<complex64>(kMKLTranspose, in, out);
+      case DT_COMPLEX128:
+        return MKLTranspose2D<complex128>(kMKLTranspose, in, out);
+      default:
+        break;
     }
-    // Fallback to eigen if transpose parameters not supported by MKL
-    typedef Eigen::ThreadPoolDevice CPUDevice;
-    return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(),
-                                              in, perm, out);
   }
+  // Fallback to eigen if transpose parameters not supported by MKL
+  typedef Eigen::ThreadPoolDevice CPUDevice;
+  return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
+                                   out);
+}
+
+Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
+                                               const Tensor& in,
+                                               gtl::ArraySlice<int32> perm,
+                                               Tensor* out) {
+  if (in.dims() == 2 && perm[0] == 1 && perm[1] == 0) {
+    // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
+    // for any transpose that can be reduced to swapping the last two
+    // dimensions in a rank-3 tensor. We can even run each outer dimension in
+    // a separate thread.
+    switch (in.dtype()) {
+      case DT_FLOAT:
+        return MKLTranspose2D<float>(kMKLTranspose, in, out);
+      case DT_DOUBLE:
+        return MKLTranspose2D<double>(kMKLTranspose, in, out);
+      case DT_COMPLEX64:
+        return MKLTranspose2D<complex64>(kMKLConjugateTranspose, in, out);
+      case DT_COMPLEX128:
+        return MKLTranspose2D<complex128>(kMKLConjugateTranspose, in, out);
+      default:
+        break;
+    }
+  }
+  // Fallback to eigen if transpose parameters not supported by MKL
+  typedef Eigen::ThreadPoolDevice CPUDevice;
+  return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
+                                            perm, out);
+}
 
 }  // namespace tensorflow
 

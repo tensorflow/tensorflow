@@ -80,6 +80,13 @@ def _get_master(cluster_spec, task_type, task_id):
         '%s\n\n'
         'Note that these values may be coming from the TF_CONFIG environment '
         'variable.' % (task_id, task_type, cluster_spec))
+
+  # If there is only one node in the cluster, do things locally by setting
+  # master to ''.  If a service or user sets TF_CONFIG with a single node, it's
+  # more performant to use a direct master rather than an RPC service.
+  if len(jobs) == 1 and len(cluster_spec.job_tasks(jobs[0])) == 1:
+    return _LOCAL_MASTER
+
   return _GRPC_SCHEME + addresses[task_id]
 
 
@@ -528,6 +535,7 @@ class RunConfig(object):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
     Only the properties in the following list are allowed to be replaced:
+
       - `model_dir`.
       - `tf_random_seed`,
       - `save_summary_steps`,

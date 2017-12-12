@@ -47,7 +47,7 @@ training folder and then unpack that data to return a dictionary of `DataSet`
 instances.
 
 ```python
-data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data)
+data_sets = input_data.read_data_sets(FLAGS.input_data_dir, FLAGS.fake_data)
 ```
 
 **NOTE**: The `fake_data` flag is used for unit-testing purposes and may be
@@ -369,7 +369,7 @@ may be instantiated to write the events files, which
 contain both the graph itself and the values of the summaries.
 
 ```python
-summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
+summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the
@@ -403,7 +403,7 @@ method will periodically be called to write a checkpoint file to the training
 directory with the current values of all the trainable variables.
 
 ```python
-saver.save(sess, FLAGS.train_dir, global_step=step)
+saver.save(sess, checkpoint_file, global_step=step)
 ```
 
 At some later point in the future, training might be resumed by using the
@@ -411,7 +411,7 @@ At some later point in the future, training might be resumed by using the
 method to reload the model parameters.
 
 ```python
-saver.restore(sess, FLAGS.train_dir)
+saver.restore(sess, checkpoint_file)
 ```
 
 ## Evaluate the Model

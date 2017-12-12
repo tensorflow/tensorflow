@@ -62,10 +62,10 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
 void BM_InitOp(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   tensorflow::testing::StartTiming();
@@ -84,10 +84,10 @@ BENCHMARK(BM_InitOp);
 void BM_Execute(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -109,9 +109,9 @@ BENCHMARK(BM_Execute);
 
 TEST(CAPI, Context) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -150,9 +150,9 @@ TEST(CAPI, TensorHandle) {
 TEST(CAPI, TensorHandleCopyBetweenDevices) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
@@ -216,12 +216,58 @@ TEST(CAPI, TensorHandleCopyBetweenDevices) {
   EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 }
 
+TEST(CAPI, TensorHandleSilentCopy) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  TFE_DeleteContextOptions(opts);
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
+  TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  const int num_devices = TF_DeviceListCount(devices);
+
+  // Disable the test if no GPU is present.
+  if (num_devices > 1) {
+    const int device_to_use = 1;
+    const string name(TF_DeviceListName(devices, device_to_use, status.get()));
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    TFE_TensorHandle* hgpu =
+        TFE_TensorHandleCopyToDevice(hcpu, ctx, name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+    TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
+    TFE_OpSetDevice(matmul, name.c_str(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    TFE_TensorHandle* retvals[1];
+    int num_retvals = 1;
+    TFE_Execute(matmul, &retvals[0], &num_retvals, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    TFE_DeleteOp(matmul);
+    TFE_DeleteTensorHandle(retvals[0]);
+    TFE_DeleteTensorHandle(hgpu);
+  }
+
+  TF_DeleteDeviceList(devices);
+  TF_DeleteTensor(t);
+  TFE_DeleteTensorHandle(hcpu);
+  TFE_DeleteContext(ctx, status.get());
+  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+}
+
 TEST(CAPI, Execute) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -246,6 +292,67 @@ TEST(CAPI, Execute) {
   EXPECT_EQ(10, product[1]);
   EXPECT_EQ(15, product[2]);
   EXPECT_EQ(22, product[3]);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, Function) {
+  // First create a simple identity function.
+  TF_Graph* function_graph = TF_NewGraph();
+  TF_OperationDescription* arg_descr =
+      TF_NewOperation(function_graph, "Placeholder", "arg");
+  TF_SetAttrType(arg_descr, "dtype", TF_INT32);
+  TF_Status* status = TF_NewStatus();
+  TF_Operation* arg = TF_FinishOperation(arg_descr, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_OperationDescription* id_descr =
+      TF_NewOperation(function_graph, "Identity", "id");
+  TF_SetAttrType(id_descr, "T", TF_INT32);
+  TF_AddInput(id_descr, {arg, 0});
+  TF_Operation* id = TF_FinishOperation(id_descr, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_Output input{arg, 0};
+  TF_Output output{id, 0};
+  TF_Function* fn =
+      TF_GraphToFunction(function_graph, "ident", 0, 1, &id, 1, &input, 1,
+                         &output, nullptr, nullptr, "test", status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteGraph(function_graph);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+  TFE_ContextAddFunction(ctx, fn, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteFunction(fn);
+
+  TF_Tensor* t =
+      TF_AllocateTensor(TF_INT32, nullptr, 0, 1 * sizeof(tensorflow::int32));
+  *reinterpret_cast<tensorflow::int32*>(TF_TensorData(t)) = 42;
+  TFE_TensorHandle* h = TFE_NewTensorHandle(t, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TF_DeleteTensor(t);
+
+  TFE_Op* op = TFE_NewOp(ctx, "ident", status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TFE_OpAddInput(op, h, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+
+  std::vector<TFE_TensorHandle*> result;
+  result.push_back(nullptr);
+  int num_retvals = 1;
+  TFE_Execute(op, result.data(), &num_retvals, status);
+  TFE_DeleteOp(op);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  ASSERT_EQ(num_retvals, 1);
+
+  TF_Tensor* r = TFE_TensorHandleResolve(result[0], status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  EXPECT_EQ(*reinterpret_cast<tensorflow::int32*>(TF_TensorData(r)), 42);
+  TFE_DeleteTensorHandle(h);
+  TF_DeleteTensor(r);
+  TFE_DeleteTensorHandle(result[0]);
+  TFE_DeleteContext(ctx, status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TF_DeleteStatus(status);
 }
 
@@ -285,10 +392,10 @@ string MatMulFunction() {
 
 TEST(CAPI, FunctionDefAndExecute) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   string function_def = MatMulFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -326,10 +433,10 @@ TEST(CAPI, FunctionDefAndExecute) {
 void BM_ExecuteFunction(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   string function_def = MatMulFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -406,10 +513,10 @@ TEST(CAPI, Variables) {
   // Variables use resource handles, so this is really a test for resource
   // tensor handling.
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -446,10 +553,10 @@ TEST(CAPI, Variables) {
 void BM_ReadVariable(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);

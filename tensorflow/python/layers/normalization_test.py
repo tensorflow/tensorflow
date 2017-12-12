@@ -68,11 +68,12 @@ class BNTest(test.TestCase):
              use_gpu,
              is_fused,
              restore=False,
-             freeze_mode=False):
+             freeze_mode=False,
+             dtype=dtypes.float32):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
-      image = array_ops.placeholder(dtype='float32', shape=shape)
+      image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, train_op, saver = self._simple_model(image, is_fused, freeze_mode)
       if restore:
         saver.restore(sess, checkpoint_path)
@@ -80,7 +81,7 @@ class BNTest(test.TestCase):
         sess.run(variables.global_variables_initializer())
       np.random.seed(0)
       for _ in range(2):
-        image_val = np.random.rand(*shape).astype(np.float32)
+        image_val = np.random.rand(*shape).astype(dtype.as_numpy_dtype)
         sess.run([loss, train_op], feed_dict={image: image_val})
       if restore:
         all_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
@@ -90,14 +91,76 @@ class BNTest(test.TestCase):
         saver.save(sess, checkpoint_path)
 
   def _infer(self, checkpoint_path, image_val, shape, use_gpu, is_fused):
+    dtype = image_val.dtype
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
-      image = array_ops.placeholder(dtype='float32', shape=shape)
+      image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, _, saver = self._simple_model(image, is_fused, True)
       saver.restore(sess, checkpoint_path)
       loss_val = sess.run(loss, feed_dict={image: image_val})
       return loss_val
+
+  def _trainEvalSequence(self, dtype, train1_use_gpu, train2_use_gpu,
+                         infer_use_gpu):
+    batch, height, width, input_channels = 2, 4, 5, 3
+    shape = [batch, height, width, input_channels]
+
+    # Not all characters in a dtype string representation are allowed in
+    # filenames in all operating systems. This map will sanitize these.
+    dtype_to_valid_fn = {
+        dtypes.float16: 'float16',
+        dtypes.float32: 'float32',
+    }
+    checkpoint = os.path.join(
+        self.get_temp_dir(), 'cp_%s_%s_%s_%s' % (
+            dtype_to_valid_fn[dtype], train1_use_gpu, train2_use_gpu,
+            infer_use_gpu))
+
+    self._train(
+        checkpoint,
+        shape,
+        use_gpu=train1_use_gpu,
+        is_fused=True,
+        restore=False,
+        freeze_mode=False,
+        dtype=dtype)
+
+    train_vars = self._train(
+        checkpoint,
+        shape,
+        use_gpu=train2_use_gpu,
+        is_fused=True,
+        restore=True,
+        freeze_mode=False,
+        dtype=dtype)
+
+    np.random.seed(0)
+    image_val = np.random.rand(batch, height, width, input_channels).astype(
+        dtype.as_numpy_dtype)
+    loss_val = self._infer(
+        checkpoint, image_val, shape, use_gpu=infer_use_gpu, is_fused=True)
+
+    return train_vars, loss_val
+
+  def testHalfPrecision(self):
+    ref_vars, ref_loss = self._trainEvalSequence(
+        dtype=dtypes.float32,
+        train1_use_gpu=True,
+        train2_use_gpu=True,
+        infer_use_gpu=True)
+
+    self.assertEqual(len(ref_vars), 5)
+
+    for train1_use_gpu in [True, False]:
+      for train2_use_gpu in [True, False]:
+        for infer_use_gpu in [True, False]:
+          test_vars, test_loss = self._trainEvalSequence(
+              dtypes.float16, train1_use_gpu, train2_use_gpu, infer_use_gpu)
+          self.assertEqual(len(test_vars), 5)
+          for test_var, ref_var in zip(test_vars, ref_vars):
+            self.assertAllClose(test_var, ref_var, rtol=1.e-3, atol=1.e-3)
+          self.assertAllClose(test_loss, ref_loss, rtol=1.e-3, atol=1.e-3)
 
   def _testCheckpoint(self, is_fused_checkpoint_a, is_fused_checkpoint_b,
                       use_gpu_checkpoint_a, use_gpu_checkpoint_b,
@@ -207,6 +270,35 @@ class BNTest(test.TestCase):
     self.assertEqual(len(bn.variables), 4)
     self.assertEqual(len(bn.trainable_variables), 2)
     self.assertEqual(len(bn.non_trainable_variables), 2)
+
+    # Test that updates were created and added to UPDATE_OPS.
+    self.assertEqual(len(bn.updates), 2)
+    self.assertListEqual(
+        ops.get_collection(ops.GraphKeys.UPDATE_OPS), bn.updates)
+
+    # Test that weights were created and added to TRAINABLE_VARIABLES.
+    self.assertListEqual(
+        ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
+        bn.trainable_variables)
+
+  def testCreateFusedBNFloat16(self):
+    # Call layer.
+    bn = normalization_layers.BatchNormalization(axis=1, fused=True)
+    inputs = random_ops.random_uniform(
+        (5, 4, 3, 3), seed=1, dtype=dtypes.float16)
+    training = array_ops.placeholder(dtype='bool')
+    outputs = bn.apply(inputs, training=training)
+
+    # Verify shape.
+    self.assertListEqual(outputs.get_shape().as_list(), [5, 4, 3, 3])
+
+    # Verify layer attributes.
+    self.assertEqual(len(bn.updates), 2)
+    self.assertEqual(len(bn.variables), 4)
+    self.assertEqual(len(bn.trainable_variables), 2)
+    self.assertEqual(len(bn.non_trainable_variables), 2)
+    for var in bn.variables:
+      self.assertEqual(var.dtype, dtypes.float32_ref)
 
     # Test that updates were created and added to UPDATE_OPS.
     self.assertEqual(len(bn.updates), 2)
@@ -819,6 +911,112 @@ class BNTest(test.TestCase):
                                       feed_dict={xt: x, training: True})
         yt_val_test, _, _ = sess.run([yt] + bn.updates,
                                      feed_dict={xt: x, training: False})
+
+        self.assertAllClose(y_train, yt_val_train, atol=1e-5)
+        self.assertAllClose(y_test, yt_val_test, atol=1e-5)
+
+  def testAdjustment(self):
+    shape = (4, 3)
+    xt = array_ops.placeholder(dtypes.float32, shape)
+    momentum = 0.99
+    gamma = 2.
+    beta = 3.
+    epsilon = 0.001
+    adjust_scale = random_ops.random_uniform(shape[-1:], 0.5, 1.5)
+    adjust_bias = random_ops.random_uniform(shape[-1:], -.2, .2)
+    bn = normalization_layers.BatchNormalization(
+        axis=1,
+        gamma_initializer=init_ops.constant_initializer(gamma),
+        beta_initializer=init_ops.constant_initializer(beta),
+        epsilon=epsilon,
+        momentum=momentum,
+        adjustment=lambda _: (adjust_scale, adjust_bias))
+    training = array_ops.placeholder(dtypes.bool)
+    yt = bn.apply(xt, training=training)
+
+    moving_mean = 0.
+    moving_variance = 1.
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      for _ in range(5):
+        x = np.random.random(shape)
+        yt_val_train, adj_scale_val, adj_bias_val = sess.run(
+            [yt, adjust_scale, adjust_bias] + bn.updates,
+            feed_dict={xt: x, training: True})[:3]
+        yt_val_test = sess.run([yt] + bn.updates,
+                               feed_dict={xt: x, training: False})[0]
+
+        mean = x.mean(0)
+        variance = x.var(0)
+        y_train = (((x - mean) / (variance + epsilon) ** 0.5) * adj_scale_val +
+                   adj_bias_val) * gamma + beta
+        moving_mean += (mean - moving_mean) * (1. - momentum)
+        moving_variance += (variance - moving_variance) * (1. - momentum)
+
+        y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
+                  gamma) + beta
+
+        self.assertAllClose(y_train, yt_val_train, atol=1e-5)
+        self.assertAllClose(y_test, yt_val_test, atol=1e-5)
+
+  def testRenormWithAdjustment(self):
+    shape = (4, 3)
+    xt = array_ops.placeholder(dtypes.float32, shape)
+    momentum = 0.99
+    renorm_momentum = 0.8
+    rmax = 1.1
+    rmin = 0.9
+    dmax = 0.1
+    gamma = 2.
+    beta = 3.
+    epsilon = 0.001
+    adjust_scale = random_ops.random_uniform(shape[-1:], 0.5, 1.5)
+    adjust_bias = random_ops.random_uniform(shape[-1:], -.2, .2)
+    bn = normalization_layers.BatchNormalization(
+        axis=1,
+        gamma_initializer=init_ops.constant_initializer(gamma),
+        beta_initializer=init_ops.constant_initializer(beta),
+        epsilon=epsilon,
+        momentum=momentum,
+        renorm=True,
+        renorm_clipping={'rmax': rmax, 'rmin': rmin, 'dmax': dmax},
+        renorm_momentum=renorm_momentum,
+        adjustment=lambda _: (adjust_scale, adjust_bias))
+    training = array_ops.placeholder(dtypes.bool)
+    yt = bn.apply(xt, training=training)
+
+    moving_mean = 0.
+    moving_variance = 1.
+    renorm_mean = renorm_stddev = 0.
+    renorm_weight = 0.
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      for _ in range(5):
+        x = np.random.random(shape)
+        yt_val_train, adj_scale_val, adj_bias_val = sess.run(
+            [yt, adjust_scale, adjust_bias] + bn.updates,
+            feed_dict={xt: x, training: True})[:3]
+        yt_val_test = sess.run([yt] + bn.updates,
+                               feed_dict={xt: x, training: False})[0]
+
+        mean = x.mean(0)
+        stddev = np.sqrt(x.var(0) + epsilon)
+        adj_mean = renorm_mean + (1. - renorm_weight) * mean
+        adj_stddev = renorm_stddev + (1. - renorm_weight) * stddev
+        r = (stddev / adj_stddev).clip(rmin, rmax)
+        d = ((mean - adj_mean) / adj_stddev).clip(-dmax, dmax)
+        y_train = (((x - mean) / stddev * r + d) * adj_scale_val +
+                   adj_bias_val) * gamma + beta
+        renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
+        renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
+        renorm_weight += (1. - renorm_weight) * (1. - renorm_momentum)
+        moving_mean += (renorm_mean / renorm_weight -
+                        moving_mean) * (1. - momentum)
+        moving_variance += ((renorm_stddev / renorm_weight) ** 2 - epsilon -
+                            moving_variance) * (1. - momentum)
+
+        y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
+                  gamma) + beta
 
         self.assertAllClose(y_train, yt_val_train, atol=1e-5)
         self.assertAllClose(y_test, yt_val_test, atol=1e-5)

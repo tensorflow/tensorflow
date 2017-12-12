@@ -173,7 +173,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                  << ", skipping this input.";
       return nullptr;
     }
-    LOG(INFO) << "Will use feed node " << feed_name;
+    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -188,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }
@@ -297,7 +297,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
-    if (IsPlaceholder(node)) {
+    if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
                    << ", skipping this input";
@@ -450,12 +450,16 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   // Optimize the graph (function inlining, l1 optimizations, etc).
+  VLOG(1) << "Number of nodes in graph before OptimizeGraph: "
+          << new_item->graph.node_size();
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
     LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
   }
+  VLOG(1) << "Number of nodes in graph after OptimizeGraph: "
+          << new_item->graph.node_size();
 
   if (cfg.prune_graph) {
     VLOG(1) << "Pruning graph...";
@@ -464,7 +468,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       LOG(ERROR) << "Pruning failed: " << status.error_message();
       return nullptr;
     }
-    VLOG(1) << "Pruning ran succesfully.";
+    VLOG(1) << "Number of nodes in graph after pruning: "
+            << new_item->graph.node_size();
   }
 
   // Validate feed, fetch and init nodes

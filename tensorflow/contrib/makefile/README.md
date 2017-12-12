@@ -16,17 +16,17 @@ This static library will not contain:
 
  - Python or other language bindings
  - GPU support
- 
+
 You can target:
 - iOS
 - OS X (macOS)
 - Android
 - Raspberry-PI
- 
+
 You will compile tensorflow and protobuf libraries that you can link into other
 applications.  You will also compile the [benchmark](../../tools/benchmark/)
 application that will let you check your application.
- 
+
 ## Before you start (all platforms)
 
 First, clone this TensorFlow repository.
@@ -58,9 +58,9 @@ You should then be able to run the `build_all_linux.sh` script to compile:
 tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
-This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
-and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+This should compile a static library in
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`,
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`.
 
 Get the graph file, if you have not already:
 
@@ -174,9 +174,25 @@ tensorflow/contrib/makefile/build_all_ios.sh
 
 This process will take around twenty minutes on a modern MacBook Pro.
 
-When it completes, you will have a library for a single architecture and the
-benchmark program. Although successfully compiling the benchmark program is a
+When it completes, you will have a unified library for all architectures
+(i386sim, x86_64sim, armv7, armv7s and arm64)  and the benchmark program.
+Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
+
+If you would only like to build only one architecture to save time:
+(iOS 11+ only supports 64bit so you can get away with arm64)
+
+```bash
+tensorflow/contrib/makefile/build_all_ios.sh -a arm64
+```
+
+After the first build if you would like to just build the tensorflow
+library you can pass the -T flag to avoid a clean & rebuild. This should
+take you just a few seconds to generate the library if you modified one file.
+
+```bash
+tensorflow/contrib/makefile/build_all_ios.sh -a arm64 -T
+```
 
 To see TensorFlow running on iOS, the example Xcode project in
 [tensorflow/examples/ios](../../examples/ios/) shows how to use the static
@@ -185,7 +201,7 @@ library in a simple app.
 ### Building by hand
 
 This section covers each step of building.  For all the code in one place, see
-[build_all_ios.sh](build_all_ios.sh). 
+[build_all_ios.sh](build_all_ios.sh).
 
 If you have not already, you will need to download dependencies:
 
@@ -193,19 +209,18 @@ If you have not already, you will need to download dependencies:
 tensorflow/contrib/makefile/download_dependencies.sh
 ```
 
-Next, you will need to compile protobufs for iOS:
+Next, you will need to compile protobufs for iOS (optionally takes the -a $ARCH flag):
 
 ```bash
-tensorflow/contrib/makefile/compile_ios_protobuf.sh 
+tensorflow/contrib/makefile/compile_ios_protobuf.sh
 ```
 
-Then, you will need to compile the nsync library for iOS:
+Then, you will need to compile the nsync library for iOS (optionally takes -a $ARCH flag):
 
 ```bash
 export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
 export TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 ```
-
 Then, you can run the makefile specifying iOS as the target, along with the
 architecture you want to build for:
 
@@ -217,11 +232,7 @@ make -f tensorflow/contrib/makefile/Makefile \
 
 This creates a library in
 `tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a` that you can link any
-xcode project against. 
-
-At this point, you will have a library for a single architecture and the
-benchmark program. Although successfully compiling the benchmark program is a
-sign of success, the program is not a complete iOS app. 
+xcode project against.
 
 To see TensorFlow running on iOS, the example Xcode project in
 [tensorflow/examples/ios](../../examples/ios/) shows how to use the static
@@ -237,19 +248,27 @@ time follow it with:
 compile_ios_tensorflow.sh
 ```
 
+`compile_ios_tensorflow.sh` takes the -a flag to build only for one architecture.
+In case you run into issues with unresolved symbols with nsync you can also pass
+-h ${HOST_NSYNC_LIB} and -n {TARGET_NSYNC_LIB} so it would look like:
+
+```bash
+tensorflow/contrib/makefile/compile_ios_tensorflow.sh -f "-O3" -h tensorflow/contrib/makefile/downloads/nsync/builds/default.macos.c++11/nsync.a -n tensorflow/contrib/makefile/downloads/nsync/builds/lipo.ios.c++11/nsync.a -a arm64
+```
+
 In XCode, you will need to use -force_load in the linker flags
 section of the build settings to pull in the global constructors that are used
-to register ops and kernels. 
+to register ops and kernels.
 
 #### Optimization
- 
+
 The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
 The first argument will be passed as a C++ optimization flag and defaults to
 debug mode. If you are concerned about performance or are working on a release
 build, you would likely want a higher optimization setting, like so:
- 
+
 ```bash
-compile_ios_tensorflow.sh "-Os"
+compile_ios_tensorflow.sh -f "-Os"
 ```
 
 For other variations of valid optimization flags, see [clang optimization levels](http://stackoverflow.com/questions/15548023/clang-optimization-levels).
@@ -311,7 +330,7 @@ what you need for your desired system.
 ## Dependency Management
 
 The Makefile loads in a list of dependencies stored in text files. These files
-are generated from the main Bazel build by running 
+are generated from the main Bazel build by running
 `tensorflow/contrib/makefile/gen_file_lists.sh`. You'll need to re-run this i
 you make changes to the files that are included in the build.
 
@@ -342,10 +361,10 @@ codebase can sometimes break the makefile build process. If you find that tests
 relying on this makefile are failing with a change you're involved in, here are
 some trouble-shooting steps:
 
- - Try to reproduce the issue on your platform. If you're on Linux, running 
+ - Try to reproduce the issue on your platform. If you're on Linux, running
  `make -f tensorflow/contrib/makefile/Makefile` should be enough to recreate
   most issues. For other platforms, see the sections earlier in this document.
-  
+
  - The most common cause of breakages are files that have been added to the
   Bazel build scripts, but that the makefile isn't aware of. Typical symptoms
   of this include linker errors mentioning missing symbols or protobuf headers
@@ -358,11 +377,11 @@ some trouble-shooting steps:
   `tensorflow/core/BUILD`, so if you change the wildcards there to include new
   files you'll need to also update `CORE_CC_ALL_SRCS` and `CORE_CC_EXCLUDE_SRCS`
   in the makefile.
-  
+
  - Some of the supported platforms use clang instead of gcc as their compiler,
   so if you're hitting compile errors you may need to tweak your code to be more
   friendly to different compilers by avoiding gcc extensions or idioms.
-  
+
 These are the most common reasons for makefile breakages, but it's also
 possible you may hit something unusual, like a platform incompatibility. For
 those, you'll need to see if you can reproduce the issue on that particular

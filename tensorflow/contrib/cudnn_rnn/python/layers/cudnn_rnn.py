@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -26,11 +25,8 @@ from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
-_cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
 CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
@@ -48,6 +44,9 @@ CUDNN_RNN_RELU_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_RNN_RELU_PARAMS_PER_LAYER
 CUDNN_INPUT_LINEAR_MODE = cudnn_rnn_ops.CUDNN_INPUT_LINEAR_MODE
 CUDNN_INPUT_SKIP_MODE = cudnn_rnn_ops.CUDNN_INPUT_SKIP_MODE
 CUDNN_INPUT_AUTO_MODE = cudnn_rnn_ops.CUDNN_INPUT_AUTO_MODE
+
+
+__all__ = ["CudnnLSTM", "CudnnGRU", "CudnnRNNTanh", "CudnnRNNRelu"]
 
 
 class _CudnnRNN(base_layer.Layer):
@@ -151,7 +150,6 @@ class _CudnnRNN(base_layer.Layer):
   # Custom SaveableObject class for the CudnnRNN class.
   _saveable_cls = None
 
-  # TODO(jamesqin): support float16 CuDNN RNN
   def __init__(self,
                num_layers,
                num_units,
@@ -182,7 +180,7 @@ class _CudnnRNN(base_layer.Layer):
           inputs of each layer. When set to 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
-      dtype: tf.float32 or tf.float64
+      dtype: tf.float16, tf.float32 or tf.float64
       kernel_initializer: starting value to initialize the weight.
       bias_initializer: starting value to initialize the bias
         (default is all zeros).
@@ -197,8 +195,9 @@ class _CudnnRNN(base_layer.Layer):
     cudnn_rnn_ops.check_direction(direction)
     cudnn_rnn_ops.check_input_mode(input_mode)
 
-    if dtype not in [dtypes.float32, dtypes.float64]:
-      raise ValueError("Only support float32, float64, provided %s" % dtype)
+    if dtype not in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      raise ValueError(
+          "Only support float16, float32, float64, provided %s" % dtype)
     # Layer self.dtype is type name, the original DType object is kept here.
     self._plain_dtype = dtype
     self._num_layers = num_layers
@@ -459,6 +458,8 @@ class _CudnnRNN(base_layer.Layer):
         weights=cu_weights,
         biases=cu_biases,
         input_mode=self._input_mode,
+        seed=self._seed,
+        dropout=self._dropout,
         direction=self._direction)
 
   def _forward(self, inputs, h, c, opaque_params, training):

@@ -174,6 +174,14 @@ class Tracing::Engine {
   virtual Tracer* StartTracing(string&& label, bool is_expensive) {
     return StartTracing(StringPiece(label), is_expensive);
   }
+
+  // Backwards compatibility one arg variants (assume is_expensive=true).
+  Tracer* StartTracing(StringPiece label) {
+    return StartTracing(label, /*is_expensive=*/true);
+  }
+  Tracer* StartTracing(string&& label) {
+    return StartTracing(StringPiece(label), /*is_expensive=*/true);
+  }
 };
 
 // This class permits a user to apply annotation on kernels and memcpys

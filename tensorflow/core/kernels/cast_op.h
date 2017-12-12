@@ -128,10 +128,10 @@ struct scalar_cast_op<::tensorflow::bfloat16, float> {
     float ret;
     uint16_t* p = reinterpret_cast<uint16_t*>(&ret);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    p[0] = a.value;  
-    p[1] = 0;  
-#else  
-    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");  
+    p[0] = a.value;
+    p[1] = 0;
+#else
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
     p[0] = 0;
     p[1] = a.value;
 #endif

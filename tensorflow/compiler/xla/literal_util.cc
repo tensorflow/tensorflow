@@ -33,6 +33,20 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+namespace {
+using tensorflow::int64;
+
+constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+
+// Converts between little and big endian, assuming elements in the array are 16
+// bits long.
+void ConvertEndianShort(char* bytes, int64 size) {
+  CHECK_EQ(size / 2, 0);
+  for (int64 i = 0; i < size; i += 2) {
+    std::swap(bytes[i], bytes[i + 1]);
+  }
+}
+}  // namespace
 
 namespace xla {
 
@@ -169,10 +183,14 @@ Status Literal::Copy(const Literal& src_literal,
       return CopyRange<int64>(src_literal, src_base, dest_base, copy_size);
     case F16:
       return CopyRange<half>(src_literal, src_base, dest_base, copy_size);
+    case BF16:
+      return CopyRange<bfloat16>(src_literal, src_base, dest_base, copy_size);
     case F32:
       return CopyRange<float>(src_literal, src_base, dest_base, copy_size);
     case F64:
       return CopyRange<double>(src_literal, src_base, dest_base, copy_size);
+    case C64:
+      return CopyRange<complex64>(src_literal, src_base, dest_base, copy_size);
     case PRED:
       return CopyRange<bool>(src_literal, src_base, dest_base, copy_size);
     default:
@@ -198,10 +216,14 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<int64>(0);
     case F16:
       return *Literal::CreateR0<half>(static_cast<half>(0.0f));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(static_cast<bfloat16>(0.0f));
     case F32:
       return *Literal::CreateR0<float>(0);
     case F64:
       return *Literal::CreateR0<double>(0);
+    case C64:
+      return *Literal::CreateR0<complex64>(0);
     case PRED:
       return *Literal::CreateR0<bool>(false);
     case S16:
@@ -230,17 +252,21 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<int32>(1);
     case S64:
       return *Literal::CreateR0<int64>(1);
+    case F16:
+      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(static_cast<bfloat16>(1.0f));
     case F32:
       return *Literal::CreateR0<float>(1);
     case F64:
       return *Literal::CreateR0<double>(1);
+    case C64:
+      return *Literal::CreateR0<complex64>(1);
     case PRED:
       return *Literal::CreateR0<bool>(true);
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -269,6 +295,8 @@ Status Literal::Copy(const Literal& src_literal,
     case F64:
       return *Literal::CreateR0<double>(
           -std::numeric_limits<double>::infinity());
+    case C64:
+      LOG(FATAL) << "C64 element type has no minimum value";
     case PRED:
       return *Literal::CreateR0<bool>(false);
     case S16:
@@ -277,6 +305,9 @@ Status Literal::Copy(const Literal& src_literal,
     case F16:
       return *Literal::CreateR0<half>(
           static_cast<half>(-std::numeric_limits<float>::infinity()));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(
+          static_cast<bfloat16>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE:
@@ -313,6 +344,9 @@ Status Literal::Copy(const Literal& src_literal,
     case F16:
       return *Literal::CreateR0<half>(
           static_cast<half>(std::numeric_limits<float>::infinity()));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(
+          static_cast<bfloat16>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE:
@@ -420,6 +454,7 @@ std::unique_ptr<Literal> Literal::Transpose(
   // The shape with affine layout resulting from that operation will be
   // F32[8,11]{0,1}, since it leaves the original most minor (the 8 sized), the
   // most minor.
+  //
   // Essentially, given MinMaj(Di) the position of the Di dimension within the
   // minor to major vector, and given T(Di) the index that the original Di
   // dimension has within the transposed array, a layout is affine if
@@ -522,8 +557,15 @@ string Literal::GetAsString(
       return tensorflow::strings::StrCat(Get<float>(multi_index));
     case F64:
       return tensorflow::strings::StrCat(Get<double>(multi_index));
+    case C64: {
+      complex64 c = Get<complex64>(multi_index);
+      return tensorflow::strings::StrCat("(", c.real(), ", ", c.imag(), ")");
+    }
     case F16:
       return tensorflow::strings::StrCat(Get<half>(multi_index));
+    case BF16:
+      return tensorflow::strings::StrCat(
+          static_cast<float>(Get<bfloat16>(multi_index)));
     default:
       return tensorflow::strings::StrCat(
           "[", PrimitiveType_Name(shape().element_type()), "]");
@@ -557,8 +599,16 @@ int64 Literal::LinearIndex(
   return IndexUtil::MultidimensionalIndexToLinearIndex(shape(), multi_index);
 }
 
-string Literal::ToString() const {
+string Literal::ToString(bool print_layout) const {
   std::vector<string> pieces;
+
+  auto shape_to_string = [print_layout](const Shape& shape) {
+    if (print_layout) {
+      return ShapeUtil::HumanStringWithLayout(shape);
+    } else {
+      return ShapeUtil::HumanString(shape);
+    }
+  };
 
   auto element_to_string =
       [this](tensorflow::gtl::ArraySlice<int64> indices) -> string {
@@ -573,13 +623,13 @@ string Literal::ToString() const {
 
   // TODO(b/32894291): refactor this code to reduce code duplication.
   if (ShapeUtil::IsTuple(shape())) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" (\n");
-    for (const auto& element_literal : tuple_literals()) {
-      pieces.push_back(element_literal.ToString());
-      pieces.push_back(",\n");
-    }
-    pieces.push_back(")");
+    pieces.push_back(tensorflow::str_util::Join(
+        tuple_literals(), ",\n", [](string* out, const Literal& element) {
+          tensorflow::strings::StrAppend(out, element.ToString());
+        }));
+    pieces.push_back("\n)");
   } else if (ShapeUtil::Rank(shape()) == 0) {
     pieces.push_back(GetAsString({}));
   } else if (ShapeUtil::Rank(shape()) == 1) {
@@ -589,7 +639,7 @@ string Literal::ToString() const {
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 2) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back("  { ");
@@ -597,11 +647,11 @@ string Literal::ToString() const {
         pieces.push_back(element_to_string({i0, i1}));
       }
       pieces.push_back(" ");
-      pieces.push_back("},\n");
+      pieces.push_back(i0 == shape().dimensions(0) - 1 ? "}\n" : "},\n");
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 3) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(i0 > 0 ? ",\n{" : "{");
@@ -616,53 +666,62 @@ string Literal::ToString() const {
     }
     pieces.push_back("\n}");
   } else if (ShapeUtil::Rank(shape()) == 4) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
-      pieces.push_back(tensorflow::strings::Printf("  {  // i0=%lld\n", i0));
+      pieces.push_back(tensorflow::strings::Printf("  {  /*i0=%lld*/\n", i0));
       for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(
-            tensorflow::strings::Printf("    {  // i1=%lld\n", i1));
+            tensorflow::strings::Printf("    {  /*i1=%lld*/\n", i1));
         for (int64 i2 = 0; i2 < shape().dimensions(2); ++i2) {
           pieces.push_back("      {");
           for (int64 i3 = 0; i3 < shape().dimensions(3); ++i3) {
             pieces.push_back(element_to_string({i0, i1, i2, i3}));
           }
-          pieces.push_back("},\n");
+          pieces.push_back(i2 == shape().dimensions(2) - 1 ? "}\n" : "},\n");
         }
-        pieces.push_back("    },\n");
+        pieces.push_back(i1 == shape().dimensions(1) - 1 ? "    }\n"
+                                                         : "    },\n");
       }
-      pieces.push_back("  },\n");
+      pieces.push_back(i0 == shape().dimensions(0) - 1 ? "  }\n" : "  },\n");
     }
     pieces.push_back("}");
   } else if (ShapeUtil::Rank(shape()) == 5) {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
+    pieces.push_back(shape_to_string(shape()));
     pieces.push_back(" {\n");
     for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
-      pieces.push_back(tensorflow::strings::Printf("  {  // i0=%lld\n", i0));
+      pieces.push_back(tensorflow::strings::Printf("  {  /*i0=%lld*/\n", i0));
       for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(
-            tensorflow::strings::Printf("    {  // i1=%lld\n", i1));
+            tensorflow::strings::Printf("    {  /*i1=%lld*/\n", i1));
         for (int64 i2 = 0; i2 < shape().dimensions(2); ++i2) {
           pieces.push_back(
-              tensorflow::strings::Printf("      {  // i2=%lld\n", i2));
+              tensorflow::strings::Printf("      {  /*i2=%lld*/\n", i2));
           for (int64 i3 = 0; i3 < shape().dimensions(3); ++i3) {
             pieces.push_back("        {");
             for (int64 i4 = 0; i4 < shape().dimensions(4); ++i4) {
               pieces.push_back(element_to_string({i0, i1, i2, i3, i4}));
             }
-            pieces.push_back("},\n");
+            pieces.push_back(i3 == shape().dimensions(3) - 1 ? "}\n" : "},\n");
           }
-          pieces.push_back("      },\n");
+          pieces.push_back(i2 == shape().dimensions(2) - 1 ? "      }\n"
+                                                           : "      },\n");
         }
-        pieces.push_back("    },\n");
+        pieces.push_back(i1 == shape().dimensions(1) - 1 ? "    }\n"
+                                                         : "    },\n");
       }
-      pieces.push_back("  },\n");
+      pieces.push_back(i0 == shape().dimensions(0) - 1 ? "  }\n" : "  },\n");
     }
     pieces.push_back("}");
   } else {
-    pieces.push_back(ShapeUtil::HumanString(shape()));
-    pieces.push_back(" {...}");
+    pieces.push_back(shape_to_string(shape()));
+    pieces.push_back(" {");
+    EachCellAsString(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+          pieces.push_back(" ");
+          pieces.push_back(value);
+        });
+    pieces.push_back("}");
   }
 
   return tensorflow::str_util::Join(pieces, "");
@@ -716,8 +775,12 @@ void* Literal::MutableInternalData() {
       return reinterpret_cast<void*>(f32s_.data());
     case F64:
       return reinterpret_cast<void*>(f64s_.data());
+    case C64:
+      return reinterpret_cast<void*>(c64s_.data());
     case F16:
       return reinterpret_cast<void*>(f16s_.data());
+    case BF16:
+      return reinterpret_cast<void*>(bf16s_.data());
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
                  << PrimitiveType_Name(shape().element_type());
@@ -754,8 +817,14 @@ void Literal::Reserve(int64 num_elements) {
     case F64:
       Resize<double>(num_elements, 0);
       break;
+    case C64:
+      Resize<complex64>(num_elements, 0);
+      break;
     case F16:
       Resize<half>(num_elements, static_cast<half>(0.0f));
+      break;
+    case BF16:
+      Resize<bfloat16>(num_elements, static_cast<bfloat16>(0.0f));
       break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
@@ -790,8 +859,14 @@ tensorflow::Status Literal::ValidateLiteral() const {
     case F64:
       actual = f64s_size();
       break;
+    case C64:
+      actual = c64s_size();
+      break;
     case F16:
       actual = f16s().size() / sizeof(half);
+      break;
+    case BF16:
+      actual = bf16s().size();
       break;
     default:
       return tensorflow::errors::Unimplemented(
@@ -843,6 +918,26 @@ std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
   return result_literal;
 }
 
+template <PrimitiveType primitive_src_type>
+std::unique_ptr<Literal> ConvertToC64(const Literal& src_literal) {
+  auto result_literal = MakeUnique<Literal>();
+  Shape* result_shape = result_literal->mutable_shape();
+  *result_shape = src_literal.shape();
+  result_shape->set_element_type(C64);
+  result_literal->Reserve(ShapeUtil::ElementsIn(*result_shape));
+  using NativeSrcT =
+      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type;
+  tensorflow::gtl::ArraySlice<NativeSrcT> src_data =
+      src_literal.GetArraySlice<NativeSrcT>();
+  tensorflow::gtl::MutableArraySlice<complex64> dest_data =
+      result_literal->GetMutableArraySlice<complex64>();
+  int64 num_elements = ShapeUtil::ElementsIn(src_literal.shape());
+  for (int64 i = 0; i < num_elements; ++i) {
+    dest_data[i] = complex64(static_cast<float>(src_data[i]), 0);
+  }
+  return result_literal;
+}
+
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
 std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
   CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
@@ -869,7 +964,10 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
     CONVERT_IF_TYPES_MATCH(F16)
     CONVERT_IF_TYPES_MATCH(F32)
     CONVERT_IF_TYPES_MATCH(F64)
+    CONVERT_IF_TYPES_MATCH(BF16)
 #undef CONVERT_IF_TYPES_MATCH
+    case C64:
+      return ConvertToC64<primitive_src_type>(src_literal);
     // Other types are not yet supported.
     default:
       return InvalidArgument(
@@ -896,8 +994,9 @@ StatusOr<std::unique_ptr<Literal>> Literal::Convert(
     CONVERT_IF_DEST_TYPE_MATCHES(F16)
     CONVERT_IF_DEST_TYPE_MATCHES(F32)
     CONVERT_IF_DEST_TYPE_MATCHES(F64)
+    CONVERT_IF_DEST_TYPE_MATCHES(BF16)
 #undef CONVERT_IF_DEST_TYPE_MATCHES
-    // Other types are not yet supported.
+      // Other types are not yet supported.
     default:
       return InvalidArgument("Unimplemented: Convert from type %s to type %s",
                              PrimitiveType_Name(shape().element_type()).c_str(),
@@ -966,6 +1065,10 @@ bool Literal::operator==(const Literal& other) const {
         return EqualElements<double>(*this, other, 0, &multi_index);
       case F16:
         return EqualElements<half>(*this, other, 0, &multi_index);
+      case BF16:
+        return EqualElements<bfloat16>(*this, other, 0, &multi_index);
+      case C64:
+        return EqualElements<complex64>(*this, other, 0, &multi_index);
       default:
         LOG(FATAL) << "Unimplemented: Literal::Equal for type "
                    << PrimitiveType_Name(shape().element_type());
@@ -1066,12 +1169,23 @@ tensorflow::gtl::MutableArraySlice<double> Literal::GetMutableArraySlice() {
 }
 
 template <>
+tensorflow::gtl::MutableArraySlice<complex64> Literal::GetMutableArraySlice() {
+  auto values = mutable_c64s();
+  return {values->data(), values->size()};
+}
+
+template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
-  // TODO - there is an endianess problem here. fix it, or wait for uint16
-  //        support in protobuf
   auto values = mutable_f16s();
   return tensorflow::gtl::MutableArraySlice<half>(values->data(),
                                                   values->size());
+}
+
+template <>
+tensorflow::gtl::MutableArraySlice<bfloat16>
+Literal::GetMutableArraySlice<bfloat16>() {
+  auto values = mutable_bf16s();
+  return {values->data(), values->size()};
 }
 
 template <>
@@ -1144,6 +1258,19 @@ tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const {
                                            f16s().size() / sizeof(half));
 }
 
+template <>
+tensorflow::gtl::ArraySlice<bfloat16> Literal::GetArraySlice<bfloat16>() const {
+  CHECK_EQ(shape().element_type(), BF16);
+  return {bf16s().data(), bf16s().size()};
+}
+
+template <>
+tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
+    const {
+  CHECK_EQ(shape().element_type(), C64);
+  return c64s();
+}
+
 template <typename NativeT>
 static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
@@ -1185,6 +1312,9 @@ bool Literal::IsAll(int8 value) const {
       return AllElementsEqualValue<double>(*this, value);
     case F16:
       return AllElementsEqualValue<half>(*this, static_cast<half>(value));
+    case BF16:
+      return AllElementsEqualValue<bfloat16>(*this,
+                                             static_cast<bfloat16>(value));
     case PRED:
       if (value == 0) {
         return AllElementsEqualValue<bool>(*this, false);
@@ -1206,6 +1336,18 @@ bool Literal::IsAllFloat(float value) const {
       return AllElementsEqualValue<double>(*this, value);
     case F16:
       return AllElementsEqualValue<half>(*this, static_cast<half>(value));
+    case BF16:
+      return AllElementsEqualValue<bfloat16>(*this,
+                                             static_cast<bfloat16>(value));
+    default:
+      return false;
+  }
+}
+
+bool Literal::IsAllComplex(complex64 value) const {
+  switch (shape().element_type()) {
+    case C64:
+      return AllElementsEqualValue<complex64>(*this, value);
     default:
       return false;
   }
@@ -1229,8 +1371,12 @@ bool Literal::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {
       return Get<float>(indices) == 0.0f;
     case F64:
       return Get<double>(indices) == 0.0;
+    case C64:
+      return Get<complex64>(indices) == complex64(0.0f, 0.0f);
     case F16:
       return Get<half>(indices) == static_cast<half>(0.0f);
+    case BF16:
+      return Get<bfloat16>(indices) == static_cast<bfloat16>(0.0f);
     case PRED:
       return Get<bool>(indices) == false;
     default:
@@ -1298,10 +1444,31 @@ void Literal::Resize<half>(int64 num_elements, half value) {
   mutable_f16s()->resize(num_elements, value);
 }
 
+template <>
+void Literal::Resize<bfloat16>(int64 num_elements, bfloat16 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_bf16s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<complex64>(int64 num_elements, complex64 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_c64s()->resize(num_elements, value);
+}
+
 template <typename RepeatedFieldT, typename NativeT>
-static void CopyToRepeatedField(RepeatedFieldT* dest,
-                                const std::vector<NativeT>& src) {
+void CopyToRepeatedField(RepeatedFieldT* dest,
+                         const std::vector<NativeT>& src) {
   *dest = RepeatedFieldT(src.begin(), src.end());
+}
+
+template <>
+void CopyToRepeatedField<tensorflow::protobuf::RepeatedField<float>, complex64>(
+    tensorflow::protobuf::RepeatedField<float>* dest,
+    const std::vector<complex64>& src) {
+  *dest = tensorflow::protobuf::RepeatedField<float>(
+      reinterpret_cast<const float*>(src.data()),
+      reinterpret_cast<const float*>(src.data()) + src.size() * 2);
 }
 
 LiteralProto Literal::ToProto() const {
@@ -1331,12 +1498,28 @@ LiteralProto Literal::ToProto() const {
       *proto.mutable_f16s() =
           string(reinterpret_cast<const char*>(f16s_.data()),
                  f16s_.size() * sizeof(half));
+      if (!kLittleEndian) {
+        ConvertEndianShort(const_cast<char*>(proto.mutable_f16s()->data()),
+                           proto.f16s().size());
+      }
+      break;
+    case BF16:
+      *proto.mutable_bf16s() =
+          string(reinterpret_cast<const char*>(bf16s_.data()),
+                 bf16s_.size() * sizeof(bfloat16));
+      if (!kLittleEndian) {
+        ConvertEndianShort(const_cast<char*>(proto.mutable_bf16s()->data()),
+                           proto.bf16s().size());
+      }
       break;
     case F32:
       CopyToRepeatedField(proto.mutable_f32s(), f32s());
       break;
     case F64:
       CopyToRepeatedField(proto.mutable_f64s(), f64s());
+      break;
+    case C64:
+      CopyToRepeatedField(proto.mutable_c64s(), c64s());
       break;
     case TUPLE:
       for (const auto& tuple : tuple_literals()) {
@@ -1351,9 +1534,19 @@ LiteralProto Literal::ToProto() const {
 }
 
 template <typename RepeatedFieldT, typename NativeT>
-static void CopyFromRepeatedField(std::vector<NativeT>* dest,
-                                  const RepeatedFieldT& src) {
+void CopyFromRepeatedField(std::vector<NativeT>* dest,
+                           const RepeatedFieldT& src) {
   *dest = std::vector<NativeT>(src.begin(), src.end());
+}
+
+template <>
+void CopyFromRepeatedField<tensorflow::protobuf::RepeatedField<float>,
+                           complex64>(
+    std::vector<complex64>* dest,
+    const tensorflow::protobuf::RepeatedField<float>& src) {
+  *dest = std::vector<complex64>(
+      reinterpret_cast<const complex64*>(src.data()),
+      reinterpret_cast<const complex64*>(src.data()) + src.size() / 2);
 }
 
 void Literal::CopyFromProto(const LiteralProto& literal_proto) {
@@ -1386,6 +1579,21 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
       CHECK_EQ(0, s.size() % sizeof(half));
       f16s_ = std::vector<half>(s.size() / sizeof(half));
       memcpy(f16s_.data(), s.data(), s.size());
+
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(f16s_.data()), s.size());
+      }
+      break;
+    }
+    case BF16: {
+      const string& s(literal_proto.bf16s());
+      CHECK_EQ(0, s.size() % sizeof(bfloat16));
+      bf16s_ = std::vector<bfloat16>(s.size() / sizeof(bfloat16));
+      memcpy(bf16s_.data(), s.data(), s.size());
+
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(bf16s_.data()), s.size());
+      }
       break;
     }
     case F32:
@@ -1393,6 +1601,9 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
       break;
     case F64:
       CopyFromRepeatedField(mutable_f64s(), literal_proto.f64s());
+      break;
+    case C64:
+      CopyFromRepeatedField(mutable_c64s(), literal_proto.c64s());
       break;
     case TUPLE:
       for (const auto& proto : literal_proto.tuple_literals()) {

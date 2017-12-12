@@ -19,9 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
+from tensorflow.python.estimator import export as export_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -31,8 +33,11 @@ from tensorflow.python.keras._impl.keras import models
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 def _create_ordered_io(keras_model, estimator_io_dict, is_input=True):
@@ -184,7 +189,11 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         predictions=predictions,
         loss=loss,
         train_op=train_op,
-        eval_metric_ops=eval_metric_ops)
+        eval_metric_ops=eval_metric_ops,
+        export_outputs={
+            _DEFAULT_SERVING_KEY:
+            export_lib.export_output.PredictOutput(predictions)
+        })
 
   return model_fn
 
@@ -222,7 +231,7 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
           K._initialize_variables(sess)
           # pylint: enable=protected-access
         saver = saver_lib.Saver()
-        saver.save(sess, estimator.model_dir + '/')
+        saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
 
 
 def model_to_estimator(keras_model=None,
@@ -231,6 +240,9 @@ def model_to_estimator(keras_model=None,
                        model_dir=None,
                        config=None):
   """Constructs an `Estimator` instance from given keras model.
+
+  For usage example, please see
+  @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
 
   Args:
     keras_model: Keras model in memory.

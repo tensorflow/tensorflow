@@ -46,7 +46,9 @@ class ArgMinMaxTest(xla_test.XLATestCase):
       self.assertAllEqual(result, expected)
 
   def testArgMinMax(self):
-    for dtype in self.numeric_types:
+    # Complex numbers do not support argmin/argmax.
+    minmax_types = set(self.numeric_types) - set(self.complex_types)
+    for dtype in minmax_types:
       self._assertOpOutputMatchesExpected(
           lambda x: math_ops.argmax(x, axis=0, output_type=dtypes.int32),
           np.array([1, 10, 27, 3, 3, 4], dtype=dtype),

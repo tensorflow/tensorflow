@@ -126,11 +126,10 @@ class DeterminantOpTest(test.TestCase):
     self._compareDeterminant(
         np.random.rand(3, 4, 5, 2, 2).astype(np.complex128))
 
-  def testOverflow(self):
+  def testInfiniteDeterminant(self):
     max_double = np.finfo("d").max
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])
-    with self.assertRaisesOpError("not finite"):
-      self._compareDeterminant(huge_matrix)
+    self._compareDeterminant(huge_matrix)
 
   def testNonSquareMatrix(self):
     # When the determinant of a non-square matrix is attempted we should return

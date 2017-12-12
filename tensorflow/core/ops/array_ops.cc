@@ -706,6 +706,26 @@ memory_region_name: Name of readonly memory region used by the tensor, see
   NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
 )doc");
 
+REGISTER_OP("GuaranteeConst")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return UnchangedShape(c);
+    })
+    // We don't want this to be optimized away.
+    .SetIsStateful()
+    .Doc(R"(
+Gives a guarantee to the TF runtime that the input tensor is a constant.
+
+The runtime is then free to make optimizations based on this.
+
+Only accepts value typed tensors as inputs and rejects resource variable handles
+as input.
+
+Returns the input tensor without modification.
+)");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
@@ -723,7 +743,9 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, float, double, int8, uint8, int16, uint16, int32, "
+        "int64, complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns a tensor of ones with the same shape and type as x.
@@ -736,10 +758,10 @@ y: a tensor of the same shape and type as x but filled with ones.
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(in, 3, &in));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(in, 1, &in));
       // Output shape is original concatenated with itself.
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(in, in, &out));
@@ -767,14 +789,14 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
                        [0, 0, 0, 4]]
 ```
 
-diagonal: Rank k tensor where k is at most 3.
+diagonal: Rank k tensor where k is at most 1.
 )doc");
 
 // --------------------------------------------------------------------------
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
@@ -783,9 +805,9 @@ REGISTER_OP("DiagPart")
       }
       // Rank must be even, and result will have rank <rank/2>.
       const int32 rank = c->Rank(in);
-      if ((rank % 2) != 0 || rank > 6) {
+      if ((rank % 2) != 0 || rank <= 0) {
         return errors::InvalidArgument(
-            "Input must have even rank <= 6, input rank is ", rank);
+            "Input must have even and non-zero rank, input rank is ", rank);
       }
       const int32 mid = rank / 2;
 
@@ -820,7 +842,7 @@ For example:
 tf.diag_part(input) ==> [1, 2, 3, 4]
 ```
 
-input: Rank k tensor where k is 2, 4, or 6.
+input: Rank k tensor where k is even and not zero.
 diagonal: The extracted diagonal.
 
 )doc");
@@ -1057,9 +1079,8 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
-        "double, complex64, "
-        "complex128, string}")
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, "
+        "float, double, complex64, complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle dims;
@@ -1135,9 +1156,8 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
-        "double, complex64, "
-        "complex128, string}")
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, bfloat16, "
+        "float, double, complex64, complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle axis;
@@ -1832,7 +1852,7 @@ this operation.
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("message: string")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
@@ -2029,6 +2049,46 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 x: 1-D.
 y: 1-D.
 idx: 1-D.
+)doc");
+
+REGISTER_OP("UniqueV2")
+    .Input("x: T")
+    .Input("axis: int64")
+    .Output("y: T")
+    .Output("idx: out_idx")
+    .Attr("T: type")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Finds unique elements in a 1-D tensor.
+
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx = unique(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+
+
+x: A `Tensor`.
+axis: A `Tensor` of type `int64` (default: 0). The axis of the Tensor to
+  find the unique elements.
+y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
+idx: A 1-D Tensor. Has the same type as x that contains the index of each
+  value of x in the output y.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2378,6 +2438,7 @@ REGISTER_OP("Slice")
           TF_RETURN_IF_ERROR(
               c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
           std::vector<DimensionHandle> dims;
+          dims.reserve(c->Rank(sizes_value));
           for (int i = 0; i < c->Rank(sizes_value); ++i) {
             dims.emplace_back(c->Dim(sizes_value, i));
           }
@@ -4184,7 +4245,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,
@@ -4328,7 +4389,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,
@@ -4522,12 +4583,12 @@ REGISTER_OP("Bitcast")
     .Output("output: type")
     // All supported dtypes are listed here to include qint16 and quint16.
     .Attr(
-        "T: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        "T: {bfloat16, float, double, int64, int32, uint8, uint16, int8, int16,"
         " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
         " half}")
     .Attr(
-        "type: {float, double, int64, int32, uint8, uint16, int8, int16,"
-        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        "type: {bfloat16, float, double, int64, int32, uint8, uint16, int8, "
+        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
         " half}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -4739,7 +4800,7 @@ REGISTER_OP("QuantizeAndDequantize")
     .Attr("input_min: float = 0")
     .Attr("input_max: float = 0")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Deprecated(22, "Replaced by QuantizeAndDequantizeV2")
     .Doc(R"doc(
@@ -4755,7 +4816,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("num_bits: int = 8")
     .Attr("range_given: bool = false")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -4834,7 +4895,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("signed_input: bool = true")
     .Attr("range_given: bool = true")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -4859,6 +4920,9 @@ REGISTER_OP("QuantizeV2")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
+    .Attr(
+        "round_mode: {'HALF_AWAY_FROM_ZERO', 'HALF_TO_EVEN'} = "
+        "'HALF_AWAY_FROM_ZERO'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4873,7 +4937,9 @@ Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
 
 [min_range, max_range] are scalar floats that specify the range for
 the 'input' data. The 'mode' attribute controls exactly which calculations are
-used to convert the float values to their quantized equivalents.
+used to convert the float values to their quantized equivalents.  The
+'round_mode' attribute controls which rounding tie-breaking algorithm is used
+when rounding float values to their quantized equivalents.
 
 In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 
@@ -4897,10 +4963,10 @@ with the range of qint8.
 If the mode is 'MIN_FIRST', then this approach is used:
 
 ```
-number_of_steps = 1 << (# of bits in T)
-range_adjust = number_of_steps / (number_of_steps - 1)
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = number_of_steps / range
+range_scale = num_discrete_values / range
 quantized = round(input * range_scale) - round(range_min * range_scale) +
   numeric_limits<T>::min()
 quantized = max(quantized, numeric_limits<T>::min())
@@ -4950,7 +5016,7 @@ From this we compute our scaling factor, s:
 
 Now we can quantize the elements of our tensor:
 ```c++
-result = (input * s).round_to_nearest()
+result = round(input * s)
 ```
 
 One thing to watch out for is that the operator may choose to adjust the
@@ -5012,10 +5078,10 @@ each value by 128 prior to casting.
 If the mode is 'MIN_FIRST', then this approach is used:
 
 ```c++
-number_of_steps = 1 << (# of bits in T)
-range_adjust = number_of_steps / (number_of_steps - 1)
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = range / number_of_steps
+range_scale = range / num_discrete_values
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ```

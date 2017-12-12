@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -1049,11 +1050,75 @@ def dimension_size(x, axis):
   """Returns the size of a specific dimension."""
   # Since tf.gather isn't "constant-in, constant-out", we must first check the
   # static shape or fallback to dynamic shape.
-  num_rows = (None if x.get_shape().ndims is None
-              else x.get_shape()[axis].value)
-  if num_rows is not None:
-    return num_rows
+  s = x.shape.with_rank_at_least(axis + 1)[axis].value
+  if axis > -1 and s is not None:
+    return s
   return array_ops.shape(x)[axis]
+
+
+def process_quadrature_grid_and_probs(
+    quadrature_grid_and_probs, dtype, validate_args, name=None):
+  """Validates quadrature grid, probs or computes them as necessary.
+
+  Args:
+    quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+      representing the sample points and the corresponding (possibly
+      normalized) weight.  When `None`, defaults to:
+      `np.polynomial.hermite.hermgauss(deg=8)`.
+    dtype: The expected `dtype` of `grid` and `probs`.
+    validate_args: Python `bool`, default `False`. When `True` distribution
+      parameters are checked for validity despite possibly degrading runtime
+      performance. When `False` invalid inputs may silently render incorrect
+      outputs.
+    name: Python `str` name prefixed to Ops created by this class.
+
+  Returns:
+     quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+      representing the sample points and the corresponding (possibly
+      normalized) weight.
+
+  Raises:
+    ValueError: if `quadrature_grid_and_probs is not None` and
+      `len(quadrature_grid_and_probs[0]) != len(quadrature_grid_and_probs[1])`
+  """
+  with ops.name_scope(name, "process_quadrature_grid_and_probs",
+                      [quadrature_grid_and_probs]):
+    if quadrature_grid_and_probs is None:
+      grid, probs = np.polynomial.hermite.hermgauss(deg=8)
+      grid = grid.astype(dtype.as_numpy_dtype)
+      probs = probs.astype(dtype.as_numpy_dtype)
+      probs /= np.linalg.norm(probs, ord=1, keepdims=True)
+      grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
+      probs = ops.convert_to_tensor(probs, name="probs", dtype=dtype)
+      return grid, probs
+
+    grid, probs = tuple(quadrature_grid_and_probs)
+    grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
+    probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
+                                  dtype=dtype)
+    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keep_dims=True,
+                             name="probs")
+
+    def _static_dim_size(x, axis):
+      """Returns the static size of a specific dimension or `None`."""
+      return x.shape.with_rank_at_least(axis + 1)[axis].value
+
+    m, n = _static_dim_size(probs, axis=0), _static_dim_size(grid, axis=0)
+    if m is not None and n is not None:
+      if m != n:
+        raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
+                         "same-length zero-th-dimension `Tensor`s "
+                         "(saw lengths {}, {})".format(m, n))
+    elif validate_args:
+      grid = control_flow_ops.with_dependencies([
+          check_ops.assert_equal(
+              dimension_size(probs, axis=0),
+              dimension_size(grid, axis=0),
+              message=("`quadrature_grid_and_probs` must be a `tuple` of "
+                       "same-length zero-th-dimension `Tensor`s")),
+      ], grid)
+
+    return grid, probs
 
 
 class AppendDocstring(object):

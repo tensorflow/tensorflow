@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cuda_cc_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -38,6 +39,7 @@ tf_cuda_library(
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":runtime",
@@ -50,7 +52,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
     deps = [
@@ -104,7 +106,6 @@ tf_cc_test(
 
 cc_library(
     name = "tape",
-    srcs = ["tape.cc"],
     hdrs = ["tape.h"],
     visibility = ["//tensorflow:internal"],
     deps = [

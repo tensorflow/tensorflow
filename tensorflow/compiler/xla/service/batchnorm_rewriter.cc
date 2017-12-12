@@ -83,11 +83,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   HloComputation* GetScalarBinaryComputation(PrimitiveType primitive_type,
                                              HloOpcode opcode) {
-    HloComputation::Builder b("scalar computation");
+    HloComputation::Builder b("scalar_computation");
     auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "scalar lhs"));
+        0, ShapeUtil::MakeShape(primitive_type, {}), "scalar_lhs"));
     auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "scalar rhs"));
+        1, ShapeUtil::MakeShape(primitive_type, {}), "scalar_rhs"));
     auto scalar_op = b.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
                                      opcode, scalar_lhs, scalar_rhs));
@@ -149,26 +149,41 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   if (!rewrite_training_op_) {
     return Status::OK();
   }
+
+  std::vector<HloInstruction*> added_instructions;
+  auto add = [&](std::unique_ptr<HloInstruction> inst) {
+    HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_instructions.push_back(added_inst);
+    return added_inst;
+  };
+  int64 instruction_count_before = computation_->instruction_count();
+
   // Expand batch norm training into smaller HLO ops.
   HloInstruction* operand = batch_norm->mutable_operand(0);
   const Shape operand_shape = operand->shape();
+  PrimitiveType ptype = operand_shape.element_type();
   int64 feature_index = batch_norm->feature_index();
   const int64 feature_count = operand_shape.dimensions(feature_index);
   const int64 size_in_elements = ShapeUtil::ElementsIn(operand_shape);
-  auto elements_per_feature =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<float>(size_in_elements / feature_count)));
+  auto elements_per_feature_literal =
+      Literal::CreateR0<float>(size_in_elements / feature_count);
+  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
+                      elements_per_feature_literal->Convert(ptype));
+  auto elements_per_feature = add(
+      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
   const Shape feature_shape = scale->shape();
 
-  auto zero = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+  auto zero_literal = Literal::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
-
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  auto epsilon =
+      add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   std::vector<int64> dimensions_without_feature;
 
   for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
@@ -177,103 +192,110 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
     }
   }
 
-  auto scale_broadcasted = computation_->AddInstruction(
+  auto scale_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
 
-  auto offset_broadcasted = computation_->AddInstruction(
+  auto offset_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(F32, HloOpcode::kAdd);
+      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
 
   // X^2.
-  auto operand_squared =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kMultiply, operand, operand));
+  auto operand_squared = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kMultiply, operand, operand));
   // Sum[X].
-  auto sum = computation_->AddInstruction(HloInstruction::CreateReduce(
-      feature_shape, operand, zero, dimensions_without_feature,
-      add_reduce_computation));
+  auto sum = add(HloInstruction::CreateReduce(feature_shape, operand, zero,
+                                              dimensions_without_feature,
+                                              add_reduce_computation));
 
   // Sum[X^2].
-  auto squared_sum = computation_->AddInstruction(HloInstruction::CreateReduce(
+  auto squared_sum = add(HloInstruction::CreateReduce(
       feature_shape, operand_squared, zero, dimensions_without_feature,
       add_reduce_computation));
 
   // Fuse two parallel reduces together to improve performance.
-  if (use_fusion_) {
-    auto tuple = computation_->AddInstruction(
-        HloInstruction::CreateTuple({sum, squared_sum}));
+  if (use_fusion_ && !batch_norm->has_sharding()) {
+    auto tuple = add(HloInstruction::CreateTuple({sum, squared_sum}));
 
     auto fused = computation_->CreateFusionInstruction(
         {tuple, sum, squared_sum, operand_squared},
         HloInstruction::FusionKind::kInput);
 
-    sum = computation_->AddInstruction(
-        HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
+    sum = add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
 
-    squared_sum = computation_->AddInstruction(
-        HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+    squared_sum =
+        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
   }
 
   // E[X].
-  auto mean = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto mean = add(HloInstruction::CreateBinary(
       feature_shape, HloOpcode::kDivide, sum, elements_per_feature));
 
-  auto mean_broadcasted = computation_->AddInstruction(
+  auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
   // E[X^2].
-  auto square_mean = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto square_mean = add(HloInstruction::CreateBinary(
       feature_shape, HloOpcode::kDivide, squared_sum, elements_per_feature));
 
   // E^2[X].
-  auto mean_square = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto mean_square = add(HloInstruction::CreateBinary(
       feature_shape, HloOpcode::kMultiply, mean, mean));
 
   // Var[X].
-  auto var = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto var = add(HloInstruction::CreateBinary(
       feature_shape, HloOpcode::kSubtract, square_mean, mean_square));
 
-  auto var_broadcasted = computation_->AddInstruction(
-      HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
+  auto var_broadcasted =
+      add(HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
 
   // Var[X] + epsilon.
-  auto var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
+  auto var_add_epsilon = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
 
-  auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
+  auto neg_half =
+      add(HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
   // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
+  auto rsqrt_var_add_epsilon = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
 
   // X - E[X].
-  auto operand_minus_mean =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
+  auto operand_minus_mean = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon].
-  auto normalized = computation_->AddInstruction(
+  auto normalized = add(
       HloInstruction::CreateBinary(operand_shape, HloOpcode::kMultiply,
                                    operand_minus_mean, rsqrt_var_add_epsilon));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
-  auto scaled_normalized =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
+  auto scaled_normalized = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
-  auto shifted_normalized = computation_->AddInstruction(
-      HloInstruction::CreateBinary(operand_shape, HloOpcode::kAdd,
-                                   scaled_normalized, offset_broadcasted));
+  auto shifted_normalized = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted));
 
-  TF_CHECK_OK(ReplaceWithNewInstruction(
-      batch_norm,
-      HloInstruction::CreateTuple({shifted_normalized, mean, var})));
+  auto tuple = HloInstruction::CreateTuple({shifted_normalized, mean, var});
+
+  if (batch_norm->has_sharding()) {
+    int64 instruction_count_after = computation_->instruction_count();
+    CHECK_EQ(instruction_count_after,
+             instruction_count_before + added_instructions.size());
+    for (HloInstruction* inst : added_instructions) {
+      if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
+        inst->set_sharding(batch_norm->sharding());
+      } else {
+        inst->set_sharding(HloSharding::Replicate());
+      }
+    }
+    tuple->set_sharding(batch_norm->sharding());
+  }
+  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
   return Status::OK();
 }
 
@@ -286,6 +308,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
   HloInstruction* operand = batch_norm->mutable_operand(0);
   const Shape operand_shape = operand->shape();
   int64 feature_index = batch_norm->feature_index();
+  PrimitiveType ptype = operand_shape.element_type();
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
@@ -293,8 +316,10 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
   HloInstruction* var = batch_norm->mutable_operand(4);
   const Shape feature_shape = scale->shape();
 
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+      HloInstruction::CreateConstant(std::move(epsilon_literal)));
 
   std::vector<int64> dimensions_without_feature;
 
@@ -304,50 +329,69 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
     }
   }
 
-  auto scale_broadcasted = computation_->AddInstruction(
+  std::vector<HloInstruction*> added_instructions;
+  auto add = [&](std::unique_ptr<HloInstruction> inst) {
+    HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_instructions.push_back(added_inst);
+    return added_inst;
+  };
+  int64 instruction_count_before = computation_->instruction_count();
+
+  auto scale_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
 
-  auto offset_broadcasted = computation_->AddInstruction(
+  auto offset_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
 
-  auto mean_broadcasted = computation_->AddInstruction(
+  auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
-  auto var_broadcasted = computation_->AddInstruction(
-      HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
+  auto var_broadcasted =
+      add(HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
 
   // Var[X] + epsilon.
-  auto var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
+  auto var_add_epsilon = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
 
-  auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
+  auto neg_half =
+      add(HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
   // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
+  auto rsqrt_var_add_epsilon = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
 
   // X - E[X].
-  auto operand_minus_mean =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
+  auto operand_minus_mean = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon].
-  auto normalized = computation_->AddInstruction(
+  auto normalized = add(
       HloInstruction::CreateBinary(operand_shape, HloOpcode::kMultiply,
                                    operand_minus_mean, rsqrt_var_add_epsilon));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
-  auto scaled_normalized =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
+  auto scaled_normalized = add(HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
   auto shifted_normalized = HloInstruction::CreateBinary(
       operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted);
 
+  int64 instruction_count_after = computation_->instruction_count();
+  CHECK_EQ(instruction_count_after,
+           instruction_count_before + added_instructions.size());
+  if (batch_norm->has_sharding()) {
+    for (HloInstruction* inst : added_instructions) {
+      if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
+        inst->set_sharding(batch_norm->sharding());
+      } else {
+        inst->set_sharding(HloSharding::Replicate());
+      }
+    }
+    shifted_normalized->set_sharding(batch_norm->sharding());
+  }
   TF_CHECK_OK(
       ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
   return Status::OK();
@@ -370,9 +414,17 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
   if (!rewrite_grad_op_) {
     return Status::OK();
   }
+  std::vector<HloInstruction*> added_instructions;
+  auto add = [&](std::unique_ptr<HloInstruction> inst) {
+    HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
+    added_instructions.push_back(added_inst);
+    return added_inst;
+  };
+  int64 instruction_count_before = computation_->instruction_count();
 
   HloInstruction* activation = batch_norm->mutable_operand(0);
   const Shape activation_shape = activation->shape();
+  PrimitiveType ptype = activation_shape.element_type();
   HloInstruction* scale = batch_norm->mutable_operand(1);
   const Shape feature_shape = scale->shape();
   HloInstruction* mean = batch_norm->mutable_operand(2);
@@ -383,18 +435,26 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 
   const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
   const int64 feature_count = activation_shape.dimensions(feature_index);
-  auto elements_per_feature =
-      computation_->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<float>(size_in_elements / feature_count)));
+  auto elements_per_feature_literal =
+      Literal::CreateR0<float>(size_in_elements / feature_count);
+  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
+                      elements_per_feature_literal->Convert(ptype));
+  auto elements_per_feature = add(
+      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
 
-  auto zero = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+  auto zero_literal = Literal::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto neg_half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+  auto neg_half_literal = Literal::CreateR0(-0.5f);
+  TF_ASSIGN_OR_RETURN(neg_half_literal, neg_half_literal->Convert(ptype));
+  auto neg_half =
+      add(HloInstruction::CreateConstant(std::move(neg_half_literal)));
 
-  auto epsilon = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  auto epsilon =
+      add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
 
   std::vector<int64> dimensions_without_feature;
 
@@ -404,126 +464,131 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
     }
   }
 
-  auto scale_broadcasted =
-      computation_->AddInstruction(HloInstruction::CreateBroadcast(
-          activation_shape, scale, {feature_index}));
-  auto variance_broadcasted =
-      computation_->AddInstruction(HloInstruction::CreateBroadcast(
-          activation_shape, variance, {feature_index}));
+  auto scale_broadcasted = add(HloInstruction::CreateBroadcast(
+      activation_shape, scale, {feature_index}));
+  auto variance_broadcasted = add(HloInstruction::CreateBroadcast(
+      activation_shape, variance, {feature_index}));
 
   // E[X].
-  auto mean_broadcasted = computation_->AddInstruction(
+  auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(activation_shape, mean, {feature_index}));
 
   // rsqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon_broadcasted =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kPower,
-          computation_->AddInstruction(
-              HloInstruction::CreateBinary(activation_shape, HloOpcode::kAdd,
-                                           variance_broadcasted, epsilon)),
-          neg_half));
+  auto rsqrt_var_add_epsilon_broadcasted = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kPower,
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kAdd,
+                                       variance_broadcasted, epsilon)),
+      neg_half));
 
-  auto rsqrt_var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          feature_shape, HloOpcode::kPower,
-          computation_->AddInstruction(HloInstruction::CreateBinary(
-              feature_shape, HloOpcode::kAdd, variance, epsilon)),
-          neg_half));
+  auto rsqrt_var_add_epsilon = add(HloInstruction::CreateBinary(
+      feature_shape, HloOpcode::kPower,
+      add(HloInstruction::CreateBinary(feature_shape, HloOpcode::kAdd, variance,
+                                       epsilon)),
+      neg_half));
 
   // X - E[X].
-  auto activation_minus_mean = computation_->AddInstruction(
-      HloInstruction::CreateBinary(activation_shape, HloOpcode::kSubtract,
-                                   activation, mean_broadcasted));
+  auto activation_minus_mean = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kSubtract, activation, mean_broadcasted));
 
   // Grad[Y] * (X - E[X]).
-  auto grad_output_times_activiation_minus_mean = computation_->AddInstruction(
-      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
-                                   grad_output, activation_minus_mean));
+  auto grad_output_times_activiation_minus_mean =
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                       grad_output, activation_minus_mean));
 
   HloComputation* add_reduce_computation =
-      GetScalarBinaryComputation(F32, HloOpcode::kAdd);
+      GetScalarBinaryComputation(ptype, HloOpcode::kAdd);
 
   // sum(Grad[Y] * (X - E[X])).
   auto sum_grad_output_times_activiation_minus_mean =
-      computation_->AddInstruction(HloInstruction::CreateReduce(
+      add(HloInstruction::CreateReduce(
           feature_shape, grad_output_times_activiation_minus_mean, zero,
           dimensions_without_feature, add_reduce_computation));
 
   // Grad[beta] = Sum(Grad[Y]).
-  auto grad_beta = computation_->AddInstruction(HloInstruction::CreateReduce(
+  auto grad_beta = add(HloInstruction::CreateReduce(
       feature_shape, grad_output, zero, dimensions_without_feature,
       add_reduce_computation));
 
-  if (use_fusion_) {
-    auto tuple = computation_->AddInstruction(HloInstruction::CreateTuple(
+  if (use_fusion_ && !batch_norm->has_sharding()) {
+    auto tuple = add(HloInstruction::CreateTuple(
         {sum_grad_output_times_activiation_minus_mean, grad_beta}));
 
     auto fused = computation_->CreateFusionInstruction(
         {tuple, sum_grad_output_times_activiation_minus_mean, grad_beta},
         HloInstruction::FusionKind::kInput);
 
-    sum_grad_output_times_activiation_minus_mean = computation_->AddInstruction(
-        HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
+    sum_grad_output_times_activiation_minus_mean =
+        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
 
-    grad_beta = computation_->AddInstruction(
-        HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+    grad_beta =
+        add(HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
   }
 
   // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
-  auto grad_scale = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto grad_scale = add(HloInstruction::CreateBinary(
       feature_shape, HloOpcode::kMultiply,
       sum_grad_output_times_activiation_minus_mean, rsqrt_var_add_epsilon));
 
   // I2 = Sum(Grad[Y])
-  auto I2 = computation_->AddInstruction(HloInstruction::CreateBroadcast(
-      activation_shape, grad_beta, {feature_index}));
+  auto i2 = add(HloInstruction::CreateBroadcast(activation_shape, grad_beta,
+                                                {feature_index}));
 
   // I3 = Sum(Grad[Y] * (X - E[X]))
-  auto I3 = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+  auto i3 = add(HloInstruction::CreateBroadcast(
       activation_shape, sum_grad_output_times_activiation_minus_mean,
       {feature_index}));
 
   // I4 = (X - E[X]) * I3
-  auto I4 = computation_->AddInstruction(HloInstruction::CreateBinary(
-      activation_shape, HloOpcode::kMultiply, I3, activation_minus_mean));
+  auto i4 = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kMultiply, i3, activation_minus_mean));
 
   // I5 = I4 / (Var[X] + epsilon)
-  auto I5 = computation_->AddInstruction(HloInstruction::CreateBinary(
-      activation_shape, HloOpcode::kDivide, I4,
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kAdd, variance_broadcasted, epsilon))));
+  auto i5 = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kDivide, i4,
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kAdd,
+                                       variance_broadcasted, epsilon))));
 
   // scale * rsqrt[Var[X] + epsilon] * 1/N
-  auto scale_times_rsqrt_var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kMultiply, scale_broadcasted,
-          rsqrt_var_add_epsilon_broadcasted));
+  auto scale_times_rsqrt_var_add_epsilon = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kMultiply, scale_broadcasted,
+      rsqrt_var_add_epsilon_broadcasted));
 
-  scale_times_rsqrt_var_add_epsilon =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kDivide,
-          scale_times_rsqrt_var_add_epsilon, elements_per_feature));
+  scale_times_rsqrt_var_add_epsilon = add(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kDivide, scale_times_rsqrt_var_add_epsilon,
+      elements_per_feature));
 
-  auto I1 = computation_->AddInstruction(
-      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
-                                   grad_output, elements_per_feature));
+  auto i1 =
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                       grad_output, elements_per_feature));
 
   // I6 = I1 - I2 - I5
-  auto I6 = computation_->AddInstruction(HloInstruction::CreateBinary(
+  auto i6 = add(HloInstruction::CreateBinary(
       activation_shape, HloOpcode::kSubtract,
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kSubtract, I1, I2)),
-      I5));
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kSubtract,
+                                       i1, i2)),
+      i5));
 
   // Grad[X] = scale * rsqrt[Var[X] + epsilon] * 1/N * I6.
-  auto grad_activation = computation_->AddInstruction(
-      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
-                                   scale_times_rsqrt_var_add_epsilon, I6));
+  auto grad_activation =
+      add(HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                       scale_times_rsqrt_var_add_epsilon, i6));
+  auto tuple =
+      HloInstruction::CreateTuple({grad_activation, grad_scale, grad_beta});
+  if (batch_norm->has_sharding()) {
+    int64 instruction_count_after = computation_->instruction_count();
+    CHECK_EQ(instruction_count_after,
+             instruction_count_before + added_instructions.size());
+    for (HloInstruction* inst : added_instructions) {
+      if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
+        inst->set_sharding(batch_norm->sharding());
+      } else {
+        inst->set_sharding(HloSharding::Replicate());
+      }
+    }
+    tuple->set_sharding(batch_norm->sharding());
+  }
 
-  TF_CHECK_OK(ReplaceWithNewInstruction(
-      batch_norm,
-      HloInstruction::CreateTuple({grad_activation, grad_scale, grad_beta})));
+  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
 
   return Status::OK();
 }

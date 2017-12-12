@@ -22,6 +22,8 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import poisson_lognormal
 from tensorflow.contrib.distributions.python.ops import test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -38,7 +40,7 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
-          sess, pln, rtol=0.1)
+          sess.run, pln, rtol=0.1)
 
   def testMeanVariance(self):
     with self.test_session() as sess:
@@ -49,7 +51,7 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
-          sess, pln, rtol=0.02)
+          sess.run, pln, rtol=0.02)
 
   def testSampleProbConsistentBroadcastScalar(self):
     with self.test_session() as sess:
@@ -60,7 +62,7 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
-          sess, pln, rtol=0.1, atol=0.01)
+          sess.run, pln, rtol=0.1, atol=0.01)
 
   def testMeanVarianceBroadcastScalar(self):
     with self.test_session() as sess:
@@ -71,7 +73,7 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
-          sess, pln, rtol=0.1, atol=0.01)
+          sess.run, pln, rtol=0.1, atol=0.01)
 
   def testSampleProbConsistentBroadcastBoth(self):
     with self.test_session() as sess:
@@ -82,7 +84,7 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
-          sess, pln, rtol=0.1, atol=0.08)
+          sess.run, pln, rtol=0.1, atol=0.08)
 
   def testMeanVarianceBroadcastBoth(self):
     with self.test_session() as sess:
@@ -93,7 +95,21 @@ class PoissonLogNormalQuadratureCompoundTest(
               np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
-          sess, pln, rtol=0.1, atol=0.01)
+          sess.run, pln, rtol=0.1, atol=0.01)
+
+  def testSampleProbConsistentDynamicQuadrature(self):
+    with self.test_session() as sess:
+      qgrid = array_ops.placeholder(dtype=dtypes.float32)
+      qprobs = array_ops.placeholder(dtype=dtypes.float32)
+      g, p = np.polynomial.hermite.hermgauss(deg=10)
+      pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
+          loc=-2.,
+          scale=1.1,
+          quadrature_grid_and_probs=(g, p),
+          validate_args=True)
+      self.run_test_sample_consistent_log_prob(
+          lambda x: sess.run(x, feed_dict={qgrid: g, qprobs: p}),
+          pln, rtol=0.1)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
@@ -275,9 +277,6 @@ def _swish_shape(op):
   return [op.inputs[0].shape]
 
 
-# Set noinline=True so that sigmoid(features) is re-computed during
-# backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
 def _swish_grad(features, grad):
   """Gradient of Swish function defined below."""
@@ -287,6 +286,11 @@ def _swish_grad(features, grad):
   return grad * activation_grad
 
 
+# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
+# for backprop, effectively doubling the tensor's memory consumption. We use a
+# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
+# during backprop, and we can free the sigmoid(features) expression immediately
+# after use during the forward pass.
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
@@ -296,7 +300,7 @@ def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
 
-  Source: "Swish: a Self-Gated Activation Function" (Ramachandran et al. 2017)
+  Source: "Searching for Activation Functions" (Ramachandran et al. 2017)
   https://arxiv.org/abs/1710.05941
 
   Args:
@@ -311,30 +315,33 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-def l2_normalize(x, dim, epsilon=1e-12, name=None):
-  """Normalizes along dimension `dim` using an L2 norm.
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
+  """Normalizes along dimension `axis` using an L2 norm.
 
-  For a 1-D tensor with `dim = 0`, computes
+  For a 1-D tensor with `axis = 0`, computes
 
       output = x / sqrt(max(sum(x**2), epsilon))
 
   For `x` with more dimensions, independently normalizes each 1-D slice along
-  dimension `dim`.
+  dimension `axis`.
 
   Args:
     x: A `Tensor`.
-    dim: Dimension along which to normalize.  A scalar or a vector of
+    axis: Dimension along which to normalize.  A scalar or a vector of
       integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
+    dim: Deprecated alias for axis.
 
   Returns:
     A `Tensor` with the same shape as `x`.
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
+    axis = deprecated_argument_lookup("axis", axis, "dim", dim)
     x = ops.convert_to_tensor(x, name="x")
-    square_sum = math_ops.reduce_sum(math_ops.square(x), dim, keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
 
@@ -586,8 +593,8 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     else:  # no shift.
       m_ss = x
       v_ss = math_ops.square(x)
-    m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
-    v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
+    m_ss = math_ops.reduce_sum(m_ss, axes, keepdims=keep_dims, name="mean_ss")
+    v_ss = math_ops.reduce_sum(v_ss, axes, keepdims=keep_dims, name="var_ss")
   return counts, m_ss, v_ss, shift
 
 
@@ -631,7 +638,7 @@ def moments(x, axes,
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: shift is currently not used, the true mean is computed and used.
+  Note: shift is currently not used; the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
@@ -657,12 +664,12 @@ def moments(x, axes,
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
     # Compute true mean while keeping the dims for proper broadcasting.
-    mean = math_ops.reduce_mean(y, axes, keep_dims=True, name="mean")
+    mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
     # sample variance, not unbiased variance
     variance = math_ops.reduce_mean(
         math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
         axes,
-        keep_dims=True,
+        keepdims=True,
         name="variance")
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
@@ -707,7 +714,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
     # Note that we use keep_dims=True for our reductions regardless of the arg;
     # this is so that the results remain broadcast-compatible with the inputs.
     weighted_input_sum = math_ops.reduce_sum(
-        frequency_weights * x, axes, name="weighted_input_sum", keep_dims=True)
+        frequency_weights * x, axes, name="weighted_input_sum", keepdims=True)
 
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
@@ -718,7 +725,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
 
     sum_of_weights = math_ops.reduce_sum(
-        broadcasted_weights, axes, name="sum_of_weights", keep_dims=True)
+        broadcasted_weights, axes, name="sum_of_weights", keepdims=True)
 
     divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
 
@@ -729,7 +736,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
         frequency_weights * math_ops.squared_difference(x, weighted_mean),
         axes,
         name="weighted_distsq",
-        keep_dims=True)
+        keepdims=True)
 
     weighted_variance = math_ops.multiply(weighted_distsq, divisor)
 
@@ -856,7 +863,7 @@ def fused_batch_norm(
   # currently only use the V2 version for float16 inputs, which is not supported
   # by the V1 version.
   # pylint: disable=protected-access
-  if x.dtype == dtypes.float16:
+  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
     fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
   else:
     fused_batch_norm_func = gen_nn_ops._fused_batch_norm

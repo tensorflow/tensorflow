@@ -44,7 +44,7 @@ namespace tensorflow {
 
 //    PendingCounts counts(layout);
 //    ...
-//    counts.decrement_panding(h[id], 1);
+//    counts.decrement_pending(h[id], 1);
 class PendingCounts {
  public:
   // The state machine for a node's execution.

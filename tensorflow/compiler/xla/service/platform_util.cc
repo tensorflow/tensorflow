@@ -84,15 +84,6 @@ PlatformUtil::GetSupportedPlatforms() {
     return NotFound("no platforms found");
   } else if (platforms.size() == 1) {
     return platforms[0];
-  } else if (platforms.size() == 2) {
-    // In the service we always link the cpu backend for ComputeConstant. So if
-    // one of the two platforms is CPU then pick the other (non-cpu) platform as
-    // the default.
-    if (platforms[0]->id() == se::host::kHostPlatformId) {
-      return platforms[1];
-    } else if (platforms[1]->id() == se::host::kHostPlatformId) {
-      return platforms[0];
-    }
   }
 
   // Multiple platforms present and we can't pick a reasonable default.
@@ -101,6 +92,28 @@ PlatformUtil::GetSupportedPlatforms() {
   return InvalidArgument(
       "must specify platform because more than one platform found: %s",
       platforms_string.c_str());
+}
+
+/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
+    const string& platform_name) {
+  using tensorflow::str_util::Lowercase;
+  string platform_str = Lowercase(platform_name);
+  // "cpu" and "host" mean the same thing.
+  if (platform_str == "cpu") {
+    platform_str = "host";
+  }
+  // "gpu" and "cuda" mean the same thing.
+  if (platform_str == "gpu") {
+    platform_str = "cuda";
+  }
+
+  TF_ASSIGN_OR_RETURN(auto platforms, PlatformUtil::GetSupportedPlatforms());
+  for (se::Platform* platform : platforms) {
+    if (Lowercase(platform->Name()) == platform_str) {
+      return platform;
+    }
+  }
+  return InvalidArgument("platform %s not found", platform_name.c_str());
 }
 
 // Returns whether the device underlying the given StreamExecutor is supported

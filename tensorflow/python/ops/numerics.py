@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -62,7 +63,21 @@ def add_check_numerics_ops():
   Raises:
     ValueError: If the graph contains any numeric operations in a control flow
       structure.
+    RuntimeError: If called with eager execution enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To check for `Inf`s and `NaN`s under
+  eager execution, call tfe.seterr(inf_or_nan='raise') once before executing
+  the checked operations.
+  @enc_compatibility
   """
+  if context.in_eager_mode():
+    raise RuntimeError(
+        "add_check_numerics_ops() is not compatible with eager execution. "
+        "To check for Inf's and NaN's under eager execution, call "
+        "tfe.seterr(inf_or_nan='raise') once before executing the "
+        "checked operations.")
+
   check_op = []
   # This code relies on the ordering of ops in get_operations().
   # The producer of a tensor always comes before that tensor's consumer in

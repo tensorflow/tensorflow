@@ -94,10 +94,10 @@ class MixtureSameFamilyTest(test_util.VectorDistributionTestHelpers,
               loc=[[-1., 1], [1, -1]], scale_identity_multiplier=[1., 0.5]))
       # Ball centered at component0's mean.
       self.run_test_sample_consistent_log_prob(
-          sess, gm, radius=1., center=[-1., 1], rtol=0.02)
+          sess.run, gm, radius=1., center=[-1., 1], rtol=0.02)
       # Larger ball centered at component1's mean.
       self.run_test_sample_consistent_log_prob(
-          sess, gm, radius=1., center=[1., -1], rtol=0.02)
+          sess.run, gm, radius=1., center=[1., -1], rtol=0.02)
 
   def testLogCdf(self):
     with self.test_session() as sess:
@@ -122,7 +122,7 @@ class MixtureSameFamilyTest(test_util.VectorDistributionTestHelpers,
           mixture_distribution=categorical_lib.Categorical(probs=[0.3, 0.7]),
           components_distribution=mvn_diag_lib.MultivariateNormalDiag(
               loc=[[-1., 1], [1, -1]], scale_identity_multiplier=[1., 0.5]))
-      self.run_test_sample_consistent_mean_covariance(sess, gm)
+      self.run_test_sample_consistent_mean_covariance(sess.run, gm)
 
   def testVarianceConsistentCovariance(self):
     with self.test_session() as sess:

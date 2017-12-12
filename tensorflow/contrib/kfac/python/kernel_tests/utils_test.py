@@ -63,6 +63,39 @@ class SequenceDictTest(test.TestCase):
     self.assertItemsEqual(list(zip(keys, values)), seq_dict.items())
 
 
+class SubGraphTest(test.TestCase):
+
+  def testBasicGraph(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b
+    d = a * b
+    sub_graph = utils.SubGraph((c,))
+    self.assertTrue(sub_graph.is_member(a))
+    self.assertTrue(sub_graph.is_member(b))
+    self.assertTrue(sub_graph.is_member(c))
+    self.assertFalse(sub_graph.is_member(d))
+
+  def testRepeatedAdds(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b + a  # note that a appears twice in this graph
+    sub_graph = utils.SubGraph((c,))
+    self.assertTrue(sub_graph.is_member(a))
+    self.assertTrue(sub_graph.is_member(b))
+    self.assertTrue(sub_graph.is_member(c))
+
+  def testFilterList(self):
+    a = array_ops.constant([[1., 2.], [3., 4.]])
+    b = array_ops.constant([[5., 6.], [7., 8.]])
+    c = a + b
+    d = a * b
+    sub_graph = utils.SubGraph((c,))
+    input_list = [b, d]
+    filtered_list = sub_graph.filter_list(input_list)
+    self.assertEqual(filtered_list, [b])
+
+
 class UtilsTest(test.TestCase):
 
   def _fully_connected_layer_params(self):
@@ -188,18 +221,6 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(a, np.array([[0., 1.], [2., 3.]]))
       self.assertAllClose(b, np.array([4., 5.]))
       self.assertAllClose(c, np.array([[6.], [7.], [8.], [9.]]))
-
-  def testComputePi(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
-      random_seed.set_random_seed(200)
-      left_factor = array_ops.diag([1., 2., 0., 1.])
-      right_factor = array_ops.ones([2., 2.])
-
-      # pi is the sqrt of the left trace norm divided by the right trace norm
-      pi = utils.compute_pi(left_factor, right_factor)
-
-      pi_val = sess.run(pi)
-      self.assertEqual(1., pi_val)
 
   def testPosDefInvCholesky(self):
     with ops.Graph().as_default(), self.test_session() as sess:

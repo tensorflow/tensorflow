@@ -28,13 +28,12 @@ from __future__ import print_function
 import ctypes
 import sys
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
+# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated python library
+# that dynamically loads _pywrap_tensorflow.so. The default mode for loading
+# keeps all the symbol private and not visible to other libraries that may be
+# loaded. Setting the mode to RTLD_GLOBAL to make the symbols visible, so that
+# custom op libraries imported using `tf.load_op_library()` can access symbols
+# defined in _pywrap_tensorflow.so.
 _use_rtld_global = (hasattr(sys, 'getdlopenflags')
                     and hasattr(sys, 'setdlopenflags'))
 if _use_rtld_global:

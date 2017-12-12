@@ -112,7 +112,7 @@ struct GatherTree<CPUDevice, int32> {
     const int32 max_time = parent_ids.dimension(0);
     const int32 batch_size = parent_ids.dimension(1);
     const int32 beam_width = parent_ids.dimension(2);
-    beams.setConstant(-1);
+    beams.setConstant(end_token);
 
     auto DoWork = [&, ctx, end_token](int start_batch_beam,
                                       int limit_batch_beam) {
@@ -138,10 +138,13 @@ struct GatherTree<CPUDevice, int32> {
           beams(level, batch, beam) = step_ids(level, batch, parent);
           parent = parent_ids(level, batch, parent);
         }
+        // Not necessary when using a BeamSearchDecoder, but necessary
+        // when a user feeds in possibly broken trajectory (i.e., non-eos
+        // entries in a beam following eos entries).
         bool finished = false;
         for (int32 time = 0; time < max_seq_len_b; ++time) {
           if (finished) {
-            beams(time, batch, beam) = -1;
+            beams(time, batch, beam) = end_token;
           } else if (beams(time, batch, beam) == end_token) {
             finished = true;
           }

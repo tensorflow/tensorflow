@@ -30,8 +30,6 @@ from tensorflow.python.platform import test
 
 FLAGS = flags.FLAGS
 
-_TEST_TYPES = [dtypes.float32]
-
 
 class GatherTest(xla_test.XLATestCase):
 
@@ -46,8 +44,8 @@ class GatherTest(xla_test.XLATestCase):
   def testScalar1D(self):
     with self.test_session() as session, self.test_scope():
       data = np.array([0, 1, 2, 3, 7, 5])
-      for dtype in _TEST_TYPES:
-        for indices in 4, [1, 2, 2, 4, 5]:
+      for dtype in self.all_tf_types:
+        for indices in 4, [4], [1, 2, 2, 4, 5]:
           params_np = self._buildParams(data, dtype)
           params = array_ops.placeholder(dtype=dtype)
           indices_tf = constant_op.constant(indices)
@@ -60,7 +58,7 @@ class GatherTest(xla_test.XLATestCase):
     with self.test_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
-      for dtype in _TEST_TYPES:
+      for dtype in self.all_tf_types:
         for axis in 0, 1, -1:
           params_np = self._buildParams(data, dtype)
           params = array_ops.placeholder(dtype=dtype)
@@ -74,7 +72,7 @@ class GatherTest(xla_test.XLATestCase):
     with self.test_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
-      for dtype in _TEST_TYPES:
+      for dtype in self.all_tf_types:
         for axis in 0, 1, -1:
           params_np = self._buildParams(data, dtype)
           params = array_ops.placeholder(dtype=dtype)
@@ -94,7 +92,7 @@ class GatherTest(xla_test.XLATestCase):
                        [12, 13, 14]])
       # The indices must be in bounds for any axis.
       indices_np = np.array([0, 1, 0, 2])
-      for dtype in _TEST_TYPES:
+      for dtype in self.all_tf_types:
         for axis in 0, 1, -1:
           params_np = self._buildParams(data, dtype)
           params = array_ops.placeholder(dtype=dtype)
@@ -112,7 +110,7 @@ class GatherTest(xla_test.XLATestCase):
     """Check that scalar and empty indices shapes work as well."""
     shape = (2, 1, 3, 2)
     for indices_shape in (), (0,), (2, 0), (2, 3):
-      for dtype in _TEST_TYPES:
+      for dtype in self.all_tf_types:
         for axis in 0, 1, 2, 3, -1, -2:
           params = self._buildParams(np.random.randn(*shape), dtype)
           indices = np.random.randint(shape[axis], size=indices_shape)

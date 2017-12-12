@@ -207,6 +207,8 @@ attr {
   name: "attr_a"
   rename_to: "attr_a"
 }
+arg_order: "arg_a"
+arg_order: "arg_b"
 )";
   OpList op_list;
   protobuf::TextFormat::ParseFromString(kTestOpList, &op_list);  // NOLINT
@@ -331,8 +333,8 @@ op {
     name: "arg_c"
     rename_to: "arg_cc"
   }
-  arg_order: "arg_aa"
   arg_order: "arg_b"
+  arg_order: "arg_a"
 }
 )";
   OpList op_list;
@@ -351,8 +353,8 @@ op {
   EXPECT_EQ("arg_cc", api_def->out_arg(0).rename_to());
 
   ASSERT_EQ(2, api_def->arg_order_size());
-  EXPECT_EQ("arg_aa", api_def->arg_order(0));
-  EXPECT_EQ("arg_b", api_def->arg_order(1));
+  EXPECT_EQ("arg_b", api_def->arg_order(0));
+  EXPECT_EQ("arg_a", api_def->arg_order(1));
 }
 
 TEST(OpGenLibTest, ApiDefOverrideDescriptions) {
@@ -408,8 +410,107 @@ op {
 
   ApiDefMap api_map(op_list);
   TF_CHECK_OK(api_map.LoadApiDef(kTestApiDef));
+  TF_CHECK_OK(api_map.LoadApiDef(api_def1));
+  ASSERT_EQ(nullptr, api_map.GetApiDef("different_testop"));
+}
+
+TEST(OpGenLibTest, ApiDefInvalidArgOrder) {
+  const string api_def1 = R"(
+op {
+  graph_op_name: "testop"
+  arg_order: "arg_a"
+  arg_order: "unexpected_arg"
+}
+)";
+
+  const string api_def2 = R"(
+op {
+  graph_op_name: "testop"
+  arg_order: "arg_a"
+}
+)";
+
+  const string api_def3 = R"(
+op {
+  graph_op_name: "testop"
+  arg_order: "arg_a"
+  arg_order: "arg_a"
+}
+)";
+
+  OpList op_list;
+  protobuf::TextFormat::ParseFromString(kTestOpList, &op_list);  // NOLINT
+  ApiDefMap api_map(op_list);
+  TF_CHECK_OK(api_map.LoadApiDef(kTestApiDef));
+
+  // Loading with incorrect arg name in arg_order should fail.
   auto status = api_map.LoadApiDef(api_def1);
   ASSERT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+
+  // Loading with incorrect number of args in arg_order should fail.
+  status = api_map.LoadApiDef(api_def2);
+  ASSERT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+
+  // Loading with the same argument twice in arg_order should fail.
+  status = api_map.LoadApiDef(api_def3);
+  ASSERT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+}
+
+TEST(OpGenLibTest, ApiDefUpdateDocs) {
+  const string op_list1 = R"(op {
+  name: "testop"
+  input_arg {
+    name: "arg_a"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  output_arg {
+    name: "arg_c"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  attr {
+    name: "attr_a"
+    description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  description: "`arg_a`, `arg_c`, `attr_a`, `testop`"
+}
+)";
+
+  const string api_def1 = R"(
+op {
+  graph_op_name: "testop"
+  endpoint {
+    name: "testop2"
+  }
+  in_arg {
+    name: "arg_a"
+    rename_to: "arg_aa"
+  }
+  out_arg {
+    name: "arg_c"
+    rename_to: "arg_cc"
+    description: "New description: `arg_a`, `arg_c`, `attr_a`, `testop`"
+  }
+  attr {
+    name: "attr_a"
+    rename_to: "attr_aa"
+  }
+}
+)";
+  OpList op_list;
+  protobuf::TextFormat::ParseFromString(op_list1, &op_list);  // NOLINT
+  ApiDefMap api_map(op_list);
+  TF_CHECK_OK(api_map.LoadApiDef(api_def1));
+  api_map.UpdateDocs();
+
+  const string expected_description =
+      "`arg_aa`, `arg_cc`, `attr_aa`, `testop2`";
+  EXPECT_EQ(expected_description, api_map.GetApiDef("testop")->description());
+  EXPECT_EQ(expected_description,
+            api_map.GetApiDef("testop")->in_arg(0).description());
+  EXPECT_EQ("New description: " + expected_description,
+            api_map.GetApiDef("testop")->out_arg(0).description());
+  EXPECT_EQ(expected_description,
+            api_map.GetApiDef("testop")->attr(0).description());
 }
 }  // namespace
 }  // namespace tensorflow

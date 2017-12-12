@@ -51,7 +51,8 @@ message ApiDef {
   // endpoints are deprecated).
   message Endpoint {
     // Name should be either like "CamelCaseName" or
-    // "Package.CamelCaseName".
+    // "Package.CamelCaseName". Client-language-specific ApiDefs may
+    // use a snake_case convention instead of CamelCase.
     string name = 1;
 
     // First GraphDef version at which the op is disallowed.
@@ -74,7 +75,7 @@ message ApiDef {
   }
   repeated Arg in_arg = 4;
   repeated Arg out_arg = 5;
-  // List of post-rename in_arg names to specify new argument order.
+  // List of original in_arg names to specify new argument order.
   // Length of arg_order should be either empty to keep current order
   // or match size of in_arg.
   repeated string arg_order = 11;

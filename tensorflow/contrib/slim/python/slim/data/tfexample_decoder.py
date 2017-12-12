@@ -243,6 +243,40 @@ class LookupTensor(Tensor):
     return self._table.lookup(unmapped_tensor)
 
 
+class BackupHandler(ItemHandler):
+  """An ItemHandler that tries two ItemHandlers in order."""
+
+  def __init__(self, handler, backup):
+    """Initializes the BackupHandler handler.
+
+    If the first Handler's tensors_to_item returns a Tensor with no elements,
+    the second Handler is used.
+
+    Args:
+      handler: The primary ItemHandler.
+      backup: The backup ItemHandler.
+
+    Raises:
+      ValueError: if either is not an ItemHandler.
+    """
+    if not isinstance(handler, ItemHandler):
+      raise ValueError('Primary handler is of type %s instead of ItemHandler'
+                       % type(handler))
+    if not isinstance(backup, ItemHandler):
+      raise ValueError('Backup handler is of type %s instead of ItemHandler'
+                       % type(backup))
+    self._handler = handler
+    self._backup = backup
+    super(BackupHandler, self).__init__(handler.keys + backup.keys)
+
+  def tensors_to_item(self, keys_to_tensors):
+    item = self._handler.tensors_to_item(keys_to_tensors)
+    return control_flow_ops.cond(
+        pred=math_ops.equal(math_ops.reduce_prod(array_ops.shape(item)), 0),
+        true_fn=lambda: self._backup.tensors_to_item(keys_to_tensors),
+        false_fn=lambda: item)
+
+
 class SparseTensor(ItemHandler):
   """An ItemHandler for SparseTensors."""
 

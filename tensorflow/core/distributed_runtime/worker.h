@@ -52,6 +52,10 @@ class Worker : public WorkerInterface {
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override;
 
+  void DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+                                DeleteWorkerSessionResponse* response,
+                                StatusCallback done) override;
+
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
                           StatusCallback done) override;

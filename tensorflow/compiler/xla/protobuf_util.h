@@ -32,17 +32,12 @@ namespace protobuf_util {
 extern bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
                            const tensorflow::protobuf::Message& m2);
 
-// Returns 'message' as a JSON string.
-StatusOr<string> ToJson(const tensorflow::protobuf::Message& message);
-
-// Writes the given message in binary proto or JSON format to the path formed by
-// joining 'directory/file_name.pb' (or file_name.json). The 'directory' is
-// recursively created if it doesn't already exist, and the 'file_name' is
-// sanitized by replacing illegal characters with underscore '_'.
+// Writes the given message in binary proto to the path formed by joining
+// 'directory/file_name.pb'. The 'directory' is recursively created if it
+// doesn't already exist, and the 'file_name' is sanitized by replacing
+// illegal characters with underscore '_'.
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
                             const string& directory, const string& file_name);
-Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,
-                           const string& directory, const string& file_name);
 
 }  // namespace protobuf_util
 }  // namespace xla
