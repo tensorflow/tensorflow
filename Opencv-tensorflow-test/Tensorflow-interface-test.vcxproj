@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{7A7BFB83-CE3A-48ED-A5DB-693745AD300E}</ProjectGuid>
+    <RootNamespace>Tensorflowinterfacetest</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>C:\Users\chemf\source\repos\tensorflow;C:\Users\chemf\source\repos\tensorflow\build\external\eigen_archive;C:\Users\chemf\source\repos\tensorflow\third_party\eigen3;C:\Users\chemf\source\repos\tensorflow\build\protobuf\src\protobuf\src;C:\Users\chemf\source\repos\tensorflow\build\external\nsync\public;C:\Users\chemf\source\repos\tensorflow\build;C:\Users\chemf\source\repos\tensorflow\build\external\zlib_archive;C:\Users\chemf\source\repos\tensorflow\build\external\gif_archive\giflib-5.1.4;C:\Users\chemf\source\repos\tensorflow\build\external\png_archive;C:\Users\chemf\source\repos\tensorflow\build\external\jpeg_archive;C:\Users\chemf\source\repos\tensorflow\build\external\lmdb;C:\Users\chemf\source\repos\tensorflow\build\gemmlowp\src\gemmlowp;C:\Users\chemf\source\repos\tensorflow\build\jsoncpp\src\jsoncpp;C:\Users\chemf\source\repos\tensorflow\build\external\farmhash_archive;C:\Users\chemf\source\repos\tensorflow\build\external\farmhash_archive\util;C:\Users\chemf\source\repos\tensorflow\build\external\highwayhash;C:\Users\chemf\source\repos\tensorflow\build\cub\src\cub;C:\Users\chemf\source\repos\tensorflow\build\re2\install\include;C:\Users\chemf\source\repos\tensorflow\build\external\sqlite;C:\Users\chemf\source\repos\tensorflow\build\grpc\src\grpc\include;C:\Users\chemf\source\repos\tensorflow\build\snappy\src\snappy;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\extras\CUPTI\include;C:\cudnn_6.0_cuda_8;C:\Users\chemf\source\repos\tensorflow\third_party\gpus;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>COMPILER_MSVC;NOMINMAX;TENSORFLOW_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>..\build\zlib\install\lib\zlibstatic.lib;..\build\gif\install\lib\giflib.lib;..\build\png\install\lib\libpng12_static.lib;..\build\jpeg\install\lib\libjpeg.lib;..\build\lmdb\install\lib\lmdb.lib;..\build\jsoncpp\src\jsoncpp\src\lib_json\$(Configuration)\jsoncpp.lib;..\build\farmhash\install\lib\farmhash.lib;..\build\fft2d\\src\lib\fft2d.lib;..\build\highwayhash\install\lib\highwayhash.lib;..\build\nsync\src\nsync\Release\nsync.lib;..\build\snappy\src\snappy\Release\snappy.lib;..\build\protobuf\src\protobuf\Release\libprotobuf.lib;..\build\tf_cc.dir\Release\tf_cc.lib;..\build\tf_cc_ops.dir\Release\tf_cc_ops.lib;..\build\tf_cc_framework.dir\Release\tf_cc_framework.lib;..\build\tf_core_cpu.dir\Release\tf_core_cpu.lib;..\build\tf_core_direct_session.dir\Release\tf_core_direct_session.lib;..\build\tf_core_framework.dir\Release\tf_core_framework.lib;..\build\tf_core_kernels.dir\Release\tf_core_kernels.lib;..\build\tf_core_lib.dir\Release\tf_core_lib.lib;..\build\tf_core_ops.dir\Release\tf_core_ops.lib;..\build\tf_cc_while_loop.dir\Release\tf_cc_while_loop.lib;..\build\Release\tf_protos_cc.lib;..\build\sqlite\install\lib\sqlite.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/machine:x64 
+/ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221
+/WHOLEARCHIVE:tf_cc.lib 
+/WHOLEARCHIVE:tf_cc_framework.lib
+/WHOLEARCHIVE:tf_cc_ops.lib 
+/WHOLEARCHIVE:tf_core_cpu.lib
+/WHOLEARCHIVE:tf_core_direct_session.lib 
+/WHOLEARCHIVE:tf_core_framework.lib
+/WHOLEARCHIVE:tf_core_kernels.lib 
+/WHOLEARCHIVE:tf_core_lib.lib
+/WHOLEARCHIVE:tf_core_ops.lib   
+/WHOLEARCHIVE:tf_stream_executor.lib
+/WHOLEARCHIVE:libjpeg.lib %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="tensorflow_interface.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tensorflow_interface.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
