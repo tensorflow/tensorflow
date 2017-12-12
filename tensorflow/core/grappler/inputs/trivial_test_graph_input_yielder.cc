@@ -39,8 +39,8 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
 
   // x is from the feed.
   const int batch_size = tensor_size < 0 ? 1 : tensor_size;
-  Output x =
-      RandomNormal(s.WithOpName("x"), {batch_size, 1}, DataType::DT_FLOAT);
+  Output x = RandomNormal(s.WithOpName("x").WithDevice("/CPU:0"),
+                          {batch_size, 1}, DataType::DT_FLOAT);
 
   // Create stages.
   std::vector<Output> last_stage;
@@ -64,16 +64,19 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
   }
 
   if (insert_queue) {
-    FIFOQueue queue(s.WithOpName("queue"), {DataType::DT_FLOAT});
-    QueueEnqueue enqueue(s.WithOpName("enqueue"), queue, last_stage);
-    QueueDequeue dequeue(s.WithOpName("dequeue"), queue, {DataType::DT_FLOAT});
-    QueueClose cancel(s.WithOpName("cancel"), queue,
+    FIFOQueue queue(s.WithOpName("queue").WithDevice("/CPU:0"),
+                    {DataType::DT_FLOAT});
+    QueueEnqueue enqueue(s.WithOpName("enqueue").WithDevice("/CPU:0"), queue,
+                         last_stage);
+    QueueDequeue dequeue(s.WithOpName("dequeue").WithDevice("/CPU:0"), queue,
+                         {DataType::DT_FLOAT});
+    QueueClose cancel(s.WithOpName("cancel").WithDevice("/CPU:0"), queue,
                       QueueClose::CancelPendingEnqueues(true));
     last_stage = {dequeue[0]};
   }
 
   // Create output.
-  AddN output(s.WithOpName("y"), last_stage);
+  AddN output(s.WithOpName("y").WithDevice("/CPU:0"), last_stage);
 
   GraphDef def;
   TF_CHECK_OK(s.ToGraphDef(&def));

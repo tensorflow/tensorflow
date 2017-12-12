@@ -38,11 +38,13 @@ struct OpRegistrationData {
  public:
   OpRegistrationData() {}
   OpRegistrationData(const OpDef& def) : op_def(def) {}
-  OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn)
-      : op_def(def), shape_inference_fn(fn) {}
+  OpRegistrationData(const OpDef& def, const OpShapeInferenceFn& fn,
+                     bool is_function = false)
+      : op_def(def), shape_inference_fn(fn), is_function_op(is_function) {}
 
   OpDef op_def;
   OpShapeInferenceFn shape_inference_fn;
+  bool is_function_op = false;
 };
 
 // Builder class passed to the REGISTER_OP() macro.

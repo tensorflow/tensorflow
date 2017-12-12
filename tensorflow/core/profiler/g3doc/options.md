@@ -43,7 +43,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 ### Times
 
-Most machines have mutli-core CPUs. Some installs one or more accelerators.
+Most machines have multi-core CPUs. Some installs one or more accelerators.
 Each accelerator usually performs massive parallel processing. The profiler
 tracks the accumulated processing times. Hence, the accumulated processing
 time is likely larger than the time of each step.
@@ -60,11 +60,14 @@ Currently, profiler only tracks the allocation of memory. As a result, the
 accumulated memory request is uaually larger than the peak memory of the overall
 model.
 
-bytes: The memory allocations requested by the operation.
-peak_bytes: The peak requested memory (not de-allocated) by the operation.
-residual_bytes: The memory requested by the operation and not de-allocated
+It's recommended to generate timeline to see the allocator memory usage over
+time.
+
+`bytes`: The memory allocations requested by the operation.
+`peak_bytes`: The peak requested memory (not de-allocated) by the operation.
+`residual_bytes`: The memory requested by the operation and not de-allocated
                 when Compute finishes.
-output_bytes: The memory output by the operation. It's not necessarily requested
+`output_bytes`: The memory output by the operation. It's not necessarily requested
               by the current operation. For example, it can be a tensor
               forwarded from input to output, with in-place mutation.
 

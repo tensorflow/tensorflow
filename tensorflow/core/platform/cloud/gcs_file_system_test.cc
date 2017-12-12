@@ -127,12 +127,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
            "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 18-26\n",
-           ""),
-       new FakeHttpRequest(
-           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
-           "Auth Token: fake_token\n"
-           "Range: 0-8\n",
-           "012345678")});
+           "")});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -182,8 +177,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
               file->Read(20, 10, &result, scratch).code());
     EXPECT_TRUE(result.empty());
 
-    // The beginning of the file has been evicted from the LRU cache.  This will
-    // result in another request. The buffer size is still 15.
+    // The beginning of the file should still be in the LRU cache. There should
+    // not be another request. The buffer size is still 15.
     TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
   }
 
@@ -1637,7 +1632,7 @@ TEST(GcsFileSystemTest, Stat_Object) {
   FileStatistics stat;
   TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
   EXPECT_EQ(1010, stat.length);
-  EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+  EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
   EXPECT_FALSE(stat.is_directory);
 }
 
@@ -1771,7 +1766,7 @@ TEST(GcsFileSystemTest, Stat_Cache) {
     FileStatistics stat;
     TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
     EXPECT_EQ(1010, stat.length);
-    EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+    EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
     TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder", &stat));
     EXPECT_EQ(0, stat.length);

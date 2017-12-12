@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -209,6 +210,13 @@ Status FindCompilationCandidates(
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
+    // _Retval nodes in a top-level function represent fetches.
+    // Do not compile them.
+    if (node->type_string() == "_Retval") {
+      VLOG(2) << "Compilation rejected node: return value " << node->name()
+              << ": " << node->type_string();
+      continue;
+    }
     candidates->insert(node);
   }
   return Status::OK();
@@ -219,6 +227,43 @@ struct Cluster {
   // graph.
   int representative = -1;
 };
+
+// Returns a string describing how an edge from src to dst would
+// create a cycle.
+string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
+                     int dst) {
+  int32 max_path_size = graph.num_node_ids() + 1;
+  std::vector<int32> path(max_path_size);
+  int32 path_size = cycles.FindPath(dst, src, max_path_size, path.data());
+  if (path_size == 0) {
+    return "";
+  }
+
+  auto node_name = [&cycles, &graph](int node_id) {
+    auto* node = graph.FindNodeId(node_id);
+    if (node == nullptr) {
+      return string("(null)");
+    }
+    return node->name();
+  };
+
+  string description;
+  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
+                     node_name(dst), " would create a cycle.\n");
+  path.resize(path_size);
+  for (int32 node_id : path) {
+    string ascii_art;
+    if (node_id == dst) {
+      ascii_art = "+-> ";
+    } else if (node_id != src) {
+      ascii_art = "|   ";
+    } else {
+      ascii_art = "+-- ";
+    }
+    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
+  }
+  return description;
+}
 
 }  // anonymous namespace
 
@@ -252,9 +297,11 @@ Status MarkForCompilationPass::Run(
     global_jit_level =
         static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
   }
+  bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
-  auto is_compilable = [global_jit_level, fld](const Node* node,
-                                               const DeviceType& device_type) {
+
+  auto is_compilable = [global_jit_level, cpu_global_jit, fld](
+                           const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
                                              &registration)) {
@@ -277,7 +324,11 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return registration->enable_jit_by_default && global_jit_level > 0;
+    // Ignore enable_jit_by_default if global jit compilation for CPU
+    // is explicitly requested via tf_xla_cpu_global_jit flag
+    bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
+    return (ignore_registration || registration->enable_jit_by_default) &&
+           global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -354,9 +405,11 @@ Status MarkForCompilationPass::RunImpl(
       // Lift edges to an "Enter" node to the corresponding frame node.
       const string& frame_name =
           control_flow_info[edge->dst()->id()].frame_name;
-      if (!cycles.InsertEdge(edge->src()->id(),
-                             GetOrAddFrameNodeId(frame_name))) {
-        return errors::Internal("Cycle detected when adding enter->frame edge");
+      int dst = GetOrAddFrameNodeId(frame_name);
+      if (!cycles.InsertEdge(edge->src()->id(), dst)) {
+        return errors::Internal(
+            "Cycle detected when adding enter->frame edge: ",
+            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
       }
       continue;
     }
@@ -364,9 +417,11 @@ Status MarkForCompilationPass::RunImpl(
       // Lift edges from an "Exit" node to the corresponding frame node.
       const string& frame_name =
           control_flow_info[edge->src()->id()].frame_name;
-      if (!cycles.InsertEdge(GetOrAddFrameNodeId(frame_name),
-                             edge->dst()->id())) {
-        return errors::Internal("Cycle detected when adding frame->exit edge");
+      int src = GetOrAddFrameNodeId(frame_name);
+      if (!cycles.InsertEdge(src, edge->dst()->id())) {
+        return errors::Internal(
+            "Cycle detected when adding frame->exit edge: ",
+            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
       }
       // Drop the original edge.
       continue;
@@ -380,7 +435,8 @@ Status MarkForCompilationPass::RunImpl(
       // a control flow operator.
       return errors::Internal(
           "Found cycle in graph without control flow operator during XLA "
-          "compilation.");
+          "compilation: ",
+          DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
   }
 
@@ -513,10 +569,12 @@ Status MarkForCompilationPass::RunImpl(
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
         registration->requires_compilation) {
       string& name = cluster_names[cluster];
+
       if (name.empty()) {
         name = strings::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
+      VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
     }
   }
 

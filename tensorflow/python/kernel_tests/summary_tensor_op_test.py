@@ -154,7 +154,7 @@ class SummaryOpsTest(test.TestCase):
       self.assertEqual(descr.display_name, "my name")
       self.assertEqual(descr.summary_description, "my description")
 
-      # If both SummmaryMetadata and explicit args are provided, the args win
+      # If both SummaryMetadata and explicit args are provided, the args win
       overwrite = summary_ops.tensor_summary(
           "simple",
           const,

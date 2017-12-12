@@ -2,6 +2,27 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
+
+cc_library(
+    name = "interpreter_transfer_manager",
+    srcs = ["interpreter_transfer_manager.cc"],
+    hdrs = ["interpreter_transfer_manager.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:generic_transfer_manager",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service/interpreter:platform_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
 cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
@@ -31,8 +52,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -43,11 +64,12 @@ cc_library(
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
     deps = [
-        "//tensorflow/core:stream_executor_headers_lib",
         "@nsync//:nsync_headers",
-        "@protobuf_archive//:protobuf_headers",
-        "@protobuf_archive//:protoc_lib",
-    ],
+        "//tensorflow/core:stream_executor_headers_lib",
+    ] + if_static(
+        ["@protobuf_archive//:protobuf"],
+        ["@protobuf_archive//:protobuf_headers"],
+    ),
 )
 
 cc_library(

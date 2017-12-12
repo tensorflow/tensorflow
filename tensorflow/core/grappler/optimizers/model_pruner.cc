@@ -26,16 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-int NumNonControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
-  for (int i = 0; i < node.input_size(); ++i) {
-    if (!node.input(i).empty() && node.input(i)[0] == '^') {
-      num_inputs--;
-    }
-  }
-  return num_inputs;
-}
-
 bool IsTrivialOp(const NodeDef& node) {
   // Remove the stop gradient nodes since they serve no purpose once the graph
   // is built. Also remove Identity ops.
@@ -104,7 +94,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     // - Don't remove nodes that receive reference values, as those can be
     //   converting references to non-references. It is important to preserve
     //   these non-references since the partitioner will avoid sending
-    //   non-references accross partitions more than once.
+    //   non-references across partitions more than once.
     if (!rewriter.DrivesControlDependency(node) &&
         !rewriter.IsDrivenByControlDependency(node) &&
         !rewriter.IsConnectedToFunction(node) &&

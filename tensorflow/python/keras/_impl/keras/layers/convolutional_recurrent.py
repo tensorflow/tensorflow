@@ -338,6 +338,7 @@ class ConvLSTM2D(ConvRecurrent2D):
         return_sequences=return_sequences,
         go_backwards=go_backwards,
         stateful=stateful,
+        activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
@@ -351,7 +352,6 @@ class ConvLSTM2D(ConvRecurrent2D):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
 
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.recurrent_constraint = constraints.get(recurrent_constraint)
@@ -536,7 +536,7 @@ class ConvLSTM2D(ConvRecurrent2D):
       conv_out = K.bias_add(conv_out, b, data_format=self.data_format)
     return conv_out
 
-  def reccurent_conv(self, x, w):
+  def recurrent_conv(self, x, w):
     conv_out = K.conv2d(
         x, w, strides=(1, 1), padding='same', data_format=self.data_format)
     return conv_out
@@ -556,10 +556,10 @@ class ConvLSTM2D(ConvRecurrent2D):
         inputs * dp_mask[2], self.kernel_c, self.bias_c, padding=self.padding)
     x_o = self.input_conv(
         inputs * dp_mask[3], self.kernel_o, self.bias_o, padding=self.padding)
-    h_i = self.reccurent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
-    h_f = self.reccurent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
-    h_c = self.reccurent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
-    h_o = self.reccurent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
+    h_i = self.recurrent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
+    h_f = self.recurrent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
+    h_c = self.recurrent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
+    h_o = self.recurrent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
 
     i = self.recurrent_activation(x_i + h_i)
     f = self.recurrent_activation(x_f + h_f)

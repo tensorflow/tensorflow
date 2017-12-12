@@ -1,5 +1,12 @@
 # Adding a New Op
 
+Note: By default [tensorflow.org](http://tensorflow.org) shows docs for the
+most recent stable version. The instructions in this doc require building from
+source. You will probably want to build from the `master` version of tensorflow.
+You should, as a result, be sure you are following the
+[`master` version of this doc](https://www.tensorflow.org/versions/master/extend/adding_an_op),
+in case there have been any changes.
+
 If you'd like to create an op that isn't covered by the existing TensorFlow
 library, we recommend that you first try writing the op in Python as
 a composition of existing Python ops or functions. If that isn't possible, you
@@ -181,7 +188,7 @@ suggested implementation is to:
 Here is an example implementation.
 
 ```c++
-// example.h
+// kernel_example.h
 #ifndef KERNEL_EXAMPLE_H_
 #define KERNEL_EXAMPLE_H_
 
@@ -190,12 +197,19 @@ struct ExampleFunctor {
   void operator()(const Device& d, int size, const T* in, T* out);
 };
 
+#if GOOGLE_CUDA
+// Partially specialize functor for GpuDevice.
+template <typename Eigen::GpuDevice, typename T>
+struct ExampleFunctor {
+  void operator()(const Eigen::GpuDevice& d, int size, const T* in, T* out);
+};
+#endif
+
 #endif KERNEL_EXAMPLE_H_
 ```
 
 ```c++
-// example.cc
-#define EIGEN_USE_THREADS
+// kernel_example.cc
 #include "example.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -252,6 +266,8 @@ REGISTER_CPU(int32);
 // Register the GPU kernels.
 #ifdef GOOGLE_CUDA
 #define REGISTER_GPU(T)                                          \
+  /* Declare explicit instantiations in kernel_example.cu.cc. */ \
+  extern template ExampleFunctor<GPUDevice, float>;              \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Example").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ExampleOp<GPUDevice, T>);
@@ -261,17 +277,15 @@ REGISTER_GPU(int32);
 ```
 
 ```c++
+// kernel_example.cu.cc
 #ifdef GOOGLE_CUDA
-
 #define EIGEN_USE_GPU
-#define EIGEN_USE_THREADS
-
 #include "example.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 using namespace tensorflow;
 
-#define EIGEN_USE_GPU
+using GPUDevice = Eigen::GpuDevice;
 
 // Define the CUDA kernel.
 template <typename T>
@@ -284,21 +298,19 @@ __global__ void ExampleCudaKernel(const int size, const T* in, T* out) {
 
 // Define the GPU implementation that launches the CUDA kernel.
 template <typename T>
-struct ExampleFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
-    // Launch the cuda kernel.
-    //
-    // See core/util/cuda_kernel_helper.h for example of computing
-    // block count and thread_per_block count.
-    int block_count = 1024;
-    int thread_per_block = 20;
-    ExampleCudaKernel<T>
-        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
-  }
-};
+void ExampleFunctor<GPUDevice, T>::operator()(
+    const GPUDevice& d, int size, const T* in, T* out) {
+  // Launch the cuda kernel.
+  //
+  // See core/util/cuda_kernel_helper.h for example of computing
+  // block count and thread_per_block count.
+  int block_count = 1024;
+  int thread_per_block = 20;
+  ExampleCudaKernel<T>
+      <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+}
 
-// Instantiate functors for the types of OpKernels registered.
-typedef Eigen::GpuDevice GPUDevice;
+// Explicitly instantiate functors for the types of OpKernels registered.
 template struct ExampleFunctor<GPUDevice, float>;
 template struct ExampleFunctor<GPUDevice, int32>;
 
@@ -312,24 +324,26 @@ You should be able to compile `zero_out.cc` with a `C++` compiler such as `g++`
 or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
-`get_include` function to get the header directory.
-Here is the output of this function on an Ubuntu machine.
+`get_include` function to get the header directory, and the `get_lib` directory
+has a shared object to link against.
+Here are the outputs of these functions on an Ubuntu machine.
 
 ```bash
 $ python
 >>> import tensorflow as tf
 >>> tf.sysconfig.get_include()
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
-
+>>> tf.sysconfig.get_lib()
+'/usr/local/lib/python2.7/site-packages/tensorflow'
 ```
 
 Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your op into a dynamic library.
 
 ```bash
-TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
-
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I$TF_INC -I$TF_INC/external/nsync/public -O2
+TF_CFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
+TF_LFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -437,17 +451,17 @@ Now that you know how to build a basic (and somewhat restricted) op and
 implementation, we'll look at some of the more complicated things you will
 typically need to build into your op. This includes:
 
-*   [Conditional checks and validation](#conditional_checks_and_validation)
-*   [Op registration](#op_registration)
+*   [Conditional checks and validation](#conditional-checks-and-validation)
+*   [Op registration](#op-registration)
     *   [Attrs](#attrs)
-    *   [Attr types](#attr_types)
+    *   [Attr types](#attr-types)
     *   [Polymorphism](#polymorphism)
-    *   [Inputs and outputs](#inputs_and_outputs)
-    *   [Backwards compatibility](#backwards_compatibility)
-*   [GPU support](#gpu_support)
-    *   [Compiling the kernel for the GPU device](#compiling_the_kernel_for_the_gpu_device)
-*   [Implement the gradient in Python](#implement_the_gradient_in_python)
-*   [Shape functions in C++](#shape_functions_in_c)
+    *   [Inputs and outputs](#inputs-and-outputs)
+    *   [Backwards compatibility](#backwards-compatibility)
+*   [GPU support](#gpu-support)
+    *   [Compiling the kernel for the GPU device](#compiling-the-kernel-for-the-gpu-device)
+*   [Implement the gradient in Python](#implement-the-gradient-in-python)
+*   [Shape functions in C++](#shape-functions-in-c)
 
 ### Conditional checks and validation
 
@@ -1214,10 +1228,10 @@ into a single dynamically loadable library:
 
 ```bash
 nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
--I $TF_INC -I$TF_INC/external/nsync/public -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+  ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-cuda_op_kernel.cu.o -I $TF_INC -I$TF_INC/external/nsync/public -fPIC -lcudart
+  cuda_op_kernel.cu.o ${TF_CFLAGS[@]} -fPIC -lcudart ${TF_LFLAGS[@]}
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the

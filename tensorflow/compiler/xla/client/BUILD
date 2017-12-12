@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
@@ -39,12 +41,14 @@ cc_library(
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "padding_test",
     srcs = ["padding_test.cc"],
     deps = [
@@ -166,6 +170,7 @@ cc_library(
         ":computation",
         ":global_data",
         ":padding",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",

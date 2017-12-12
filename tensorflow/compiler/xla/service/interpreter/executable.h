@@ -40,7 +40,7 @@ namespace interpreter {
 // buffer allocation. Refer to interpreter/README.md for more.
 class InterpreterExecutable : public Executable {
  public:
-  InterpreterExecutable(std::unique_ptr<HloModule> hlo_module);
+  InterpreterExecutable(std::unique_ptr<const HloModule> hlo_module);
   ~InterpreterExecutable() override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
@@ -60,8 +60,6 @@ class InterpreterExecutable : public Executable {
           arguments) override;
 
   static int64 ShapeSizeBytes(const Shape& shape);
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutable);

@@ -92,10 +92,12 @@ tf_py_test(
     additional_deps = [
         ":kalman_filter",
         "//third_party/py/numpy",
+        "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -210,6 +212,7 @@ tf_py_test(
     name = "varma_test",
     srcs = ["varma_test.py"],
     additional_deps = [
+        ":state_space_model",
         ":varma",
         "//tensorflow/contrib/timeseries/python/timeseries:feature_keys",
         "//tensorflow/python:client",

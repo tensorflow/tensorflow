@@ -34,6 +34,12 @@ struct HeaderOpts {
   // Namespaces specifies a list of C++ namespaces to add to the generated
   // header.  If empty, all symbols will be in the global namespace.
   std::vector<string> namespaces;
+
+  // If true, generate name-to-index data for Lookup{Arg,Result}Index methods.
+  bool gen_name_to_index = false;
+
+  // If true, generate program shape data for the ProgramShape method.
+  bool gen_program_shape = false;
 };
 
 // GenerateHeader uses the meta-information from compile_result to generate a

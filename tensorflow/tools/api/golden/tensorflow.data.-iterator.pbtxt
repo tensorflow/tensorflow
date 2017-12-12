@@ -1,0 +1,45 @@
+path: "tensorflow.data.Iterator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.iterator_ops.Iterator\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "initializer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_classes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_shapes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_types"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'iterator_resource\', \'initializer\', \'output_types\', \'output_shapes\', \'output_classes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_string_handle"
+    argspec: "args=[\'string_handle\', \'output_types\', \'output_shapes\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_structure"
+    argspec: "args=[\'output_types\', \'output_shapes\', \'shared_name\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_next"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "make_initializer"
+    argspec: "args=[\'self\', \'dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "string_handle"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

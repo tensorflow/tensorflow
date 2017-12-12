@@ -99,6 +99,11 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
     }
   }
 
+  // Ensure out of memory errors work and do not prevent future allocations from
+  // working.
+  void* out_of_memory_ptr = a.AllocateRaw(1, (1 << 30) + 1);
+  CHECK_EQ(out_of_memory_ptr, nullptr);
+
   // Allocate a lot of raw pointers
   for (int s = 1; s < 256; s++) {
     size_t size = std::min<size_t>(
@@ -348,6 +353,109 @@ static void BM_AllocationDelayed(int iters, int delay) {
 BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 
 }  // namespace
+
+class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
+ protected:
+  // The following test methods are called from tests. The reason for this is
+  // that this class is a friend class to BFCAllocator, but tests are not, so
+  // only methods inside this class can access private members of BFCAllocator.
+
+  void TestBinDebugInfo() {
+    GPUBFCAllocator a(0, 1 << 30);
+
+    std::vector<void*> initial_ptrs;
+    std::vector<size_t> initial_ptrs_allocated_sizes;
+    for (int i = 0; i < 5; i++) {
+      for (int j = 0; j < 2; j++) {
+        size_t size = 256 << i;
+        void* raw = a.AllocateRaw(1, size);
+        ASSERT_NE(raw, nullptr);
+        initial_ptrs.push_back(raw);
+        initial_ptrs_allocated_sizes.push_back(a.AllocatedSize(raw));
+      }
+    }
+
+    std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins> bin_infos;
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+      if (i < 5) {
+        const size_t requested_size = 2 * (256 << i);
+        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]) +
+                                      a.RequestedSize(initial_ptrs[2 * i + 1]));
+        size_t allocated_size = initial_ptrs_allocated_sizes[2 * i] +
+                                initial_ptrs_allocated_sizes[2 * i + 1];
+        EXPECT_EQ(bin_info.total_bytes_in_use, allocated_size);
+        EXPECT_EQ(bin_info.total_bytes_in_bin, allocated_size);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 2);
+        EXPECT_EQ(bin_info.total_chunks_in_bin, 2);
+      } else {
+        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+        if (i == BFCAllocator::kNumBins - 1) {
+          EXPECT_GT(bin_info.total_bytes_in_bin, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, 1);
+        } else {
+          EXPECT_EQ(bin_info.total_bytes_in_bin, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, 0);
+        }
+      }
+    }
+
+    for (size_t i = 1; i < initial_ptrs.size(); i += 2) {
+      a.DeallocateRaw(initial_ptrs[i]);
+      initial_ptrs[i] = nullptr;
+    }
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+      if (i < 5) {
+        // We cannot assert the exact number of bytes or chunks in the bin,
+        // because it depends on what chunks were coalesced.
+        size_t requested_size = 256 << i;
+        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]));
+        EXPECT_EQ(bin_info.total_bytes_in_use,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_GE(bin_info.total_bytes_in_bin,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 1);
+        EXPECT_GE(bin_info.total_chunks_in_bin, 1);
+      } else {
+        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+      }
+    }
+  }
+
+  void TestLog2FloorNonZeroSlow() {
+    GPUBFCAllocator a(0 /* device_id */, 1 /* total_memory */);
+    EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
+    EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(3));
+    EXPECT_EQ(9, a.Log2FloorNonZeroSlow(1023));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1024));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1025));
+  }
+};
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
+  TestLog2FloorNonZeroSlow();
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

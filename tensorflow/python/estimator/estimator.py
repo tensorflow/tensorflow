@@ -26,9 +26,12 @@ import tempfile
 import numpy as np
 import six
 
+from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
@@ -43,13 +46,15 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import nest
 
 
 _VALID_MODEL_FN_ARGS = set(
@@ -85,6 +90,10 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -127,10 +136,15 @@ class Estimator(object):
               Keys are names of parameters, values are basic python types.
 
     Raises:
+      RuntimeError: If eager execution is enabled.
       ValueError: parameters of `model_fn` don't match `params`.
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Estimators are not supported when eager execution is enabled.')
+
     Estimator._assert_members_are_not_overridden(self)
 
     if config is None:
@@ -146,6 +160,7 @@ class Estimator(object):
     # Model directory.
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
+        # TODO(alanyee): remove this suppression after it is no longer needed
         # pylint: disable=g-doc-exception
         raise ValueError(
             "model_dir are set both in constructor and RunConfig, but with "
@@ -201,7 +216,49 @@ class Estimator(object):
 
     return public_model_fn
 
-  def train(self, input_fn, hooks=None, steps=None, max_steps=None):
+  # TODO(ispir): support a list of names
+  def get_variable_value(self, name):
+    """Returns value of the variable given by name.
+
+    Args:
+      name: string or a list of string, name of the tensor.
+
+    Returns:
+      Numpy array - value of the tensor.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return training.load_variable(self.model_dir, name)
+
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return [name for name, _ in training.list_variables(self.model_dir)]
+
+  def latest_checkpoint(self):
+    """Finds the filename of latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return saver.latest_checkpoint(self.model_dir)
+
+  def train(self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None):
     """Trains a model given training data input_fn.
 
     Args:
@@ -222,11 +279,12 @@ class Estimator(object):
         or `StopIteration` exception. If set, `steps` must be `None`. If
         `OutOfRange` or `StopIteration` occurs in the middle, training stops
         before `max_steps` steps.
-
         Two calls to `train(steps=100)` means 200 training
         iterations. On the other hand, two calls to `train(max_steps=100)` means
         that the second call will not do any iteration since first call did
         all 100 steps.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       `self`, for chaining.
@@ -252,7 +310,8 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     hooks.extend(self._convert_train_steps_to_hooks(steps, max_steps))
 
-    loss = self._train_model(input_fn=input_fn, hooks=hooks)
+    saving_listeners = _check_listeners_type(saving_listeners)
+    loss = self._train_model(input_fn, hooks, saving_listeners)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -320,7 +379,7 @@ class Estimator(object):
               predict_keys=None,
               hooks=None,
               checkpoint_path=None):
-    """Returns predictions for given features.
+    """Yields predictions for given features.
 
     Args:
       input_fn: Input function returning features which is a dictionary of
@@ -358,7 +417,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       self._create_and_assert_global_step(g)
-      features = self._get_features_from_input_fn(
+      features, input_hooks = self._get_features_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.PREDICT)
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
@@ -368,7 +427,7 @@ class Estimator(object):
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=hooks) as mon_sess:
+          hooks=input_hooks + hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
           if not isinstance(predictions, dict):
@@ -403,7 +462,11 @@ class Estimator(object):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
+
+    For a detailed guide, see
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
 
     This method builds a new graph by first calling the
     serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
@@ -448,6 +511,7 @@ class Estimator(object):
       ValueError: if no serving_input_receiver_fn is provided, no export_outputs
           are provided, or no checkpoint can be found.
     """
+    # pylint: enable=line-too-long
     if serving_input_receiver_fn is None:
       raise ValueError('serving_input_receiver_fn must be defined.')
 
@@ -466,7 +530,8 @@ class Estimator(object):
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = build_all_signature_defs(
           serving_input_receiver.receiver_tensors,
-          estimator_spec.export_outputs)
+          estimator_spec.export_outputs,
+          serving_input_receiver.receiver_tensors_alternatives)
 
       if not checkpoint_path:
         # Locate the latest checkpoint
@@ -478,7 +543,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session() as session:
+      with tf_session.Session(config=self._session_config) as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
@@ -516,23 +581,37 @@ class Estimator(object):
       return export_dir
 
   def _get_features_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
-    if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
-      logging.warning('Input graph does not contain a QueueRunner. '
-                      'That means predict yields forever. '
-                      'This is probably a mistake.')
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
-      return result[0]
-    return result
+      # Unconditionally drop the label (the second element of result).
+      result = result[0]
+
+    if not _has_dataset_or_queue_runner(result):
+      logging.warning('Input graph does not use tf.data.Dataset or contain a '
+                      'QueueRunner. That means predict yields forever. '
+                      'This is probably a mistake.')
+    return result, input_hooks
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` and labels from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
             'input_fn should return (feautures, labels) as a len 2 tuple.')
-      return result
-    return result, None
+      return result[0], result[1], input_hooks
+    return result, None, input_hooks
 
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
@@ -650,18 +729,28 @@ class Estimator(object):
 
     return model_fn_results
 
-  def _train_model(self, input_fn, hooks):
-    all_hooks = []
+  def _train_model(self, input_fn, hooks, saving_listeners):
+    worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.TRAIN)
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.TRAIN))
+      worker_hooks.extend(input_hooks)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+      # Check if the user created a loss summary, and add one if they didn't.
+      # We assume here that the summary is called 'loss'. If it is not, we will
+      # make another one with the name 'loss' to ensure it shows up in the right
+      # graph in TensorBoard.
+      if not any([x.op.name == 'loss'
+                  for x in ops.get_collection(ops.GraphKeys.SUMMARIES)]):
+        summary.scalar('loss', estimator_spec.loss)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
-      all_hooks.extend(hooks)
-      all_hooks.extend([
+      worker_hooks.extend(hooks)
+      worker_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
           training.LoggingTensorHook(
               {
@@ -670,7 +759,7 @@ class Estimator(object):
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(estimator_spec.training_hooks)
+      worker_hooks.extend(estimator_spec.training_hooks)
 
       if not (estimator_spec.scaffold.saver or
               ops.get_collection(ops.GraphKeys.SAVERS)):
@@ -685,14 +774,12 @@ class Estimator(object):
                 save_relative_paths=True))
 
       chief_hooks = []
+      all_hooks = worker_hooks + list(estimator_spec.training_chief_hooks)
+      saver_hooks = [
+          h for h in all_hooks if isinstance(h, training.CheckpointSaverHook)]
       if (self._config.save_checkpoints_secs or
           self._config.save_checkpoints_steps):
-        saver_hook_exists = any([
-            isinstance(h, training.CheckpointSaverHook)
-            for h in (all_hooks + chief_hooks +
-                      list(estimator_spec.training_chief_hooks))
-        ])
-        if not saver_hook_exists:
+        if not saver_hooks:
           chief_hooks = [
               training.CheckpointSaverHook(
                   self._model_dir,
@@ -700,12 +787,23 @@ class Estimator(object):
                   save_steps=self._config.save_checkpoints_steps,
                   scaffold=estimator_spec.scaffold)
           ]
+          saver_hooks = [chief_hooks[0]]
+      if saving_listeners:
+        if not saver_hooks:
+          raise ValueError(
+              'There should be a CheckpointSaverHook to use saving_listeners. '
+              'Please set one of the RunConfig.save_checkpoints_steps or '
+              'RunConfig.save_checkpoints_secs.')
+        else:
+          # It is expected to have one CheckpointSaverHook. If multiple, we pick
+          # up the first one to add listener.
+          saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
       with training.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,
           checkpoint_dir=self._model_dir,
           scaffold=estimator_spec.scaffold,
-          hooks=all_hooks,
+          hooks=worker_hooks,
           chief_only_hooks=(
               tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
@@ -738,8 +836,9 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.EVAL)
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.EVAL))
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
 
@@ -760,7 +859,8 @@ class Estimator(object):
             'already defines a default metric with the same name.')
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
-      all_hooks = list(hooks or [])
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
       all_hooks.extend(list(estimator_spec.evaluation_hooks or []))
 
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
@@ -780,6 +880,13 @@ class Estimator(object):
     return eval_results
 
 
+def _check_checkpoint_available(model_dir):
+  latest_path = saver.latest_checkpoint(model_dir)
+  if not latest_path:
+    raise ValueError(
+        'Could not find trained model in model_dir: {}.'.format(model_dir))
+
+
 def _check_hooks_type(hooks):
   """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
   hooks = list(hooks or [])
@@ -787,6 +894,17 @@ def _check_hooks_type(hooks):
     if not isinstance(h, training.SessionRunHook):
       raise TypeError('Hooks must be a SessionRunHook, given: {}'.format(h))
   return hooks
+
+
+def _check_listeners_type(saving_listeners):
+  """Check listeners type."""
+  listeners = list(saving_listeners or [])
+  for l in listeners:
+    if not isinstance(l, training.CheckpointSaverListener):
+      raise TypeError(
+          'saving_listeners must be a list of CheckpointSaverListener, '
+          'given: {}'.format(l))
+  return listeners
 
 
 def _get_replica_device_setter(config):
@@ -838,9 +956,6 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  if tf_inspect.ismethod(model_fn):
-    if 'self' in args:
-      args.remove('self')
   non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
@@ -905,19 +1020,51 @@ def _write_dict_to_summary(output_dir,
       continue
     if key == 'global_step':
       continue
-    value = summary_proto.value.add()
-    value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
     elif (isinstance(dictionary[key], np.int64) or
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
-      value.simple_value = int(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int.',
-          key)
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
+
+
+def _has_dataset_or_queue_runner(maybe_tensor):
+  """Returns True if TF dataset or QueueRunner has been used."""
+  # Check TF dataset first. Here, we use a simple algorithm to check the top
+  # level Tensors only, which should be sufficient for most users.
+  tensors = [x for x in nest.flatten(maybe_tensor) if isinstance(x, ops.Tensor)]
+  if any([t.op.type == 'IteratorGetNext' for t in tensors]):
+    return True
+
+  # Now, check queue.
+  return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
+
+
+class _DatasetInitializerHook(training.SessionRunHook):
+
+  def __init__(self, iterator):
+    self._iterator = iterator
+
+  def begin(self):
+    self._initializer = self._iterator.initializer
+
+  def after_create_session(self, session, coord):
+    del coord
+    session.run(self._initializer)

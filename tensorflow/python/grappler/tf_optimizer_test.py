@@ -45,8 +45,8 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
-    self.assertEqual(len(graph.node), 3)
-    self.assertItemsEqual([node.name for node in graph.node], ['b', 'c', 'd'])
+    self.assertEqual(len(graph.node), 1)
+    self.assertItemsEqual([node.name for node in graph.node], ['d'])
 
 
 if __name__ == '__main__':

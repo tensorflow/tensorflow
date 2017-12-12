@@ -34,7 +34,6 @@
 @@BatchNormalization
 
 @@Layer
-@@Network
 @@Input
 @@InputSpec
 
@@ -66,9 +65,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 # Base objects.
 from tensorflow.python.layers.base import Layer
-from tensorflow.python.layers.base import Network
-from tensorflow.python.layers.base import Input
 from tensorflow.python.layers.base import InputSpec
+from tensorflow.python.layers.network import Input
 
 # Core layers.
 from tensorflow.python.layers.core import Dense

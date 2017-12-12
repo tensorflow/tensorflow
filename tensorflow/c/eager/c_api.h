@@ -43,14 +43,46 @@ limitations under the License.
 extern "C" {
 #endif
 
+typedef struct TFE_ContextOptions TFE_ContextOptions;
+
+// Return a new options object.
+TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions();
+
+// Set the config in TF_ContextOptions.options.
+// config should be a serialized tensorflow.ConfigProto proto.
+// If config was not parsed successfully as a ConfigProto, record the
+// error information in *status.
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
+    TFE_ContextOptions* options, const void* proto, size_t proto_len,
+    TF_Status* status);
+
+// Controls how to act when we try to run an operation on a given device but
+// some input tensors are not on that device.
+typedef enum TFE_ContextDevicePlacementPolicy {
+  // The default: running operations with input tensors on the wrong device will
+  // fail.
+  TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
+  // Copy the tensor to the right device but log a warning.
+  TFE_DEVICE_PLACEMENT_WARN = 1,
+  // Silently copy the tensor, which has a performance cost since the
+  // operation will be blocked till the copy completes.
+  TFE_DEVICE_PLACEMENT_SILENT = 2,
+} TFE_ContextDevicePlacementPolicy;
+
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
+    TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
+
+// Destroy an options object.
+TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
+
 // "Context" under which operations/functions are executed. It encapsulates
 // things like the available devices, resource manager etc.
 //
 // TODO(ashankar): Merge with TF_Session?
 typedef struct TFE_Context TFE_Context;
 
-TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(const TF_SessionOptions* opts,
-                                                  TF_Status* status);
+TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
+    const TFE_ContextOptions* opts, TF_Status* status);
 TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);
@@ -107,6 +139,12 @@ TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_St
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
                                                     unsigned char* is_list, TF_Status* status);
+// Get an attribute type given an op name; a fusion of TFE_NewOp and
+// TFE_OpGetAttrType for use from Python without the overhead of the individual
+// calls and memory management of TFE_Op.
+TF_CAPI_EXPORT extern TF_AttrType TFE_OpNameGetAttrType(
+    TFE_Context* ctx, const char* op_or_function_name, const char* attr_name,
+    unsigned char* is_list, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name,
                                                const char* value);
@@ -161,6 +199,13 @@ TF_CAPI_EXPORT extern void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals,
 TF_CAPI_EXPORT extern void TFE_ContextAddFunctionDef(TFE_Context* ctx,
                                                      const char* serialized_function_def,
                                                      size_t size, TF_Status* status);
+
+// Adds a function (created from TF_GraphToFunction or
+// TF_FunctionImportFunctionDef) to the context, allowing it to be executed with
+// TFE_Execute by creating an op with the same name as the function.
+TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
+                                                  TF_Function* function,
+                                                  TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

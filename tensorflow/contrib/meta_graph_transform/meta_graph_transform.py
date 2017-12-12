@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-import re
+import re as _re
 
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -644,7 +644,7 @@ def _is_removed_mentioned(s, removed_op_names):
   # /foo/bar. This regex ensures that we handle these two nodes
   # as separate entities.  It matches on nodes having names in the form of
   # '/foo/bar_x' as well as nodes having names in the form of 'foo.'
-  s_names = re.findall(r'((?:[\/]?[a-zA-Z]+[0-9\_]*)*)', compat.as_str_any(s))
+  s_names = _re.findall(r'((?:[\/]?[a-zA-Z0-9\_]*)*)', compat.as_str_any(s))
   for removed_op_name in removed_op_names:
     for s_name in s_names:
       if s_name.endswith(removed_op_name):
@@ -706,7 +706,8 @@ def meta_graph_transform(
     output_names: Names of output nodes.
     transforms: A list of strings naming the graph transforms to be applied in
       order.  These transform names are exactly those supported by the Graph
-      Transform Tool, with the addition of the 'freeze_graph' transform.
+      Transform Tool, with the addition of the 'freeze_graph' and
+      'sparsify_gather' transforms.
     tags: A list of tags with which to annotate the transformed MetaGraphDef.
     checkpoint_path: A path to a checkpoint to restore during freezing,
       if needed (default None).
@@ -748,7 +749,7 @@ def meta_graph_transform(
         base_meta_graph_def, meta_graph_def, collection_name,
         removed_op_names)
 
-  # Append newly added initalizers to collection.
+  # Append newly added initializers to collection.
   _add_new_inits_to_collection(meta_graph_def, updated_initializer_names)
 
   # Copy signature_defs, excluding any pruned nodes

@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_binary",
     "tf_copts",
     "tf_gen_op_wrappers_cc",
     "cc_library_with_android_deps",
@@ -18,13 +19,20 @@ load(
 
 cc_library(
     name = "gradients",
-    srcs = ["framework/gradients.cc"],
+    srcs = [
+        "framework/gradients.cc",
+        "framework/while_gradients.cc",
+        "framework/while_gradients.h",
+    ],
     hdrs = ["framework/gradients.h"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":ops",
         ":scope",
+        ":scope_internal",
+        ":while_loop",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -37,10 +45,33 @@ tf_cc_test(
     srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
+        ":client_session",
         ":grad_op_registry",
         ":grad_ops",
         ":gradients",
         ":testutil",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_while_gradients_test",
+    size = "small",
+    srcs = ["framework/while_gradients_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":grad_ops",
+        ":gradients",
+        ":testutil",
+        ":while_loop",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -390,6 +421,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
+    api_def_srcs = ["//tensorflow/core:base_api_def"],
     op_lib_names = [
         "array_ops",
         "audio_ops",
@@ -494,6 +526,9 @@ cc_library_with_android_deps(
         "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
+    data = [
+        "//tensorflow/core:base_api_def",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -502,6 +537,29 @@ cc_library_with_android_deps(
         "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cc_op_gen_test",
+    srcs = [
+        "framework/cc_op_gen.cc",
+        "framework/cc_op_gen.h",
+        "framework/cc_op_gen_test.cc",
+    ],
+    data = [
+        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:op_gen_overrides_proto_cc",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -536,7 +594,7 @@ tf_gen_op_wrappers_cc(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),

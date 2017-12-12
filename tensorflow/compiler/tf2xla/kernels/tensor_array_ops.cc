@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -114,12 +115,7 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
 Status GetTensorArrayShape(const XlaResource* resource,
                            xla::ComputationBuilder* builder,
                            TensorShape* shape) {
-  auto shape_or_status = builder->GetShape(resource->value);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
+  TF_RETURN_IF_ERROR(resource->GetShape(builder, shape));
   if (shape->dims() < 1) {
     return errors::InvalidArgument("TensorArray rank must be >= 1");
   }
@@ -311,11 +307,12 @@ class TensorArrayGatherOp : public XlaOpKernel {
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
     auto indices = ctx->Input(1);
+    DataType index_type = ctx->input_type(1);
 
     xla::ComputationDataHandle ta = resource->value;
 
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, ta, ta_shape, indices, indices_shape, dtype_, b);
+        ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, index_type, b);
     ctx->SetOutput(0, gather);
   }
 
@@ -532,19 +529,9 @@ class TensorArrayGradOp : public XlaOpKernel {
 
     // Finds or looks up the corresponding gradient TensorArray, which stores
     // gradients computed during backpropagation.
-    XlaResource*& gradient = resource->tensor_array_gradient[source_];
-    if (!gradient) {
-      xla::ComputationDataHandle zero = XlaHelpers::Zero(b, resource->type);
-      xla::ComputationDataHandle value =
-          b->Broadcast(zero, ta_shape.dim_sizes());
-
-      XlaContext& xc = XlaContext::Get(ctx);
-      string name = strings::StrCat("TensorArrayGrad: ", resource->name);
-      OP_REQUIRES_OK(
-          ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
-                                 resource->type, value, &gradient));
-      gradient->tensor_array_size = resource->tensor_array_size;
-    }
+    XlaResource* gradient;
+    OP_REQUIRES_OK(
+        ctx, resource->GetOrCreateTensorArrayGradient(source_, b, &gradient));
 
     ctx->SetResourceOutput(0, gradient);
     ctx->SetConstantOutput(1, Tensor(DT_FLOAT));

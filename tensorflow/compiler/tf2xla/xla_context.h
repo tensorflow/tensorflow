@@ -56,14 +56,9 @@ class XlaContext : public ResourceBase {
   xla::ComputationBuilder* builder();
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
-  bool has_context_parameter() const { return has_context_parameter_; }
 
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
-
-  // Get the runtime context parameter, adding one if it does not already exist.
-  // Dies if not compiling a local executable.
-  const xla::ComputationDataHandle& GetOrCreateRuntimeContextParameter();
 
   const std::vector<XlaExpression>& retvals() { return retvals_; }
 
@@ -75,11 +70,6 @@ class XlaContext : public ResourceBase {
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
-
-  // Mark the computation as having side effects (e.g., Send operators).
-  void AddSideEffects();
-
-  bool has_side_effects() const { return has_side_effects_; }
 
   // Creates a resource with resource `kind` and initial type `type` and
   // value `handle`. `name` is a descriptive name for use in error messages.
@@ -97,10 +87,20 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
 
+  // Get an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
+
   // Get an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
+
+  // Get an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
 
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
@@ -119,22 +119,12 @@ class XlaContext : public ResourceBase {
   // run-time computation outptus.
   const bool resolve_compile_time_constants_;
 
-  // When 'has_context_parameter_' is true, this is the computation handle
-  // for an additional final parameter to the computation, through which will be
-  // passed a XlaLocalRuntimeContext* at runtime. Created on demand by
-  // GetOrCreateRuntimeContextParameter().
-  bool has_context_parameter_ = false;
-  xla::ComputationDataHandle context_parameter_;
-
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
   std::vector<XlaExpression> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
   std::vector<XlaExpression> retvals_;
-
-  // Does the computation have side effects, i.e., Send() calls?
-  bool has_side_effects_ = false;
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
@@ -152,8 +142,14 @@ class XlaContext : public ResourceBase {
   // Cached computation to compute Max of two elements, specialized by type.
   ComputationMap max_func_;
 
+  // Cached computation to compute Min of two elements, specialized by type.
+  ComputationMap min_func_;
+
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;
+
+  // Cached computation to compute Mul of two elements, specialized by type.
+  ComputationMap mul_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

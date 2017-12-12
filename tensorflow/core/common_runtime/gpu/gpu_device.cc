@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <list>
 #include <map>
 #include <tuple>
 #include <vector>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -58,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -303,6 +306,46 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
+  // Whether and how the GPU device uses its own threadpool.
+  // This option is experimental. Once we confirm the best setting, we
+  // may change the default behavior and completely remove this flag.
+  // Default values might change in future releases.
+  // Possible values:
+  //   * global: GPU uses threads shared with CPU in the main compute
+  //          thread-pool. This is currently the default.
+  //   * gpu_private: GPU uses threads dedicated to this device.
+  //   * gpu_shared: All GPUs share a dedicated thread pool.
+  string gpu_thread_mode;
+  TF_RETURN_IF_ERROR(
+      ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
+  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  if (gpu_thread_mode != "global") {
+    int64 gpu_thread_count = -1;
+    // Default to two threads. One for device compute and another for memory
+    // copies.
+    TF_RETURN_IF_ERROR(
+        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &gpu_thread_count));
+    if (gpu_thread_mode == "gpu_private") {
+      // TODO(zhengxq): since these threads only serve a single GPU device,
+      //   we should set the device context once for each thread, and avoid
+      //   setting them for each kernel.
+      // TODO(zhengxq): pin the thread to the same socket of the target GPU.
+      thread_pool_.reset(new thread::ThreadPool(
+          options.env, strings::StrCat("gpu_private_", gpu_id_),
+          static_cast<int32>(gpu_thread_count)));
+      set_tensorflow_device_thread_pool(thread_pool_.get());
+    } else if (gpu_thread_mode == "gpu_shared") {
+      static thread::ThreadPool* thread_pool = new thread::ThreadPool(
+          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+      set_tensorflow_device_thread_pool(thread_pool);
+    } else {
+      string error_message =
+          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+      LOG(WARNING) << error_message;
+      return errors::InvalidArgument(error_message);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -473,9 +516,54 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   // When TraceMe profiling is off (which is the default), the
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string(),
+                                  op_kernel->IsExpensive());
   gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
+}
+
+Status BaseGPUDevice::MaybeCopyTensorToGPU(
+    const AllocatorAttributes& alloc_attrs, const Tensor& from, Tensor* to,
+    StatusCallback done) {
+  if (alloc_attrs.on_host()) {
+    *to = from;
+    done(Status::OK());
+    return Status::OK();
+  } else {
+    if (!DMAHelper::CanUseDMA(&from)) {
+      Status err = errors::Internal("GPU copy from non-DMA ",
+                                    DataTypeString(from.dtype()), " tensor");
+      done(err);
+      return err;
+    }
+    auto* copy =
+        new Tensor(GetAllocator(alloc_attrs), from.dtype(), from.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy->IsInitialized()) {
+      delete copy;
+      Status err = errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", from.shape().DebugString(),
+          " and type ", DataTypeString(from.dtype()));
+      done(err);
+      return err;
+    }
+
+    StatusCallback wrapped_done = std::bind(
+        [to, copy](StatusCallback done_,
+                   // Begin unbound arguments.
+                   const Status& s) {
+          *to = std::move(*copy);
+          delete copy;
+          done_(s);
+        },
+        std::move(done), std::placeholders::_1);
+
+    port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    device_contexts_[0]->CopyCPUTensorToDevice(&from, this, copy,
+                                               std::move(wrapped_done));
+    return Status::OK();
+  }
 }
 
 Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
@@ -490,34 +578,55 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
-  Status status;
-  if (alloc_attrs.on_host()) {
-    *tensor = parsed;
+
+  if (parsed.dtype() == DT_VARIANT) {
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
+
+    std::list<Notification> notifications;
+    Status copy_status;
+    auto copier = [this, &alloc_attrs, &notifications, &copy_status](
+                      const Tensor& from, Tensor* to) {
+      // Copier isn't run in a multithreaded environment, so we don't
+      // have to worry about the notifications list being modified in parallel.
+      notifications.emplace_back();
+      Notification& n = *notifications.rbegin();
+      return MaybeCopyTensorToGPU(alloc_attrs, from, to,
+                                  [&n, &copy_status](const Status& s) {
+                                    if (copy_status.ok()) {
+                                      copy_status.Update(s);
+                                    }
+                                    n.Notify();
+                                  });
+    };
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                            from[ix], &copy_variant[ix], copier);
+      if (!s.ok()) {
+        break;
+      }
+    }
+    for (auto& n : notifications) {
+      n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
+    }
+    *tensor = std::move(copy);
+    return copy_status;
   } else {
-    if (!DMAHelper::CanUseDMA(&parsed)) {
-      return errors::Internal("GPU copy from non-DMA ",
-                              DataTypeString(parsed.dtype()), " tensor");
-    }
-    Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
-
-    // If the tensor is not initialized, we likely ran out of memory.
-    if (!copy.IsInitialized()) {
-      return errors::ResourceExhausted(
-          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
-          " and type ", DataTypeString(parsed.dtype()));
-    }
-
-    port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     Notification n;
-    device_contexts_[0]->CopyCPUTensorToDevice(&parsed, this, &copy,
-                                               [&n, &status](const Status& s) {
-                                                 status = s;
-                                                 n.Notify();
-                                               });
+    Status status;
+    TF_RETURN_IF_ERROR(MaybeCopyTensorToGPU(alloc_attrs, parsed, tensor,
+                                            [&n, &status](const Status& s) {
+                                              status = s;
+                                              n.Notify();
+                                            }));
     n.WaitForNotification();
-    *tensor = copy;
+    return status;
   }
-  return status;
 }
 
 namespace {
@@ -585,11 +694,41 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
   }
+  if (!valid_gpu_ids.empty()) {
+    // Save the original device.
+    int original_device = 0;
+    cudaError_t err = cudaGetDevice(&original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaGetDevice() failed. Status: ",
+                              cudaGetErrorString(err));
+    }
+    // Force to implicitly initialize CUDA runtime on each valid GPU before
+    // CreateGPUDevice().
+    for (int gpu_id : valid_gpu_ids) {
+      err = cudaSetDevice(gpu_id);
+      if (err != cudaSuccess) {
+        return errors::Internal("cudaSetDevice() on GPU:", gpu_id,
+                                " failed. Status: ", cudaGetErrorString(err));
+      }
+      err = cudaFree(nullptr);
+      if (err != cudaSuccess) {
+        return errors::Internal(
+            "CUDA runtime implicit initialization on GPU:", gpu_id,
+            " failed. Status: ", cudaGetErrorString(err));
+      }
+    }
+    // Reset to the original device.
+    err = cudaSetDevice(original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaSetDevice() on GPU:", original_device,
+                              " failed. Status: ", cudaGetErrorString(err));
+    }
+  }
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;
-    TF_RETURN_IF_ERROR(CreateGPUDevice(options,
-                                       strings::StrCat(name_prefix, "/device:GPU:", i),
-                                       valid_gpu_ids[i], &gpu_device));
+    TF_RETURN_IF_ERROR(CreateGPUDevice(
+        options, strings::StrCat(name_prefix, "/device:GPU:", i),
+        valid_gpu_ids[i], &gpu_device));
     TF_RETURN_IF_ERROR(gpu_device->Init(options));
     devices->push_back(gpu_device);
   }
@@ -641,8 +780,7 @@ static string GetShortDeviceDescription(int device_id,
   return strings::StrCat("device: ", device_id, ", name: ", desc.name(),
                          ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
-  // LINT.ThenChange(//tensorflow/python/platform/\
-  //                 test.py)
+  // LINT.ThenChange(//tensorflow/python/platform/test.py)
 }
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
@@ -852,7 +990,7 @@ Status EnablePeerAccess(gpu::Platform* platform,
         if (!status.ok()) {
           LOG(WARNING)
               << "Unable to enable peer access between device ordinals "
-              << i_gpu_id << " and " << j_gpu_id;
+              << i_gpu_id << " and " << j_gpu_id << ", status: " << status;
         } else {
           ++enabled_peer_count;
         }

@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "partition_assignment",
     srcs = [
@@ -41,7 +43,7 @@ cc_library(
 
 # TODO(b/29140563) This target is flaky, disabled until flakiness is
 # root-caused. Failed on 2016-06-08.
-#cc_test(
+#tf_cc_test(
 #    name = "partition_assignment_test",
 #    srcs = [
 #        "partition_assignment_test.cc",
@@ -74,7 +76,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "stream_assignment_test",
     srcs = [
         "stream_assignment_test.cc",
@@ -102,7 +104,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/compiler/xla/service/llvm_ir:ops",
+        "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
@@ -145,6 +147,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ops",
+        "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
@@ -302,7 +305,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "convolution_folding_test",
     srcs = ["convolution_folding_test.cc"],
     deps = [
@@ -328,7 +331,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
@@ -340,15 +343,16 @@ cc_test(
 )
 
 cc_library(
-    name = "copy_insertion",
-    srcs = ["copy_insertion.cc"],
-    hdrs = ["copy_insertion.h"],
+    name = "gpu_copy_insertion",
+    srcs = ["gpu_copy_insertion.cc"],
+    hdrs = ["gpu_copy_insertion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
 )
@@ -368,7 +372,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "fusion_merger_test",
     srcs = ["fusion_merger_test.cc"],
     deps = [
@@ -396,19 +400,42 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_transfer_manager",
+    srcs = ["gpu_transfer_manager.cc"],
+    hdrs = ["gpu_transfer_manager.h"],
+    deps = [
+        ":gpu_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:generic_transfer_manager",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@llvm//:core",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
     deps = [
         ":convolution_folding",
-        ":copy_insertion",
         ":fusion_merger",
+        ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_layout_assignment",
         ":hlo_schedule",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
@@ -422,6 +449,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
@@ -438,10 +466,13 @@ cc_library(
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
         "@llvm//:support",
@@ -462,9 +493,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "gpu_layout_assignment",
+    srcs = ["gpu_layout_assignment.cc"],
+    hdrs = ["gpu_layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -477,11 +508,11 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "layout_assignment_test",
-    srcs = ["layout_assignment_test.cc"],
+tf_cc_test(
+    name = "gpu_layout_assignment_test",
+    srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":gpu_layout_assignment",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -508,7 +539,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_schedule_test",
     srcs = [
         "hlo_schedule_test.cc",
@@ -539,17 +570,20 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
     deps = [
         ":instruction_fusion",
         ":while_transformer",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

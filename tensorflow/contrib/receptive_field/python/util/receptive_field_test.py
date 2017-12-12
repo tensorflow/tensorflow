@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
+import numpy as np
 
 
 def create_test_network_1():
@@ -150,6 +151,31 @@ def create_test_network_5():
   return g
 
 
+def create_test_network_6():
+  """Aligned network with dropout for test.
+
+  The graph is similar to create_test_network_1(), except that the right branch
+  has dropout normalization.
+
+  Returns:
+    g: Tensorflow graph object (Graph proto).
+  """
+  g = ops.Graph()
+  with g.as_default():
+    # An 8x8 test image.
+    x = array_ops.placeholder(dtypes.float32, (1, 8, 8, 1), name='input_image')
+    # Left branch.
+    l1 = slim.conv2d(x, 1, [1, 1], stride=4, scope='L1', padding='VALID')
+    # Right branch.
+    l2_pad = array_ops.pad(x, [[0, 0], [1, 0], [1, 0], [0, 0]])
+    l2 = slim.conv2d(l2_pad, 1, [3, 3], stride=2, scope='L2', padding='VALID')
+    l3 = slim.conv2d(l2, 1, [1, 1], stride=2, scope='L3', padding='VALID')
+    dropout = slim.dropout(l3)
+    # Addition.
+    nn.relu(l1 + dropout, name='output')
+  return g
+
+
 class RfUtilsTest(test.TestCase):
 
   def testComputeRFFromGraphDefAligned(self):
@@ -220,6 +246,36 @@ class RfUtilsTest(test.TestCase):
     self.assertEqual(effective_padding_x, 0)
     self.assertEqual(effective_padding_y, 0)
 
+  def testComputeRFFromGraphDefStopPropagation(self):
+    graph_def = create_test_network_6().as_graph_def()
+    input_node = 'input_image'
+    output_node = 'output'
+    # Compute the receptive field but stop the propagation for the random
+    # uniform variable of the dropout.
+    (receptive_field_x, receptive_field_y, effective_stride_x,
+     effective_stride_y, effective_padding_x, effective_padding_y) = (
+         receptive_field.compute_receptive_field_from_graph_def(
+             graph_def, input_node, output_node,
+             ['Dropout/dropout/random_uniform']))
+    self.assertEqual(receptive_field_x, 3)
+    self.assertEqual(receptive_field_y, 3)
+    self.assertEqual(effective_stride_x, 4)
+    self.assertEqual(effective_stride_y, 4)
+    self.assertEqual(effective_padding_x, 1)
+    self.assertEqual(effective_padding_y, 1)
+
+  def testComputeCoordinatesRoundtrip(self):
+    graph_def = create_test_network_1()
+    input_node = 'input_image'
+    output_node = 'output'
+    rf = receptive_field.compute_receptive_field_from_graph_def(
+      graph_def, input_node, output_node)
+
+    x = np.random.randint(0, 100, (50, 2))
+    y = rf.compute_feature_coordinates(x)
+    x2 = rf.compute_input_center_coordinates(y)
+
+    self.assertAllEqual(x, x2)
 
 if __name__ == '__main__':
   test.main()

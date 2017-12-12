@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include <cstring>
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -398,6 +400,74 @@ TEST(FileBlockCacheTest, Prune) {
   } while (cache.CacheSize() == 8 && Env::Default()->NowSeconds() - start < 3);
   // The cache should now be empty.
   EXPECT_EQ(cache.CacheSize(), 0);
+}
+
+TEST(FileBlockCacheTest, ParallelReads) {
+  // This fetcher won't respond until either `callers` threads are calling it
+  // concurrently (at which point it will respond with success to all callers),
+  // or 10 seconds have elapsed (at which point it will respond with an error).
+  const int callers = 4;
+  BlockingCounter counter(callers);
+  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
+                            std::vector<char>* out) {
+    counter.DecrementCount();
+    if (!counter.WaitFor(std::chrono::seconds(10))) {
+      // This avoids having the test time out, which is harder to debug.
+      return errors::FailedPrecondition("desired concurrency not reached");
+    }
+    out->clear();
+    out->resize(n, 'x');
+    return Status::OK();
+  };
+  const int block_size = 8;
+  FileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
+  std::vector<std::unique_ptr<Thread>> threads;
+  for (int i = 0; i < callers; i++) {
+    threads.emplace_back(
+        Env::Default()->StartThread({}, "caller", [&cache, i, block_size]() {
+          std::vector<char> out;
+          TF_EXPECT_OK(cache.Read("a", i * block_size, block_size, &out));
+          std::vector<char> x(block_size, 'x');
+          EXPECT_EQ(out, x);
+        }));
+  }
+  // The `threads` destructor blocks until the threads can be joined, once their
+  // respective reads finish (which happens once they are all concurrently being
+  // executed, or 10 seconds have passed).
+}
+
+TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
+  // Concurrent reads to the same file blocks should be de-duplicated.
+  const size_t block_size = 16;
+  int num_requests = 0;
+  Notification notification;
+  auto fetcher = [&num_requests, &notification, block_size](
+                     const string& filename, size_t offset, size_t n,
+                     std::vector<char>* out) {
+    EXPECT_EQ(n, block_size);
+    EXPECT_EQ(offset, 0);
+    num_requests++;
+    out->resize(n, 'x');
+    notification.Notify();
+    // Wait for other thread to issue read.
+    Env::Default()->SleepForMicroseconds(100000);  // 0.1 secs
+    return Status::OK();
+  };
+  FileBlockCache cache(block_size, block_size, 0, fetcher);
+  // Fork off thread for parallel read.
+  std::unique_ptr<Thread> concurrent(
+      Env::Default()->StartThread({}, "concurrent", [&cache] {
+        std::vector<char> out;
+        TF_EXPECT_OK(cache.Read("", 0, block_size / 2, &out));
+        EXPECT_EQ(out.size(), block_size / 2);
+      }));
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&notification, 10000))
+      << "Timeout waiting for concurrent thread to start.";
+  std::vector<char> out;
+  TF_EXPECT_OK(cache.Read("", block_size / 2, block_size / 2, &out));
+  EXPECT_EQ(out.size(), block_size / 2);
+
+  EXPECT_EQ(1, num_requests);
 }
 
 }  // namespace

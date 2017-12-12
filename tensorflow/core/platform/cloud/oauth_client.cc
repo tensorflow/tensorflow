@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+#ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
@@ -24,7 +28,7 @@ limitations under the License.
 #include <openssl/rsa.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -162,7 +166,7 @@ Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
 
 OAuthClient::OAuthClient()
     : OAuthClient(
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default()) {}
 
 OAuthClient::OAuthClient(

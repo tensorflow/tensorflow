@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from math import ceil
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -79,15 +80,16 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   def _ExtractInputShapes(inputs):
     """Extract the shapes of a set of input tensors."""
+    if not context.in_graph_mode():
+      return array_ops.shape_n(inputs)
     sizes = []
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if context.in_graph_mode():
-        if not isinstance(input_shape,
-                          ops.Tensor) or input_shape.op.type != "Const":
-          fully_known = False
-          break
+      if not isinstance(input_shape,
+                        ops.Tensor) or input_shape.op.type != "Const":
+        fully_known = False
+        break
       sizes.append(input_shape)
 
     if fully_known:
@@ -101,32 +103,46 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   concat_dim = op.inputs[dim_index]
   input_values = op.inputs[start_value_index:end_value_index]
-  # Using mod here for convenience since concat_dim is already verified
-  # in concat implementation to be within the allowed [-rank, rank) range.
-  non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
 
   out_grads = []
   if isinstance(grad, ops.Tensor):
-    # Get the inputs' tensor shapes
-    sizes = _ExtractInputShapes(input_values)
-    # The magic number of 16 was found through benchmarking a range of sizes
-    # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
-    # cases when switching implementations at N=16, but it is possible that
-    # there will be a small number of performance regressions.
-    # pylint: disable=protected-access
-    if len(sizes) > 16:
-      # extract the size of each input along the concat dimension
-      sizes = array_ops.squeeze(
-          array_ops.slice(
-              array_ops.stack(
-                  sizes, axis=1), [non_neg_concat_dim, 0], [1, -1]))
+    if context.in_eager_mode():
+      # Using mod here for convenience since concat_dim is already verified
+      # in concat implementation to be within the allowed [-rank, rank) range.
+      non_neg_concat_dim = (
+          concat_dim._numpy().item(0) % input_values[0]._rank())  # pylint: disable=protected-access
+      # All inputs are guaranteed to be EagerTensors in eager mode
+      sizes = pywrap_tensorflow.TFE_Py_TensorShapeSlice(input_values,
+                                                        non_neg_concat_dim)
       out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
     else:
-      offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
-      for (begin, size) in zip(offset, sizes):
-        out_grads.append(array_ops.slice(grad, begin, size))
-    # pylint: enable=protected-access
+      # Using mod here for convenience since concat_dim is already verified
+      # in concat implementation to be within the allowed [-rank, rank) range.
+      non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
+
+      # Get the inputs' tensor shapes
+      sizes = _ExtractInputShapes(input_values)
+      # The magic number of 16 was found through benchmarking a range of sizes
+      # on CPUs and a Maxwell TitanX.  A speedup was seen in a large majority of
+      # cases when switching implementations at N=16, but it is possible that
+      # there will be a small number of performance regressions.
+      # pylint: disable=protected-access
+      if len(sizes) > 16:
+        # extract the size of each input along the concat dimension
+        sizes = array_ops.squeeze(
+            array_ops.slice(
+                array_ops.stack(
+                    sizes, axis=1), [non_neg_concat_dim, 0], [1, -1]))
+        out_grads = array_ops.split(grad, sizes, non_neg_concat_dim)
+      else:
+        offset = gen_array_ops._concat_offset(non_neg_concat_dim, sizes)
+        for (begin, size) in zip(offset, sizes):
+          out_grads.append(array_ops.slice(grad, begin, size))
+      # pylint: enable=protected-access
   elif isinstance(grad, ops.IndexedSlices):
+    # Using mod here for convenience since concat_dim is already verified
+    # in concat implementation to be within the allowed [-rank, rank) range.
+    non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
     concat_dim_static = tensor_util.constant_value(concat_dim)
     if concat_dim_static is None:
       raise ValueError("Can only compute IndexedSlices gradient with "
@@ -396,7 +412,7 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.in_eager_mode():
-      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+      params_tail_shape = params_shape.cpu()[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)
@@ -444,7 +460,11 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
-  ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  if indices.shape.ndims == 2 and indices.shape[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
 
 
@@ -502,6 +522,16 @@ def _TransposeGrad(op, grad):
   """Returns unshuffle(grad)."""
   p = op.inputs[1]
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
+
+
+@ops.RegisterGradient("ConjugateTranspose")
+def _ConjugateTransposeGrad(op, grad):
+  """Returns conj(unshuffle(grad))."""
+  p = op.inputs[1]
+  return [
+      array_ops.transpose(
+          grad, array_ops.invert_permutation(p), conjugate=True), None
+  ]
 
 
 ops.NotDifferentiable("Shape")
@@ -625,14 +655,22 @@ def _BatchToSpaceNDGrad(op, grad):
 def _SpaceToDepthGrad(op, grad):
   # Its gradient is the opposite op: DepthToSpace.
   block_size = op.get_attr("block_size")
-  return array_ops.depth_to_space(grad, block_size)
+  data_format = op.get_attr("data_format")
+  if data_format == "NCHW_VECT_C":
+    raise ValueError("Cannot compute SpaceToDepth gradient with NCHW_VECT_C. "
+                     "NCHW_VECT_C requires qint8 data type.")
+  return array_ops.depth_to_space(grad, block_size, data_format=data_format)
 
 
 @ops.RegisterGradient("DepthToSpace")
 def _DepthToSpaceGrad(op, grad):
   # Its gradient is the opposite op: SpaceToDepth.
   block_size = op.get_attr("block_size")
-  return array_ops.space_to_depth(grad, block_size)
+  data_format = op.get_attr("data_format")
+  if data_format == "NCHW_VECT_C":
+    raise ValueError("Cannot compute DepthToSpace gradient with NCHW_VECT_C. "
+                     "NCHW_VECT_C requires qint8 data type.")
+  return array_ops.space_to_depth(grad, block_size, data_format=data_format)
 
 
 ops.NotDifferentiable("OneHot")

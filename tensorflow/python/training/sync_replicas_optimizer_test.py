@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import training
 
@@ -275,6 +276,18 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
     global_step = variables.Variable(0, name="global_step", trainable=False)
     opt.minimize(v, global_step=global_step)
     hook.begin()
+
+  def testFetchVariableList(self):
+    opt = training.SyncReplicasOptimizer(
+        opt=adam.AdamOptimizer(0.01),
+        replicas_to_aggregate=1,
+        total_num_replicas=1)
+    v = variables.Variable([0.], name="fetch_variable_test")
+    global_step = variables.Variable(0, name="global_step", trainable=False)
+    opt.minimize(v, global_step=global_step)
+    opt_variables = opt.variables()
+    self.assertIn(opt._opt._beta1_power, opt_variables)
+    self.assertIn(opt._opt._beta2_power, opt_variables)
 
 
 if __name__ == "__main__":

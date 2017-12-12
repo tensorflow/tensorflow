@@ -42,11 +42,15 @@ See the @{$python/contrib.layers} guide.
 @@relu
 @@relu6
 @@repeat
+@@recompute_grad
+@@RevBlock
+@@rev_block
 @@safe_embedding_lookup_sparse
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
+@@spatial_softmax
 @@stack
 @@unit_norm
 @@bow_encoder
@@ -96,6 +100,8 @@ See the @{$python/contrib.layers} guide.
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
+
+@@instance_norm
 """
 
 from __future__ import absolute_import
@@ -113,6 +119,7 @@ _allowed_symbols = ['bias_add',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',
                     'legacy_relu',

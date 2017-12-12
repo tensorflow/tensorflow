@@ -15,7 +15,7 @@ limitations under the License.
 
 // Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
 
-#include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -42,9 +42,9 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
-                                       DEVICE_INTERPRETER_XLA_JIT, options,
-                                       name_prefix, &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create(
+      "Interpreter", DEVICE_XLA_INTERPRETER, 0, DEVICE_INTERPRETER_XLA_JIT,
+      options, name_prefix, /*register_device_for_compilation=*/true, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
@@ -60,7 +60,7 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_INTERPRETER,
 // Kernel registrations
 static bool OpFilter(KernelDef* kdef) { return true; }
 
-REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_INTERPRETER, XlaDeviceLaunchOp,
+REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_INTERPRETER, XlaLocalLaunchOp,
                            kExecAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_INTERPRETER, kExecAllTypes);
 REGISTER_XLA_BACKEND(DEVICE_INTERPRETER_XLA_JIT, kExecAllTypes, OpFilter);

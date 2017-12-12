@@ -42,6 +42,9 @@ class TensorCApi;
 class TensorDescription;
 class TensorProto;
 class VariantTensorData;
+namespace batch_util {
+Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+}  // namespace batch_util
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.
@@ -487,6 +490,9 @@ class Tensor {
   template <typename Device, typename T>
   friend Status PrepareToUpdateVariable(
       OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
+  friend Status batch_util::CopyElementToSlice(
+      Tensor element, Tensor* parent,
+      int64 index);                // For access to RefCountIsOne().
   friend class NumpyTensorBuffer;  // For access to the private constructor
                                    // taking the buffer.
 

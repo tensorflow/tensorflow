@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SHAPED_BUFFER_H_
 
 #include <memory>
+#include <ostream>
+#include <string>
 
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -33,12 +35,6 @@ namespace xla {
 // XLA client running in the same process as the service (LocalClient),
 class ShapedBuffer {
  public:
-  // Creates a ShapedBuffer of arbitrary shape. All buffer pointers
-  // (DeviceMemoryBase) in the returned ShapedBuffer are initialized to null.
-  static StatusOr<std::unique_ptr<ShapedBuffer>> MakeShapedBuffer(
-      const Shape& shape, const perftools::gputools::Platform* platform,
-      int device_ordinal);
-
   // Convenience method which creates a ShapedBuffer of array shape (not a
   // tuple). Its single buffer pointer is set to the given value "buffer". The
   // given buffer must be large enough to store the given shape as given by
@@ -47,16 +43,17 @@ class ShapedBuffer {
       const Shape& shape, const perftools::gputools::Platform* platform,
       int device_ordinal, const perftools::gputools::DeviceMemoryBase& buffer);
 
-  // Convenience method which creates a ShapedBuffer of a non-nested tuple. The
-  // buffer pointers in the return ShapedBuffer are set to the given
-  // "buffers". The size of buffers must match the number of elements in the
-  // tuple shape and be large enough to store their respective shape as given by
-  // ShapeUtil::ByteSizeOf.
-  static StatusOr<std::unique_ptr<ShapedBuffer>> MakeUnnestedTupleShapedBuffer(
-      const Shape& shape, const perftools::gputools::Platform* platform,
-      int device_ordinal,
-      const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers);
+  // Return a newly allocated ShapedBuffer of an arbitrary shape. Array buffers
+  // (leaves in the shape) are allocated and uninitialized. Tuple buffers (if
+  // any) are allocated and initialized to the backend-specific representation
+  // of an array of pointers to the tuple elements.
+  static StatusOr<std::unique_ptr<ShapedBuffer>> Allocate(
+      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+      const std::function<int64(const Shape&)>& shape_size_fn);
+
+  ShapedBuffer(const Shape& shape,
+               const perftools::gputools::Platform* platform,
+               int device_ordinal);
 
   const Shape& shape() const { return shape_; }
   const perftools::gputools::Platform* platform() const { return platform_; }
@@ -85,13 +82,24 @@ class ShapedBuffer {
     return &shape_index_to_buffer_entry_;
   }
 
- protected:
-  ShapedBuffer(const Shape& shape,
-               const perftools::gputools::Platform* platform,
-               int device_ordinal);
+  // Set all device memory pointers in the object to null.
+  void clear();
 
+  // Adds a new buffer at the given shape index.
+  void AddBufferAtIndex(const perftools::gputools::DeviceMemoryBase& buffer,
+                        const ShapeIndex& shape_index);
+
+  string ToString() const;
+
+ protected:
   // The shape of the device buffer with layout.
   const Shape shape_;
+
+  // The platform the memory is allocated on.
+  const perftools::gputools::Platform* platform_;
+
+  // The device the memory is allocated on.
+  const int device_ordinal_;
 
   // The list of DeviceMemoryBase pointers representing this shape.
   // Note that there can be a many to one relationship between tuple elements
@@ -101,27 +109,38 @@ class ShapedBuffer {
 
   // The tree of indices into buffers_.
   ShapeTree<size_t> shape_index_to_buffer_entry_;
-
-  // The platform the memory is allocated on.
-  const perftools::gputools::Platform* platform_;
-
-  // The device the memory is allocated on.
-  const int device_ordinal_;
 };
+
+std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 
 // ShapedBuffer derived class which allocates all internal buffers on
 // construction and deallocates the memory when the object is
 // destructed.
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
-  // Return a new ScopedShapedBuffer of an arbitrary shape. All buffers in the
-  // ScopedShapedBuffers are automatically allocated to exactly the size of
-  // their respective array shape.
-  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> MakeScopedShapedBuffer(
-      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal);
+  // Identical to ShapedBuffer::Allocate.
+  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> Allocate(
+      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
+      const std::function<int64(const Shape&)>& shape_size_fn);
+
+  // Takes a ShapedBuffer and returns a ScopedShapedBuffer which manages the
+  // deallocation of the device memory held in the shaped buffer. All device
+  // memory pointers in the given ShapedBuffer are set to null.
+  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> MakeScoped(
+      ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator);
+
+  // Return the allocator used to allocate the device memory held in this
+  // ScopedShapedBuffer.
+  DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
+
+  // Release all device memory owned by this ScopedShapedBuffer and return the
+  // device memory pointers in the form of a ShapedBuffer. Device memory
+  // pointers in this ScopedShapedBuffer object are set to null. This method is
+  // analogous to std::unique_ptr::release().
+  std::unique_ptr<ShapedBuffer> release();
 
   // All buffers in the shape are deallocated on destruction.
-  ~ScopedShapedBuffer();
+  virtual ~ScopedShapedBuffer();
 
  protected:
   ScopedShapedBuffer(const Shape& shape, DeviceMemoryAllocator* allocator,

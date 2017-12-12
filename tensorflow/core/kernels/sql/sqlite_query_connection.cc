@@ -13,33 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/sql/sqlite_query_connection.h"
+
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 
 namespace sql {
 
-// Returns a Status with the sqlite error message corresponding to the
-// sqlite error number, `sqlite_err`.
-static Status SqliteErrorToStatus(sqlite3* db, int sqlite_err) {
-  if (sqlite_err == SQLITE_OK) {
-    return Status::OK();
-  } else {
-    const char* err_msg = sqlite3_errmsg(db);
-    // TODO(b/64276468) Be smart about the error code being returned
-    return errors::Unknown(
-        tensorflow::strings::Printf("Sqlite error: %s", err_msg));
-  }
-}
-
-SqliteQueryConnection::SqliteQueryConnection(){};
-
-SqliteQueryConnection::~SqliteQueryConnection() {
-  Status s = Close();
-  if (!s.ok()) {
-    LOG(WARNING) << "Failed to close query connection: " << s;
-  }
-}
+SqliteQueryConnection::SqliteQueryConnection() {}
+SqliteQueryConnection::~SqliteQueryConnection() {}
 
 Status SqliteQueryConnection::Open(const string& data_source_name,
                                    const string& query,
@@ -48,60 +30,47 @@ Status SqliteQueryConnection::Open(const string& data_source_name,
     return errors::FailedPrecondition(
         "Failed to open query connection: Connection already opeend.");
   }
-  int err = sqlite3_open(data_source_name.c_str(), &db_);
-  Status s = SqliteErrorToStatus(db_, err);
+  auto s = Sqlite::Open(data_source_name);
   if (s.ok()) {
+    db_ = std::move(s.ValueOrDie());
     query_ = query;
     output_types_ = output_types;
   }
-  return s;
+  return s.status();
 }
 
 Status SqliteQueryConnection::Close() {
-  int err = sqlite3_finalize(stmt_);
-  if (err != SQLITE_OK) {
-    return SqliteErrorToStatus(db_, err);
-  }
-  stmt_ = nullptr;
-  err = sqlite3_close(db_);
-  if (err != SQLITE_OK) {
-    return SqliteErrorToStatus(db_, err);
-  }
-  db_ = nullptr;
-  return Status::OK();
+  Status s;
+  s.Update(stmt_.Close());
+  s.Update(db_->Close());
+  return s;
 }
 
 Status SqliteQueryConnection::GetNext(std::vector<Tensor>* out_tensors,
                                       bool* end_of_sequence) {
-  if (stmt_ == nullptr) {
-    Status s = ExecuteQuery();
+  if (!stmt_) {
+    Status s = PrepareQuery();
     if (!s.ok()) {
       return s;
     }
   }
-  int rc = sqlite3_step(stmt_);
-  if (rc == SQLITE_ROW) {
+  Status s = stmt_.Step(end_of_sequence);
+  if (!*end_of_sequence) {
     for (int i = 0; i < column_count_; i++) {
       DataType dt = output_types_[i];
       Tensor tensor(cpu_allocator(), dt, {});
       FillTensorWithResultSetEntry(dt, i, &tensor);
       out_tensors->emplace_back(std::move(tensor));
     }
-    *end_of_sequence = false;
-    return Status::OK();
-  } else if (rc == SQLITE_DONE) {
-    *end_of_sequence = true;
-    return Status::OK();
-  } else {
-    return SqliteErrorToStatus(db_, rc);
   }
+  return s;
 }
 
-Status SqliteQueryConnection::ExecuteQuery() {
-  int err = sqlite3_prepare_v2(db_, query_.c_str(), -1, &stmt_, nullptr);
-  Status s = SqliteErrorToStatus(db_, err);
+Status SqliteQueryConnection::PrepareQuery() {
+  stmt_ = db_->Prepare(query_);
+  Status s = stmt_.status();
   if (s.ok()) {
-    int column_count = sqlite3_column_count(stmt_);
+    int column_count = stmt_.ColumnCount();
     if (column_count != output_types_.size()) {
       return errors::InvalidArgument(tensorflow::strings::Printf(
           "The number of columns in query (%d) must match the number of "
@@ -116,54 +85,43 @@ Status SqliteQueryConnection::ExecuteQuery() {
 void SqliteQueryConnection::FillTensorWithResultSetEntry(
     const DataType& data_type, int column_index, Tensor* tensor) {
   switch (data_type) {
-    case DT_STRING: {
-      const void* bytes = sqlite3_column_blob(stmt_, column_index);
-      int num_bytes = sqlite3_column_bytes(stmt_, column_index);
-      string value(reinterpret_cast<const char*>(bytes), num_bytes);
-      tensor->scalar<string>()() = value;
+    case DT_STRING:
+      tensor->scalar<string>()() = stmt_.ColumnString(column_index);
       break;
-    }
-    case DT_INT8: {
-      int8 value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<int8>()() = value;
+    case DT_INT8:
+      tensor->scalar<int8>()() =
+          static_cast<int8>(stmt_.ColumnInt(column_index));
       break;
-    }
-    case DT_INT16: {
-      int16 value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<int16>()() = value;
+    case DT_INT16:
+      tensor->scalar<int16>()() =
+          static_cast<int16>(stmt_.ColumnInt(column_index));
       break;
-    }
-    case DT_INT32: {
-      int32 value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<int32>()() = value;
+    case DT_INT32:
+      tensor->scalar<int32>()() =
+          static_cast<int32>(stmt_.ColumnInt(column_index));
       break;
-    }
-    case DT_INT64: {
-      int64 value = sqlite3_column_int64(stmt_, column_index);
-      tensor->scalar<int64>()() = value;
+    case DT_INT64:
+      tensor->scalar<int64>()() = stmt_.ColumnInt(column_index);
       break;
-    }
-    case DT_UINT8: {
-      uint8 value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<uint8>()() = value;
+    case DT_UINT8:
+      tensor->scalar<uint8>()() =
+          static_cast<uint8>(stmt_.ColumnInt(column_index));
       break;
-    }
-    case DT_UINT16: {
-      uint16 value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<uint16>()() = value;
+    case DT_UINT16:
+      tensor->scalar<uint16>()() =
+          static_cast<uint16>(stmt_.ColumnInt(column_index));
       break;
-    }
-    case DT_BOOL: {
-      int value = sqlite3_column_int(stmt_, column_index);
-      tensor->scalar<bool>()() = value ? true : false;
+    case DT_BOOL:
+      tensor->scalar<bool>()() = stmt_.ColumnInt(column_index) != 0;
       break;
-    }
-    case DT_DOUBLE: {
-      double value = sqlite3_column_double(stmt_, column_index);
-      tensor->scalar<double>()() = value;
+    case DT_FLOAT:
+      tensor->scalar<float>()() =
+          static_cast<float>(stmt_.ColumnDouble(column_index));
       break;
-    }
-    // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.
+    case DT_DOUBLE:
+      tensor->scalar<double>()() = stmt_.ColumnDouble(column_index);
+      break;
+      // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.
     default: {
       LOG(FATAL)
           << "Use of unsupported TensorFlow data type by 'SqlQueryConnection': "

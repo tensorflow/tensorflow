@@ -59,6 +59,7 @@ typedef TTypes<float>::Tensor::Index Index;
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
 DEFINE_FOR_ALL_REDUCERS(int32);
+DEFINE_FOR_ALL_REDUCERS(int64);
 #undef DEFINE_FOR_ALL_REDUCERS
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE

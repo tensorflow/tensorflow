@@ -103,8 +103,13 @@ class TensorSliceReader {
                    std::unique_ptr<tensorflow::Tensor>* out_tensor) const;
 
   typedef std::unordered_map<string, TensorShape> VarToShapeMap;
+  typedef std::unordered_map<string, DataType> VarToDataTypeMap;
+
   // Returns a map from tensor name to shape.
   VarToShapeMap GetVariableToShapeMap() const;
+
+  // Returns a map from tensor name to data type.
+  VarToDataTypeMap GetVariableToDataTypeMap() const;
 
   // Returns a string containing names and shapes of all the tensors.
   const string DebugString() const;

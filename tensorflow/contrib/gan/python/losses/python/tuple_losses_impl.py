@@ -14,10 +14,41 @@
 # ==============================================================================
 """TFGAN utilities for loss functions that accept GANModel namedtuples.
 
-Example:
+The losses and penalties in this file all correspond to losses in
+`losses_impl.py`. Losses in that file take individual arguments, whereas in this
+file they take a `GANModel` tuple. For example:
+
+losses_impl.py:
   ```python
-  # `tfgan.losses.args` losses take individual arguments.
-  w_loss = tfgan.losses.args.wasserstein_discriminator_loss(
+  def wasserstein_discriminator_loss(
+      discriminator_real_outputs,
+      discriminator_gen_outputs,
+      real_weights=1.0,
+      generated_weights=1.0,
+      scope=None,
+      loss_collection=ops.GraphKeys.LOSSES,
+      reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+      add_summaries=False)
+  ```
+
+tuple_losses_impl.py:
+  ```python
+  def wasserstein_discriminator_loss(
+      gan_model,
+      real_weights=1.0,
+      generated_weights=1.0,
+      scope=None,
+      loss_collection=ops.GraphKeys.LOSSES,
+      reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+      add_summaries=False)
+  ```
+
+
+
+Example usage:
+  ```python
+  # `tfgan.losses.wargs` losses take individual arguments.
+  w_loss = tfgan.losses.wargs.wasserstein_discriminator_loss(
     discriminator_real_outputs,
     discriminator_gen_outputs)
 
