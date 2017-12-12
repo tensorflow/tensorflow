@@ -109,6 +109,7 @@ ArrayElementwiseOpTest.MulTwoConstantZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR // Complex<double>
 ArrayElementwiseOpTest.CompareNeC64s POPLAR // Complex<double>
+TupleTest.ComplexTuples POPLAR // Complex<>
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
