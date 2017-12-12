@@ -977,9 +977,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
 
   `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
   with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
-  where each tensor is the Hessian of `sum(ys)`. This function currently
-  only supports evaluating the Hessian with respect to (a list of) one-
-  dimensional tensors.
+  where each tensor is the Hessian of `sum(ys)`.
 
   The Hessian is a matrix of second-order partial derivatives of a scalar
   tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
@@ -1010,26 +1008,23 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   hessians = []
   _gradients = gradients(ys, xs, **kwargs)
   for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
-    # Ensure that x is a vector.
-    check_rank = check_ops.assert_rank(
-      x, 1, message='Cannot compute Hessian because element %d of `xs` does '
-      'not have rank one.' % i
+    # tricky change shape to one-dimension without graph branching
+    _gradient = tf.reshape(_gradient, [-1])
+    
+    # Declare an iterator and tensor array loop variables for the gradients.
+    n = array_ops.size(x)
+    loop_vars = [
+      array_ops.constant(0, dtypes.int32),
+      tensor_array_ops.TensorArray(x.dtype, n)
+    ]
+    # Iterate over all elements of the gradient and compute second order
+    # derivatives.
+    _, hessian = control_flow_ops.while_loop(
+        lambda j, _: j < n,
+        lambda j, result: (j + 1,
+                           result.write(j, gradients(_gradient[j], x)[0])),
+        loop_vars
     )
-    with ops.control_dependencies([check_rank]):
-      # Declare an iterator and tensor array loop variables for the gradients.
-      n = array_ops.size(x)
-      loop_vars = [
-        array_ops.constant(0, dtypes.int32),
-        tensor_array_ops.TensorArray(x.dtype, n)
-      ]
-      # Iterate over all elements of the gradient and compute second order
-      # derivatives.
-      _, hessian = control_flow_ops.while_loop(
-          lambda j, _: j < n,
-          lambda j, result: (j + 1,
-                             result.write(j, gradients(_gradient[j], x)[0])),
-          loop_vars
-      )
 
-      hessians.append(hessian.stack())
+    hessians.append(hessian.stack())
   return hessians
