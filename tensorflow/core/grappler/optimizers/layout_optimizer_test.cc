@@ -761,6 +761,29 @@ TEST_F(LayoutOptimizerTest, Mul4DAndScalar) {
   EXPECT_EQ(mul_node->input(1), "scalar");
 }
 
+TEST_F(LayoutOptimizerTest, Mul4DAndUnknownRank) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto unknown_rank =
+      ops::Placeholder(s.WithOpName("unknown"), DT_FLOAT,
+                       ops::Placeholder::Shape(PartialTensorShape()));
+  Output c = ops::Const(s.WithOpName("c"), 3.0f, {8, 2, 2, 2});
+  Output mul = ops::Mul(s.WithOpName("mul"), conv, unknown_rank);
+  auto o = ops::AddN(s.WithOpName("o"), {mul, c});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto mul_node = node_map.GetNode("mul");
+  // Node mul should not be processed by layout optimizer, because one of its
+  // inputs is of unknown rank.
+  EXPECT_EQ(mul_node->input(0),
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-mul-0");
+  EXPECT_EQ(mul_node->input(1), "unknown");
+}
+
 TEST_F(LayoutOptimizerTest, Mul4DAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 3, 2, "VALID");

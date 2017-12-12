@@ -284,6 +284,9 @@ class NodeProcessor : public GraphProcessor {
   bool IsDimsN(const NodeDef& node, int n) const {
     if (node.attr().find("_output_shapes") != node.attr().end()) {
       auto shape = node.attr().at("_output_shapes").list().shape(0);
+      if (shape.unknown_rank()) {
+        return false;
+      }
       if (shape.dim_size() == n) {
         return true;
       }
