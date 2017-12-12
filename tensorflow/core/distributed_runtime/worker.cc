@@ -25,6 +25,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+// The return value is guaranteed not to be null.
+//
+// REQUIRES: `request` is not null.
+WorkerSession* Worker::FindWorkerSessionBy(const Request* request) const {
+  return env_->session_mgr->WorkerSessionForSession(request->session_handle());
+}
+
 Worker::Worker(WorkerEnv* env)
     : env_(env), cancellation_manager_(new CancellationManager) {}
 
@@ -59,8 +66,7 @@ void Worker::DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
-  WorkerSession* session =
-      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+  auto session = FindWorkerSessionBy(request);
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
       request->debug_options(), session->cluster_flr.get(),
@@ -71,8 +77,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
 void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
-  WorkerSession* session =
-      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+  auto session = FindWorkerSessionBy(request);
   Status s = session->graph_mgr->Deregister(request->graph_handle());
 
   done(s);
@@ -129,8 +134,6 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
-  WorkerSession* session =
-      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -166,6 +169,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       return;
     }
   }
+
+  auto session = FindWorkerSessionBy(request);
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session, request->exec_opts(),
       collector, response, cm, in,
@@ -203,8 +208,6 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
-  WorkerSession* session =
-      env_->session_mgr->WorkerSessionForSession(request->session_handle());
 
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
@@ -227,6 +230,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     cm->StartCancel();
     AbortStep(step_id);
   });
+
+  auto session = FindWorkerSessionBy(request);
 
   // If this is a new partial run request, the request will need to start the
   // executors.

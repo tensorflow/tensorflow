@@ -115,6 +115,9 @@ class Worker : public WorkerInterface {
                          MutableRunGraphResponseWrapper* response,
                          StatusCallback done);
 
+  template<typename Request>
+  WorkerSession* FindWorkerSessionBy(const Request* req) const;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Worker);
 };
 
