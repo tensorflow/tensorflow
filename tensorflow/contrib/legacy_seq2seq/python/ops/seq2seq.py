@@ -355,9 +355,9 @@ def embedding_rnn_seq2seq(encoder_inputs,
       dtype = scope.dtype
 
     # Encoder.
-    encoder_cell = copy.deepcopy(cell)
+    cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
-        encoder_cell,
+        cell,
         embedding_classes=num_encoder_symbols,
         embedding_size=embedding_size)
     _, encoder_state = rnn.static_rnn(encoder_cell, encoder_inputs, dtype=dtype)
