@@ -37,7 +37,8 @@ class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200) {}
+      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200) {
+  }
 
   /// Return the response with headers for the given request.
   FakeHttpRequest(const string& request, const string& response,
@@ -159,6 +160,13 @@ class FakeHttpRequest : public CurlHttpRequest {
   }
 
   virtual uint64 GetResponseCode() const override { return response_code_; }
+
+  Status SetTimeouts(uint32 connection, uint32 inactivity,
+                     uint32 total) override {
+    actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
+                                       inactivity, " ", total, "\n");
+    return Status::OK();
+  }
 
  private:
   std::vector<char>* buffer_ = nullptr;
