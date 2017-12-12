@@ -741,6 +741,13 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a conditional node onto the computation.
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const Computation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const Computation& false_computation);
+
   // Enqueues a ReducePrecision node onto the computation.
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,

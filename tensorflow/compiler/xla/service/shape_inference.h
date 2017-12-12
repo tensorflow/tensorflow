@@ -180,6 +180,12 @@ class ShapeInference {
                                          const ProgramShape& body,
                                          const Shape& init);
 
+  // Infers the shape produced by a conditional operation.
+  static StatusOr<Shape> InferConditionalShape(
+      const Shape& predicate, const Shape& true_operand,
+      const Shape& false_operand, const ProgramShape& true_computation,
+      const ProgramShape& false_computation);
+
   // Infers the shape produced by a broadcast operation.
   static StatusOr<Shape> InferBroadcastShape(
       const Shape& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes);

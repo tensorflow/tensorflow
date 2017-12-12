@@ -225,6 +225,9 @@ bool DataTypeCanUseMemcpy(DataType dt);
 // Returns true iff 'dt' is a real, non-quantized floating point type.
 bool DataTypeIsFloating(DataType dt);
 
+// Returns true iff 'dt' is a complex type.
+bool DataTypeIsComplex(DataType dt);
+
 bool DataTypeIsQuantized(DataType dt);
 
 // Is the dtype nonquantized integral?

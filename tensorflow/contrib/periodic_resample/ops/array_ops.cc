@@ -19,7 +19,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
-using namespace tensorflow;
+namespace tensorflow {
 
 REGISTER_OP("PeriodicResample")
     .Attr("T: numbertype")
@@ -86,3 +86,5 @@ output: Periodically resampled tensor that has dimensions specified as in
   decreased as necessary.
 
 )doc");
+
+}  // namespace tensorflow

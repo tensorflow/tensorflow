@@ -56,6 +56,9 @@ class DependencyOptimizer : public GraphOptimizer {
   // inserting them in nodes_to_delete.
   void OptimizeNode(int node_idx, SetVector<int>* nodes_to_simplify,
                     std::set<int>* nodes_to_delete);
+  // Eliminates redundant control dependencies by computing the transitive
+  // reduction of the graph.
+  Status TransitiveReduction();
   // Main driver of dependency optimizations.
   Status OptimizeDependencies();
 

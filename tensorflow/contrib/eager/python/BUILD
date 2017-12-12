@@ -19,6 +19,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",

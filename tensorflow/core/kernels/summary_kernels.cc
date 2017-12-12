@@ -67,6 +67,7 @@ class CreateSummaryDbWriterOp : public OpKernel {
     SummaryWriterInterface* s;
     auto db = Sqlite::Open(db_uri);
     OP_REQUIRES_OK(ctx, db.status());
+    db.ValueOrDie()->UseWriteAheadLogWithReducedDurabilityIfPossible();
     OP_REQUIRES_OK(
         ctx, CreateSummaryDbWriter(std::move(db.ValueOrDie()), experiment_name,
                                    run_name, user_name, ctx->env(), &s));

@@ -62,10 +62,18 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor, const Literal& literal,
       perftools::gputools::DeviceMemoryBase* region) = 0;
 
+  // Returns the shape of the on-device representation for the given shape on
+  // the host. This is intended for use with ShapedBuffer where buffers are
+  // pre-allocated by the host, e.g. TransferLiteralToDevice, without the user
+  // needing to consider device-specific behaviors.
+  virtual Shape HostShapeToDeviceShape(const Shape& host_shape) const {
+    return host_shape;
+  }
+
   // Transfers the data held in the given ShapedBuffer into the provided literal
   // using the provided executor. literal_shape will be the shape for the
-  // literal. The shape of the ShapedBuffer and literal_shape must be
-  // compatible, but need not have the same layout.
+  // literal. The shape of the ShapedBuffer and DeviceShape(literal_shape) must
+  // be compatible, but need not have the same layout.
   virtual StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
       perftools::gputools::StreamExecutor* executor,
       const ShapedBuffer& device_buffer) = 0;

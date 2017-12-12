@@ -142,6 +142,13 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
+    case BF16:
+      // For BF16 we just need some type that is 16 bits wide so that it will
+      // take up the right amount of space in memory. LLVM does not have a BF16
+      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
+      // we can't map it directly to an LLVM type. We will not map a BF16
+      // addition to an addition on this type (int16) - this is just the type
+      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case S32:
     case U32:
@@ -279,6 +286,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
       case F32:
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<float>(*multi_index));
+        break;
+      case BF16:
+        value = llvm::ConstantInt::get(
+            ir_element_type,
+            tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
         break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
