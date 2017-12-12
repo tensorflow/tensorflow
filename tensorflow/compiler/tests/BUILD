@@ -381,6 +381,11 @@ tf_xla_py_test(
     srcs = ["random_ops_test.py"],
     # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = ["gpu"],
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",
