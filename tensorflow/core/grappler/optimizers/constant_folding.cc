@@ -1433,8 +1433,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // Strength reduce floating point division by a constant Div(x, const) to
     // multiplication by the reciprocal Mul(x, Reciprocal(const)). This in turn
     // will be constant folded to Mul(x, 1.0/const).
-    if (is_aggressive && node->input_size() >= 2 &&
-        (IsRealDiv(*node) || IsDiv(*node))) {
+    if (node->input_size() >= 2 && (IsRealDiv(*node) || IsDiv(*node))) {
       const string& const_input = node->input(1);
       const NodeDef* denom = node_map_->GetNode(const_input);
       CHECK(denom != nullptr);
