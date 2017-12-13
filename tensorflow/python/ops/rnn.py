@@ -811,11 +811,13 @@ def _dynamic_rnn_loop(cell,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
-      swap_memory=swap_memory)
+      swap_memory=swap_memory,
+      maximum_iterations=time_steps)
 
   # Unpack final output if not using output tuples.
   if in_graph_mode:
-    final_outputs = tuple(ta.stack() for ta in output_final_ta)
+    final_outputs = tuple(
+      ta.gather(range(const_batch_size)) for ta in output_final_ta)
     # Restore some shape information
     for output, output_size in zip(final_outputs, flat_output_size):
       shape = _concat(
