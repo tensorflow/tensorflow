@@ -436,7 +436,7 @@ class LSTMBlockCell(LayerRNNCell):
     return h, new_state
 
 
-class LSTMBlockWrapper(LayerRNNCell):
+class LSTMBlockWrapper(base_layer.Layer):
   """This is a helper class that provides housekeeping for LSTM cells.
 
   This may be useful for alternative LSTM and similar type of cells.

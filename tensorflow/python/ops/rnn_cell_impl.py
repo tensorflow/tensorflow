@@ -265,18 +265,18 @@ class _LayerRNNCell(RNNCell):
   `call` methods do not access Variables `tf.get_variable`.
   """
 
-  def __call__(self, inputs, *args, **kwargs):
+  def __call__(self, inputs, state, scope=None, *args, **kwargs):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
       inputs: `2-D` tensor with shape `[batch_size, input_size]`.
-      *args: Additional positional arguments.
-        Usually composesed of `[state]`: if `self.state_size` is an integer,
-        this should be a `2-D Tensor` with shape
-        `[batch_size, self.state_size]`.  Otherwise, if
+      state: if `self.state_size` is an integer, this should be a `2-D Tensor`
+        with shape `[batch_size, self.state_size]`.  Otherwise, if
         `self.state_size` is a tuple of integers, this should be a tuple
         with shapes `[batch_size, s] for s in self.state_size`.
-      **kwargs: Additional keyword arguments.  Common keys include `scope`.
+      scope: optional cell scope.
+      *args: Additional positional arguments.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       A pair containing:
@@ -288,7 +288,8 @@ class _LayerRNNCell(RNNCell):
     # Bypass RNNCell's variable capturing semantics for LayerRNNCell.
     # Instead, it is up to subclasses to provide a proper build
     # method.  See the class docstring for more details.
-    return base_layer.Layer.__call__(self, inputs, *args, **kwargs)
+    return base_layer.Layer.__call__(self, inputs, state, scope=scope,
+                                     *args, **kwargs)
 
 
 class BasicRNNCell(_LayerRNNCell):
