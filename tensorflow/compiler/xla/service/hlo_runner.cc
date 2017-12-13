@@ -150,7 +150,7 @@ StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,
                                   /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDoneWithStatus());
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);
 

@@ -105,7 +105,7 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
   // infeed requests, blocking on the stream might be
   // heavy-handed. Figure out if finer-grained acknowledgement is
   // possible.
-  Status block_status = stream->BlockHostUntilDoneWithStatus();
+  Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     for (gpu::InfeedBuffer* b : buffers) {
       b->Done();

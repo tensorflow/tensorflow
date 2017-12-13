@@ -52,7 +52,7 @@ Executable::ExecuteOnStreams(
   }
   for (const auto& options : run_options) {
     TF_RET_CHECK(options.stream() != nullptr);
-    TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDoneWithStatus());
+    TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
   }
   return return_values;
 }

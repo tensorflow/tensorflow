@@ -65,7 +65,7 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                        buffer->length());
   }
 
-  Status block_status = stream->BlockHostUntilDoneWithStatus();
+  Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          stream, block_status.error_message().c_str());

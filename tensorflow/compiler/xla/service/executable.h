@@ -224,7 +224,7 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
     stream->ThenStopTimer(timer.get());
-    SE_CHECK_OK(stream->BlockHostUntilDoneWithStatus());
+    SE_CHECK_OK(stream->BlockHostUntilDone());
     VLOG(1) << "done with block-host-until-done";
 
     // Merge in run-time profile information from execution_profile.

@@ -352,7 +352,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo");
   }
-  return dev_info->stream->BlockHostUntilDoneWithStatus();
+  return dev_info->stream->BlockHostUntilDone();
 }
 
 Status GPUUtil::SyncAll(Device* gpu_device) {

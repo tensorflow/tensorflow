@@ -74,7 +74,7 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     Status status;
     stream_->ThenMemcpy(&dev_dst_ptr, src_ptr, total_bytes);
     // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDoneWithStatus();
+    Status block_status = stream_->BlockHostUntilDone();
     if (!block_status.ok()) {
       status = xla::InternalError(
           "Failed to complete data transfer on stream %p: %s", stream_,
@@ -110,7 +110,7 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     Status status;
     stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
     // TODO(hpucha): Make this asynchronous.
-    Status block_status = stream_->BlockHostUntilDoneWithStatus();
+    Status block_status = stream_->BlockHostUntilDone();
     if (!block_status.ok()) {
       status = xla::InternalError(
           "Failed to complete data transfer on stream %p: %s", stream_,

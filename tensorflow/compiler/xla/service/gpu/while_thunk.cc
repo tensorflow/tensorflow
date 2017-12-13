@@ -53,7 +53,7 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     // Copy the result of condition computation and break the loop if 'false'.
     bool condition_result;
     stream->ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
-    Status block_status = stream->BlockHostUntilDoneWithStatus();
+    Status block_status = stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", stream,

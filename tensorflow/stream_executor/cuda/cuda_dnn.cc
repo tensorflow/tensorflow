@@ -4252,7 +4252,7 @@ bool CudnnSupport::DoDepthConcatenate(
     const auto& dimensions = input_dimensions[i];
     tmp.resize(dimensions.ElementCount());
     stream->ThenMemcpyD2H<float>(*input_data[i], &tmp);
-    port::Status block_status = stream->BlockHostUntilDoneWithStatus();
+    port::Status block_status = stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       LOG(ERROR) << "BlockHostUntilDone failed: " << block_status;
       return false;
