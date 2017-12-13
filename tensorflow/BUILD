@@ -446,6 +446,7 @@ filegroup(
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
+        "//tensorflow/contrib/eager/proto:all_files",
         "//tensorflow/contrib/eager/python:all_files",
         "//tensorflow/contrib/estimator:all_files",
         "//tensorflow/contrib/factorization:all_files",

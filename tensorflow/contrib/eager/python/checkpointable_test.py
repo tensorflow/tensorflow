@@ -24,6 +24,7 @@ from tensorflow.contrib.eager.python import network as network_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
@@ -44,8 +45,11 @@ class CheckpointableDenseLayer(core.Dense, checkpointable.Checkpointable):
     # Layer.add_variable should inherit from Checkpointable and simply call
     # super and then do post-processing.
     return checkpointable.Checkpointable.add_variable(
-        self, name=name, shape=shape,
-        getter=functools.partial(core.Dense.add_variable, self), **kwargs)
+        self,
+        name=name,
+        shape=shape,
+        getter=functools.partial(core.Dense.add_variable, self),
+        **kwargs)
 
 
 # pylint: disable=not-callable
@@ -82,15 +86,21 @@ class CheckpointableAdam(adam.AdamOptimizer, checkpointable.Checkpointable):
 
     if create_new:
       with ops.colocate_with(first_var):
+
         def _variable_getter(name, shape, dtype, initializer):
           del shape, dtype  # not used, but there for compatibility
           return variable_scope.variable(
               name=name, initial_value=initializer, trainable=False)
+
         self._beta1_power = self.add_variable(
-            name="beta1_power", shape=[], initializer=self._beta1,
+            name="beta1_power",
+            shape=[],
+            initializer=self._beta1,
             getter=_variable_getter)
         self._beta2_power = self.add_variable(
-            name="beta2_power", shape=[], initializer=self._beta2,
+            name="beta2_power",
+            shape=[],
+            initializer=self._beta2,
             getter=_variable_getter)
     # Create slots for the first and second moments.
     for v in var_list:
@@ -109,8 +119,7 @@ class MyNetwork(CheckpointableNetwork):
   def __init__(self):
     super(MyNetwork, self).__init__()
     self._named = self.track_layer(
-        CheckpointableDenseLayer(1, use_bias=True),
-        name="named_dense")
+        CheckpointableDenseLayer(1, use_bias=True), name="named_dense")
     self._unnamed = self.track_layer(
         CheckpointableDenseLayer(1, use_bias=False))
 
@@ -134,6 +143,7 @@ class Root(checkpointable.Checkpointable):
       # self.add_variable, by setting a custom getter.
       def _owned_variable_as_custom_getter(getter, *args, **kwargs):
         return self.add_variable(*args, getter=getter, **kwargs)
+
       with variable_scope.variable_scope(
           "", custom_getter=_owned_variable_as_custom_getter):
         self._global_step = training_util.create_global_step()
@@ -152,26 +162,28 @@ class CheckpointNamingTests(test.TestCase):
     optimizer = CheckpointableAdam(0.001)
     root_checkpointable = Root(optimizer=optimizer, network=network)
     if context.in_eager_mode():
-      optimizer.minimize(lambda: network(input_value),
-                         global_step=root_checkpointable.global_step)
-      optimizer.minimize(lambda: other_network(input_value),
-                         global_step=root_checkpointable.global_step)
+      optimizer.minimize(
+          lambda: network(input_value),
+          global_step=root_checkpointable.global_step)
+      optimizer.minimize(
+          lambda: other_network(input_value),
+          global_step=root_checkpointable.global_step)
     else:
       train_op = optimizer.minimize(
-          network(input_value),
-          global_step=root_checkpointable.global_step)
+          network(input_value), global_step=root_checkpointable.global_step)
       optimizer.minimize(
           other_network(input_value),
           global_step=root_checkpointable.global_step)
       self.evaluate(variables.global_variables_initializer())
       self.evaluate(train_op)
-    named_variables = checkpointable._name_variables(root_checkpointable)
+    named_variables, serialized_graph = checkpointable._serialize_object_graph(
+        root_checkpointable)
     expected_checkpoint_names = (
         # Created in the root node, so no prefix.
         "global_step",
         # No name provided to track_checkpointable(), so the position (1, after
         # the named track_checkpointable() which is 0) is used instead.
-        "network/1/kernel",
+        "network/_1/kernel",
         # track_checkpointable() with a name provided, so that's used
         "network/named_dense/kernel",
         "network/named_dense/bias",
@@ -179,25 +191,86 @@ class CheckpointNamingTests(test.TestCase):
         "optimizer/beta1_power",
         "optimizer/beta2_power",
         # Slot variables
-        "network/1/kernel/_OPTIMIZER_SLOT/optimizer/m",
-        "network/1/kernel/_OPTIMIZER_SLOT/optimizer/v",
+        "network/_1/kernel/_OPTIMIZER_SLOT/optimizer/m",
+        "network/_1/kernel/_OPTIMIZER_SLOT/optimizer/v",
         "network/named_dense/kernel/_OPTIMIZER_SLOT/optimizer/m",
         "network/named_dense/kernel/_OPTIMIZER_SLOT/optimizer/v",
         "network/named_dense/bias/_OPTIMIZER_SLOT/optimizer/m",
         "network/named_dense/bias/_OPTIMIZER_SLOT/optimizer/v",
     )
-    six.assertCountEqual(
-        self, expected_checkpoint_names, named_variables.keys())
+    six.assertCountEqual(self, expected_checkpoint_names,
+                         named_variables.keys())
     # Check that we've mapped to the right variable objects (not exhaustive)
     self.assertEqual("global_step:0", named_variables["global_step"].name)
     self.assertEqual("my_network/checkpointable_dense_layer_1/kernel:0",
-                     named_variables["network/1/kernel"].name)
+                     named_variables["network/_1/kernel"].name)
     self.assertEqual("my_network/checkpointable_dense_layer/kernel:0",
                      named_variables["network/named_dense/kernel"].name)
     self.assertEqual("beta1_power:0",
                      named_variables["optimizer/beta1_power"].name)
     self.assertEqual("beta2_power:0",
                      named_variables["optimizer/beta2_power"].name)
+    # Spot check the generated protocol buffers.
+    self.assertEqual(0, serialized_graph.nodes[0].children[0].local_uid)
+    self.assertEqual("optimizer",
+                     serialized_graph.nodes[0].children[0].local_name)
+    optimizer_node = serialized_graph.nodes[serialized_graph.nodes[0].children[
+        0].node_id]
+    self.assertEqual("beta1_power", optimizer_node.variables[0].local_name)
+    self.assertEqual("beta1_power", optimizer_node.variables[0].full_name)
+    self.assertEqual(
+        "kernel", optimizer_node.slot_variables[0].original_variable_local_name)
+    original_variable_owner = serialized_graph.nodes[
+        optimizer_node.slot_variables[0].original_variable_node_id]
+    self.assertEqual("kernel", original_variable_owner.variables[0].local_name)
+    self.assertEqual("m", optimizer_node.slot_variables[0].slot_name)
+    # We strip off the :0 suffix, as variable.name-based saving does.
+    self.assertEqual("my_network/checkpointable_dense_layer/kernel/Adam",
+                     optimizer_node.slot_variables[0].full_name)
+    self.assertEqual("my_network/checkpointable_dense_layer/kernel/Adam:0",
+                     optimizer.get_slot(
+                         var=named_variables["network/named_dense/kernel"],
+                         name="m").name)
+
+  def _get_checkpoint_name(self, name):
+    root = checkpointable.Checkpointable()
+    with variable_scope.variable_scope("get_checkpoint_name"):
+      # Create the variable in a variable scope so that we get more relaxed
+      # naming rules (variables outside a scope may not start with "_", "/" or
+      # "-"). Since we don't use the scope part of the name, these cases are
+      # somewhat annoying.
+      root.add_variable(name=name, shape=[1, 2], dtype=dtypes.float64)
+    named_variables, _ = checkpointable._serialize_object_graph(root)
+    checkpoint_name, = named_variables.keys()
+    with ops.name_scope("root/" + checkpoint_name):
+      pass  # Make sure we can use this as an op name if we prefix it.
+    return checkpoint_name
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testVariableNameEscaping(self):
+    self.assertEqual(r"a_S__b_S__c", self._get_checkpoint_name(r"a/b/c"))
+    self.assertEqual(r"", self._get_checkpoint_name(r""))
+    self.assertEqual(r"_S__", self._get_checkpoint_name(r"/"))
+    self.assertEqual(r"_S___S_._", self._get_checkpoint_name(r"/_S__"))
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testNumberedPath(self):
+    root = checkpointable.Checkpointable()
+    leaf = checkpointable.Checkpointable()
+    root.track_checkpointable(leaf)
+    leaf.add_variable(name="v", shape=[])
+    named_variables, _ = checkpointable._serialize_object_graph(root)
+    variable_name, = named_variables.keys()
+    self.assertEqual(r"_0/v", variable_name)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testLocalNameValidation(self):
+    root = checkpointable.Checkpointable()
+    leaf = checkpointable.Checkpointable()
+    with self.assertRaisesRegexp(ValueError, "invalid name"):
+      # Leading underscores are reserved, which avoids conflicts with
+      # un-named edges in paths and the optimizer slots identifier.
+      root.track_checkpointable(leaf, name="_12")
 
 
 if __name__ == "__main__":
