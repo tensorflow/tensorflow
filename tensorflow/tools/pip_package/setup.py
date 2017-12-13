@@ -33,12 +33,6 @@ _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
-    # weakref.finalize introduced in Python 3.4
-    'backports.weakref >= 1.0rc1; python_version < "3.4"',
-    # enum module introduced in Python 3.4
-    'enum34 >= 1.1.6; python_version < "3.4"',
-    # Needed for unittest.mock in Python 2
-    'mock >= 2.0.0; python_version < "3.0"',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',

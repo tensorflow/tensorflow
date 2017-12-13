@@ -69,7 +69,7 @@ class HloExecutionProfiler {
   ~HloExecutionProfiler() {
     if (do_profile_) {
       stream_->ThenStopTimer(execution_timer_.get());
-      stream_->BlockHostUntilDone();
+      stream_->BlockHostUntilDone().IgnoreError();
       profile_->set_total_cycles_executed(
           *computation_, execution_timer_->Nanoseconds() * clock_rate_ghz_);
     }
@@ -87,7 +87,7 @@ class HloExecutionProfiler {
   void FinishOperation(const HloInstruction* hlo_instruction) {
     if (do_profile_) {
       stream_->ThenStopTimer(per_op_timer_.get());
-      stream_->BlockHostUntilDone();
+      stream_->BlockHostUntilDone().IgnoreError();
       profile_->SetCyclesTakenBy(
           hlo_instruction, per_op_timer_->Nanoseconds() * clock_rate_ghz_);
     }
@@ -170,7 +170,7 @@ Status GpuExecutable::ExecuteThunks(
     // If this thunk requests it, wait for all currently-executing thunks to
     // finish.  This is useful e.g. if the thunk is about to perform autotuning.
     if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
-      main_stream->BlockHostUntilDone();
+      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
     profiler.StartOperation();
@@ -191,9 +191,13 @@ Status GpuExecutable::ExecuteThunks(
   // Make sure kernels are completed before deallocating temporary buffers.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (block_host_until_done && !main_stream->BlockHostUntilDone()) {
-    return InternalError("Failed to complete all kernels launched on stream %p",
-                         main_stream);
+  if (block_host_until_done) {
+    Status block_status = main_stream->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError(
+          "Failed to complete all kernels launched on stream %p: %s",
+          main_stream, block_status.error_message().c_str());
+    }
   }
 
   return Status::OK();

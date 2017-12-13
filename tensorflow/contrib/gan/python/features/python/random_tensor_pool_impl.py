@@ -49,7 +49,7 @@ def _to_tuple(x):
 
 
 def tensor_pool(input_values,
-                pool_size,
+                pool_size=50,
                 pooling_probability=0.5,
                 name='tensor_pool'):
   """Queue storing input values and returning random previously stored ones.
@@ -65,7 +65,8 @@ def tensor_pool(input_values,
   Args:
     input_values: A `Tensor`, or a list or tuple of `Tensor`s from which to read
       values to be pooled.
-    pool_size: An integer specifying the maximum size of the pool.
+    pool_size: An integer specifying the maximum size of the pool. Defaults to
+      50.
     pooling_probability: A float `Tensor` specifying the probability of getting
       a value from the pool, as opposed to just the current input.
     name: A string prefix for the name scope for all tensorflow ops.

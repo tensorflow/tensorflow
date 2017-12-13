@@ -2279,8 +2279,7 @@ class ControlFlowTest(test.TestCase):
       # Duplicate events cause an error if exclusive = True
       r4 = control_flow_ops.case(
           [(x < y, f1), (x < y, f2)], default=f3, exclusive=True)
-      with self.assertRaisesOpError(
-          "More than one condition evaluated as True but exclusive=True."):
+      with self.assertRaisesOpError("Input error:"):
         r4.eval()
 
       # Check that the default is called if none of the others are
@@ -3044,6 +3043,7 @@ class EagerTest(test.TestCase):
       r1 = control_flow_ops.case([(x < y, f1), (x > z, f2)],
                                  default=f3, exclusive=True)
       self.assertAllEqual(r1.numpy(), 17)
+
 
 if __name__ == "__main__":
   test.main()

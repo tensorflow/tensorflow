@@ -104,6 +104,7 @@ enum BuiltinOperator : byte {
   CALL = 31,
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
+  PAD = 34,
 }
 
 // Options for the builtin operators.
@@ -129,6 +130,7 @@ union BuiltinOptions {
   SpaceToDepthOptions,
   EmbeddingLookupSparseOptions,
   MulOptions,
+  PadOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -242,6 +244,11 @@ table ResizeBilinearOptions {
 table CallOptions {
   // The subgraph index that needs to be called.
   subgraph:uint;
+}
+
+table PadOptions {
+  before_padding:[int];
+  after_padding:[int];
 }
 
 table ReshapeOptions {

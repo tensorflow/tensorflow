@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package tensorflow.contrib.eager;
+
+// Prototype for an addition to BundleHeaderProto which saves extra information
+// about the objects which own variables, allowing for more robust checkpoint
+// loading into modified programs.
+
+message CheckpointableObjectGraph {
+  message Object {
+    message ObjectReference {
+      // An index into `CheckpointableObjectGraph.nodes`, indicating the object
+      // being referenced.
+      int32 node_id = 1;
+      // A numeric identifier for this object within its parent.
+      int32 local_uid = 2;
+      // A user-provided name for the edge. May be blank/omitted, in which case
+      // there is no explicitly provided local name; fall back on local_uid.
+      string local_name = 3;
+    }
+
+    message VariableReference {
+      // A name for the variable which is unique within the object which owns
+      // it. Does not include a name_scope or variable_scope prefix.
+      string local_name = 1;
+      // The full name of the variable. Used to allow name-based loading of
+      // checkpoints which were saved using an object-based API.
+      string full_name = 2;
+    }
+
+    message SlotVariableReference {
+      // An index into `CheckpointableObjectGraph.nodes`, indicating the object
+      // which created the variable that this variable is slotting for.
+      int32 original_variable_node_id = 1;
+      // The local name of the variable being slotted for within the object that
+      // owns it.
+      string original_variable_local_name = 2;
+      // The name of the slot (e.g. "m"/"v").
+      string slot_name = 3;
+      // The full name of the slot variable. Used to allow name-based loading of
+      // checkpoints which were saved using an object-based API.
+      string full_name = 4;
+    }
+
+    // Objects which this object depends on.
+    repeated ObjectReference children = 1;
+    // Non-slot variables owned by this object.
+    repeated VariableReference variables = 2;
+    // Slot variables owned by this object.
+    repeated SlotVariableReference slot_variables = 3;
+  }
+
+  repeated Object nodes = 1;
+}

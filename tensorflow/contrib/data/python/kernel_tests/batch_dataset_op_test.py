@@ -630,7 +630,11 @@ class BatchDatasetTest(test.TestCase):
           for j in range(8):
             self.assertAllEqual(component[(i * 8 + j) % 7]**2,
                                 result_component[j])
-      # The last batch should fail with `OutOfRange`.
+      result = sess.run(get_next)
+      for component, result_component in zip(components, result):
+        for j in range((14 * 7) % 8):
+          self.assertAllEqual(component[((num_batches - 1) * 8 + j) % 7]**2,
+                              result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -647,11 +651,7 @@ class BatchDatasetTest(test.TestCase):
     return self._testBatchAndMapDatasetHelper()
 
   def testBatchAndMapDatasetWithParallelBatching(self):
-    # TODO(b/70299909): This test surfaces a bug in the `map_and_batch`
-    # transformation, which manifests as premature EOF. Fix it.
-    #
-    # return self._testBatchAndMapDatasetHelper(num_parallel_batches=10)
-    pass
+    return self._testBatchAndMapDatasetHelper(num_parallel_batches=10)
 
   def testMapAndBatchSparse(self):
 

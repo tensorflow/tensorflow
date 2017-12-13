@@ -1433,7 +1433,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       &refiner);
 }
 
-TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapMissingUnusedKeys) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // No input map
@@ -1443,10 +1443,10 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
       "node { name: 'W1' op: 'TestParams' }"
       "node { name: 'input' op: 'TestInput' }",
       opts, &refiner, &results);
-  EXPECT_TRUE(results.unused_input_map_keys.empty());
+  EXPECT_TRUE(results.missing_unused_input_map_keys.empty());
 
-  // Non-empty unused_input_map_keys
-  results.unused_input_map_keys.push_back(TensorId());
+  // Non-empty missing_unused_input_map_keys
+  results.missing_unused_input_map_keys.push_back(TensorId());
   ExpectError(
       "node { name: 'W2' op: 'TestParams' }", opts,
       {"All fields in results argument to ImportGraphDef() must be empty."},
@@ -1454,13 +1454,16 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
 
   // Input map with some used, some unused keys
   const int kControlSlot = Graph::kControlSlot;
-  results.unused_input_map_keys.clear();
+  results.missing_unused_input_map_keys.clear();
   opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
   opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
   opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
-  opts.input_map[TensorId("new_input", kControlSlot)] =
-      TensorId("input", kControlSlot);
-  opts.input_map[TensorId("t1", 1)] = TensorId("input", 0);
+  // Unused and missing (nonexistent index)
+  opts.input_map[TensorId("new_input", 3)] = TensorId("input", 0);
+  // Unused and missing (nonexistent node)
+  opts.input_map[TensorId("DNE", 0)] = TensorId("input", 0);
+  // Unused but not missing
+  opts.input_map[TensorId("t1", 0)] = TensorId("W1", 0);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1470,9 +1473,36 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
       )EOF",
       opts, &refiner, &results);
 
-  std::vector<TensorId> expected_unused_keys = {
-      TensorId("new_input", kControlSlot), TensorId("t1", 1)};
-  EXPECT_EQ(results.unused_input_map_keys, expected_unused_keys);
+  std::set<TensorId> expected_unused_keys = {TensorId("new_input", 3),
+                                             TensorId("DNE", 0)};
+  ASSERT_EQ(results.missing_unused_input_map_keys.size(),
+            expected_unused_keys.size());
+
+  std::set<TensorId> actual_unused_keys(
+      results.missing_unused_input_map_keys.begin(),
+      results.missing_unused_input_map_keys.end());
+  EXPECT_EQ(actual_unused_keys, expected_unused_keys);
+
+  // Test edge case: node isn't imported due to skip_mapped_nodes, but we still
+  // have a bad input_map key involving it.
+  opts = ImportGraphDefOptions();
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 1);
+  // Index out of bounds
+  opts.input_map[TensorId("new_input", 2)] = TensorId("input", 1);
+  opts.skip_mapped_nodes = true;
+  opts.prefix = "import";
+  results = ImportGraphDefResults();
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      )EOF",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.missing_unused_input_map_keys.size(), 1);
+  EXPECT_EQ(results.missing_unused_input_map_keys[0], TensorId("new_input", 2));
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithUnboundInput) {
@@ -1709,7 +1739,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnNodes) {
   // Check return tensors
   ASSERT_EQ(results.return_nodes.size(), 2);
   EXPECT_EQ(results.return_tensors.size(), 0);
-  EXPECT_EQ(results.unused_input_map_keys.size(), 0);
+  EXPECT_EQ(results.missing_unused_input_map_keys.size(), 0);
   EXPECT_EQ(results.return_nodes[0]->name(), "input");
   EXPECT_EQ(results.return_nodes[1]->name(), "t1");
 

@@ -156,6 +156,7 @@ sh_binary(
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/data/python/ops:prefetching_py",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
+            "//tensorflow/contrib/eager/python:checkpointable",
             "//tensorflow/contrib/eager/python:evaluator",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",

@@ -151,6 +151,10 @@ bool IsRestore(const NodeDef& node) {
 
 bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
 
+bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
+
+bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
+
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
