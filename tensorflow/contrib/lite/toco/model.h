@@ -546,7 +546,7 @@ struct AddOperator : Operator {
 };
 
 // Concatenation operator: concatenates its inputs
-// along the concat_dim dimension.
+// along the axis.
 //
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to concatenate.
@@ -554,7 +554,7 @@ struct AddOperator : Operator {
 // TensorFlow equivalent: Concat.
 struct ConcatenationOperator : Operator {
   ConcatenationOperator() : Operator(OperatorType::kConcatenation) {}
-  int concat_dim = 0;
+  int axis = 0;
 };
 
 // Reordering dimensions. Used only during tooling to transform graphs from
@@ -1260,7 +1260,7 @@ struct BatchToSpaceNDOperator : Operator {
 struct MeanOperator : Operator {
   MeanOperator() : Operator(OperatorType::kMean) {}
 
-  std::vector<int> reduction_indices;
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 

@@ -132,10 +132,10 @@ TEST_F(OperatorTest, CustomCast) {
 
 TEST_F(OperatorTest, CustomConcatenation) {
   ConcatenationOperator op;
-  op.concat_dim = 123;
+  op.axis = 123;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("CONCATENATION", OperatorType::kConcatenation), op);
-  EXPECT_EQ(op.concat_dim, output_toco_op->concat_dim);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
 TEST_F(OperatorTest, CustomDepthToSpace) {

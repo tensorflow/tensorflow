@@ -153,12 +153,12 @@ class Concatenation
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateConcatenationOptions(*builder, op.concat_dim);
+    return ::tflite::CreateConcatenationOptions(*builder, op.axis);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->concat_dim = options.axis();
+    op->axis = options.axis();
   }
 };
 
