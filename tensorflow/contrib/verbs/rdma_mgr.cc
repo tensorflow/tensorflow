@@ -97,14 +97,12 @@ void RdmaMgr::SetupChannels() {
       rc->SetRemoteAddress(ra, false);
       rc->Connect();
       int i = 0;
-      int idx[] = {1, 0, 3, 2};
+      int idx[] = {1, 0};
       for (const auto& mr : resp.mr()) {
         // the connections are crossed, i.e.
         // local tx_message_buffer <---> remote rx_message_buffer_
         // local rx_message_buffer <---> remote tx_message_buffer_
-        // local tx_ack_buffer <---> remote rx_ack_buffer_
-        // local rx_ack_buffer <---> remote tx_ack_buffer_
-        // hence idx[] = {1, 0, 3, 2}.
+        // hence idx[] = {1, 0}.
         RdmaBuffer* rb = rc->message_buffers_[idx[i]];
         RemoteMR rmr;
         rmr.remote_addr = mr.remote_addr();

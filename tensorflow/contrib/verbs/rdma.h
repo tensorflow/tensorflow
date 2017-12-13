@@ -82,7 +82,6 @@ enum Location {
   remote
 };
 enum BufferType {
-  ACK,
   MESSAGE,
   TENSOR
 };
@@ -263,7 +262,6 @@ class RdmaBuffer;
 class RdmaAdapter {
   friend class RdmaChannel;
   friend class RdmaBuffer;
-  friend class RdmaAckBuffer;
   friend class RdmaMessageBuffer;
   friend class RdmaTensorBuffer;
   friend class RdmaMgr;
@@ -301,7 +299,6 @@ class RdmaAdapter {
 class RdmaChannel {
   friend class RdmaAdapter;
   friend class RdmaBuffer;
-  friend class RdmaAckBuffer;
   friend class RdmaMessageBuffer;
   friend class RdmaTensorBuffer;
   friend class RdmaTensorRequest;
@@ -332,7 +329,7 @@ class RdmaChannel {
       const RdmaTensorRequest::RecvDoneCallback& done);
   void RemoveTensorRequest(uint32_t request_index);
   RdmaTensorRequest* GetTensorRequest(uint32_t request_index);
-  static const int kNumMessageBuffers = 4;
+  static const int kNumMessageBuffers = 2;
   static const int kPingRecvWrid = 0;
 
  private:
@@ -366,8 +363,6 @@ class RdmaChannel {
   BufferNameIndexTable buffer_name_index_table_ GUARDED_BY(bt_mu_);
   RdmaBuffer* tx_message_buffer_;
   RdmaBuffer* rx_message_buffer_;
-  RdmaBuffer* tx_ack_buffer_;
-  RdmaBuffer* rx_ack_buffer_;
   std::vector<RdmaBuffer*> message_buffers_;
 };
 
@@ -406,6 +401,7 @@ class RdmaBuffer {
                     size_t buffer_size, uint64_t src_addr, uint32_t lkey,
                     uint64_t remote_addr, uint32_t rkey,
                     RdmaWriteIDType write_type, void* write_context);
+  static void SendAck(const RdmaChannel* channel);
 
  protected:
   const RdmaChannel* channel_;
@@ -419,13 +415,6 @@ class RdmaBuffer {
   std::queue<string> queue_ GUARDED_BY(mu_);
   BufferStatus local_status_ GUARDED_BY(mu_) = none;
   BufferStatus remote_status_ GUARDED_BY(mu_) = none;
-};
-
-class RdmaAckBuffer : public RdmaBuffer {
- public:
-  explicit RdmaAckBuffer(RdmaChannel* channel, string name);
-  virtual ~RdmaAckBuffer() override {}
-  void SendNextItem() override;
 };
 
 class RdmaMessageBuffer : public RdmaBuffer {
@@ -549,7 +538,6 @@ struct RdmaMessage {
       kTensorBytesStartIndex + sizeof(tensor_bytes_);
   static const size_t kMessageTotalBytes = kTensorBufferStartIndex;
   static const size_t kRdmaMessageBufferSize = kMessageTotalBytes;
-  static const size_t kRdmaAckBufferSize = kMessageTotalBytes;
   static string CreateMessage(const RdmaMessage& rm);
   static void ParseMessage(RdmaMessage& rm, void* buffer);
 };
