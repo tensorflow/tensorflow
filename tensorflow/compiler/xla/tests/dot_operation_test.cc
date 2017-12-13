@@ -53,6 +53,8 @@ class DotOperationTest : public ClientLibraryTestBase {
                               bool rhs_row_major = false);
   void TestMatrixDot(int M, int K, int N, bool lhs_row_major = false,
                      bool rhs_row_major = false);
+  void TestMatrixDotWithAdd(int M, int K, int N, bool dot_lhs_row_major,
+                            bool dot_rhs_row_major, bool addend_row_major);
 };
 
 XLA_TEST_F(DotOperationTest, ZeroElementVectorDotF32) {
@@ -229,6 +231,54 @@ void DotOperationTest::TestMatrixDot(int M, int K, int N, bool lhs_row_major,
                              ErrorSpec(0.3, 3e-3));
 }
 
+void DotOperationTest::TestMatrixDotWithAdd(int M, int K, int N,
+                                            bool dot_lhs_row_major,
+                                            bool dot_rhs_row_major,
+                                            bool addend_row_major) {
+  std::unique_ptr<Array2D<float>> dot_lhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, M, K);
+  std::unique_ptr<Literal> dot_lhs_lit = Literal::CreateR2FromArray2DWithLayout(
+      *dot_lhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(dot_lhs_row_major)));
+  auto dot_lhs_handle =
+      client_->TransferToServer(*dot_lhs_lit).ConsumeValueOrDie();
+
+  std::unique_ptr<Array2D<float>> dot_rhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, K, N);
+  std::unique_ptr<Literal> dot_rhs_lit = Literal::CreateR2FromArray2DWithLayout(
+      *dot_rhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(dot_rhs_row_major)));
+  auto dot_rhs_handle =
+      client_->TransferToServer(*dot_rhs_lit).ConsumeValueOrDie();
+
+  std::unique_ptr<Array2D<float>> addend_data =
+      MakeLinspaceArray2D(0.0, 1.0, M, N);
+  std::unique_ptr<Literal> addend_lit = Literal::CreateR2FromArray2DWithLayout(
+      *addend_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(addend_row_major)));
+  auto addend_handle =
+      client_->TransferToServer(*addend_lit).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+  auto result = builder.Add(
+      builder.Dot(builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {M, K}),
+                                    "dot_lhs"),
+                  builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {K, N}),
+                                    "dot_rhs")),
+      builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {M, N}), "addend"));
+
+  std::unique_ptr<Array2D<float>> expected = ReferenceUtil::ApplyElementwise2D(
+      std::plus<float>(),
+      *ReferenceUtil::MatmulArray2D(*dot_lhs_data, *dot_rhs_data),
+      *addend_data);
+
+  ComputeAndCompareR2<float>(
+      &builder, *expected,
+      {dot_lhs_handle.get(), dot_rhs_handle.get(), addend_handle.get()},
+      ErrorSpec(0.3, 3e-3));
+}
+
 XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorTF) {
   TestMatrixDot(12, 117, 7, true, false);
 }
@@ -331,6 +381,96 @@ XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1) {
 
 XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1_FT) {
   TestMatrixDot(259, 258, 1, false, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x8) {
+  TestMatrixDotWithAdd(1, 8, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x130x8) {
+  TestMatrixDotWithAdd(1, 130, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x130) {
+  TestMatrixDotWithAdd(1, 8, 130, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x290x130) {
+  TestMatrixDotWithAdd(1, 290, 130, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_2x1x1) {
+  TestMatrixDotWithAdd(2, 1, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_8x8x1) {
+  TestMatrixDotWithAdd(8, 8, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_16x1x1) {
+  TestMatrixDotWithAdd(16, 1, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_16x3x1) {
+  TestMatrixDotWithAdd(16, 3, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_3x3x1) {
+  TestMatrixDotWithAdd(3, 3, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_29x29x1) {
+  TestMatrixDotWithAdd(29, 29, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x2) {
+  TestMatrixDotWithAdd(1, 8, 2, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x2x8) {
+  TestMatrixDotWithAdd(1, 2, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FTT) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FFT) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FFF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_TFF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_TTF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/false);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
