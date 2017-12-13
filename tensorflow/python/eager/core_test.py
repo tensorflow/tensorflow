@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import threading
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -29,6 +31,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 
 
@@ -119,13 +122,13 @@ class TFETest(test_util.TensorFlowTestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    x = constant_op.constant(1.).as_gpu_tensor()
+    x = constant_op.constant(1.).gpu()
     with context.device('gpu:0'):
       y = constant_op.constant(2.)
     # Add would fail if t2 were not on GPU
     result = execute(
         b'Add', 1, inputs=[x, y],
-        attrs=('T', x.dtype.as_datatype_enum))[0].as_cpu_tensor().numpy()
+        attrs=('T', x.dtype.as_datatype_enum))[0].cpu().numpy()
     self.assertEqual(3, result)
 
   def testCopyBetweenDevices(self):
@@ -133,29 +136,29 @@ class TFETest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs found')
 
     x = constant_op.constant([[1., 2.], [3., 4.]])
-    x = x.as_cpu_tensor()
-    x = x.as_gpu_tensor()
-    x = x.as_gpu_tensor()
-    x = x.as_cpu_tensor()
+    x = x.cpu()
+    x = x.gpu()
+    x = x.gpu()
+    x = x.cpu()
 
     # Invalid device
     with self.assertRaises(RuntimeError):
-      x.as_gpu_tensor(context.context().num_gpus() + 1)
+      x.gpu(context.context().num_gpus() + 1)
 
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
     cpu = constant_op.constant([[1., 2.], [3., 4.]])
-    c2g = cpu.as_gpu_tensor()
-    self.assertAllEqual(c2g.numpy(), cpu.numpy())
+    c2g = cpu.gpu()
+    self.assertAllEqual(c2g, cpu.numpy())
 
   def testCopyFromCPUToCPU(self):
     ta = constant_op.constant([[1, 2], [3, 4]])
-    tb = ta.as_cpu_tensor()
+    tb = ta.cpu()
 
     self.assertNotEqual(id(ta), id(tb))
-    self.assertAllEqual(ta.numpy(), tb.numpy())
+    self.assertAllEqual(ta, tb.numpy())
 
   def testRegisterExceptionClass(self):
     with self.assertRaises(TypeError):
@@ -171,7 +174,7 @@ class TFETest(test_util.TensorFlowTestCase):
         num_outputs=1,
         inputs=[three, five],
         attrs=('T', three.dtype.as_datatype_enum))[0]
-    self.assertEqual(15, product.numpy())
+    self.assertAllEqual(15, product)
 
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.
@@ -181,20 +184,20 @@ class TFETest(test_util.TensorFlowTestCase):
         num_outputs=50,
         inputs=[constant_op.constant(3), constant_op.constant(5)],
         attrs=('T', dtypes.int32.as_datatype_enum))[0]
-    self.assertEqual(15, product.numpy())
+    self.assertAllEqual(15, product)
 
   def testMatMulGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
-    three = constant_op.constant([[3.]]).as_gpu_tensor()
-    five = constant_op.constant([[5.]]).as_gpu_tensor()
+    three = constant_op.constant([[3.]]).gpu()
+    five = constant_op.constant([[5.]]).gpu()
     product = execute(
         b'MatMul',
         num_outputs=1,
         inputs=[three, five],
         attrs=('transpose_a', False, 'transpose_b', False, 'T',
                three.dtype.as_datatype_enum))[0]
-    self.assertEqual([[15.0]], product.numpy())
+    self.assertAllEqual([[15.0]], product)
 
   def testExecuteStringAttr(self):
     checked_three = execute(
@@ -219,7 +222,7 @@ class TFETest(test_util.TensorFlowTestCase):
         num_outputs=1,
         inputs=[constant_op.constant(3.0), constant_op.constant(2.9)],
         attrs=('tolerance', 0.3, 'T', dtypes.float32.as_datatype_enum))[0]
-    self.assertTrue(almost_equal.numpy())
+    self.assertTrue(almost_equal)
 
   def testExecuteFloatAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
@@ -235,7 +238,7 @@ class TFETest(test_util.TensorFlowTestCase):
         num_outputs=1,
         inputs=[constant_op.constant(3), constant_op.constant(4)],
         attrs=('T', dtypes.int32.as_datatype_enum, 'N', 2))[0]
-    self.assertEqual(7, total.numpy())
+    self.assertAllEqual(7, total)
 
   def testExecuteIntAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
@@ -254,7 +257,7 @@ class TFETest(test_util.TensorFlowTestCase):
                 constant_op.constant([[5]])],
         attrs=('transpose_a', True, 'transpose_b', False, 'T',
                dtypes.int32.as_datatype_enum))[0]
-    self.assertEqual([[15]], product.numpy())
+    self.assertAllEqual([[15]], product)
 
   def testExecuteShapeAttr(self):
     execute(
@@ -307,7 +310,7 @@ class TFETest(test_util.TensorFlowTestCase):
         inputs=[constant_op.constant([3.0, 5.0, 7.0])],
         attrs=('T', dtypes.float32.as_datatype_enum, 'boundaries', [4.0,
                                                                     6.0]))[0]
-    self.assertAllEqual([0, 1, 2], b.numpy())
+    self.assertAllEqual([0, 1, 2], b)
 
   def testExecuteListFloatAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
@@ -332,7 +335,7 @@ class TFETest(test_util.TensorFlowTestCase):
         num_outputs=1,
         inputs=[constant_op.constant([[[3.0]]])],
         attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims', [0, 2]))[0]
-    self.assertAllEqual([3], b.numpy())
+    self.assertAllEqual([3], b)
 
   def testExecuteListIntAttrBadValue(self):
     with self.assertRaises(errors.InvalidArgumentError):
@@ -404,9 +407,9 @@ class TFETest(test_util.TensorFlowTestCase):
         inputs=[constant_op.constant(split_dim),
                 constant_op.constant(value)],
         attrs=('num_split', 3, 'T', dtypes.int32.as_datatype_enum))
-    self.assertAllEqual([[0], [3]], x1.numpy())
-    self.assertAllEqual([[1], [4]], x2.numpy())
-    self.assertAllEqual([[2], [5]], x3.numpy())
+    self.assertAllEqual([[0], [3]], x1)
+    self.assertAllEqual([[1], [4]], x2)
+    self.assertAllEqual([[2], [5]], x3)
 
   def testExecuteBadNumOutputsArgument(self):
     with self.assertRaises(TypeError):
@@ -439,7 +442,7 @@ class TFETest(test_util.TensorFlowTestCase):
     x = constant_op.constant(1)
     three_x = add(add(x, x), x)
     self.assertEquals(dtypes.int32, three_x.dtype)
-    self.assertEquals(3, three_x.numpy())
+    self.assertAllEqual(3, three_x)
 
   def testOperationWithNoInputsRunsOnDevice(self):
     if not context.context().num_gpus():
@@ -447,7 +450,7 @@ class TFETest(test_util.TensorFlowTestCase):
     shape = constant_op.constant([], dtype=dtypes.int32)
 
     # x: Run the "TruncatedNormal" op CPU and copy result to GPU.
-    x = truncated_normal(shape).as_gpu_tensor()
+    x = truncated_normal(shape).gpu()
     # y: Explicitly run the "TruncatedNormal" op on GPU.
     with context.device('gpu:0'):
       y = truncated_normal(shape)
@@ -459,6 +462,15 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       with context.device('pu:0'):
         _ = constant_op.constant(1)
+
+  def testConvertMixedEagerTensors(self):
+    array = np.zeros((), dtype=np.float32)
+    tensor = constant_op.constant(0., dtype=dtypes.float32)
+    types, tensors = execute_lib.convert_to_mixed_eager_tensors(
+        [array, tensor], context.context())
+    for typ, t in zip(types, tensors):
+      self.assertEquals(typ, dtypes.float32)
+      self.assertIsInstance(t, ops.EagerTensor)
 
 
 if __name__ == '__main__':

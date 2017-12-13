@@ -400,7 +400,7 @@ second sample is *Iris virginica*.
     @{$linear$Large-scale Linear Models with TensorFlow}.
 
 *   To build your own Estimator using tf.estimator APIs, check out
-    @{$estimators$Creating Estimators in tf.estimator}.
+    @{$extend/estimators$Creating Estimators}.
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).

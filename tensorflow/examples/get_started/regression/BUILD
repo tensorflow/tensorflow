@@ -18,6 +18,7 @@ py_test(
     name = "test",
     size = "medium",
     srcs = [
+        "custom_regression.py",
         "dnn_regression.py",
         "imports85.py",
         "linear_regression.py",

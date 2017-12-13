@@ -47,6 +47,12 @@ class MlpTest(tf.test.TestCase):
       # but that takes a non-trivial amount of compute.
       mlp.train_mnist(data_dir=None, num_epochs=1, use_fake_data=True)
 
+  def testTrainMnistMultitower(self):
+    with tf.Graph().as_default():
+      # Ensure model training doesn't crash.
+      mlp.train_mnist_multitower(
+          data_dir=None, num_epochs=1, num_towers=2, use_fake_data=True)
+
 
 if __name__ == "__main__":
   tf.test.main()

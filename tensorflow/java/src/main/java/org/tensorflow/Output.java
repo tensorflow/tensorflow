@@ -20,8 +20,8 @@ import java.util.Objects;
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *
- * <p>An Output<T> is a symbolic handle to a Tensor<T>. The value of the tensor is computed by
- * executing the {@link Operation} in a {@link Session}.
+ * <p>An {@code Output<T>} is a symbolic handle to a {@code Tensor<T>}. The value of the tensor is
+ * computed by executing the {@link Operation} in a {@link Session}.
  *
  * <p>By implementing the {@link Operand} interface, instances of this class also act as operands to
  * {@link org.tensorflow.op.Op Op} instances.

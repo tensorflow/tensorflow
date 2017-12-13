@@ -296,7 +296,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu/c++/5.4.0"
   cxx_builtin_include_directory: "/usr/include/c++/5.4.0/backward"
   cxx_builtin_include_directory: "/usr/local/include"
-  cxx_builtin_include_directory: "/usr/local/lib/clang/5.0.0/include"
+  cxx_builtin_include_directory: "/usr/local/lib/clang/6.0.0/include"
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu"
   cxx_builtin_include_directory: "/usr/include"
 }

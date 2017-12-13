@@ -68,6 +68,9 @@ class ShapeIndex {
 
   const int64* data() const { return indices_.data(); }
 
+  int64 back() const { return indices_.back(); }
+  int64& back() { return indices_.back(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 
@@ -167,7 +170,7 @@ class ShapeUtil {
   // As above, but for program shapes, returns a string for the form:
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
-  static string HumanString(const ProgramShape& shape);
+  static string HumanString(const ProgramShape& program_shape);
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.
@@ -186,6 +189,11 @@ class ShapeUtil {
   // identical. Layout is ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool Compatible(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the rank and dimension sizes are identical. Element type
+  // and layout are ignored. Tuple elements are compared recursively for
+  // compatibility.
+  static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
@@ -291,6 +299,9 @@ class ShapeUtil {
   // Returns whether the element type of the shape is floating point.
   static bool ElementIsFloating(const Shape& shape);
 
+  // Returns whether the element type of the shape is complex.
+  static bool ElementIsComplex(const Shape& shape);
+
   // Returns whether the element type has the given bit width.
   static bool ElementHasBitWidth(const Shape& shape, int bits);
 
@@ -339,6 +350,10 @@ class ShapeUtil {
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
   static Shape SliceTuple(const Shape& tuple, int64 start, int64 limit);
+
+  // Returns the shape of the real/imaginary components of the given complex
+  // shape.
+  static Shape ComplexComponentShape(const Shape& complex_shape);
 
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.

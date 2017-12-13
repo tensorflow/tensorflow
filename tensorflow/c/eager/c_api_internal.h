@@ -35,8 +35,15 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
+struct TFE_ContextOptions {
+  TF_SessionOptions session_options;
+  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_EXPLICIT};
+};
+
 struct TFE_Context {
   explicit TFE_Context(TF_Session* s) : session(s) {}
+
+  TFE_ContextDevicePlacementPolicy policy;
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
   TF_Session* session;

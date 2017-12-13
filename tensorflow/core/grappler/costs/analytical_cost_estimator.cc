@@ -102,12 +102,20 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   } while (scheduler.MarkCurrNodeExecuted(node_costs));
 
-  *costs = scheduler.Summary();
+  RunMetadata run_metadata;
+  *costs = scheduler.Summary(&run_metadata);
   VLOG(1) << inaccurate_nodes.size() << " out of "
           << optimized_graph.node_size()
           << " nodes have inaccurate time estimation";
-  for (const auto& node : inaccurate_nodes) {
-    VLOG(2) << "Node with inaccurate time estimation: " << node;
+  if (VLOG_IS_ON(3)) {
+    for (const auto& node : inaccurate_nodes) {
+      VLOG(4) << "Node with inaccurate time estimation: " << node;
+    }
+  }
+
+  if (VLOG_IS_ON(1)) {
+    bool verbosity = VLOG_IS_ON(2);
+    VLOG(1) << GetStatsStringFromRunMetadata(run_metadata, verbosity);
   }
   return Status::OK();
 }

@@ -87,7 +87,7 @@ toolchain {
   cxx_flag: "-isystem"
   cxx_flag: "/usr/include/arm-linux-gnueabihf"
   cxx_flag: "-isystem"
-  cxx_flag: "/usr/include/python2.7"
+  cxx_flag: "%{PYTHON_INCLUDE_PATH}%"
   cxx_flag: "-isystem"
   cxx_flag: "/usr/include/"
   linker_flag: "-lstdc++"

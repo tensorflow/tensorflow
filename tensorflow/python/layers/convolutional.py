@@ -153,22 +153,18 @@ class _Conv(base.Layer):
       self.bias = None
     self.input_spec = base.InputSpec(ndim=self.rank + 2,
                                      axes={channel_axis: input_dim})
-    with ops.name_scope(None, 'convolution', [self.kernel]) as name:
-      self._convolution_op = nn_ops.Convolution(
-          input_shape,
-          filter_shape=self.kernel.get_shape(),
-          dilation_rate=self.dilation_rate,
-          strides=self.strides,
-          padding=self.padding.upper(),
-          data_format=utils.convert_data_format(self.data_format,
-                                                self.rank + 2),
-          name=name)
+    self._convolution_op = nn_ops.Convolution(
+        input_shape,
+        filter_shape=self.kernel.get_shape(),
+        dilation_rate=self.dilation_rate,
+        strides=self.strides,
+        padding=self.padding.upper(),
+        data_format=utils.convert_data_format(self.data_format,
+                                              self.rank + 2))
     self.built = True
 
   def call(self, inputs):
-    # TODO(agarwal): do we need this name_scope ?
-    with ops.name_scope(None, 'convolution', [inputs, self.kernel]):
-      outputs = self._convolution_op(inputs, self.kernel)
+    outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
@@ -387,6 +383,9 @@ def conv1d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv1D(
       filters=filters,
@@ -587,6 +586,9 @@ def conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv2D(
       filters=filters,
@@ -789,6 +791,9 @@ def conv3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv3D(
       filters=filters,
@@ -808,6 +813,7 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -914,6 +920,7 @@ class SeparableConv2D(Conv2D):
         trainable=trainable,
         name=name,
         **kwargs)
+    self.data_format = data_format
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
     self.pointwise_initializer = pointwise_initializer
@@ -1108,6 +1115,9 @@ def separable_conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = SeparableConv2D(
       filters=filters,
@@ -1222,9 +1232,8 @@ class Conv2DTranspose(Conv2D):
 
   def build(self, input_shape):
     if len(input_shape) != 4:
-      raise ValueError('Inputs should have rank ' +
-                       str(4) +
-                       'Received input shape:', str(input_shape))
+      raise ValueError('Inputs should have rank 4. Received input shape: ' +
+                       str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1403,6 +1412,9 @@ def conv2d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv2DTranspose(
       filters=filters,
@@ -1714,6 +1726,9 @@ def conv3d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Conv3DTranspose(
       filters=filters,
@@ -1732,6 +1747,7 @@ def conv3d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

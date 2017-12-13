@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -161,7 +162,8 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
 
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
                                            const Metadata** metadata) {
-  XlaDevice* xla_device = dynamic_cast<XlaDevice*>(ctx->device());
+  XlaDevice* xla_device =
+      dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
   if (xla_device == nullptr) {
     return errors::Internal(
         "Cannot get XLA metadata from non-XLA device \"", ctx->device()->name(),
@@ -239,7 +241,8 @@ void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // When TraceMe profiling is off (which is the default), the
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
+                                  op_kernel->IsExpensive());
   op_kernel->Compute(context);
 }
 
@@ -247,7 +250,8 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(1) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string(),
+                                  op_kernel->IsExpensive());
   op_kernel->ComputeAsync(context, done);
 }
 

@@ -46,9 +46,7 @@ def estimator_spec_for_softmax_classification(
             'prob': tf.nn.softmax(logits)
         })
 
-  onehot_labels = tf.one_hot(labels, MAX_LABEL, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
   if mode == tf.estimator.ModeKeys.TRAIN:
     optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
@@ -91,11 +89,11 @@ def rnn_model(features, labels, mode):
   word_list = tf.unstack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-  cell = tf.contrib.rnn.GRUCell(EMBEDDING_SIZE)
+  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-  _, encoding = tf.contrib.rnn.static_rnn(cell, word_list, dtype=tf.float32)
+  _, encoding = tf.nn.static_rnn(cell, word_list, dtype=tf.float32)
 
   # Given encoding of RNN, take encoding of last step (e.g hidden size of the
   # neural network of last step) and pass it as features for softmax
@@ -107,6 +105,8 @@ def rnn_model(features, labels, mode):
 
 def main(unused_argv):
   global n_words
+  tf.logging.set_verbosity(tf.logging.INFO)
+
   # Prepare training and testing data
   dbpedia = tf.contrib.learn.datasets.load_dataset(
       'dbpedia', test_with_fake_data=FLAGS.test_with_fake_data)

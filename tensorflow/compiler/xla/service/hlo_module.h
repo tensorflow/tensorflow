@@ -85,7 +85,11 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Return a pointer to the entry computation of the module..
-  HloComputation* entry_computation() const {
+  const HloComputation* entry_computation() const {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation_;
+  }
+  HloComputation* entry_computation() {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
@@ -139,8 +143,19 @@ class HloModule {
 
   const HloModuleConfig& config() const { return config_; }
 
-  string ToString() const;
+  string ToString(bool include_large_constants = false) const;
+
+  // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
+  static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      const VersionedComputationHandle& entry_computation_handle =
+          VersionedComputationHandle());
+
+  // Creates and returns an HloModuleConfig with an appropriate program shape
+  // for the HLO module in the given proto.
+  static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
+      const HloModuleProto& module);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -176,7 +191,8 @@ class HloModule {
 
  private:
   HloComputation* AddComputationInternal(
-      std::unique_ptr<HloComputation> computation);
+      std::unique_ptr<HloComputation> computation, bool is_entry,
+      bool uniquify_names);
 
   const string name_;
   HloModuleConfig config_;

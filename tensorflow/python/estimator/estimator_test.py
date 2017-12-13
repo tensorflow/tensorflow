@@ -29,6 +29,7 @@ import six
 from google.protobuf import text_format
 
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
@@ -49,6 +50,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
@@ -56,6 +58,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
@@ -72,6 +75,23 @@ _ANOTHER_TMP_DIR = '/another_tmp'
 
 def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
+
+
+def check_eventfile_for_keyword(keyword, est):
+  """Checks event files for the keyword."""
+
+  writer_cache.FileWriterCache.clear()
+
+  # Get last Event written.
+  event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+  last_event = None
+  for last_event in summary_iterator.summary_iterator(event_paths[-1]):
+    if last_event.summary is not None:
+      if last_event.summary.value:
+        if keyword in last_event.summary.value[0].tag:
+          return True
+
+  return False
 
 
 class EstimatorInheritanceConstraintTest(test.TestCase):
@@ -583,15 +603,9 @@ class EstimatorTrainTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    # Get last Event written.
-    event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
-    last_event = None
-    for last_event in summary_iterator.summary_iterator(event_paths[-1]):
-      if last_event.summary is not None:
-        if last_event.summary.value:
-          if 'loss' == last_event.summary.value[0].tag:
-            return
-    self.fail('loss should be part of reported summaries.')
+    if check_eventfile_for_keyword('loss', est):
+      return
+    self.fail('{} should be part of reported summaries.'.format('loss'))
 
   def test_latest_checkpoint(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -899,6 +913,80 @@ class EstimatorGetVariablesTest(test.TestCase):
     self.assertEqual(3., est.get_variable_value('three'))
 
 
+class EstimatorDatasetIntegrationTest(test.TestCase):
+  """Tests dataset integration."""
+
+  def test_returned_by_input_fn(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors(([1.], [2.]))
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features + labels,  # 1 + 2
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(3., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_none_labels(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([7.])
+
+    def _model_fn(features, labels, mode):
+      self.assertIsNone(labels)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features,  # 7
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(7., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_predict(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([10.])
+
+    def _model_fn(features, labels, mode):
+      _ = labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,  # 10
+          loss=features,  # 10
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    self.assertEqual([10.], next(est.predict(input_fn=_input_fn)))
+
+  def test_batching(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensor_slices(([[1.], [2.]],
+                                                     [[10.], [20.]])).batch(1)
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,
+          loss=features + (0 if labels is None else labels),  # 11, 22
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn)
+    scores = est.evaluate(_input_fn)
+    # (11 + 22)/2 = 16.5
+    self.assertEqual(16.5, scores[model_fn_lib.LOSS_METRIC_KEY])
+    self.assertEqual([1., 2.], list(est.predict(_input_fn)))
+
+
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):
@@ -1138,6 +1226,39 @@ class EstimatorEvaluateTest(test.TestCase):
     est.evaluate(dummy_input_fn, steps=1)
     self.assertTrue(hook.begin.called)
 
+  def test_summary_writing_with_summary_proto(self):
+
+    def model_fn_global_step_incrementer_image(features, labels, mode):
+      _, _ = features, labels
+      global_step = training.get_global_step()
+
+      image = array_ops.zeros([1, 3, 3, 1])
+      eval_metric_ops = {
+          'image': (summary.image('image', image, max_outputs=1),
+                    constant_op.constant(1))
+      }
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(global_step, 1),
+          eval_metric_ops=eval_metric_ops)
+
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer_image,
+                              config=run_config.RunConfig(save_summary_steps=1))
+    est.train(dummy_input_fn, steps=200)
+    est.evaluate(
+        input_fn=dummy_input_fn,
+        steps=200,
+    )
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Get last Event written.
+    if check_eventfile_for_keyword('image', est):
+      return
+    self.fail('{} should be part of reported summaries.'.format('image'))
+
 
 class EstimatorPredictTest(test.TestCase):
 
@@ -1212,7 +1333,50 @@ class EstimatorPredictTest(test.TestCase):
       next(est.predict(dummy_input_fn))
       self.assertRegexpMatches(
           str(mock_log.call_args),
-          'Input graph does not contain a QueueRunner.')
+          'Input graph does not.*contain a QueueRunner.')
+
+  def test_skip_warn_if_dataset_returns_features(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      return it.get_next()
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
+
+  def test_skip_warn_if_dataset_returns_features_dict(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      features = {'age': it.get_next()}
+      return features
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
 
   def test_input_fn_can_return_just_features(self):
 
@@ -1820,6 +1984,71 @@ class EstimatorExportTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+
+  def test_export_savedmodel_respects_soft_placement(self):
+    def model_fn_with_a_gpu_op_but_no_kernel(features, labels, mode):
+      _, _ = features, labels
+      table = saver_test_utils.CheckpointedOp(name='v2')
+
+      update_global_step = state_ops.assign_add(training.get_global_step(), 1)
+      with ops.control_dependencies([update_global_step]):
+        train_op = table.insert('k1', 30.0)
+
+      #  In this test, there are no GPUs available.  The goal is to verify that
+      #  export_savedmodel executes nevertheless.
+      with ops.device('/gpu:0'):
+        string_op = string_ops.as_string(update_global_step)
+
+      with ops.control_dependencies([string_op]):
+        prediction = table.lookup('k1', 0.0)
+
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=prediction,
+          loss=constant_op.constant(1.),
+          train_op=train_op,
+          export_outputs={
+              'test': export_output.PredictOutput({
+                  'prediction': prediction
+              })
+          })
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_fn=model_fn_with_a_gpu_op_but_no_kernel)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn)
+
+    # At this point, if export_savedmodel executed with
+    # allow_soft_placement=True, then the GPU-assigned operation was silently
+    # placed on the CPU.  Otherwise, an exception would have been raised
+    # related to the fact that the requested GPU device isn't available.
+
+    # Expectations below assume that export_savedmodel has completed normally.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    gfile.DeleteRecursively(tmpdir)
 
 
 class EstimatorHookOrderingTest(test.TestCase):

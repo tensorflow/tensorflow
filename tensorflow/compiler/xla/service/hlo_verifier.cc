@@ -40,22 +40,17 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckBinaryShape(hlo);
   }
 
-  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
-                     HloInstruction* arg, HloInstruction* max) override {
+  Status HandleClamp(HloInstruction* clamp) override {
     return CheckTernaryShape(clamp);
   }
 
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override {
+  Status HandleSelect(HloInstruction* select) override {
     return CheckTernaryShape(select);
   }
 
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override {
+  Status HandleConcatenate(HloInstruction* concatenate) override {
     std::vector<const Shape*> operand_shapes;
-    for (const HloInstruction* operand : operands) {
+    for (const HloInstruction* operand : concatenate->operands()) {
       operand_shapes.push_back(&operand->shape());
     }
     return CheckShape(
@@ -69,27 +64,41 @@ class ShapeVerifier : public DfsHloVisitor {
                                    convert->shape().element_type()));
   }
 
+  Status HandleBitcastConvert(HloInstruction* convert) override {
+    return CheckShape(convert, ShapeInference::InferBitcastConvertShape(
+                                   convert->operand(0)->shape(),
+                                   convert->shape().element_type()));
+  }
+
   Status HandleCopy(HloInstruction* copy) override {
     return CheckUnaryShape(copy);
   }
 
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
-    return CheckBinaryShape(dot);
+  Status HandleDot(HloInstruction* dot) override {
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferDotOpShape(
+                            dot->operand(0)->shape(), dot->operand(1)->shape(),
+                            dot->dot_dimension_numbers()));
+    return CheckShape(dot, expected);
   }
 
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override {
-    TF_ASSIGN_OR_RETURN(const Shape expected,
-                        ShapeInference::InferConvolveShape(
-                            lhs->shape(), rhs->shape(), window,
-                            convolution->convolution_dimension_numbers()));
+  Status HandleConvolution(HloInstruction* convolution) override {
+    TF_ASSIGN_OR_RETURN(
+        const Shape expected,
+        ShapeInference::InferConvolveShape(
+            convolution->operand(0)->shape(), convolution->operand(1)->shape(),
+            convolution->window(),
+            convolution->convolution_dimension_numbers()));
     return CheckShape(convolution, expected);
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
-                               crs->operand(0)->shape()));
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : crs->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        crs, ShapeInference::InferCrossReplicaSumShape(operand_shapes));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
@@ -100,47 +109,40 @@ class ShapeVerifier : public DfsHloVisitor {
                           reduce_precision->mantissa_bits()));
   }
 
-  Status HandleInfeed(HloInstruction* infeed) override {
+  Status HandleInfeed(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleOutfeed(HloInstruction* outfeed) override {
+  Status HandleOutfeed(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution distribution) override {
+  Status HandleRng(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleReverse(HloInstruction* reverse,
-                       HloInstruction* operand) override {
+  Status HandleReverse(HloInstruction* reverse) override {
     return CheckShape(
         reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),
                                                    reverse->dimensions()));
   }
 
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override {
+  Status HandleSort(HloInstruction* sort) override {
     return CheckUnaryShape(sort);
   }
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override {
-    return CheckShape(constant, literal.shape());
+  Status HandleConstant(HloInstruction* constant) override {
+    return CheckShape(constant, constant->literal().shape());
   }
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override {
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override {
     return CheckShape(get_tuple_element,
                       ShapeInference::InferGetTupleElementShape(
                           get_tuple_element->operand(0)->shape(),
                           get_tuple_element->tuple_index()));
   }
 
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override {
+  Status HandleReduce(HloInstruction* reduce) override {
     return CheckShape(
         reduce,
         ShapeInference::InferReduceShape(
@@ -149,9 +151,6 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
-    // Bitcasts can be any shape, as long as the size matches the operand size.
-    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
-                 shape_size_fn_(bitcast->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 
@@ -183,11 +182,11 @@ class ShapeVerifier : public DfsHloVisitor {
                                      transpose->dimensions()));
   }
 
-  Status HandleParameter(HloInstruction* parameter) override {
+  Status HandleParameter(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleFusion(HloInstruction* fusion) override {
+  Status HandleFusion(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
@@ -196,32 +195,26 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckShape(call, call->to_apply()->ComputeProgramShape().result());
   }
 
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override {
+  Status HandleCustomCall(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override {
+  Status HandleSlice(HloInstruction* slice) override {
     return CheckShape(slice,
                       ShapeInference::InferSliceShape(
                           slice->operand(0)->shape(), slice->slice_starts(),
                           slice->slice_limits(), slice->slice_strides()));
   }
 
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* operand,
-                            HloInstruction* start_indices) override {
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override {
     return CheckShape(dynamic_slice, ShapeInference::InferDynamicSliceShape(
                                          dynamic_slice->operand(0)->shape(),
                                          dynamic_slice->operand(1)->shape(),
                                          dynamic_slice->dynamic_slice_sizes()));
   }
 
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override {
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override {
     return CheckShape(dynamic_update_slice,
                       ShapeInference::InferDynamicUpdateSliceShape(
                           dynamic_update_slice->operand(0)->shape(),
@@ -229,20 +222,14 @@ class ShapeVerifier : public DfsHloVisitor {
                           dynamic_update_slice->operand(2)->shape()));
   }
 
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override {
+  Status HandleTuple(HloInstruction* tuple) override {
     return CheckVariadicShape(tuple);
   }
 
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override {
+  Status HandleMap(HloInstruction* map) override {
     std::vector<const Shape*> operand_shapes;
     int64 max_operand_rank = 0;
-    for (const HloInstruction* operand : operands) {
+    for (const HloInstruction* operand : map->operands()) {
       operand_shapes.push_back(&operand->shape());
       max_operand_rank =
           std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
@@ -257,9 +244,7 @@ class ShapeVerifier : public DfsHloVisitor {
             operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims));
   }
 
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override {
+  Status HandleReduceWindow(HloInstruction* reduce_window) override {
     return CheckShape(
         reduce_window,
         ShapeInference::InferReduceWindowShape(
@@ -285,6 +270,15 @@ class ShapeVerifier : public DfsHloVisitor {
                       xla_while->while_body()->ComputeProgramShape().result());
   }
 
+  Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(CheckShape(
+        conditional,
+        conditional->true_computation()->ComputeProgramShape().result()));
+    return CheckShape(
+        conditional,
+        conditional->false_computation()->ComputeProgramShape().result());
+  }
+
   Status HandlePad(HloInstruction* pad) override {
     return CheckShape(pad,
                       ShapeInference::InferPadShape(pad->operand(0)->shape(),
@@ -293,11 +287,39 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleSend(HloInstruction* send) override {
-    return tensorflow::Status::OK();
+    TF_RET_CHECK(send->users().size() == 1);
+    const HloInstruction* send_done = send->users().front();
+    TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(
+        send, ShapeUtil::MakeTupleShape(
+                  {send->operand(0)->shape(), ShapeUtil::MakeShape(U32, {})}));
+  }
+
+  Status HandleSendDone(HloInstruction* send_done) override {
+    TF_RET_CHECK(send_done->operands().size() == 1);
+    const HloInstruction* send = send_done->operand(0);
+    TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
+    TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
+    return CheckShape(send_done, ShapeUtil::MakeNil());
   }
 
   Status HandleRecv(HloInstruction* recv) override {
-    return tensorflow::Status::OK();
+    TF_RET_CHECK(recv->users().size() == 1);
+    const HloInstruction* recv_done = recv->users().front();
+    TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv,
+                      ShapeUtil::MakeTupleShape(
+                          {recv_done->shape(), ShapeUtil::MakeShape(U32, {})}));
+  }
+
+  Status HandleRecvDone(HloInstruction* recv_done) override {
+    TF_RET_CHECK(recv_done->operands().size() == 1);
+    const HloInstruction* recv = recv_done->operand(0);
+    TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
+    TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
+    return CheckShape(recv_done, recv->shape().tuple_shapes(0));
   }
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
@@ -331,7 +353,7 @@ class ShapeVerifier : public DfsHloVisitor {
                                            batch_norm_grad->feature_index()));
   }
 
-  Status FinishVisit(HloInstruction* root) override {
+  Status FinishVisit(HloInstruction*) override {
     return tensorflow::Status::OK();
   }
 
@@ -355,7 +377,10 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckShape(const HloInstruction* instruction,
                     const StatusOr<Shape>& expected_shape_status) {
     if (!expected_shape_status.ok()) {
-      return expected_shape_status.status();
+      Status s = expected_shape_status.status();
+      tensorflow::errors::AppendToMessage(&s, ", for instruction ",
+                                          instruction->ToString());
+      return s;
     }
     return CheckShape(instruction, expected_shape_status.ValueOrDie());
   }
@@ -382,6 +407,19 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckShape(instruction,
                       ShapeInference::InferVariadicOpShape(
                           instruction->opcode(), instruction->operands()));
+  }
+
+  // Checks if the given two instructions shares the same channel id.
+  Status CheckSameChannel(const HloInstruction* instr1,
+                          const HloInstruction* instr2) {
+    if (instr1->channel_id() != instr2->channel_id()) {
+      return FailedPrecondition(
+          "Expected to have the same channel id, actual channel ids are: %s "
+          "(%lld), %s (%lld)",
+          instr1->ToString().c_str(), instr1->channel_id(),
+          instr2->ToString().c_str(), instr2->channel_id());
+    }
+    return tensorflow::Status::OK();
   }
 
   // Returns the size of a Shape in bytes.
@@ -549,7 +587,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         // or ComputationLowerer::Visit()
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
-                << "Broadcast HLO has invalid number of dimensions.";
+            << "Broadcast HLO has invalid number of dimensions.";
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         auto* while_cond = instruction->while_condition();
         auto* while_body = instruction->while_body();

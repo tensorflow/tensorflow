@@ -259,6 +259,13 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
                             nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
+
+  // Increase the limit and the concat should now be constant folded.
+  ConstantFoldingOptions opt;
+  opt.max_constant_size_in_bytes = 10 * 1024 * 1024 + 4;
+  TF_EXPECT_OK(
+      ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {

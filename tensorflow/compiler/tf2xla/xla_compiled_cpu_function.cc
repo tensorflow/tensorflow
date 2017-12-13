@@ -28,9 +28,10 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       temps_(new void*[static_data.num_temps]),
       arg_names_(static_data.arg_names),
       result_names_(static_data.result_names),
-      program_shape_(static_data.program_shape) {
+      program_shape_(static_data.program_shape),
+      hlo_profile_printer_(static_data.hlo_profile_printer) {
   // Allocate arg and temp buffers.
-  if (alloc_mode == AllocMode::ARGS_RESULTS_AND_TEMPS) {
+  if (alloc_mode == AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS) {
     alloc_args_ = tensorflow::tfcompile::runtime::MallocContiguousBuffers(
         static_data.arg_sizes, static_data.num_args, args_,
         /*annotate_initialized=*/false);
@@ -39,9 +40,13 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       static_data.temp_sizes, static_data.num_temps, temps_,
       /*annotate_initialized=*/true);
 
-  // The runtime context is always the last arg, if it is required.
-  if (static_data.requires_runtime_context) {
-    args_[static_data.num_args - 1] = &context_;
+  // If Hlo profiling is enabled the generated code expects an appropriately
+  // sized buffer to be passed in as the last argument.  If Hlo profiling is
+  // disabled the last function argument is still present in the function
+  // signature, but it is ignored by the generated code and we pass in null for
+  // it.
+  if (hlo_profiling_enabled()) {
+    profile_counters_ = new int64[static_data.profile_counters_size]();
   }
 }
 
@@ -50,6 +55,7 @@ XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
   tensorflow::tfcompile::runtime::FreeContiguous(alloc_temps_);
   delete[] args_;
   delete[] temps_;
+  delete[] profile_counters_;
 }
 
 namespace {

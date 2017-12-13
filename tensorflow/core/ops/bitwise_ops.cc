@@ -23,7 +23,7 @@ namespace tensorflow {
 REGISTER_OP("Invert")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {int8, int16, int32, int64, uint8, uint16}")
+    .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Flips all bits elementwise.
@@ -32,18 +32,18 @@ The result will have exactly those bits set, that are not set in `x`. The
 computation is performed on the underlying representation of x.
 )doc");
 
-#define BINARY_BITWISE()                                     \
-  Input("x: T")                                              \
-      .Input("y: T")                                         \
-      .Output("z: T")                                        \
-      .SetIsCommutative()                                    \
-      .Attr("T: {int8, int16, int32, int64, uint8, uint16}") \
+#define BINARY_BITWISE()                                                     \
+  Input("x: T")                                                              \
+      .Input("y: T")                                                         \
+      .Output("z: T")                                                        \
+      .SetIsCommutative()                                                    \
+      .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 REGISTER_OP("PopulationCount")
     .Input("x: T")
     .Output("y: uint8")
-    .Attr("T: {int8, int16, int32, int64, uint8, uint16}")
+    .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
@@ -56,25 +56,52 @@ representation of that entry.
 8- or 16-bit inputs and then aggregate the resulting counts.
 )doc");
 
-REGISTER_OP("BitwiseAnd").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseAnd")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise AND of `x` and `y`.
 
 The result will have those bits set, that are set in both `x` and `y`. The
 computation is performed on the underlying representations of `x` and `y`.
 )doc");
 
-REGISTER_OP("BitwiseOr").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseOr")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise OR of `x` and `y`.
 
 The result will have those bits set, that are set in `x`, `y` or both. The
 computation is performed on the underlying representations of `x` and `y`.
 )doc");
 
-REGISTER_OP("BitwiseXor").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseXor")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise XOR of `x` and `y`.
 
 The result will have those bits set, that are different in `x` and `y`. The
 computation is performed on the underlying representations of `x` and `y`.
+)doc");
+
+REGISTER_OP("LeftShift")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
+Elementwise computes the bitwise left-shift of `x` and `y`.
+
+If `y` is negative, or greater than or equal to the width of `x` in bits the
+result is implementation defined.
+)doc");
+
+REGISTER_OP("RightShift")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
+Elementwise computes the bitwise right-shift of `x` and `y`.
+
+Performs a logical shift for unsigned integer types, and an arithmetic shift
+for signed integer types.
+
+If `y` is negative, or greater than or equal to than the width of `x` in bits
+the result is implementation defined.
 )doc");
 
 }  // namespace tensorflow

@@ -39,7 +39,9 @@ py_library(
     deps = [
         ":graph_compute_order_py",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -49,12 +51,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":receptive_field_py",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:nn",
+        "//third_party/py/numpy",
     ],
 )
 

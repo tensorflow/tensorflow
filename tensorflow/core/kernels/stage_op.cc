@@ -53,7 +53,10 @@ class Buffer : public ResourceBase {
   void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
     if (IsBounded()) {
       lock->unlock();
-      full_cond_var_.notify_one();
+      // Notify all inserters. The removal of an element
+      // may make memory available for many inserters
+      // to insert new elements
+      full_cond_var_.notify_all();
     }
   }
 
@@ -115,9 +118,12 @@ class Buffer : public ResourceBase {
     buf_.push_back(std::move(*tuple));
 
     lock.unlock();
-    // maybe possible to optimize by reducing
-    // how often this signal is sent
-    non_empty_cond_var_.notify_one();
+    // Notify all removers. Removers
+    // may be peeking at a specific element or waiting
+    // for the element at the front of the deque.
+    // As we don't know the appropriate one to wake up
+    // we should wake them all.
+    non_empty_cond_var_.notify_all();
 
     return Status::OK();
   }

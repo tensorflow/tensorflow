@@ -30,7 +30,6 @@ import six
 
 from google.protobuf import message
 from tensorflow.contrib import layers
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
@@ -60,6 +59,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -981,9 +981,8 @@ class BaseEstimator(
       global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
-      with ops.control_dependencies([global_step_read_tensor]):
-        model_fn_ops = self._get_train_ops(features, labels)
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend(hooks)
       all_hooks.extend([
@@ -1231,7 +1230,7 @@ class Estimator(BaseEstimator):
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
-          metrics_lib.streaming_mean(model_fn_ops.loss))
+          metrics_lib.mean(model_fn_ops.loss))
     return model_fn_ops
 
   def _get_predict_ops(self, features):

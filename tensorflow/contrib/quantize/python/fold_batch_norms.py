@@ -21,7 +21,9 @@ from __future__ import print_function
 import re
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
+from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -29,7 +31,270 @@ from tensorflow.python.ops import nn_ops
 
 
 def FoldBatchNorms(graph):
-  """Finds batch norm layers in the graph, folds them into preceding layers.
+  """Finds batch norm layers and folds them into preceding layers.
+
+  Folding only affects the following layers: Conv2D, fully connected, depthwise
+  convolution.
+
+  Args:
+    graph: Graph to walk and modify.
+
+  Raises:
+    ValueError: When batch norm folding fails.
+  """
+  _FoldFusedBatchNorms(graph)
+  _FoldUnfusedBatchNorms(graph)
+
+
+def _FoldFusedBatchNorms(graph):
+  """Finds fused batch norm layers and folds them into preceding layers.
+
+  Folding only affects the following layers: Conv2D, fully connected, depthwise
+  convolution.
+
+  Args:
+    graph: Graph to walk and modify.
+
+  Raises:
+    ValueError: When batch norm folding fails.
+  """
+  for match in _FindFusedBatchNorms(graph):
+    scope, sep, _ = match.layer_op.name.rpartition('/')
+    # Make sure new ops are added to `graph` and put on the same device as
+    # `bn_op`. The '/' (i.e. `sep`) ensures that we reuse the existing scope
+    # named `scope`. Otherwise, TF creates a unique scope whose name starts with
+    # `scope`.
+    with graph.as_default(), graph.name_scope(scope + sep), ops.device(
+        match.bn_op.device):
+      # new weights = old weights * gamma / sqrt(variance + epsilon)
+      # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
+      multiplier_tensor = match.gamma_tensor * math_ops.rsqrt(
+          match.variance_tensor + match.bn_op.get_attr('epsilon'))
+      bias_tensor = math_ops.subtract(
+          match.beta_tensor, match.mean_tensor * multiplier_tensor, name='bias')
+
+      # The shape of depthwise weights is different, so we need to reshape the
+      # multiplier_tensor to ensure that the scaled_weight_tensor has the
+      # expected shape.
+      if match.layer_op.type == 'DepthwiseConv2dNative':
+        new_shape = [
+            match.weight_tensor.get_shape().as_list()[2],
+            match.weight_tensor.get_shape().as_list()[3]
+        ]
+        multiplier_tensor = array_ops.reshape(
+            multiplier_tensor, new_shape, name='scale_reshape')
+
+      # TODO(suharshs): This naming of the following ops needs to carefully
+      # follow the naming expected by quantize.py. Generalize the quantize code
+      # to not require these delicate naming conventions.
+      scaled_weight_tensor = math_ops.multiply(
+          match.weight_tensor, multiplier_tensor, name='mul_fold')
+
+      new_layer_tensor = _CloneWithNewOperands(
+          match.layer_op, match.input_tensor, scaled_weight_tensor)
+
+      bias_add_tensor = math_ops.add(
+          new_layer_tensor, bias_tensor, name='add_fold')
+
+      nodes_modified_count = graph_editor.reroute_ts(bias_add_tensor,
+                                                     match.output_tensor)
+      if nodes_modified_count != 1:
+        raise ValueError(
+            'Unexpected inputs to op: %s' % match.output_tensor.name)
+
+
+def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
+  """Clones layer_op with input_tensor and weight_tensor as new inputs."""
+  new_layer_name = layer_op.name.split('/')[-1] + '_Fold'
+  if layer_op.type == 'Conv2D':
+    return nn_ops.conv2d(
+        input_tensor,
+        weight_tensor,
+        strides=layer_op.get_attr('strides'),
+        padding=layer_op.get_attr('padding'),
+        use_cudnn_on_gpu=layer_op.get_attr('use_cudnn_on_gpu'),
+        data_format=layer_op.get_attr('data_format'),
+        name=new_layer_name)
+  elif layer_op.type == 'MatMul':
+    return math_ops.matmul(
+        input_tensor,
+        weight_tensor,
+        transpose_a=layer_op.get_attr('transpose_a'),
+        transpose_b=layer_op.get_attr('transpose_b'),
+        name=new_layer_name)
+  elif layer_op.type == 'DepthwiseConv2dNative':
+    return nn.depthwise_conv2d(
+        input_tensor,
+        weight_tensor,
+        strides=layer_op.get_attr('strides'),
+        padding=layer_op.get_attr('padding'),
+        name=new_layer_name)
+  else:
+    raise ValueError('Cannot handle operation of type: %s' % layer_op.type)
+
+
+def _FindFusedBatchNorms(graph):
+  """Finds all ops and tensors related to found FusedBatchNorms.
+
+  Args:
+    graph: Graph to inspect.
+
+  Yields:
+    _FusedBatchNormMatches.
+  """
+  input_pattern = graph_matcher.OpTypePattern('*')
+  weight_pattern = graph_matcher.OpTypePattern('*')
+  gamma_pattern = graph_matcher.OpTypePattern('*')
+  beta_pattern = graph_matcher.OpTypePattern('*')
+  mean_pattern = graph_matcher.OpTypePattern('*')
+  variance_pattern = graph_matcher.OpTypePattern('*')
+
+  conv_pattern = graph_matcher.OpTypePattern(
+      'Conv2D|DepthwiseConv2dNative', inputs=[input_pattern, weight_pattern])
+  # MatMul has a Reshape between it and FusedBatchNorm.
+  matmul_pattern = graph_matcher.OpTypePattern(
+      'MatMul', inputs=[input_pattern, weight_pattern])
+  matmul_reshape_pattern = graph_matcher.OpTypePattern(
+      'Reshape', inputs=[matmul_pattern,
+                         graph_matcher.OpTypePattern('*')])
+
+  conv_batch_norm_pattern = graph_matcher.OpTypePattern(
+      'FusedBatchNorm',
+      inputs=[
+          conv_pattern, gamma_pattern, beta_pattern, mean_pattern,
+          variance_pattern
+      ])
+  matmul_batch_norm_pattern = graph_matcher.OpTypePattern(
+      'FusedBatchNorm',
+      inputs=[
+          matmul_reshape_pattern, gamma_pattern, beta_pattern, mean_pattern,
+          variance_pattern
+      ])
+  matmul_bn_output_reshape_pattern = graph_matcher.OpTypePattern(
+      'Reshape',
+      inputs=[matmul_batch_norm_pattern,
+              graph_matcher.OpTypePattern('*')])
+
+  conv_matcher = graph_matcher.GraphMatcher(conv_batch_norm_pattern)
+  matmul_matcher = graph_matcher.GraphMatcher(matmul_bn_output_reshape_pattern)
+
+  def _GetCommonTensors(match_result):
+    """Gets tensors needed for FusedBatchNormMatch from match_result."""
+    input_tensor = match_result.get_tensor(input_pattern)
+    weight_tensor = match_result.get_tensor(weight_pattern)
+    gamma_tensor = match_result.get_tensor(gamma_pattern)
+    beta_tensor = match_result.get_tensor(beta_pattern)
+    # FusedBatchNorm in training is different from that in inference. It takes
+    # empty 'mean' and empty 'variance', and produces the mean and the variance
+    # of the batch. Therefore, when is_training is true, mean_tensor and
+    # variance_tensor point to 1st and 2nd (0-based) output of bn_op,
+    # respectively; when is_training is false, they point to bn_op's inputs.
+    is_training = bn_op.get_attr('is_training')
+    if is_training:
+      mean_tensor = bn_op.outputs[1]
+      variance_tensor = bn_op.outputs[2]
+    else:
+      mean_tensor = match_result.get_tensor(mean_pattern)
+      variance_tensor = match_result.get_tensor(variance_pattern)
+    return (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
+            variance_tensor)
+
+  for match_result in conv_matcher.match_graph(graph):
+    layer_op = match_result.get_op(conv_pattern)
+    bn_op = match_result.get_op(conv_batch_norm_pattern)
+    # In the case of convolution the output_tensor is the output of bn_op.
+    output_tensor = bn_op.outputs[0]
+
+    (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
+     variance_tensor) = _GetCommonTensors(match_result)
+    yield _FusedBatchNormMatch(
+        layer_op=layer_op,
+        bn_op=bn_op,
+        output_tensor=output_tensor,
+        input_tensor=input_tensor,
+        weight_tensor=weight_tensor,
+        gamma_tensor=gamma_tensor,
+        beta_tensor=beta_tensor,
+        mean_tensor=mean_tensor,
+        variance_tensor=variance_tensor)
+
+  for match_result in matmul_matcher.match_graph(graph):
+    layer_op = match_result.get_op(matmul_pattern)
+    bn_op = match_result.get_op(matmul_batch_norm_pattern)
+    # In the MatMul case, the output of batch norm is reshaped back into a
+    # 2D tensor, so the output_tensor is the output of the Reshape op.
+    output_reshape_op = match_result.get_op(matmul_bn_output_reshape_pattern)
+    output_tensor = output_reshape_op.outputs[0]
+
+    (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
+     variance_tensor) = _GetCommonTensors(match_result)
+    yield _FusedBatchNormMatch(
+        layer_op=layer_op,
+        bn_op=bn_op,
+        output_tensor=output_tensor,
+        input_tensor=input_tensor,
+        weight_tensor=weight_tensor,
+        gamma_tensor=gamma_tensor,
+        beta_tensor=beta_tensor,
+        mean_tensor=mean_tensor,
+        variance_tensor=variance_tensor)
+
+
+class _FusedBatchNormMatch(object):
+  """Contains all information related to a found FusedBatchNorm."""
+
+  def __init__(self, layer_op, bn_op, output_tensor, input_tensor,
+               weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
+               variance_tensor):
+    self._layer_op = layer_op
+    self._bn_op = bn_op
+    self._output_tensor = output_tensor
+    self._input_tensor = input_tensor
+    self._weight_tensor = weight_tensor
+    self._gamma_tensor = gamma_tensor
+    self._beta_tensor = beta_tensor
+    self._mean_tensor = mean_tensor
+    self._variance_tensor = variance_tensor
+
+  @property
+  def layer_op(self):
+    return self._layer_op
+
+  @property
+  def bn_op(self):
+    return self._bn_op
+
+  @property
+  def output_tensor(self):
+    return self._output_tensor
+
+  @property
+  def input_tensor(self):
+    return self._input_tensor
+
+  @property
+  def weight_tensor(self):
+    return self._weight_tensor
+
+  @property
+  def gamma_tensor(self):
+    return self._gamma_tensor
+
+  @property
+  def beta_tensor(self):
+    return self._beta_tensor
+
+  @property
+  def mean_tensor(self):
+    return self._mean_tensor
+
+  @property
+  def variance_tensor(self):
+    return self._variance_tensor
+
+
+def _FoldUnfusedBatchNorms(graph):
+  """Finds unfused batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
   convolution.

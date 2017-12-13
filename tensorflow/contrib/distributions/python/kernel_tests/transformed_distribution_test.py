@@ -116,6 +116,18 @@ class TransformedDistributionTest(test.TestCase):
             np.log(sp_normal.pdf(2.13) + sp_normal.pdf(-2.13)),
             abs_normal.log_prob(2.13).eval())
 
+  def testQuantile(self):
+    with self.test_session() as sess:
+      logit_normal = self._cls()(
+          distribution=ds.Normal(loc=0., scale=1.),
+          bijector=bs.Sigmoid(),
+          validate_args=True)
+      grid = [0., 0.25, 0.5, 0.75, 1.]
+      q = logit_normal.quantile(grid)
+      cdf = logit_normal.cdf(q)
+      cdf_ = sess.run(cdf)
+      self.assertAllClose(grid, cdf_, rtol=1e-6, atol=0.)
+
   def testCachedSamples(self):
     exp_forward_only = bs.Exp(event_ndims=0)
     exp_forward_only._inverse = self._make_unimplemented(
@@ -187,6 +199,27 @@ class TransformedDistributionTest(test.TestCase):
           array_ops.shape(multi_logit_normal.sample([1, 2, 3])).eval())
       self.assertAllEqual([2], multi_logit_normal.event_shape)
       self.assertAllEqual([2], multi_logit_normal.event_shape_tensor().eval())
+
+  def testCastLogDetJacobian(self):
+    """Test log_prob when Jacobian and log_prob dtypes do not match."""
+
+    with self.test_session():
+      # Create an identity bijector whose jacobians have dtype int32
+      int_identity = bs.Inline(
+          forward_fn=array_ops.identity,
+          inverse_fn=array_ops.identity,
+          inverse_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
+          forward_log_det_jacobian_fn=lambda x: math_ops.cast(0, dtypes.int32),
+          is_constant_jacobian=True)
+      normal = self._cls()(
+          distribution=ds.Normal(loc=0., scale=1.),
+          bijector=int_identity,
+          validate_args=True)
+
+      y = normal.sample()
+      normal.log_prob(y).eval()
+      normal.prob(y).eval()
+      normal.entropy().eval()
 
   def testEntropy(self):
     with self.test_session():

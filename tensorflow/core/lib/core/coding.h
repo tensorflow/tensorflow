@@ -31,6 +31,9 @@ namespace core {
 // Maximum number of bytes occupied by a varint32.
 static const int kMaxVarint32Bytes = 5;
 
+// Maximum number of bytes occupied by a varint64.
+static const int kMaxVarint64Bytes = 10;
+
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
 extern void EncodeFixed16(char* dst, uint16 value);

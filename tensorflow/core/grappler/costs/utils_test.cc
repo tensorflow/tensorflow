@@ -172,5 +172,118 @@ TEST_F(UtilsTest, TestSkipControlInput) {
   EXPECT_TRUE(node_found);
 }
 
+// Class for testing TensorSizeHistogram.
+class TestTensorSizeHistogram : public TensorSizeHistogram {
+ public:
+  FRIEND_TEST(TensorSizeHistogramTest, Constructor);
+  FRIEND_TEST(TensorSizeHistogramTest, Index);
+  FRIEND_TEST(TensorSizeHistogramTest, Add);
+  FRIEND_TEST(TensorSizeHistogramTest, Merge);
+};
+
+TEST(TensorSizeHistogramTest, Constructor) {
+  TestTensorSizeHistogram hist;
+  EXPECT_EQ(0, hist.NumElem());
+  EXPECT_EQ(0, hist.SumElem());
+  EXPECT_LT(1000000000, hist.Min());  // Initially, min_ is a very large value.
+  EXPECT_EQ(0, hist.Max());
+  EXPECT_EQ(0.0, hist.Average());
+  const auto& buckets = hist.GetBuckets();
+  for (const auto& bucket : buckets) {
+    EXPECT_EQ(0, bucket);
+  }
+}
+
+TEST(TensorSizeHistogramTest, Index) {
+  TestTensorSizeHistogram hist;
+  EXPECT_EQ(0, hist.Index(0));
+  EXPECT_EQ(1, hist.Index(1));
+  EXPECT_EQ(2, hist.Index(2));
+  EXPECT_EQ(2, hist.Index(3));
+  EXPECT_EQ(3, hist.Index(4));
+  EXPECT_EQ(3, hist.Index(5));
+  EXPECT_EQ(3, hist.Index(6));
+  EXPECT_EQ(3, hist.Index(7));
+  EXPECT_EQ(4, hist.Index(8));
+  EXPECT_EQ(4, hist.Index(15));
+  EXPECT_EQ(5, hist.Index(16));
+  EXPECT_EQ(5, hist.Index(31));
+  EXPECT_EQ(6, hist.Index(32));
+  EXPECT_EQ(11, hist.Index(1025));
+}
+
+TEST(TensorSizeHistogramTest, Add) {
+  TestTensorSizeHistogram hist;
+  hist.Add(1037);
+  hist.Add(1038);
+  hist.Add(1039);
+
+  const auto& buckets = hist.GetBuckets();
+  EXPECT_EQ(3, hist.NumElem());
+  EXPECT_EQ(1037 + 1038 + 1039, hist.SumElem());
+  EXPECT_DOUBLE_EQ(1038.0, hist.Average());
+  EXPECT_EQ(1037, hist.Min());
+  EXPECT_EQ(1039, hist.Max());
+  EXPECT_EQ(3, buckets.at(11));
+}
+
+TEST(TensorSizeHistogramTest, Merge) {
+  TestTensorSizeHistogram hist1;
+  const auto& buckets = hist1.GetBuckets();
+  hist1.Add(1037);
+  hist1.Add(1038);
+  hist1.Add(1039);
+
+  TestTensorSizeHistogram hist2(hist1);
+  hist1.Merge(hist2);
+  EXPECT_EQ(6, hist1.NumElem());
+  EXPECT_EQ(2 * (1037 + 1038 + 1039), hist1.SumElem());
+  EXPECT_DOUBLE_EQ(1038.0, hist1.Average());
+  EXPECT_EQ(1037, hist1.Min());
+  EXPECT_EQ(1039, hist1.Max());
+  EXPECT_EQ(6, buckets.at(11));
+
+  TestTensorSizeHistogram hist3;
+  hist3.Add(1);
+  hist3.Add(2);
+  hist3.Add(4);
+
+  hist1.Merge(hist3);
+  EXPECT_EQ(9, hist1.NumElem());
+  EXPECT_EQ(2 * (1037 + 1038 + 1039) + 1 + 2 + 4, hist1.SumElem());
+  EXPECT_DOUBLE_EQ((2 * (1037 + 1038 + 1039) + 1 + 2 + 4) / 9.0,
+                   hist1.Average());
+  EXPECT_EQ(1, hist1.Min());
+  EXPECT_EQ(1039, hist1.Max());
+  EXPECT_EQ(1, buckets.at(1));
+  EXPECT_EQ(1, buckets.at(2));
+  EXPECT_EQ(1, buckets.at(3));
+  EXPECT_EQ(6, buckets.at(11));
+}
+
+TEST(DeviceClassTest, GetDeviceClass) {
+  EXPECT_EQ(
+      "Channel: /ps/CPU -> /worker/GPU",
+      GetDeviceClass("Channel_from_/job_ps/replica_0/task_0/device_CPU_0_to_"
+                     "/job_worker/replica_7/task_0/device_GPU_7"));
+  EXPECT_EQ(
+      "Channel: /worker_train/CPU -> /ps/GPU",
+      GetDeviceClass(
+          "Channel_from_/job_worker_train/replica_0/task_0/device_CPU_0_to_"
+          "/job_ps/replica_7/task_0/device_GPU_7"));
+}
+
+TEST(DeviceClassTest, GetDeviceClassForNonChannelDevice) {
+  EXPECT_EQ("Unclassified",
+            GetDeviceClassForNonChannelDevice("SOMETHING_WEIRD_DEVICE_NAME"));
+  EXPECT_EQ("/worker/GPU", GetDeviceClassForNonChannelDevice(
+                               "/job:worker/replica:0/task:0/device:GPU:0"));
+  EXPECT_EQ("/worker/CPU", GetDeviceClassForNonChannelDevice(
+                               "/job:worker/replica:0/task:0/device:CPU:0"));
+  EXPECT_EQ("/worker_train/CPU", GetDeviceClassForNonChannelDevice(
+                                     "/job:worker_train/replica:7/CPU:0"));
+  EXPECT_EQ("//GPU", GetDeviceClassForNonChannelDevice("/device:GPU:7"));
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -154,15 +154,11 @@ struct CudaLaunchConfig {
 // Calculate the Cuda launch config we should use for a kernel launch.
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
+// REQUIRES: work_element_count > 0.
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d) {
+  CHECK_GT(work_element_count, 0);
   CudaLaunchConfig config;
-
-  // in case of invalid input, return the default value config, which has all -1
-  if (work_element_count <= 0) {
-    return config;
-  }
-
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
       d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
@@ -180,17 +176,14 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 
 // Calculate the Cuda launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
+// REQUIRES: work_element_count > 0.
 template <typename DeviceFunc>
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d, DeviceFunc func,
                                             size_t dynamic_shared_memory_size,
                                             int block_size_limit) {
+  CHECK_GT(work_element_count, 0);
   CudaLaunchConfig config;
-
-  if (work_element_count <= 0) {
-    return config;
-  }
-
   int block_count = 0;
   int thread_per_block = 0;
 
@@ -376,6 +369,16 @@ __device__ __host__ inline Eigen::half ldg(const Eigen::half* address) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
   return Eigen::half_impl::raw_uint16_to_half(
       __ldg(reinterpret_cast<const uint16_t*>(address)));
+#else
+  return *address;
+#endif
+}
+
+template <>
+__device__ __host__ inline bool ldg(const bool* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  return *reinterpret_cast<const bool*>(
+      __ldg(reinterpret_cast<const char*>(address)));
 #else
   return *address;
 #endif
@@ -749,6 +752,12 @@ __device__ EIGEN_ALWAYS_INLINE T CudaShuffleDown(unsigned mask, T value,
   return __shfl_down_sync(mask, value, delta, width);
 }
 
+__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleDown(
+    unsigned mask, Eigen::half value, int delta, int width = warpSize) {
+  return Eigen::half(
+      __shfl_down_sync(mask, static_cast<uint16>(value), delta, width));
+}
+
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
@@ -769,6 +778,12 @@ __device__ EIGEN_ALWAYS_INLINE T CudaShuffleXor(unsigned mask, T value,
                                                 int laneMask,
                                                 int width = warpSize) {
   return __shfl_xor_sync(mask, value, laneMask, width);
+}
+
+__device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXor(
+    unsigned mask, Eigen::half value, int laneMask, int width = warpSize) {
+  return Eigen::half(
+      __shfl_xor_sync(mask, static_cast<uint16>(value), laneMask, width));
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned

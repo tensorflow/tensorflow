@@ -24,6 +24,7 @@ java_library(
     ],
     data = [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
+    plugins = [":processor"],
     visibility = ["//visibility:public"],
 )
 
@@ -39,6 +40,21 @@ filegroup(
         "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
     ],
+)
+
+java_plugin(
+    name = "processor",
+    generates_api = True,
+    processor_class = "org.tensorflow.processor.OperatorProcessor",
+    visibility = ["//visibility:public"],
+    deps = [":processor_library"],
+)
+
+java_library(
+    name = "processor_library",
+    srcs = glob(["src/gen/java/org/tensorflow/processor/**/*.java"]),
+    javacopts = JAVACOPTS,
+    resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
 )
 
 filegroup(
@@ -262,6 +278,29 @@ tf_java_test(
         ":testutil",
         "@junit",
     ],
+)
+
+#java_test(
+#    name = "OperatorProcessorTest",
+#    size = "small",
+#    srcs = ["src/test/java/org/tensorflow/processor/OperatorProcessorTest.java"],
+#    javacopts = JAVACOPTS,
+#    resources = [":processor_test_resources"],
+#    test_class = "org.tensorflow.processor.OperatorProcessorTest",
+#    deps = [
+#        ":processor_library",
+#        "//third_party/java/junit",
+#        "@com_google_testing_compile",
+#        "@com_google_truth",
+#    ],
+#)
+
+filegroup(
+    name = "processor_test_resources",
+    srcs = glob([
+        "src/test/resources/org/tensorflow/**/*.java",
+        "src/main/java/org/tensorflow/op/annotation/Operator.java",
+    ]),
 )
 
 filegroup(

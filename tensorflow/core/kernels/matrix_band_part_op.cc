@@ -80,8 +80,9 @@ class MatrixBandPartOp : public OpKernel {
                                         input_reshaped.dimension(2),
                                         ") got: ", num_upper));
 
-    if ((num_lower < 0 || num_lower == input_reshaped.dimension(1)) &&
-        (num_upper < 0 || num_upper == input_reshaped.dimension(2))) {
+    if (input.NumElements() == 0 ||
+        ((num_lower < 0 || num_lower == input_reshaped.dimension(1)) &&
+         (num_upper < 0 || num_upper == input_reshaped.dimension(2)))) {
       // This is a no-op.
       context->set_output(0, input);
       return;

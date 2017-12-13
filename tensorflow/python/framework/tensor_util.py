@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -48,8 +49,20 @@ def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.half_val.extend([
       ExtractBitsFromFloat16(x) for x in proto_values])
 
+
+def ExtractBitsFromBFloat16(x):
+  return np.asscalar(
+      np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+
+
+def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.half_val.extend([
+      ExtractBitsFromBFloat16(x) for x in proto_values])
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
+      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
       # TODO(sesse): We should have a
       # fast_tensor_util.AppendFloat16ArrayToTensorProto,
       # but it seems np.float16_t doesn't exist?
@@ -60,6 +73,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
       np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
+      np.uint32: fast_tensor_util.AppendUInt32ArrayToTensorProto,
+      np.uint64: fast_tensor_util.AppendUInt64ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
       np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
@@ -89,11 +104,17 @@ else:
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
 
+  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
+
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
 
-  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
+  def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.uint32_val.extend([np.asscalar(x) for x in proto_values])
+
+  def SlowAppendUInt64ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.uint64_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend([np.asscalar(v)
@@ -112,6 +133,7 @@ else:
     tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
 
   _NP_TO_APPEND_FN = {
+      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
       np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: SlowAppendFloat32ArrayToTensorProto,
       np.float64: SlowAppendFloat64ArrayToTensorProto,
@@ -119,6 +141,8 @@ else:
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
       np.uint16: SlowAppendIntArrayToTensorProto,
+      np.uint32: SlowAppendUInt32ArrayToTensorProto,
+      np.uint64: SlowAppendUInt64ArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
@@ -189,7 +213,7 @@ def _FlattenToStrings(nested_strings):
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
     dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32,
+    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 
@@ -275,6 +299,7 @@ _TF_TO_IS_OK = {
     dtypes.bool: [_FilterBool],
     dtypes.complex128: [_FilterComplex],
     dtypes.complex64: [_FilterComplex],
+    dtypes.float16: [_FilterFloat],
     dtypes.float32: [_FilterFloat],
     dtypes.float64: [_FilterFloat],
     dtypes.int16: [_FilterInt],
@@ -362,10 +387,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
-  elif callable(getattr(values, "__array__", None)):
-    # If a class has the __array__ method, then it is possible to convert
-    # to numpy array.
+  elif callable(getattr(values, "__array__", None)) or isinstance(
+      getattr(values, "__array_interface__", None), dict):
+    # If a class has the __array__ method, or __array_interface__ dict, then it
+    # is possible to convert to numpy array.
     nparray = np.asarray(values, dtype=dtype)
+
+    # This is the preferred way to create an array from the object, so replace
+    # the `values` with the array so that _FlattenToStrings is not run.
+    values = nparray
   else:
     if values is None:
       raise ValueError("None values not supported.")
@@ -764,6 +794,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
   """
+  if context.in_eager_mode():
+    return tensor_shape.as_shape(
+        [dim if dim != -1 else None for dim in tensor.numpy()])
+
   shape = tensor.get_shape().with_rank(1)
   if tensor.get_shape() == [0]:
     return tensor_shape.scalar()
@@ -853,7 +887,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
   Args:
-    x: An python object to check.
+    x: A python object to check.
 
   Returns:
     `True` if `x` is a tensor, `False` if not.

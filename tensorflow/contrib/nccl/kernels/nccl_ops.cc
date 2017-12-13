@@ -15,8 +15,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "src/nccl.h"
@@ -24,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace {
 
 // Base class for all communicator ops that use nccl.
 //
@@ -134,7 +133,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
         compute_stream, &c->input(0), std::move(actual_done));
   }
 };
-REGISTER_KERNEL_BUILDER(Name("NcclReduceSend").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("_NcclReduceSend").Device(DEVICE_GPU),
                         NcclReduceSendKernel);
 
 // To execute a single reduce, this kernel is called once for one devices, and
@@ -166,7 +165,7 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
  private:
   ncclRedOp_t reduction_op_;
 };
-REGISTER_KERNEL_BUILDER(Name("NcclReduceRecv").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("_NcclReduceRecv").Device(DEVICE_GPU),
                         NcclReduceRecvKernel);
 
 // To execute a single broadcast, this kernel is called once for one device, and
@@ -191,7 +190,7 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
         std::move(actual_done));
   }
 };
-REGISTER_KERNEL_BUILDER(Name("NcclBroadcastSend").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("_NcclBroadcastSend").Device(DEVICE_GPU),
                         NcclBroadcastSendKernel);
 
 // To execute a single broadcast, this kernel is called once for all but one of
@@ -206,7 +205,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
     const Tensor& shape_t = c->input(0);
     TensorShape shape;
     OP_REQUIRES_OK_ASYNC(
-        c, TensorShapeUtils::MakeShape(shape_t.vec<int64>(), &shape), done);
+        c, TensorShapeUtils::MakeShape(shape_t.vec<int32>(), &shape), done);
     Tensor* out_t;
     OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape, &out_t), done);
 
@@ -224,9 +223,24 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
   }
 };
 REGISTER_KERNEL_BUILDER(
-    Name("NcclBroadcastRecv").Device(DEVICE_GPU).HostMemory("shape"),
+    Name("_NcclBroadcastRecv").Device(DEVICE_GPU).HostMemory("shape"),
     NcclBroadcastRecvKernel);
 
+// Define stub kernels for the ops that get replaced post placement.
+class NcclStubKernel : public AsyncOpKernel {
+ public:
+  explicit NcclStubKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {}
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    c->SetStatus(errors::Unimplemented(
+        "This op should be replaced during graph optimization."));
+    done();
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("NcclBroadcast").Device(DEVICE_GPU),
+                        NcclStubKernel);
+REGISTER_KERNEL_BUILDER(Name("NcclReduce").Device(DEVICE_GPU), NcclStubKernel);
+
+}  // namespace
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

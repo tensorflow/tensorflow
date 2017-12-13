@@ -35,7 +35,7 @@ import collections as _collections
 
 import six as _six
 
-from tensorflow.python.platform import tf_logging as _tf_logging
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -91,26 +91,6 @@ def _yield_value(iterable):
       yield value
 
 
-def _yield_flat_nest(nest):
-  for n in _yield_value(nest):
-    if is_sequence(n):
-      for ni in _yield_flat_nest(n):
-        yield ni
-    else:
-      yield n
-
-
-# Used by `_warn_once` to remember which warning messages have been given.
-_ALREADY_WARNED = {}
-
-
-def _warn_once(message):
-  """Logs a warning message, once per unique string."""
-  if message not in _ALREADY_WARNED:
-    _ALREADY_WARNED[message] = True
-    _tf_logging.warning(message)
-
-
 def is_sequence(seq):
   """Returns a true if its input is a collections.Sequence (except strings).
 
@@ -121,13 +101,7 @@ def is_sequence(seq):
     True if the sequence is a not a string and is a collections.Sequence or a
     dict.
   """
-  if isinstance(seq, dict):
-    return True
-  if isinstance(seq, set):
-    _warn_once("Sets are not currently considered sequences, but this may "
-               "change in the future, so consider avoiding using them.")
-  return (isinstance(seq, _collections.Sequence)
-          and not isinstance(seq, _six.string_types))
+  return _pywrap_tensorflow.IsSequence(seq)
 
 
 def flatten(nest):
@@ -142,8 +116,11 @@ def flatten(nest):
   used instead. The same convention is followed in `pack_sequence_as`. This
   correctly repacks dicts and `OrderedDict`s after they have been flattened,
   and also allows flattening an `OrderedDict` and then repacking it back using
-  a correponding plain dict, or vice-versa.
+  a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
+
+  Users must not modify any collections used in `nest` while this function is
+  running.
 
   Args:
     nest: an arbitrarily nested structure or a scalar object. Note, numpy
@@ -155,10 +132,7 @@ def flatten(nest):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
-  if is_sequence(nest):
-    return list(_yield_flat_nest(nest))
-  else:
-    return [nest]
+  return _pywrap_tensorflow.Flatten(nest)
 
 
 def _recursive_assert_same_structure(nest1, nest2, check_types):
@@ -319,10 +293,10 @@ def pack_sequence_as(structure, flat_sequence):
   If `structure` is or contains a dict instance, the keys will be sorted to
   pack the flat sequence in deterministic order. This is true also for
   `OrderedDict` instances: their sequence order is ignored, the sorting order of
-  keys is used instead. The same convention is followed in `pack_sequence_as`.
+  keys is used instead. The same convention is followed in `flatten`.
   This correctly repacks dicts and `OrderedDict`s after they have been
   flattened, and also allows flattening an `OrderedDict` and then repacking it
-  back using a correponding plain dict, or vice-versa.
+  back using a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
@@ -477,6 +451,17 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "The two structures don't have the same sequence length. Input "
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
+
+    if check_types and isinstance(shallow_tree, dict):
+      if set(input_tree) != set(shallow_tree):
+        raise ValueError(
+            "The two structures don't have the same keys. Input "
+            "structure has keys %s, while shallow structure has keys %s." %
+            (list(_six.iterkeys(input_tree)),
+             list(_six.iterkeys(shallow_tree))))
+
+      input_tree = list(_six.iteritems(input_tree))
+      shallow_tree = list(_six.iteritems(shallow_tree))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -690,6 +675,9 @@ def get_traverse_shallow_structure(traverse_fn, structure):
       else:
         level_traverse.append(False)
   return _sequence_like(structure, level_traverse)
+
+
+_pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
 
 
 _allowed_symbols = [

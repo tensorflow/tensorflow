@@ -298,6 +298,17 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   constexpr int rank = is_int8x4 ? 5 : 4;
   constexpr int vect = is_int8x4 ? 4 : 1;
 
+  if (is_int8x4) {
+    int cc_major, cc_minor;
+    stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                     &cc_minor);
+    OP_REQUIRES(
+        ctx, cc_major >= 6 && cc_minor >= 1,
+        errors::Unimplemented(
+            "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
+            "compute capability 6.1 or later."));
+  }
+
   const int batch_size = GetTensorDim(conv_input_param, data_format, 'N');
   int conv_input_rows = GetTensorDim(conv_input_param, data_format, 'H');
   int conv_input_cols = GetTensorDim(conv_input_param, data_format, 'W');
@@ -434,11 +445,11 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       .set_zero_padding_width(padding_cols / 2);
 
   Tensor maybe_transformed_filter;
-  const Tensor* filter;
-  if (is_int8x4) {
-    // We have already checked filter is OIHW_VECT_I in the constructor.
-    filter = &filter_param;
-  } else if (filter_format == FORMAT_HWIO) {
+  const Tensor* filter = &filter_param;
+  // For qint8, we have already checked filter is OIHW_VECT_I in the
+  // constructor, but we need to test for is_int8x4 so the if block doesn't
+  // generate code for qint8.
+  if (!is_int8x4 && filter_format == FORMAT_HWIO) {
     // Shuffle filter tensor from HWIO to OIHW:
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DataTypeToEnum<T>::value,
@@ -482,6 +493,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       {{conv_input_rows, conv_input_cols}},
       output_depth,
       {{filter_rows, filter_cols}},
+      // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
+      {{1, 1}},  // dilation_rows, dilation_cols
       {{row_stride, col_stride}},
       {{padding_rows, padding_cols}},
       conv_input->dtype(),

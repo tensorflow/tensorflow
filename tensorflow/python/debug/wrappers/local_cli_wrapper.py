@@ -414,7 +414,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_profile_cli_for_run_end(self, py_graph, run_metadata):
     self._init_command = "lp"
     self._run_cli = profile_analyzer_cli.create_profiler_ui(
-        py_graph, run_metadata, ui_type=self._ui_type)
+        py_graph, run_metadata, ui_type=self._ui_type,
+        config=self._run_cli.config)
     self._title = "run-end (profiler mode): " + self._run_description
 
   def _launch_cli(self):

@@ -73,7 +73,6 @@ from tensorflow.python.ops.standard_ops import *
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
-from tensorflow.python.ops import linalg_ns as linalg
 
 # pylint: enable=wildcard-import
 
@@ -90,6 +89,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
@@ -213,6 +213,8 @@ _allowed_symbols.extend([
     'quint16',
     'quint8',
     'string',
+    'uint64',
+    'uint32',
     'uint16',
     'uint8',
     'resource',
@@ -260,6 +262,7 @@ _allowed_symbols.extend([
     'VERSION',
     'GIT_VERSION',
     'COMPILER_VERSION',
+    'CXX11_ABI_FLAG',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
@@ -278,6 +281,7 @@ _exported_dunders = set([
     '__version__',
     '__git_version__',
     '__compiler_version__',
+    '__cxx11_abi_flag__',
 ])
 
 # Expose symbols minus dunders, unless they are whitelisted above.

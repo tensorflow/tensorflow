@@ -195,4 +195,33 @@ TEST(MathUtil, CeilOfRatio) {
 #endif
 }
 
+struct GCDTestCase {
+  unsigned int x;
+  unsigned int y;
+  unsigned int gcd;
+};
+
+TEST(MathUtil, GCD) {
+  std::vector<GCDTestCase> testcases({
+      {10, 20, 10},  //
+      {27, 8, 1},    //
+      {4, 3, 1},     //
+      {6, 8, 2},     //
+      {5, 0, 5},     //
+      {5, 5, 5},     //
+      {0, 0, 0}      //
+  });
+
+  for (const auto& tc : testcases) {
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.y, tc.x));
+  }
+
+  const uint64 biggish_prime = 1666666667;
+  EXPECT_EQ(biggish_prime,
+            MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
+}
+
 }  // namespace tensorflow

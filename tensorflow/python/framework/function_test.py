@@ -309,8 +309,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
-  def testZNoDepOnY(self):
-
+  def _testZNoDepOnY(self, use_const_grad_ys):
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
@@ -320,11 +319,21 @@ class FunctionTest(test.TestCase):
       x = constant_op.constant(1.0)
       y = constant_op.constant(2.0)
       z = Foo(x, y)
-      dx, dy = gradients_impl.gradients([z], [x, y])
+      if use_const_grad_ys:
+        dx, dy = gradients_impl.gradients([z], [x, y], grad_ys=[1.0])
+      else:
+        dx, dy = gradients_impl.gradients([z], [x, y])
       with session.Session() as sess:
         dx_val, dy_val = sess.run([dx, dy])
         self.assertEqual([2.0], dx_val)
         self.assertEqual([0.0], dy_val)
+
+  def testZNoDepOnY(self):
+    self._testZNoDepOnY(False)
+
+  def testZNoDepOnYConstGradYs(self):
+    # Tests for constant folding of grad_ys
+    self._testZNoDepOnY(True)
 
   def testDefineFunctionNoArgs(self):
 
@@ -361,7 +370,7 @@ class FunctionTest(test.TestCase):
 
     @function.Defun(dtypes.float32)
     def Foo(x):
-      y = logging_ops.Print(x, [x], "Hello")
+      y = logging_ops.Print(x, [], "Hello")
       with ops.control_dependencies([y]):
         z = control_flow_ops.no_op()
       with ops.control_dependencies([z]):
@@ -715,6 +724,38 @@ class FunctionTest(test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  def testCaptureInWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun()
+      def Foo():
+        return control_flow_ops.while_loop(lambda i: i < 10,
+                                           lambda i: i + x,
+                                           [0])
+      y = Foo()
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 10)
+
+  def testCaptureInCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun(dtypes.bool)
+      def Foo(pred):
+        return control_flow_ops.cond(pred,
+                                     lambda: x,
+                                     lambda: x + 1)
+      y = Foo(True)
+      z = Foo(False)
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 2)
+
   def testStableName(self):
 
     @function.Defun()
@@ -854,6 +895,66 @@ class FunctionTest(test.TestCase):
         [s, u, v],
         [result])
     self.assertEqual(len(f.signature.input_arg), 3)
+
+  def testGradientWithIntegerFunctionArgument(self):
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(dtypes.float32)
+      t = constant_op.constant(0, dtypes.int32)
+      out = Foo(t, inp)
+      dinp, = gradients_impl.gradients(out, [inp])
+
+    x = np.zeros((2,)).astype(np.float32)
+    with session.Session(graph=g) as sess:
+      self.assertAllClose(
+          np.array([1.0, 0.0]).astype(np.float32),
+          sess.run(dinp, {inp: x}))
+
+  def testStatefulFunction(self):
+
+    @function.Defun()
+    def FunctionWithStatelessOp():
+      return constant_op.constant(42.0)
+
+    @function.Defun()
+    def FunctionWithStatefulOp():
+      return random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun()
+    def FunctionWithStatelessFunctionCall():
+      return FunctionWithStatelessOp()
+
+    @function.Defun()
+    def FunctionWithStatefulFunctionCall():
+      return FunctionWithStatefulOp()
+
+    # Test that the `is_stateful` bit is propagated.
+    self.assertFalse(FunctionWithStatelessOp.definition.signature.is_stateful)
+    self.assertTrue(FunctionWithStatefulOp.definition.signature.is_stateful)
+    self.assertFalse(
+        FunctionWithStatelessFunctionCall.definition.signature.is_stateful)
+    self.assertTrue(
+        FunctionWithStatefulFunctionCall.definition.signature.is_stateful)
+
+    # Ensure that two invocations of the same random-number-generating
+    # function produce different results.
+    result1 = FunctionWithStatefulFunctionCall()
+    result2 = FunctionWithStatefulFunctionCall()
+
+    # Statefulness affects how the function is treated by the various
+    # optimization passes, so run the test in each optimizer
+    # configuration.
+    for config in _OptimizerOptions():
+      with session.Session(config=config) as sess:
+        val1, val2 = sess.run((result1, result2))
+        self.assertFalse(all(val1 == val2))
+        val3, val4 = sess.run((result1, result2))
+        self.assertFalse(all(val3 == val1))
+        self.assertFalse(all(val4 == val2))
 
 
 @test_util.with_c_api

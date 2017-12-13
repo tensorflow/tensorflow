@@ -18,12 +18,17 @@ limitations under the License.
 #include <deque>
 #include <numeric>
 
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
+#include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -92,7 +97,6 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version,
@@ -127,10 +131,41 @@ static Status GetFunctionBody(const NameAttrList& function,
   return Status::OK();
 }
 
-Status XlaCompiler::CompileFunction(
-    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    XlaCompiler::CompilationResult* result) {
+Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
+                                     const FunctionBody** fbody) {
+  // The function may be in either the local_flib_runtime_ or flib_runtime_.
+  // Look up the function in local first and if it is not found then look up the
+  // function in flib_runtime_.
+  auto status = GetFunctionBody(function, local_flib_runtime_, fbody);
+  if (!status.ok()) {
+    if (!errors::IsNotFound(status)) {
+      return status;
+    }
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        GetFunctionBody(function, flib_runtime_, fbody),
+        "Local lookup failed with: ", status.error_message());
+  }
+  return Status::OK();
+}
+
+std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
+  std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
+  CopyGraph(*fbody->graph, graph.get());
+  OptimizerOptions opts;
+  opts.set_do_common_subexpression_elimination(true);
+  opts.set_do_function_inlining(true);
+  opts.set_do_constant_folding(true);
+  GraphOptimizer optimizer(opts);
+  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
+
+  return graph;
+}
+
+Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
+                                    const NameAttrList& function,
+                                    std::vector<XlaCompiler::Argument> args,
+                                    XlaCompiler::CompilationResult* result) {
   const string function_id =
       Canonicalize(function.name(), AttrSlice(&function.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
@@ -142,14 +177,33 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  if (!GetFunctionBody(function, local_flib_runtime_, &fbody).ok()) {
-    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_, &fbody));
-  }
+  TF_RETURN_IF_ERROR(FindFunctionBody(function, &fbody));
 
-  TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      CheckSignature(fbody->arg_types, args),
+      "Signature check failure while compiling: ", function.name());
 
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
+
+  // _Arg and _Retval nodes don't exist in the stored subgraph for the function;
+  // they are added by the function body looked up.  Therefore, they don't have
+  // core assignments here.
+  // Attempt to assign a core to each _Retval and _Arg. Chooses the
+  // lowest-numbered core that consumes the argument. We choose the
+  // lowest-numbered core so the assignment is deterministic.
+  for (Node* n : graph->nodes()) {
+    if (StringPiece(n->type_string()) == "_Arg") {
+      TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
+    }
+  }
+  // Do _Retval as a second loop, in case the retval's input is an _Arg (which
+  // may have gotten a device assignment from the first loop).
+  for (Node* n : graph->nodes()) {
+    if (StringPiece(n->type_string()) == "_Retval") {
+      TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
+    }
+  }
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
@@ -181,7 +235,7 @@ namespace {
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
                     XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
                     int64 step_id) {
-  // Resource cleanup is a bit messy. XlaContext is a ref-counted resource; the
+  // Resource cleanup is a bit messy. XlaContext is a ref-countd resource; the
   // resource manager takes ownership via Create, and unrefs via Cleanup.  We
   // explicitly add a reference to ensure the refcount at entry is maintained at
   // all exit points; Create and Cleanup are always called in this function.
@@ -198,66 +252,25 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
       step_container->name(), XlaContext::kXlaContextResourceName,
       xla_context));
 
-  // Create a LocalExecutor that will own and run the graph.
-  // TODO(b/66947550): migrate away from using an Executor in order to guarantee
-  // determinism and thread-safety.
-  LocalExecutorParams exec_params;
-  exec_params.device = device;
-  exec_params.function_library = flib;
-  exec_params.create_kernel = [flib](const NodeDef& ndef, OpKernel** kernel) {
-    return flib->CreateKernel(ndef, kernel);
-  };
-  exec_params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
-  Executor* exec_ptr = nullptr;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(exec_params, graph.release(), &exec_ptr));
-  std::unique_ptr<Executor> exec(exec_ptr);
-  // At this point ownership of the graph has been transferred to exec.
-
-  // Run the graph symbolically, turning the graph into an XLA computation.
-  Executor::Args exec_args;
-  exec_args.step_id = step_id;
-  exec_args.step_container = step_container.get();
-
-  // Pushes closures to run onto `worklist`. We don't run the closures directly
-  // from 'runner' since that might lead to a stack overflow for large graphs.
-  std::deque<Executor::Args::Closure> worklist;
-  exec_args.runner = [&](Executor::Args::Closure c) {
-    worklist.push_back(std::move(c));
-  };
-
-  // The following code assumes there is only one thread involved and no
-  // concurrency, because we did not provide Executor a threaded runner. Async
-  // ops on the XlaCompilation device must not use threads or concurrency
-  // internally.
-  bool done = false;
-  exec->RunAsync(exec_args, [&](const Status& s) {
-    status = s;
-    done = true;
-  });
-  // Repeatedly run closures from the worklist until `done` is signalled.
-  while (!done) {
-    TF_RET_CHECK(!worklist.empty());
-    Executor::Args::Closure& c = worklist.front();
-    c();
-    worklist.pop_front();
-  }
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      status, "Conversion from TensorFlow graph to XLA computation failed.");
-
+  GraphCompiler graph_compiler(xla_context, device, graph.get(), flib,
+                               step_container.get());
+  TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return status;
+  return Status::OK();
 }
 
 // Builds XLA computations for each of the arguments to the computation.
 // `args` are the arguments to the computation.
-Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
+Status BuildArguments(const Graph& graph,
+                      const std::vector<XlaCompiler::Argument>& args,
                       bool use_tuple_arg, xla::ComputationBuilder* builder,
-                      XlaContext* context,
+                      XlaContext* context, std::vector<int>* arg_cores,
                       std::vector<XlaExpression>* arg_expressions,
                       std::vector<int>* input_mapping,
                       std::vector<xla::Shape>* input_shapes) {
   arg_expressions->resize(args.size());
+  *arg_cores = std::vector<int>(args.size(), -1);
 
   // Argument numbers of arguments and resources that are to be passed to the
   // XLA computation as runtime parameters.
@@ -312,6 +325,26 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
     (*input_mapping)[i] = parameters[i];
   }
 
+  // Use the _Arg nodes in the graph to resolve core assignments.
+  for (const Node* n : graph.nodes()) {
+    if (StringPiece(n->type_string()) != "_Arg") continue;
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RET_CHECK(index >= 0 && index < args.size())
+        << "_Arg out of bounds: " << index << " vs " << args.size();
+    TF_ASSIGN_OR_RETURN(
+        auto sharding,
+        ParseShardingFromDevice(*n, std::numeric_limits<int32>::max()));
+    if (sharding.has_value()) {
+      TF_RET_CHECK(sharding.value().type() ==
+                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      const int core = sharding.value().tile_assignment_devices(0);
+      if ((*arg_cores)[index] == -1 || core < (*arg_cores)[index]) {
+        (*arg_cores)[index] = core;
+      }
+    }
+  }
+
   // Build parameter handles for non-constant arguments.
   std::vector<xla::ComputationDataHandle> arg_handles(parameters.size());
   if (use_tuple_arg) {
@@ -319,10 +352,18 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
     xla::ComputationDataHandle tuple =
         builder->Parameter(0, tuple_shape, "arg_tuple");
     for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
+      const int core = (*arg_cores)[parameters[i]];
+      xla::ScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+                              : xla::ShardingBuilder::AssignDevice(core));
       arg_handles[i] = builder->GetTupleElement(tuple, i);
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
+      const int core = (*arg_cores)[parameters[i]];
+      xla::ScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+                              : xla::ShardingBuilder::AssignDevice(core));
       arg_handles[i] =
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
@@ -378,6 +419,7 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 // type of the final output.
 Status BuildComputation(
     const std::vector<XlaCompiler::Argument>& args,
+    const std::vector<int>& arg_cores,
     const std::vector<XlaExpression>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
     bool return_updated_values_for_all_resources,
@@ -408,6 +450,8 @@ Status BuildComputation(
 
   for (const XlaResource* resource : arg_resources) {
     const XlaCompiler::Argument& arg = args[resource->arg_num];
+    const int core = arg_cores[resource->arg_num];
+    DCHECK_LT(resource->arg_num, arg_cores.size());
     bool modified =
         resource->value.handle() != resource->initial_value.handle();
     // TensorArray gradients were modified if their values changed or there are
@@ -427,8 +471,21 @@ Status BuildComputation(
       for (const auto& grad : resource->tensor_array_gradients) {
         update.tensor_array_gradients_accessed.insert(grad.first);
       }
+
+      // Request that the value be returned on a specific core.
+      xla::ScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+                              : xla::ShardingBuilder::AssignDevice(core));
+
       xla::ComputationDataHandle handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
+
+      // Since we can't change the sharding metadata of <value> as this point,
+      // create a tuple/get-tuple-element combination so that sharding
+      // assignment will be placed on this value, which will cause the resource
+      // update to be returned from the same device that provided the resource.
+      handle = builder->GetTupleElement(builder->Tuple({handle}), 0);
+
       elems.push_back(handle);
     }
   }
@@ -486,12 +543,11 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                      options.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
-  result->tuple_arg = options.use_tuple_arg;
-
   std::vector<XlaExpression> arg_expressions;
+  std::vector<int> arg_cores;
   TF_RETURN_IF_ERROR(BuildArguments(
-      args, options.use_tuple_arg, &builder, context, &arg_expressions,
-      &result->input_mapping, &result->xla_input_shapes));
+      *graph, args, options.use_tuple_arg, &builder, context, &arg_cores,
+      &arg_expressions, &result->input_mapping, &result->xla_input_shapes));
   context->set_args(std::move(arg_expressions));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
@@ -501,15 +557,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   int num_computation_outputs;
   result->computation = std::make_shared<xla::Computation>();
   TF_RETURN_IF_ERROR(BuildComputation(
-      args, context->retvals(), context->resources(),
+      args, arg_cores, context->retvals(), context->resources(),
       options.return_updated_values_for_all_resources, &builder,
       result->computation.get(), &num_computation_outputs,
       &num_nonconst_outputs, &result->resource_updates));
-
-  result->requires_runtime_context = context->has_context_parameter();
-
-  // Tuple arguments and runtime context parameters are incompatible.
-  CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
@@ -546,7 +597,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
        i < context->retvals().size(); ++i) {
     const XlaExpression& retval = context->retvals()[i];
     if (!retval.has_constant_value()) {
-      CHECK_LT(computation_output, num_computation_outputs);
+      TF_RET_CHECK(computation_output < num_computation_outputs)
+          << "Computation has more outputs than expected";
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(

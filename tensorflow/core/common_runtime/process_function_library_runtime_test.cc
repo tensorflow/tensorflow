@@ -82,6 +82,22 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
     EXPECT_GE(call_count, 1);  // Test runner is used.
 
+    // Release the handle and then try running the function. It shouldn't
+    // succeed.
+    status = proc_flr_->ReleaseHandle(handle);
+    if (!status.ok()) {
+      return status;
+    }
+    Notification done2;
+    proc_flr_->Run(opts, handle, args, &out,
+                   [&status, &done2](const Status& s) {
+                     status = s;
+                     done2.Notify();
+                   });
+    done2.WaitForNotification();
+    EXPECT_TRUE(errors::IsNotFound(status));
+    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+
     return Status::OK();
   }
 
@@ -92,10 +108,30 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   IntraProcessRendezvous* rendezvous_;
 };
 
+TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
+  FunctionDefLibrary proto;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
+      new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+  OptimizerOptions opts;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr(
+      new ProcessFunctionLibraryRuntime(
+          nullptr /* device_mgr */, Env::Default(), TF_GRAPH_DEF_VERSION,
+          lib_def.get(), opts, nullptr /* cluster_flr */));
+  FunctionLibraryRuntime* flr =
+      proc_flr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  EXPECT_NE(flr, nullptr);
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {
   Init({});
   FunctionLibraryRuntime* flr =
       proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:0");
+  EXPECT_NE(flr, nullptr);
+  EXPECT_EQ(flr->device(), devices_[0]);
+  flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/device:CPU:0");
+  EXPECT_NE(flr, nullptr);
+  EXPECT_EQ(flr->device(), devices_[0]);
+  flr = proc_flr_->GetFLR("/device:CPU:0");
   EXPECT_NE(flr, nullptr);
   EXPECT_EQ(flr->device(), devices_[0]);
   flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:1");
@@ -213,13 +249,11 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
-  TF_CHECK_OK(Run("FindDevice", opts,
-                  {{"_target", "/job:a/replica:0/task:0/cpu:0"}}, {}, {&y}));
+  TF_CHECK_OK(Run("FindDevice", opts, {{"_target", "/cpu:0"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
                                 TensorShape({})));
-  TF_CHECK_OK(Run("FindDevice", opts,
-                  {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
+  TF_CHECK_OK(Run("FindDevice", opts, {{"_target", "/cpu:1"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));

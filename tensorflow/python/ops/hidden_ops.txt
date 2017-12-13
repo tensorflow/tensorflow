@@ -5,6 +5,7 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
 DebugGradientIdentity
 EditDistance
@@ -20,6 +21,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -222,6 +224,7 @@ BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
 LogMatrixDeterminant
+MatrixExponential
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -243,6 +246,7 @@ TensorSummaryV2
 Abs
 AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul
@@ -258,6 +262,7 @@ ComplexAbs
 Conj
 FloorDiv
 FloorMod
+HistogramFixedWidth
 Max
 Mean
 Min
@@ -337,6 +342,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -351,6 +357,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

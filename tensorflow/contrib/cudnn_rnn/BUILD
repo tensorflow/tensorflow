@@ -36,6 +36,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
     ],
@@ -54,9 +55,11 @@ tf_gen_op_wrapper_py(
 )
 
 tf_custom_op_py_library(
-    name = "cudnn_rnn_ops_py",
+    name = "cudnn_rnn_py",
     srcs = [
         "__init__.py",
+        "python/layers/__init__.py",
+        "python/layers/cudnn_rnn.py",
         "python/ops/cudnn_rnn_ops.py",
     ],
     dso = [
@@ -75,38 +78,13 @@ tf_custom_op_py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
-    ],
-)
-
-tf_custom_op_py_library(
-    name = "cudnn_rnn_py",
-    srcs = [
-        "__init__.py",
-        "python/layers/cudnn_rnn.py",
-    ],
-    dso = [
-        ":python/ops/_cudnn_rnn_ops.so",
-    ],
-    kernels = [
-        ":cudnn_rnn_kernels",
-        ":cudnn_rnn_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cudnn_rnn_ops",
-        ":cudnn_rnn_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -115,7 +93,7 @@ cuda_py_test(
     size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
-        ":cudnn_rnn_ops_py",
+        ":cudnn_rnn_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python/ops/losses:losses",
@@ -140,7 +118,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cudnn_rnn_test",
-    size = "large",
+    size = "enormous",
     srcs = ["python/kernel_tests/cudnn_rnn_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",

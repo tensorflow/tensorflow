@@ -43,6 +43,15 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_UINT16:
       *type = xla::U16;
       return Status::OK();
+    case tensorflow::DT_UINT32:
+      *type = xla::U32;
+      return Status::OK();
+    case tensorflow::DT_UINT64:
+      *type = xla::U64;
+      return Status::OK();
+    case tensorflow::DT_BFLOAT16:
+      *type = xla::BF16;
+      return Status::OK();
     case tensorflow::DT_HALF:
       *type = xla::F16;
       return Status::OK();
@@ -51,6 +60,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
       return Status::OK();
     case tensorflow::DT_DOUBLE:
       *type = xla::F64;
+      return Status::OK();
+    case tensorflow::DT_COMPLEX64:
+      *type = xla::C64;
       return Status::OK();
     case tensorflow::DT_QUINT8:
       *type = xla::U8;

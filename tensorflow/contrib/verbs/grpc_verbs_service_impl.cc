@@ -57,8 +57,7 @@ VerbsService::AsyncService::AsyncService() {
   for (int i = 0; i < 1; ++i) {
     AddMethod(new ::grpc::internal::RpcServiceMethod(
         grpcVerbsService_method_names[i],
-        ::grpc::internal::RpcMethod::NORMAL_RPC,
-        nullptr));
+        ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));
     ::grpc::Service::MarkMethodAsync(i);
   }
 }

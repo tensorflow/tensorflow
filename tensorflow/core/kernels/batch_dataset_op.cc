@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/batch_util.h"
 
 namespace tensorflow {
 
@@ -38,14 +39,14 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
 
-    *output = new Dataset(batch_size, input);
+    *output = new Dataset(ctx, batch_size, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 batch_size, const DatasetBase* input)
-        : batch_size_(batch_size), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 batch_size, const DatasetBase* input)
+        : GraphDatasetBase(ctx), batch_size_(batch_size), input_(input) {
       input_->Ref();
 
       // NOTE(mrry): Currently we implement "batch up to" semantics. If
@@ -79,46 +80,19 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
     }
 
-   private:
-    // Copies element into the index^th slice of parent (in the 0th dimension).
-    //
-    // TODO(mrry): Reconcile this method with the similar method in
-    // the queue implementation.
-    template <typename T>
-    static Status HandleElementToSlice(const Tensor& element, Tensor* parent,
-                                       int64 index) {
-      if (element.NumElements() !=
-          (parent->NumElements() / parent->dim_size(0))) {
-        TensorShape chip_shape = parent->shape();
-        chip_shape.RemoveDim(0);
-        return errors::Internal(
-            "HandleElementToSlice Cannot copy slice: number of elements does "
-            "not "
-            "match.  Shapes are: [element]: ",
-            element.shape().DebugString(),
-            ", [parent slice]: ", chip_shape.DebugString());
-      }
-      auto parent_as_matrix = parent->flat_outer_dims<T>();
-      parent_as_matrix.chip(index, 0) = element.flat<T>();
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      Node* batch_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, batch_size}, output));
       return Status::OK();
     }
 
-    // Copies element into the index^th slice of parent (in the 0th dimension).
-    static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int64 index) {
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleElementToSlice<T>(element, parent, index); \
-  }
-
-      switch (element.dtype()) {
-        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
-#undef HANDLE_TYPE
-        default:
-          return errors::Unimplemented(
-              "CopyElementToSlice Unhandled data type: ", element.dtype());
-      }
-    }
+   private:
 
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -132,9 +106,13 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         // Each row of `batch_elements` is a tuple of tensors from the
         // input iterator.
         std::vector<std::vector<Tensor>> batch_elements;
-        batch_elements.reserve(dataset()->batch_size_);
         {
           mutex_lock l(mu_);
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          batch_elements.reserve(dataset()->batch_size_);
           *end_of_sequence = false;
           for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence;
                ++i) {
@@ -143,6 +121,8 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                                                     end_of_sequence));
             if (!*end_of_sequence) {
               batch_elements.emplace_back(std::move(batch_element_tuple));
+            } else {
+              input_impl_.reset();
             }
           }
         }
@@ -171,8 +151,19 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
           for (size_t i = 0; i < num_batch_elements; ++i) {
-            TF_RETURN_IF_ERROR(CopyElementToSlice(
-                batch_elements[i][component_index], &batch_component, i));
+            if (batch_elements[i][component_index].shape() !=
+                first_element.shape()) {
+              return errors::InvalidArgument(
+                  "Cannot batch tensors with different shapes in component ",
+                  component_index, ". First element had shape ",
+                  first_element.shape().DebugString(), " and element ", i,
+                  " had shape ",
+                  batch_elements[i][component_index].shape().DebugString(),
+                  ".");
+            }
+            TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
+                std::move(batch_elements[i][component_index]), &batch_component,
+                i));
           }
           out_tensors->emplace_back(std::move(batch_component));
         }
@@ -180,9 +171,31 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (!input_impl_) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("input_impl_empty"), ""));
+        } else {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (!reader->Contains(full_name("input_impl_empty"))) {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        } else {
+          input_impl_.reset();
+        }
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

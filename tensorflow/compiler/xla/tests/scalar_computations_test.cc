@@ -459,36 +459,96 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
   ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalAnd) {
+XLA_TEST_F(ScalarComputationsTest, AndBool) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalAnd(builder.ConstantR0<bool>(x),
-                         builder.ConstantR0<bool>(y));
+      builder.And(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x && y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalOr) {
+XLA_TEST_F(ScalarComputationsTest, AndS32) {
+  for (int32 x : {0, 8}) {
+    for (int32 y : {1, -16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.And(builder.ConstantR0<int32>(x), builder.ConstantR0<int32>(y));
+
+      ComputeAndCompareR0<int32>(&builder, x & y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, AndU32) {
+  for (uint32 x : {0, 8}) {
+    for (uint32 y : {1, 16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.And(builder.ConstantR0<uint32>(x), builder.ConstantR0<uint32>(y));
+
+      ComputeAndCompareR0<uint32>(&builder, x & y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, OrBool) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalOr(builder.ConstantR0<bool>(x),
-                        builder.ConstantR0<bool>(y));
+      builder.Or(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x || y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalNot) {
+XLA_TEST_F(ScalarComputationsTest, OrS32) {
+  for (int32 x : {0, 8}) {
+    for (int32 y : {1, -16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.Or(builder.ConstantR0<int32>(x), builder.ConstantR0<int32>(y));
+
+      ComputeAndCompareR0<int32>(&builder, x | y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, OrU32) {
+  for (uint32 x : {0, 8}) {
+    for (uint32 y : {1, 16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.Or(builder.ConstantR0<uint32>(x), builder.ConstantR0<uint32>(y));
+
+      ComputeAndCompareR0<uint32>(&builder, x | y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotBool) {
   for (bool x : {false, true}) {
     ComputationBuilder builder(client_, TestName());
-    builder.LogicalNot(builder.ConstantR0<bool>(x));
+    builder.Not(builder.ConstantR0<bool>(x));
 
     ComputeAndCompareR0<bool>(&builder, !x, {});
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotS32) {
+  for (int32 x : {-1, 0, 1}) {
+    ComputationBuilder builder(client_, TestName());
+    builder.Not(builder.ConstantR0<int32>(x));
+
+    ComputeAndCompareR0<int32>(&builder, ~x, {});
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotU32) {
+  for (uint32 x : {0, 1, 2}) {
+    ComputationBuilder builder(client_, TestName());
+    builder.Not(builder.ConstantR0<uint32>(x));
+
+    ComputeAndCompareR0<uint32>(&builder, ~x, {});
   }
 }
 

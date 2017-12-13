@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
-from tensorflow.contrib.kfac.python.ops import loss_functions as lf
 from tensorflow.contrib.kfac.python.ops import optimizer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -124,9 +123,8 @@ class OptimizerTest(test.TestCase):
   def testUpdateVelocities(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       layers = lc.LayerCollection()
-      layers.losses = [
-          lf.CategoricalLogitsNegativeLogProbLoss(array_ops.constant([1.0]))
-      ]
+      layers.register_categorical_predictive_distribution(
+          array_ops.constant([1.0]))
       opt = optimizer.KfacOptimizer(
           0.1, 0.2, 0.3, layers, momentum=0.5, momentum_type='regular')
       x = variable_scope.get_variable('x', initializer=array_ops.ones((2, 2)))

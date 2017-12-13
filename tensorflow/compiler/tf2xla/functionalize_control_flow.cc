@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -74,6 +75,18 @@ struct Frame {
   std::unordered_set<Node*> nodes;
 };
 
+// Returns a textual representation of the names of the nodes in the input.
+template <typename T>
+string NodesToString(const T& nodes) {
+  return strings::StrCat("{",
+                         str_util::Join(nodes, ",",
+                                        [](string* output, const Node* node) {
+                                          strings::StrAppend(output,
+                                                             node->name());
+                                        }),
+                         "}");
+}
+
 // Copies a subgraph from `graph` to `output` by performing a reverse DFS
 // starting at nodes in vector `stack`.
 // `node_map` is a vector indexed by source node ID to dest nodes.
@@ -93,12 +106,13 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
                     std::vector<Node*> stack,
                     const std::vector<bool>& squash_src_outputs,
                     std::vector<Node*>* node_map, Graph* output) {
+  VLOG(3) << "Stack: " << NodesToString(stack);
   std::vector<bool> visited(graph.num_node_ids(), false);
   while (!stack.empty()) {
     Node* n = stack.back();
     stack.pop_back();
 
-    VLOG(3) << "Copying node " << n->name();
+    VLOG(5) << "Copying node " << n->name();
 
     if (visited[n->id()]) continue;
     visited[n->id()] = true;
@@ -116,7 +130,9 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
         stack.push_back(src);
       }
       Node* src_copy = (*node_map)[e->src()->id()];
-      int src_output = squash_src_outputs[e->src()->id()] ? 0 : e->src_output();
+      int src_output = squash_src_outputs[e->src()->id()] && !e->IsControlEdge()
+                           ? 0
+                           : e->src_output();
       Node* dst_copy = (*node_map)[e->dst()->id()];
       output->AddEdge(src_copy, src_output, dst_copy, e->dst_input());
     }
@@ -392,7 +408,15 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
                                        arg.merge->name());
       }
 
-      // Find the Exit successor of the Switch.
+      // Update the device on the Identity outputs of the switch to match their
+      // target. These Identity outputs do not
+
+      // Loop over the switch node's output to:
+      // - Find the Exit successor.
+      // - Set the sharding on all Identity outputs of the switch. These
+      //   identity nodes are values used by the loop body or condition.
+      //   The Identity node may have the wrong device so copy the device from
+      //   one of its outputs instead.
       for (const Edge* edge : arg.switch_node->out_edges()) {
         if (edge->src_output() == 0 && IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
@@ -400,6 +424,9 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
                                            arg.switch_node->name());
           }
           arg.exit = edge->dst();
+        } else if (StringPiece(edge->dst()->type_string()) == "Identity") {
+          TF_RETURN_IF_ERROR(
+              SetNodeShardingFromNeighbors(edge->dst(), /*out_edges=*/true));
         }
       }
     }
@@ -475,9 +502,11 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
           int dst_input = edge->dst_input();
           graph->RemoveEdge(edge);
 
-          int src_output =
-              dst_input == Graph::kControlSlot ? Graph::kControlSlot : i;
-          graph->AddEdge(while_node, src_output, dst, dst_input);
+          if (dst_input == Graph::kControlSlot) {
+            graph->AddControlEdge(while_node, dst);
+          } else {
+            graph->AddEdge(while_node, i, dst, dst_input);
+          }
         }
       }
     }
@@ -575,8 +604,13 @@ class FunctionalizeCond {
   // id in the original graph.
   struct CondArgs {
     struct CondCmp {
-      bool operator()(const Node* a, const Node* b) {
-        return a->id() < b->id();
+      bool operator()(const Node* lhs, const Node* rhs) const {
+        bool lhs_is_resource =
+            lhs->num_inputs() > 0 ? (lhs->input_type(0) == DT_RESOURCE) : false;
+        bool rhs_is_resource =
+            rhs->num_inputs() > 0 ? (rhs->input_type(0) == DT_RESOURCE) : false;
+        return std::tie(lhs_is_resource, lhs->name()) <
+               std::tie(rhs_is_resource, rhs->name());
       }
     };
     Node* conditional = nullptr;
@@ -589,11 +623,12 @@ class FunctionalizeCond {
   FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library)
       : clusters_(graph->num_node_ids()), library_(library), graph_(graph) {}
 
-  // Returns a vector of Merge nodes from the clustered graph where the nodes
+  // Returns a vector of Switch nodes from the clustered graph where the nodes
   // are sorted by the number of switch nodes minus number of merge nodes
   // from a root of the clustered graph to the given Merge node, with ties
-  // broken by the representative of the Cluster.
-  std::vector<std::pair<int, Cluster*>> SortedMergeNodes();
+  // broken by the representative of the Cluster. This corresponds to sorting by
+  // nesting depth, from deepest nested to outermost.
+  std::vector<std::pair<int, Cluster*>> SortedSwitchNodes();
 
   // Returns whether the graph has no conditionals.
   bool NoConditionals() const { return merge_nodes_.empty(); }
@@ -611,24 +646,37 @@ class FunctionalizeCond {
 
   // If `from` and `to` correspond to different clusters, then merge the nodes
   // in the clustered graph corresponding to `from` and `to`.
-  void ContractEdge(Cluster* from, Cluster* to);
+  //
+  // If `remove_from_graph` is specified then the `from` node is also removed
+  // from the clustered graph post contracting the edge.
+  void ContractEdge(Cluster* from, Cluster* to, bool remove_from_graph = false);
 
   // Converts a Merge node to a XlaIf. This encapsulates the process of
   // extracting the bodies needed for the then and else branch, creates a XlaIf
   // node, removing the nodes of the branches from the graph and replacing the
   // merge node with a XlaIf.
-  Status ConvertMergeToXlaIf(Cluster* merge_cluster);
+  Status ConvertCorrespondingMergeToXlaIf(Cluster* switch_cluster);
 
-  // Returns the switch cluster corresponding to the merge node. This function
-  // only returns the switch cluster in the simple case where we have a switch
-  // node is the entry of a diamond corresponding to a conditional:
+  // Removes a Switch cluster feeding directly into a Merge cluster by removing
+  // the Switch and Merge nodes and collapsing into a single cluster.
+  Status RemoveTrivialSwitch(Cluster* switch_cluster);
+
+  // Returns the merge cluster corresponding to the switch node. This function
+  // only returns the merge cluster in the case where we have a switch node that
+  // is the single entry point for all paths to a common merge cluster, this
+  // merge cluster may be created by combining multiple merge clusters, that
+  // share the switch cluster as common ancestor, together.
   //
   //           Switch
   //          /      \
   //     Branch      Branch
   //          \      /
-  //           merge_cluster
-  gtl::optional<Cluster*> GetSwitchCluster(const Cluster& merge_cluster);
+  //        merge_cluster
+  //
+  // Note: either of the branches may be empty. The case where both branches are
+  // empty is handled by RemoveTrivialSwitch.
+  gtl::optional<Cluster*> CreateCorrespondingMergeCluster(
+      Cluster* switch_cluster);
 
   // Determines the arguments needed as input to the Merge cluster originating
   // from the Switch cluster.
@@ -659,8 +707,8 @@ class FunctionalizeCond {
   template <class T>
   void RemoveUnusedArgs(const T& args);
 
-  // Removes all Merge nodes that are unused.
-  void RemoveUnusedMergeNodes(Cluster* merge_cluster);
+  // Removes all Merge nodes in merge_cluster.
+  void RemoveMergeNodes(Cluster* merge_cluster);
 
   // Returns the representative member of the corresponding cluster.
   ClusterHandle Representative(const Node* node) {
@@ -685,30 +733,52 @@ std::ostream& operator<<(std::ostream& os,
 // between the nodes and the nodes in each cluster.
 string DebugString(const Graph& graph,
                    FunctionalizeCond::ClusterHandle::Vector* clusters) {
-  string ret = "digraph {\ncompound=true;labeljust=\"r\";\n";
+  string ret = "digraph {\ncompound=true;labeljust=\"r\";ranksep=0.24\n";
   std::map<FunctionalizeCond::ClusterHandle, string> subgraphs;
+  auto name = [](const Node* n) {
+    return strings::StrCat(n->type_string(), "_", n->id());
+  };
   for (Node* n : graph.nodes()) {
-    if (n->IsOp()) {
-      strings::StrAppend(&subgraphs[clusters->at(n).Get()], n->id(),
-                         " [label=\"", n->name(), "\"];\n");
-    }
+    strings::StrAppend(&subgraphs[clusters->at(n).Get()], n->id(), " [label=\"",
+                       name(n), "\"];\n");
   }
   for (auto kv : subgraphs) {
     strings::StrAppend(&ret, "subgraph cluster_", kv.first.ToString(), " {\n",
-                       "label = \"", kv.first.ToString(), "\";\n", kv.second,
-                       "}\n");
+                       "style=filled; color=lightgrey;", "label = \"",
+                       kv.first.ToString(), "\";\n", kv.second, "}\n");
   }
   for (Node* n : graph.nodes()) {
-    if (!n->IsOp()) {
-      continue;
-    }
     for (Node* in : n->in_nodes()) {
-      if (in->IsOp()) {
-        strings::StrAppend(&ret, in->id(), " -> ", n->id(), ";\n");
-      }
+      strings::StrAppend(&ret, in->id(), " -> ", n->id(), ";\n");
     }
   }
-  return strings::StrCat(ret, "}");
+  return strings::StrCat(ret, "} // end");
+}
+
+string DebugString(const FunctionalizeCond::ClusteredGraph& clustered_graph) {
+  string ret = "digraph {\ncompound=true;labeljust=\"r\";\n";
+  auto name = [](const FunctionalizeCond::Cluster& cluster) {
+    return cluster.representative.ToString();
+  };
+  for (auto kv : clustered_graph) {
+    if (!kv.second.switch_nodes.empty() || !kv.second.merge_nodes.empty()) {
+      strings::StrAppend(
+          &ret, kv.first.ToString(), " [label=\"", name(kv.second),
+          kv.second.switch_nodes.empty()
+              ? ""
+              : strings::StrCat(" switches=", kv.second.switch_nodes.size()),
+          kv.second.merge_nodes.empty()
+              ? ""
+              : strings::StrCat(" merges=", kv.second.merge_nodes.size()),
+          "\"];\n");
+    }
+  }
+  for (auto kv : clustered_graph) {
+    for (auto in : kv.second.in_nodes) {
+      strings::StrAppend(&ret, name(*in), " -> ", name(kv.second), ";\n");
+    }
+  }
+  return strings::StrCat(ret, "} // end");
 }
 
 bool IsDeadSwitch(const Node* node) {
@@ -727,10 +797,11 @@ bool IsDeadSwitch(const Node* node) {
 }
 
 void FunctionalizeCond::CreateClusters() {
+  ClusterHandle source_cluster = ClusterHandle(Graph::kSourceId);
+  auto& source = clusters_.at(source_cluster);
+  std::deque<std::pair<ClusterHandle, std::deque<Node*>>> workqueue;
+  workqueue.push_back({source_cluster, {}});
   for (Node* node : graph_->nodes()) {
-    if (!node->IsOp()) {
-      continue;
-    }
     if (IsSwitch(node)) {
       switch_nodes_.insert(node);
     } else if (IsMerge(node)) {
@@ -738,6 +809,12 @@ void FunctionalizeCond::CreateClusters() {
     }
     ClusterHandle& cluster = clusters_.at(node).Get();
     cluster = ClusterHandle(node->id());
+    // Group all source clusters together.
+    if (node->IsSource() || node->in_edges().empty()) {
+      clusters_.at(node).Merge(&source);
+      source.Merge(&clusters_.at(node));
+      workqueue.front().second.push_back(node);
+    }
   }
 
   // If there are no Merge nodes, then terminate.
@@ -752,21 +829,124 @@ void FunctionalizeCond::CreateClusters() {
   // conservatively assuming all merge nodes become XlaIf nodes.
   clusters_.resize(clusters_.size() + merge_nodes_.size());
 
-  // Merge a cluster with its input, unless the input is a Switch node or the
-  // node is a Merge node.
-  for (const Node* node : graph_->nodes()) {
-    if (IsMerge(node) || !node->IsOp()) {
-      continue;
+  std::unordered_set<Node*> marked;
+  while (!workqueue.empty()) {
+    auto cluster_queue = workqueue.front();
+    VLOG(4) << "Cluster: " << cluster_queue.first << " Queue: {"
+            << str_util::Join(cluster_queue.second, ",",
+                              [](string* output, const Node* node) {
+                                strings::StrAppend(output, node->id());
+                              })
+            << "}";
+
+    UnionFind<ClusterHandle>& repr = clusters_.at(cluster_queue.first);
+    workqueue.pop_front();
+    std::deque<Node*> switch_nodes;
+    std::deque<Node*> merge_nodes;
+    std::unordered_set<Node*> cluster_member;
+    while (!cluster_queue.second.empty()) {
+      // Iterate node workqueue and flow forward merging all nodes reachable
+      // that are neither a Switch or a Merge and whose inputs are all part of
+      // the same cluster.
+      Node* cur = cluster_queue.second.front();
+      cluster_queue.second.pop_front();
+      if (marked.find(cur) != marked.end()) {
+        continue;
+      }
+      if (IsMerge(cur)) {
+        merge_nodes.push_back(cur);
+        marked.insert(cur);
+        continue;
+      }
+      if (IsSwitch(cur)) {
+        switch_nodes.push_back(cur);
+        marked.insert(cur);
+        continue;
+      }
+      clusters_.at(cur).Merge(&repr);
+      cluster_member.insert(cur);
+      for (Node* out : cur->out_nodes()) {
+        bool all_ancestors_in_cluster = true;
+        for (Node* in : out->in_nodes()) {
+          if (IsMerge(out)) {
+            merge_nodes.push_back(out);
+          }
+          if (IsSwitch(out)) {
+            switch_nodes.push_back(out);
+          }
+          if (cluster_member.find(in) == cluster_member.end()) {
+            all_ancestors_in_cluster = false;
+            break;
+          }
+        }
+        if (all_ancestors_in_cluster && out->IsOp()) {
+          cluster_queue.second.push_back(out);
+          marked.insert(cur);
+        }
+      }
     }
-    for (const Node* in : node->in_nodes()) {
-      if (!IsSwitch(in) && in->IsOp()) {
-        clusters_.at(node).Merge(&clusters_.at(in));
+
+    VLOG(4) << "Switches: {"
+            << str_util::Join(switch_nodes, ",",
+                              [](string* output, const Node* node) {
+                                strings::StrAppend(output, node->id());
+                              })
+            << "}";
+
+    // Merge Switch nodes with common predicate.
+    std::unordered_map<Node*, std::vector<Node*>> predicate_to_switch;
+    for (Node* node : switch_nodes) {
+      Node* tmp;
+      TF_CHECK_OK(node->input_node(1, &tmp));
+      predicate_to_switch[tmp].push_back(node);
+    }
+    for (auto kv : predicate_to_switch) {
+      Node* first = kv.second.front();
+      for (Node* switch_node : kv.second) {
+        clusters_.at(first).Merge(&clusters_.at(switch_node));
+      }
+    }
+
+    // Enqueue each edge of the switch node separately. That is, group all the
+    // nodes that are due to the true/false edge of the switch together and
+    // consider all nodes that only have a control dependency on the switch node
+    // separately. We want to group together all nodes that are part of the same
+    // branch, as these will be extracted into the `then` and `else` functions
+    // of the functional if. The ops due to control edges are different as they
+    // could be involved with either branch and merging them here could result
+    // in invalid graphs.
+    for (auto kv : predicate_to_switch) {
+      ClusterHandle none = ClusterHandle(-1);
+      ClusterHandle first[2] = {none, none};
+      std::deque<Node*>* queue[2];
+      for (auto switch_node : kv.second) {
+        for (const auto e : switch_node->out_edges()) {
+          if (IsSwitch(e->dst()) || IsMerge(e->dst())) {
+            continue;
+          }
+          // Control edges are enqueued on their own.
+          if (e->IsControlEdge()) {
+            workqueue.push_back({Representative(e->dst()), {e->dst()}});
+            continue;
+          }
+          // Combine all outputs of the same output port of a switch cluster
+          // into the same workqueue entry.
+          if (first[e->src_output()] == none) {
+            ClusterHandle repr = Representative(e->dst());
+            first[e->src_output()] = repr;
+            workqueue.push_back({repr, {}});
+            queue[e->src_output()] = &workqueue.back().second;
+          }
+          clusters_.at(first[e->src_output()]).Merge(&clusters_.at(e->dst()));
+          queue[e->src_output()]->push_back(e->dst());
+        }
       }
     }
   }
 }
 
-void FunctionalizeCond::ContractEdge(Cluster* from, Cluster* to) {
+void FunctionalizeCond::ContractEdge(Cluster* from, Cluster* to,
+                                     bool remove_from_graph) {
   VLOG(3) << "ContractEdge from = " << from->representative
           << " to = " << to->representative;
   if (from->representative == to->representative) {
@@ -799,6 +979,10 @@ void FunctionalizeCond::ContractEdge(Cluster* from, Cluster* to) {
   to->out_nodes.erase(from);
   clusters_.at(to->representative).Merge(&clusters_.at(from->representative));
   from->visited = true;
+
+  if (remove_from_graph) {
+    clustered_graph_.erase(from->representative);
+  }
 }
 
 void FunctionalizeCond::CreateClusteredGraph() {
@@ -809,7 +993,7 @@ void FunctionalizeCond::CreateClusteredGraph() {
     for (const Node* in : node->in_nodes()) {
       ClusterHandle other_repr = Representative(in);
       // Skip source, sink and internal edges.
-      if (!in->IsOp() || other_repr == repr) {
+      if (other_repr == repr) {
         continue;
       }
       Cluster& cluster_node_in = clustered_graph_[other_repr];
@@ -820,7 +1004,7 @@ void FunctionalizeCond::CreateClusteredGraph() {
     for (const Node* out : node->out_nodes()) {
       ClusterHandle other_repr = Representative(out);
       // Skip source, sink and internal edges.
-      if (!out->IsOp() || other_repr == repr) {
+      if (other_repr == repr) {
         continue;
       }
       Cluster& cluster_node_out = clustered_graph_[other_repr];
@@ -830,6 +1014,7 @@ void FunctionalizeCond::CreateClusteredGraph() {
     }
     return cluster_node;
   };
+  update_cluster_for_node(graph_->source_node());
   for (Node* node : switch_nodes_) {
     update_cluster_for_node(node).switch_nodes.insert(node);
   }
@@ -837,46 +1022,64 @@ void FunctionalizeCond::CreateClusteredGraph() {
     update_cluster_for_node(node).merge_nodes.insert(node);
   }
 
-  // Merge Merge nodes with common input together.
-  for (Node* node : merge_nodes_) {
-    Cluster& cluster = clustered_graph_.at(Representative(node));
-    for (const Node* in : node->in_nodes()) {
-      if (!in->IsOp()) {
-        continue;
-      }
-      Cluster& cluster_node_in = clustered_graph_.at(Representative(in));
-      for (auto it = cluster_node_in.out_nodes.begin();
-           it != cluster_node_in.out_nodes.end();) {
-        ContractEdge(*it++, &cluster);
-      }
-    }
-  }
-
-  VLOG(3) << "ClusteredGraph: " << DebugString(*graph_, &clusters_);
+  VLOG(3) << "Graph with clusters: " << DebugString(*graph_, &clusters_);
+  VLOG(3) << "ClusteredGraph: " << DebugString(clustered_graph_);
 }
 
-gtl::optional<FunctionalizeCond::Cluster*> FunctionalizeCond::GetSwitchCluster(
-    const Cluster& merge_cluster) {
-  VLOG(3) << "GetSwitchCluster for " << merge_cluster.representative;
-  gtl::optional<Cluster*> switch_cluster;
-  if (merge_cluster.in_nodes.size() != 2) {
-    return gtl::nullopt;
-  }
-  for (const Cluster* in : merge_cluster.in_nodes) {
-    if (in->in_nodes.size() != 1) {
-      return gtl::nullopt;
+gtl::optional<FunctionalizeCond::Cluster*>
+FunctionalizeCond::CreateCorrespondingMergeCluster(Cluster* switch_cluster) {
+  VLOG(3) << "CreateCorrespondingMergeCluster for "
+          << switch_cluster->representative;
+  std::unordered_set<Cluster*> merges;
+  std::unordered_set<Cluster*> dominated;
+  dominated.insert(switch_cluster);
+  std::deque<Cluster*> queue;
+  auto enqueue_or_update_merge = [this, &queue, &merges](Cluster* c) {
+    if (c->merge_nodes.empty()) {
+      queue.push_back(c);
+    } else {
+      merges.insert(c);
     }
-    for (auto inin : in->in_nodes) {
-      if (switch_cluster.has_value()) {
-        if (*switch_cluster != inin) {
-          return gtl::nullopt;
-        }
-      } else {
-        switch_cluster = inin;
+  };
+  // Enqueue all the outputs of the switch cluster in the workqueue.
+  for (auto* out : switch_cluster->out_nodes) {
+    enqueue_or_update_merge(out);
+  }
+  std::unordered_set<Cluster*> visited;
+  while (!queue.empty()) {
+    Cluster* cur = queue.front();
+    queue.pop_front();
+    if (visited.find(cur) != visited.end()) {
+      continue;
+    }
+    visited.insert(cur);
+    // Ensure all inputs to the current node are in the dominated set.
+    for (Cluster* in : cur->in_nodes) {
+      if (dominated.find(in) == dominated.end()) {
+        return gtl::nullopt;
       }
     }
+    for (Cluster* out : cur->out_nodes) {
+      // No switch nodes beyond the entry one is expected.
+      if (!out->switch_nodes.empty()) {
+        return gtl::nullopt;
+      }
+      enqueue_or_update_merge(out);
+    }
   }
-  return switch_cluster;
+  // Return if there are no merge nodes.
+  if (merges.empty()) {
+    return gtl::nullopt;
+  }
+  auto it = merges.begin();
+  Cluster* merge_cluster = *it;
+  for (++it; it != merges.end(); ++it) {
+    ContractEdge(*it, merge_cluster);
+  }
+
+  // TODO(jpienaar): Clean up graph, merging nodes.
+
+  return merge_cluster;
 }
 
 xla::StatusOr<FunctionalizeCond::CondArgs> FunctionalizeCond::DetermineCondArgs(
@@ -887,6 +1090,9 @@ xla::StatusOr<FunctionalizeCond::CondArgs> FunctionalizeCond::DetermineCondArgs(
   auto feeds_into_branch_cluster = [&](Node* switch_cluster) {
     for (Node* out : switch_cluster->out_nodes()) {
       ClusterHandle repr = Representative(out);
+      if (repr == merge_cluster.representative) {
+        return true;
+      }
       for (Cluster* in : merge_cluster.in_nodes) {
         if (repr == in->representative) {
           return true;
@@ -917,12 +1123,9 @@ xla::StatusOr<FunctionalizeCond::CondArgs> FunctionalizeCond::DetermineCondArgs(
 xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
     const CondArgs& cond_args, const Cluster& merge_cluster,
     const std::vector<Node*>& outputs) {
-  VLOG(2) << "Build if op for {"
-          << str_util::Join(merge_cluster.merge_nodes, ", ",
-                            [](string* out, const Node* node) {
-                              strings::StrAppend(out, node->name());
-                            })
-          << "}";
+  VLOG(2) << "Build if op for " << NodesToString(merge_cluster.merge_nodes)
+          << " with input " << NodesToString(cond_args.args);
+
   NodeDef if_def;
   // Create a new If node using the name of the merge node.
   NodeDefBuilder builder(
@@ -939,6 +1142,7 @@ xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
     auto body = xla::MakeUnique<Graph>(graph_->op_registry());
     TF_RETURN_IF_ERROR(
         ExtractBody(cond_args, merge_cluster, outputs, i, body.get()));
+    VLOG(3) << "Body " << branch[i] << ": " << DebugString(body.get());
     FunctionDef body_fdef;
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*body, body_name.name(), &body_fdef));
     TF_RETURN_IF_ERROR(library_->AddFunctionDef(body_fdef));
@@ -999,10 +1203,7 @@ void FunctionalizeCond::RemoveClusterNodes(Cluster* cluster) {
 
 template <class T>
 void FunctionalizeCond::RemoveUnusedArgs(const T& args) {
-  VLOG(2) << "RemoveUnusedArgs among: "
-          << str_util::Join(args, ", ", [](string* output, const Node* node) {
-               strings::StrAppend(output, node->name());
-             });
+  VLOG(2) << "RemoveUnusedArgs among: " << NodesToString(args);
 
   std::deque<Node*> to_delete;
   for (Node* arg : args) {
@@ -1027,7 +1228,8 @@ Status FunctionalizeCond::ExtractBody(const CondArgs& cond_args,
                                       const Cluster& merge_cluster,
                                       const std::vector<Node*>& outputs,
                                       int input_edge, Graph* body) {
-  VLOG(2) << "ExtractBody for " << merge_cluster.representative;
+  VLOG(2) << "ExtractBody for " << merge_cluster.representative
+          << " along edge " << input_edge;
   std::vector<bool> squash_src_outputs(graph_->num_node_ids(), false);
   std::vector<Node*> node_map(graph_->num_node_ids(), nullptr);
   int arg_count = 0;
@@ -1035,11 +1237,6 @@ Status FunctionalizeCond::ExtractBody(const CondArgs& cond_args,
     DataType dtype = arg->input_type(0);
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         BuildArgNode(body, dtype, arg_count++));
-    if (dtype == DT_RESOURCE) {
-      bool constant;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg->attrs(), "is_constant", &constant));
-      TF_RET_CHECK(constant);
-    }
     node_map.at(arg->id()) = arg_node;
     squash_src_outputs.at(arg->id()) = true;
   }
@@ -1051,12 +1248,21 @@ Status FunctionalizeCond::ExtractBody(const CondArgs& cond_args,
     TF_ASSIGN_OR_RETURN(node_map.at(node->id()),
                         BuildRetvalNode(body, node->output_type(0),
                                         /*index=*/j));
-    Node* in;
-    TF_RETURN_IF_ERROR(node->input_node(input_edge, &in));
+    const Edge* in_edge;
+    TF_RETURN_IF_ERROR(node->input_edge(input_edge, &in_edge));
+    Node* in = in_edge->src();
     if (node_map.at(in->id()) == nullptr) {
       node_map.at(in->id()) = body->CopyNode(in);
     }
-    body->AddEdge(node_map.at(in->id()), j, node_map.at(node->id()), 0);
+
+    if (cond_args.args.find(in) == cond_args.args.end()) {
+      body->AddEdge(node_map.at(in->id()), in_edge->src_output(),
+                    node_map.at(node->id()), 0);
+    } else {
+      body->AddEdge(node_map.at(in->id()), 0, node_map.at(node->id()), 0);
+      // Don't include input nodes that are already just returned in stack.
+      continue;
+    }
     stack.push_back(in);
   }
 
@@ -1106,41 +1312,72 @@ Status FunctionalizeCond::AddOutputEdges(const std::vector<Node*>& outputs,
   return Status::OK();
 }
 
-void FunctionalizeCond::RemoveUnusedMergeNodes(Cluster* merge_cluster) {
-  VLOG(3) << "RemoveUnusedMergeNodes for " << merge_cluster->representative;
+void FunctionalizeCond::RemoveMergeNodes(Cluster* merge_cluster) {
+  VLOG(3) << "RemoveMergeNodes for " << merge_cluster->representative;
   // Remove all merge nodes now dead post extraction of If.
   for (auto it = merge_cluster->merge_nodes.begin();
        it != merge_cluster->merge_nodes.end();) {
     Node* node = *it;
-    if (node->out_edges().empty()) {
-      graph_->RemoveNode(node);
-      merge_cluster->merge_nodes.erase(*it++);
-    }
+    graph_->RemoveNode(node);
+    merge_cluster->merge_nodes.erase(*it++);
   }
 }
 
-Status FunctionalizeCond::ConvertMergeToXlaIf(Cluster* merge_cluster) {
-  VLOG(1) << "ConvertMergeToXlaIf for " << merge_cluster->representative;
-  gtl::optional<Cluster*> switch_cluster = GetSwitchCluster(*merge_cluster);
-  if (!switch_cluster.has_value()) {
+Status FunctionalizeCond::RemoveTrivialSwitch(Cluster* switch_cluster) {
+  Cluster* merge_cluster = *switch_cluster->out_nodes.begin();
+  if (merge_cluster->merge_nodes.empty()) {
     return errors::FailedPrecondition(
-        "Merge cluster was not part of a simple conditional in the clustered "
-        "graph. Graph nodes in merge cluster {",
-        str_util::Join(merge_cluster->merge_nodes, ", ",
-                       [](string* output, Node* node) {
-                         strings::StrAppend(output, node->name());
-                       }),
-        "}");
+        "Not a trivial switch: no Merge node feeding into Switch node");
+  }
+
+  for (auto it = merge_cluster->merge_nodes.begin();
+       it != merge_cluster->merge_nodes.end();) {
+    // We have the following structure:
+    //   Op -> Switch -> Merge -> Consumer
+    // and we want to transform it to:
+    //   Op -> Consumer
+    Node* merge_node = *it;
+    Node* switch_node;
+    const Edge* in = nullptr;
+    TF_RETURN_IF_ERROR(merge_node->input_node(0, &switch_node));
+    TF_RETURN_IF_ERROR(switch_node->input_edge(0, &in));
+    for (auto out : merge_node->out_edges()) {
+      int src_output = out->dst_input() == Graph::kControlSlot
+                           ? Graph::kControlSlot
+                           : in->src_output();
+      graph_->AddEdge(in->src(), src_output, out->dst(), out->dst_input());
+    }
+    graph_->RemoveNode(*it++);
+  }
+  RemoveUnusedArgs(switch_cluster->switch_nodes);
+
+  return Status::OK();
+}
+
+Status FunctionalizeCond::ConvertCorrespondingMergeToXlaIf(
+    Cluster* switch_cluster) {
+  VLOG(1) << "ConvertMergeToXlaIf for " << switch_cluster->representative;
+  gtl::optional<Cluster*> maybe_merge =
+      CreateCorrespondingMergeCluster(switch_cluster);
+  if (!maybe_merge.has_value()) {
+    return errors::FailedPrecondition(
+        "Switch cluster was not part of a simple conditional in the clustered "
+        "graph. Graph nodes in switch cluster ",
+        NodesToString(switch_cluster->switch_nodes));
+  }
+  Cluster* merge_cluster = *maybe_merge;
+  if (merge_cluster->merge_nodes.empty()) {
+    return errors::Internal(
+        "Merge node in clustered graph contains no merge nodes: ",
+        merge_cluster->representative.ToString());
   }
   TF_ASSIGN_OR_RETURN(auto cond_args,
-                      DetermineCondArgs(*merge_cluster, **switch_cluster));
+                      DetermineCondArgs(*merge_cluster, *switch_cluster));
 
   // Sort the outputs by ID to produce more stable output.
   std::vector<Node*> outputs(merge_cluster->merge_nodes.begin(),
                              merge_cluster->merge_nodes.end());
-  std::sort(
-      outputs.begin(), outputs.end(),
-      [](const Node* lhs, const Node* rhs) { return lhs->id() < rhs->id(); });
+  std::sort(outputs.begin(), outputs.end(), CondArgs::CondCmp());
 
   // Extract bodies and builds a If operator.
   TF_ASSIGN_OR_RETURN(Node * if_node,
@@ -1151,29 +1388,28 @@ Status FunctionalizeCond::ConvertMergeToXlaIf(Cluster* merge_cluster) {
   // Remove the old nodes from the graph_ and contract the edges of the
   // clustered graph.
   for (auto in : merge_cluster->in_nodes) {
-    RemoveClusterNodes(in);
+    if (in != switch_cluster) {
+      RemoveClusterNodes(in);
+    }
   }
+  RemoveMergeNodes(merge_cluster);
   RemoveUnusedArgs(cond_args.args);
   auto in_nodes = merge_cluster->in_nodes;
   for (auto it = in_nodes.begin(); it != in_nodes.end();) {
-    ContractEdge(*it++, merge_cluster);
+    ContractEdge(*it++, switch_cluster);
   }
-  ContractEdge(*switch_cluster, merge_cluster);
-  RemoveUnusedMergeNodes(merge_cluster);
-  clusters_[if_node].Get() = ClusterHandle(merge_cluster->representative);
+  ContractEdge(merge_cluster, switch_cluster);
+  clusters_[if_node].Get() = ClusterHandle(switch_cluster->representative);
 
   return Status::OK();
 }
 
 std::vector<std::pair<int, FunctionalizeCond::Cluster*>>
-FunctionalizeCond::SortedMergeNodes() {
+FunctionalizeCond::SortedSwitchNodes() {
   VLOG(2) << "ProcessClusteredGraph";
   std::stack<std::pair<int, Cluster*>> stack;
-  for (auto& c : clustered_graph_) {
-    if (c.second.in_nodes.empty()) {
-      stack.push({0, &c.second});
-    }
-  }
+  // Initialize with the source node.
+  stack.push({0, &clustered_graph_[Representative(graph_->source_node())]});
 
   // Perform a depth-first traversal of the clustered graph computing the
   // switch-merge depth.
@@ -1191,10 +1427,10 @@ FunctionalizeCond::SortedMergeNodes() {
 
     size_t new_depth = depth;
     if (!n->merge_nodes.empty()) {
-      queue.emplace_back(depth, n);
       --new_depth;
     }
     if (!n->switch_nodes.empty()) {
+      queue.emplace_back(depth, n);
       ++new_depth;
     }
     for (Cluster* e : n->out_nodes) {
@@ -1224,11 +1460,36 @@ Status FunctionalizeCond::Functionalize(Graph* graph,
   }
   fc.CreateClusteredGraph();
 
-  auto queue = fc.SortedMergeNodes();
+  auto queue = fc.SortedSwitchNodes();
   for (auto it = queue.begin(); it != queue.end();) {
-    Cluster* merge_cluster = (*it).second;
+    Cluster* switch_cluster = (*it).second;
     ++it;
-    TF_RETURN_IF_ERROR(fc.ConvertMergeToXlaIf(merge_cluster));
+    if (switch_cluster->out_nodes.size() == 1) {
+      TF_RETURN_IF_ERROR(fc.RemoveTrivialSwitch(switch_cluster));
+    } else {
+      TF_RETURN_IF_ERROR(fc.ConvertCorrespondingMergeToXlaIf(switch_cluster));
+    }
+
+    // Contract newly Switch free switch_cluster with outgoing nodes without
+    // Switch or Merge nodes.
+    for (auto& nodes : {switch_cluster->out_nodes, switch_cluster->in_nodes}) {
+      std::vector<Cluster*> copy_nodes(nodes.begin(), nodes.end());
+      for (auto* node : copy_nodes) {
+        if (node->merge_nodes.empty() && node->switch_nodes.empty()) {
+          fc.ContractEdge(node, switch_cluster);
+        }
+      }
+    }
+
+    VLOG(3) << "Graph with clusters: "
+            << DebugString(*fc.graph_, &fc.clusters_);
+    VLOG(3) << "ClusteredGraph: " << DebugString(fc.clustered_graph_);
+  }
+
+  if (!fc.switch_nodes_.empty()) {
+    return errors::Internal(
+        "Failed to functionalize control flow with Switch nodes remaining: ",
+        NodesToString(fc.switch_nodes_));
   }
   return Status::OK();
 }
@@ -1239,7 +1500,7 @@ Status FunctionalizeCond::Functionalize(Graph* graph,
 // functional equivalents.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library) {
-  VLOG(2) << "FunctionalizeControlFlow: "
+  VLOG(2) << "FunctionalizeControlFlow (initial): "
           << dump_graph::DumpGraphToFile("functionalize_initial", *graph);
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
@@ -1317,7 +1578,11 @@ Status FunctionalizeControlFlow(Graph* graph,
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
   // in successive invocations.
-  return FunctionalizeCond::Functionalize(graph, library);
+  TF_RETURN_IF_ERROR(FunctionalizeCond::Functionalize(graph, library));
+
+  VLOG(2) << "FunctionalizeControlFlow (final): "
+          << dump_graph::DumpGraphToFile("functionalize_final", *graph);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

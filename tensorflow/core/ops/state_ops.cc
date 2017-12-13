@@ -513,6 +513,62 @@ output_ref: Same as ref. Returned as a convenience for operations that want to
   use the updated values after the update is done.
 )doc");
 
+REGISTER_OP("ResourceScatterNdUpdate")
+    .Input("ref: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape)
+    .Doc(R"doc(
+Applies sparse `updates` to individual values or slices within a given
+variable according to `indices`.
+
+`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+`indices` must be integer tensor, containing indices into `ref`.
+It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+The innermost dimension of `indices` (with length `K`) corresponds to
+indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+dimension of `ref`.
+
+`updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+```
+[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+```
+
+For example, say we want to update 4 scattered elements to a rank-1 tensor to
+8 elements. In Python, that update would look like this:
+
+```python
+    ref = tfe.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    indices = tf.constant([[4], [3], [1] ,[7]])
+    updates = tf.constant([9, 10, 11, 12])
+    update = tf.scatter_nd_update(ref, indices, updates)
+    with tf.Session() as sess:
+      print sess.run(update)
+```
+
+The resulting update to ref would look like this:
+
+    [1, 11, 3, 10, 9, 6, 7, 12]
+
+See @{tf.scatter_nd} for more details about how to make updates to
+slices.
+
+ref: A resource handle. Must be from a VarHandleOp.
+indices: A Tensor. Must be one of the following types: int32, int64.
+  A tensor of indices into ref.
+updates: A Tensor. Must have the same type as ref. A tensor of updated
+  values to add to ref.
+use_locking: An optional bool. Defaults to True. If True, the assignment will
+  be protected by a lock; otherwise the behavior is undefined,
+  but may exhibit less contention.
+)doc");
+
 REGISTER_OP("ScatterNdAdd")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -642,6 +698,39 @@ REGISTER_OP("CountUpTo")
 Increments 'ref' until it reaches 'limit'.
 
 ref: Should be from a scalar `Variable` node.
+limit: If incrementing ref would bring it above limit, instead generates an
+  'OutOfRange' error.
+output: A copy of the input before increment. If nothing else modifies the
+  input, the values produced will all be distinct.
+)doc");
+
+REGISTER_OP("ResourceCountUpTo")
+    .Input("resource: resource")
+    .Output("output: T")
+    .Attr("limit: int")
+    .Attr("T: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data == nullptr || handle_data->empty()) {
+        return errors::InvalidArgument("Handle has no shape/type information.");
+      }
+      shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
+      DataType value_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &value_dtype));
+      if (value_dtype != shape_and_type.dtype) {
+        return errors::InvalidArgument(
+            "Data types do not match: ", DataTypeString(value_dtype), " and ",
+            DataTypeString(shape_and_type.dtype));
+      }
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->WithRank(shape_and_type.shape, 0, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Increments variable pointed to by 'resource' until it reaches 'limit'.
+
+resource: Should be from a scalar `Variable` node.
 limit: If incrementing ref would bring it above limit, instead generates an
   'OutOfRange' error.
 output: A copy of the input before increment. If nothing else modifies the

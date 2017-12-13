@@ -15,7 +15,6 @@
 #include <string>
 
 #include "tensorflow/contrib/boosted_trees/lib/utils/tensor_utils.h"
-#include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 #include "tensorflow/contrib/boosted_trees/resources/decision_tree_ensemble_resource.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"

@@ -617,10 +617,11 @@ static inline Status GesvdImpl(
   // kernel on the stream, it is not a big performance hit.
   mutex_lock lock(handle_map_mutex);
   /* Launch the solver kernel. */
-  TF_RETURN_IF_CUSOLVER_ERROR(solver(
-      cusolver_dn_handle, jobu, jobvt, m, n, CUDAComplex(A), lda, S,
-      CUDAComplex(U), ldu, CUDAComplex(VT), ldvt,
-      CUDAComplex(dev_workspace.mutable_data()), lwork, NULL, dev_lapack_info));
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(cusolver_dn_handle, jobu, jobvt, m, n,
+                                     CUDAComplex(A), lda, S, CUDAComplex(U),
+                                     ldu, CUDAComplex(VT), ldvt,
+                                     CUDAComplex(dev_workspace.mutable_data()),
+                                     lwork, nullptr, dev_lapack_info));
   return Status::OK();
 }
 

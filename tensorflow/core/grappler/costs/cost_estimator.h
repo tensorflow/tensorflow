@@ -121,6 +121,8 @@ Costs::Costs() {
 Costs Costs::ZeroCosts() {
   Costs costs;
   costs.execution_time = Duration::zero();
+  costs.compute_time = Duration::zero();
+  costs.memory_time = Duration::zero();
   costs.max_memory = kZeroMemory;
   costs.max_per_op_buffers = kZeroMemory;
   costs.max_per_op_streaming = kZeroMemory;

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/batch_util.h"
 
 namespace tensorflow {
 
@@ -50,14 +51,14 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           errors::InvalidArgument(
               "All components must have the same size in the 0th dimension"));
     }
-    *output = new Dataset(std::move(components));
+    *output = new Dataset(ctx, std::move(components));
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(std::vector<Tensor> tensors)
-        : tensors_(std::move(tensors)) {
+    explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
+        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         gtl::InlinedVector<int64, 4> partial_dim_sizes;
@@ -83,42 +84,24 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
 
-   private:
-    template <typename T>
-    static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
-                                       int64 index) {
-      DCHECK_NE(parent.dim_size(0), 0);
-      DCHECK_GE(index, 0);
-      if (element->NumElements() !=
-          (parent.NumElements() / parent.dim_size(0))) {
-        TensorShape chip_shape = parent.shape();
-        chip_shape.RemoveDim(0);
-        return errors::Internal(
-            "HandleSliceToElement Cannot copy slice: number of elements does "
-            "not match.  Shapes are: [element]: ",
-            element->shape().DebugString(), ", [parent slice]: ",
-            chip_shape.DebugString());
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      std::vector<Node*> components;
+      components.reserve(tensors_.size());
+      for (const Tensor& t : tensors_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        components.emplace_back(node);
       }
-      auto parent_as_matrix = parent.flat_outer_dims<T>();
-      element->flat<T>() = parent_as_matrix.chip(index, 0);
+      AttrValue dtypes;
+      b->BuildAttrValue(dtypes_, &dtypes);
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
+                                       {{"Toutput_types", dtypes}}, output));
       return Status::OK();
     }
 
-    static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int64 index) {
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    return HandleSliceToElement<T>(parent, element, index); \
-  }
-
-      switch (parent.dtype()) {
-        TF_CALL_DATASET_TYPES(HANDLE_TYPE);
-        default:
-          return errors::Unimplemented(
-              "CopySliceToElement Unhandled data type: ", element->dtype());
-      }
-    }
-
+   private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
@@ -137,7 +120,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
             const Tensor& t = dataset()->tensors_[i];
             Tensor t_slice(cpu_allocator(), t.dtype(),
                            TensorShape(dataset()->shapes_[i].dim_sizes()));
-            TF_RETURN_IF_ERROR(CopySliceToElement(t, &t_slice, i_));
+            TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
             out_tensors->emplace_back(std::move(t_slice));
           }
           ++i_;
@@ -148,10 +131,24 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
-      int i_ GUARDED_BY(mu_);
-      const int n_;
+      int64 i_ GUARDED_BY(mu_);
+      const int64 n_;
     };
 
     const std::vector<Tensor> tensors_;

@@ -140,10 +140,10 @@ def dataset(y_name="price", train_fraction=0.7):
   train = (base_dataset
            # Take only the training-set lines.
            .filter(in_training_set)
-           # Cache data so you only read the file once.
-           .cache()
            # Decode each line into a (features_dict, label) pair.
-           .map(decode_line))
+           .map(decode_line)
+           # Cache data so you only decode the file once.
+           .cache())
 
   # Do the same for the test-set.
   test = (base_dataset.filter(in_test_set).cache().map(decode_line))

@@ -145,6 +145,7 @@ TEST(ShapeUtilTest, IncompatibleTuplesWithSwappedElements) {
   Shape tuple2 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(PRED, {4, 5})});
   EXPECT_FALSE(ShapeUtil::Compatible(tuple1, tuple2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(tuple1, tuple2));
 }
 
 TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentPrimitiveType) {
@@ -153,6 +154,7 @@ TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentPrimitiveType) {
   Shape tuple2 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(PRED, {4, 5}), ShapeUtil::MakeShape(S32, {3, 2})});
   EXPECT_FALSE(ShapeUtil::Compatible(tuple1, tuple2));
+  EXPECT_TRUE(ShapeUtil::CompatibleIgnoringElementType(tuple1, tuple2));
 }
 
 TEST(ShapeUtilTest, IncompatibleTuplesWithDifferentDimensions) {
@@ -218,6 +220,10 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(F64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(F64, {10, 20})));
+
+  EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
+  EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
+  EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
 }
 
 TEST(ShapeUtilTest, ByteSizeOfWithPadding) {

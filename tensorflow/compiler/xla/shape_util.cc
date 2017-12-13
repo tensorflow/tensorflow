@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -102,6 +103,32 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return true;
 }
 
+// Constructs and returns the new shape with the given minor_to_major order in
+// its Layout.
+StatusOr<Shape> MakeShapeWithLayoutInternal(
+    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
+    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+  if (dimensions.size() != minor_to_major.size()) {
+    return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
+                           dimensions.size(), minor_to_major.size());
+  }
+  if (element_type == OPAQUE || element_type == TUPLE) {
+    return InvalidArgument("Unsupported element type: %s",
+                           PrimitiveType_Name(element_type).c_str());
+  }
+  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
+  auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
+  min2maj->Clear();
+  for (int64 value : minor_to_major) {
+    min2maj->Add(value);
+  }
+  if (!shape.has_layout()) {
+    return InvalidArgument("Shape has no layout.");
+  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  return shape;
+}
+
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
@@ -152,16 +179,8 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  CHECK_EQ(dimensions.size(), minor_to_major.size());
-  Shape shape = MakeShape(element_type, dimensions);
-  auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
-  min2maj->Clear();
-  for (int64 value : minor_to_major) {
-    min2maj->Add(value);
-  }
-  DCHECK(shape.has_layout());
-  TF_DCHECK_OK(ValidateShape(shape));
-  return shape;
+  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major)
+      .ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
@@ -245,6 +264,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     case S32:
     case S64:
     case F16:
+    case BF16:
     case F32:
     case F64:
       return true;
@@ -254,6 +274,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     case U16:
     case U32:
     case U64:
+    case C64:
     case TUPLE:
     case OPAQUE:
       return false;
@@ -261,6 +282,10 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     default:
       LOG(FATAL) << "Unhandled element type " << shape.element_type();
   }
+}
+
+/* static */ bool ShapeUtil::ElementIsComplex(const Shape& shape) {
+  return primitive_util::IsComplexType(shape.element_type());
 }
 
 /* static */ bool ShapeUtil::ElementIsFloating(const Shape& shape) {
@@ -303,6 +328,14 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
   return MakeTupleShape(new_elements);
+}
+
+// Returns the shape of a real or imaginary component.
+/* static */ Shape ShapeUtil::ComplexComponentShape(
+    const Shape& complex_shape) {
+  CHECK(ElementIsComplex(complex_shape)) << HumanString(complex_shape);
+  return ChangeElementType(complex_shape, primitive_util::ComplexComponentType(
+                                              complex_shape.element_type()));
 }
 
 /* static */ bool ShapeUtil::ShapeIs(const Shape& shape,
@@ -372,6 +405,26 @@ const string& LowercasePrimitiveTypeName(PrimitiveType s) {
   static PrimitiveTypeNameGenerator* gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
+
+StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
+  static std::unordered_map<string, PrimitiveType>* name_to_type = [] {
+    static auto* map = new std::unordered_map<string, PrimitiveType>;
+    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+      if (PrimitiveType_IsValid(i)) {
+        auto value = static_cast<PrimitiveType>(i);
+        (*map)[LowercasePrimitiveTypeName(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = name_to_type->find(name);
+  if (found == name_to_type->end()) {
+    return InvalidArgument("Invalid element type string: \"%s\".",
+                           name.c_str());
+  }
+  return found->second;
+}
+
 }  // namespace
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -476,17 +529,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                         comma_list_to_int64s(dimensions_string));
 
     // Extract the primitive element type.
-    PrimitiveType primitive_type = PRIMITIVE_TYPE_INVALID;
-    for (PrimitiveType i =
-             static_cast<PrimitiveType>(PRIMITIVE_TYPE_INVALID + 1);
-         i < TUPLE; i = static_cast<PrimitiveType>(i + 1)) {
-      if (tensorflow::str_util::Lowercase(PrimitiveType_Name(i)) ==
-          element_type_string) {
-        primitive_type = i;
-        break;
-      }
-    }
-    if (primitive_type == PRIMITIVE_TYPE_INVALID) {
+    TF_ASSIGN_OR_RETURN(const PrimitiveType primitive_type,
+                        StringToPrimitiveType(element_type_string));
+    if (primitive_type == PRIMITIVE_TYPE_INVALID || primitive_type == TUPLE ||
+        primitive_type == OPAQUE) {
       return InvalidArgument("Invalid element type string: \"%s\".",
                              element_type_string.c_str());
     }
@@ -499,11 +545,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       // Extract the layout minor-to-major and set it.
       TF_ASSIGN_OR_RETURN(std::vector<int64> min2maj,
                           comma_list_to_int64s(layout_string));
-      TF_RET_CHECK(dimensions.size() == min2maj.size());
-      result =
-          ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions, min2maj);
+      TF_ASSIGN_OR_RETURN(result, MakeShapeWithLayoutInternal(
+                                      primitive_type, dimensions, min2maj));
     }
-    TF_DCHECK_OK(ShapeUtil::ValidateShape(result));
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(result));
     return std::move(result);
   }
 
@@ -528,6 +573,16 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
            ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(), Compatible);
   }
   return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
+}
+
+/* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringElementType);
+  }
+  return SameDimensions(lhs, rhs);
 }
 
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
@@ -569,12 +624,16 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return sizeof(uint32);
     case U64:
       return sizeof(uint64);
+    case BF16:
+      return sizeof(float) / 2;
     case F16:
       return sizeof(float) / 2;
     case F32:
       return sizeof(float);
     case F64:
       return sizeof(double);
+    case C64:
+      return sizeof(complex64);
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
   }
@@ -657,9 +716,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return LayoutUtil::ValidateLayoutInShape(shape);
 }
 
-/* static */ Shape ShapeUtil::ChangeElementType(const Shape& shape,
+/* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = shape;
+  Shape new_shape = original;
   new_shape.set_element_type(type);
   return new_shape;
 }

@@ -37,6 +37,7 @@ import android.os.HandlerThread;
 import android.os.Trace;
 import android.util.Size;
 import android.view.KeyEvent;
+import android.view.Surface;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
@@ -423,6 +424,19 @@ public abstract class CameraActivity extends Activity
   protected void readyForNextImage() {
     if (postInferenceCallback != null) {
       postInferenceCallback.run();
+    }
+  }
+
+  protected int getScreenOrientation() {
+    switch (getWindowManager().getDefaultDisplay().getRotation()) {
+      case Surface.ROTATION_270:
+        return 270;
+      case Surface.ROTATION_180:
+        return 180;
+      case Surface.ROTATION_90:
+        return 90;
+      default:
+        return 0;
     }
   }
 

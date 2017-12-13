@@ -116,26 +116,6 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
   // Assign parallel tasks to HLOs in entry computation.
   HloComputation* computation = module->entry_computation();
   for (auto* instruction : computation->instructions()) {
-    // Currently, we do not assign parallel tasks to instructions with at least
-    // one of the following properties:
-    // *) Internal threading (library calls to kConv, kDot, and kCustomCall).
-    // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
-    // *) Tuple-shaped.
-    // TODO(b/27458679) Parallelize instructions which are skipped here.
-    if (instruction->opcode() == HloOpcode::kParameter ||
-        instruction->opcode() == HloOpcode::kConstant ||
-        instruction->opcode() == HloOpcode::kCall ||
-        instruction->opcode() == HloOpcode::kCustomCall ||
-        instruction->opcode() == HloOpcode::kSelectAndScatter ||
-        (instruction->opcode() == HloOpcode::kConvolution &&
-         PotentiallyImplementedAsEigenConvolution(*instruction)) ||
-        PotentiallyImplementedAsEigenDot(*instruction) ||
-        (instruction->opcode() == HloOpcode::kFusion &&
-         instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
-        ShapeUtil::IsTuple(instruction->shape())) {
-      continue;
-    }
-
     // Calculate target parallel task count in [1, max_parallelism_].
     const int64 target_parallel_task_count =
         parallel_task_assignment.GetTargetParallelTaskCount(instruction);

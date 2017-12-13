@@ -1,0 +1,359 @@
+package(default_visibility = [
+    "//visibility:public",
+])
+
+licenses(["notice"])  # Apache 2.0
+
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
+
+tflite_deps_intel = [
+    "@arm_neon_2_x86_sse",
+]
+
+NEON_FLAGS_IF_APPLICABLE = select({
+    ":arm": [
+        "-O3",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+    ],
+    ":armeabi-v7a": [
+        "-O3",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+    ],
+    ":armv7a": [
+        "-O3",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+    ],
+    "//conditions:default": [
+        "-O3",
+    ],
+})
+
+cc_library(
+    name = "types",
+    srcs = [],
+    hdrs = [
+        "compatibility.h",
+        "types.h",
+    ],
+)
+
+config_setting(
+    name = "arm",
+    values = {
+        "cpu": "arm",
+    },
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {
+        "cpu": "arm64-v8a",
+    },
+)
+
+config_setting(
+    name = "armv7a",
+    values = {
+        "cpu": "armv7a",
+    },
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {
+        "cpu": "armeabi-v7a",
+    },
+)
+
+config_setting(
+    name = "haswell",
+    values = {
+        "cpu": "haswell",
+    },
+)
+
+config_setting(
+    name = "ios_x86_64",
+    values = {
+        "cpu": "ios_x86_64",
+    },
+)
+
+config_setting(
+    name = "ios_armv7",
+    values = {
+        "cpu": "ios_armv7",
+    },
+)
+
+config_setting(
+    name = "ios_arm64",
+    values = {
+        "cpu": "ios_arm64",
+    },
+)
+
+config_setting(
+    name = "k8",
+    values = {
+        "cpu": "k8",
+    },
+)
+
+config_setting(
+    name = "x86",
+    values = {
+        "cpu": "x86",
+    },
+)
+
+config_setting(
+    name = "x86_64",
+    values = {
+        "cpu": "x86_64",
+    },
+)
+
+config_setting(
+    name = "darwin",
+    values = {
+        "cpu": "darwin",
+    },
+)
+
+cc_library(
+    name = "optimized_base",
+    srcs = [],
+    hdrs = [
+        "common.h",
+        "optimized/depthwiseconv_float.h",
+        "optimized/depthwiseconv_uint8.h",
+        "optimized/optimized_ops.h",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        ":round",
+        "//third_party/eigen3",
+        "@gemmlowp//:gemmlowp",
+        "//tensorflow/contrib/lite:builtin_op_data",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "optimized",
+    hdrs = [
+        "optimized/eigen_spatial_convolutions.h",
+        "optimized/eigen_tensor_reduced_instantiations_oss.h",
+        "optimized/multithreaded_conv.h",
+        "tensor.h",
+    ],
+    deps = [
+        ":optimized_base",
+        ":types",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:context",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.cc"],
+    deps = [
+        ":reference",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "round",
+    srcs = [],
+    hdrs = ["round.h"],
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = [
+        "compatibility.h",
+        "quantization_util.h",
+    ],
+    deps = [":round"],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    deps = [
+        ":quantization_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "reference_base",
+    srcs = [],
+    hdrs = [
+        "common.h",
+        "reference/depthwiseconv_float.h",
+        "reference/depthwiseconv_uint8.h",
+        "reference/reference_ops.h",
+    ],
+    deps = [
+        ":round",
+        ":types",
+        "//third_party/eigen3",
+        "@gemmlowp//:gemmlowp",
+        "//tensorflow/contrib/lite:builtin_op_data",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "reference",
+    hdrs = ["tensor.h"],
+    deps = [
+        ":types",
+        "//tensorflow/contrib/lite:context",
+    ],
+)
+
+cc_library(
+    name = "portable_tensor_utils",
+    srcs = [
+        "reference/portable_tensor_utils.cc",
+    ],
+    hdrs = [
+        "reference/portable_tensor_utils.h",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite/kernels:activation_functor",
+        "//tensorflow/contrib/lite/kernels:op_macros",
+    ],
+)
+
+cc_library(
+    name = "neon_tensor_utils",
+    srcs = [
+        "optimized/neon_tensor_utils.cc",
+    ],
+    hdrs = [
+        "optimized/neon_tensor_utils.h",
+        "optimized/tensor_utils_impl.h",
+    ],
+    copts = NEON_FLAGS_IF_APPLICABLE,
+    deps = [
+        ":cpu_check",
+        ":portable_tensor_utils",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite/kernels:activation_functor",
+    ],
+)
+
+cc_library(
+    name = "tensor_utils",
+    srcs = [
+        "tensor_utils.cc",
+    ],
+    hdrs = [
+        "optimized/tensor_utils_impl.h",
+        "reference/portable_tensor_utils.h",
+        "tensor_utils.h",
+    ],
+    copts = NEON_FLAGS_IF_APPLICABLE,
+    deps = [
+        "//tensorflow/contrib/lite/kernels:activation_functor",
+        "//tensorflow/contrib/lite:builtin_op_data",
+    ] + select({
+        ":arm": [
+            ":neon_tensor_utils",
+        ],
+        ":arm64-v8a": [
+            ":neon_tensor_utils",
+        ],
+        ":armeabi-v7a": [
+            ":neon_tensor_utils",
+        ],
+        ":armv7a": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_armv7": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        "//conditions:default": [
+            ":portable_tensor_utils",
+        ],
+    }),
+)
+
+cc_test(
+    name = "tensor_utils_test",
+    srcs = ["tensor_utils_test.cc"],
+    copts = NEON_FLAGS_IF_APPLICABLE,
+    linkopts = select({
+        "//tensorflow:android": [
+            "-fPIE -pie",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    deps = [
+        ":tensor_utils",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cpu_check",
+    hdrs = [
+        "optimized/cpu_check.h",
+    ],
+    deps = [
+    ] + select(
+        {
+            "//tensorflow:android": [
+                "@androidndk//:cpufeatures",
+            ],
+            "//conditions:default": [],
+        },
+    ),
+)
+
+exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)

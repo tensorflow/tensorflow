@@ -318,7 +318,7 @@ class RemoteCallOp : public AsyncOpKernel {
     if (opts.source_device != target_device) {
       opts.remote_execution = true;
     }
-    opts.rendezvous = ctx->rendezvous();
+    opts.create_rendezvous = true;
     std::vector<Tensor> args;
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {
@@ -328,9 +328,10 @@ class RemoteCallOp : public AsyncOpKernel {
     lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
-      }
-      for (size_t i = 0; i < rets->size(); ++i) {
-        ctx->set_output(i, (*rets)[i]);
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
       }
       delete rets;
       done();

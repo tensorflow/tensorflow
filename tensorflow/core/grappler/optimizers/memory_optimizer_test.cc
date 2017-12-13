@@ -153,7 +153,7 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   pre_transform_node_map.GetNode("BN")->set_op("FusedBatchNorm");
   pre_transform_node_map.GetNode("ReLU")->set_op("Relu");
 
-  MemoryOptimizer optimizer(RewriterConfig::HEURISTICS);
+  MemoryOptimizer optimizer(RewriterConfig::RECOMPUTATION_HEURISTICS);
   GraphDef first_pass_output;
   Status first_pass_status =
       optimizer.Optimize(nullptr, item, &first_pass_output);

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
@@ -135,16 +136,14 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Create x as a col-major array.
-  auto x_array = LiteralToShapedBuffer(
-      *test_utils::CreateR2LiteralWithLayout({{1.0f, 2.0f}, {3.0f, 4.0f}},
-                                             /*minor_to_major=*/{0, 1}));
+  auto x_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1})));
   EXPECT_TRUE(LayoutUtil::Equal(x_array->shape().layout(),
                                 LayoutUtil::MakeLayout({0, 1})));
 
   // Create y as a row-major array.
-  auto y_array = LiteralToShapedBuffer(
-      *test_utils::CreateR2LiteralWithLayout({{10.0f, 20.0f}, {30.0f, 40.0f}},
-                                             /*minor_to_major=*/{1, 0}));
+  auto y_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
+      {{10.0f, 20.0f}, {30.0f, 40.0f}}, LayoutUtil::MakeLayout({1, 0})));
   EXPECT_TRUE(LayoutUtil::Equal(y_array->shape().layout(),
                                 LayoutUtil::MakeLayout({1, 0})));
 
@@ -859,6 +858,33 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
                            Literal::CreateR0<int64>(123456789000LL).get()}));
 }
 
+// TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
+// 2017-10-18.
+XLA_TEST_F(LocalClientExecuteTest,
+           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(InfeedOutfeedTest))) {
+  ComputationBuilder builder(local_client_, TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
+  auto in = builder.Infeed(shape);
+  auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
+  auto sum = builder.Add(in, constant);
+  builder.Outfeed(sum, shape, /*outfeed_config=*/"");
+
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread",
+          [&] { ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {}); }));
+
+  ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
+      *Literal::CreateR1<float>({-5.0, 123.0, 42.0}),
+      local_client_->default_device_ordinal()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          local_client_->TransferFromOutfeedLocal(
+                              shape, local_client_->default_device_ordinal()));
+
+  LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
+}
+
 // Benchmark that measures the overhead of the LocalClient API when running a
 // trivial computation
 void BM_LocalClientOverhead(int num_iters) {
@@ -880,9 +906,12 @@ void BM_LocalClientOverhead(int num_iters) {
   builder.Add(x, x);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  auto buffer =
-      ScopedShapedBuffer::Allocate(shape, &allocator, /*device_ordinal=*/0)
-          .ConsumeValueOrDie();
+  auto shape_size_fn = [client](const Shape& shape) {
+    return client->backend().transfer_manager()->GetByteSizeRequirement(shape);
+  };
+  auto buffer = ScopedShapedBuffer::Allocate(
+                    shape, &allocator, /*device_ordinal=*/0, shape_size_fn)
+                    .ConsumeValueOrDie();
   auto literal = Literal::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
       executors[device_ordinal], *literal, buffer->mutable_buffer({})));

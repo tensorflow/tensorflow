@@ -30,7 +30,10 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/c:__subpackages__",
+    ],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
