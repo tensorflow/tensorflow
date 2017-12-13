@@ -817,8 +817,8 @@ TEST_F(LayoutOptimizerTest, Mul4DAndVector) {
   NodeMap node_map(&output);
   auto mul_node = node_map.GetNode("mul");
   EXPECT_EQ(mul_node->input(0), "Conv2D");
-  EXPECT_EQ(mul_node->input(1), "LayoutOptimizerReshapeNHWCToNCHW-mul-vector");
-  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-vector");
+  EXPECT_EQ(mul_node->input(1), "LayoutOptimizerReshapeNHWCToNCHW-mul-1");
+  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-1");
   Tensor tensor;
   EXPECT_TRUE(
       tensor.FromProto(mul_const->mutable_attr()->at({"value"}).tensor()));
@@ -840,9 +840,9 @@ TEST_F(LayoutOptimizerTest, MulVectorAnd4D) {
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
   auto mul_node = node_map.GetNode("mul");
-  EXPECT_EQ(mul_node->input(0), "LayoutOptimizerReshapeNHWCToNCHW-mul-vector");
+  EXPECT_EQ(mul_node->input(0), "LayoutOptimizerReshapeNHWCToNCHW-mul-0");
   EXPECT_EQ(mul_node->input(1), "Conv2D");
-  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-vector");
+  auto mul_const = node_map.GetNode("LayoutOptimizerReshapeConst-mul-0");
   Tensor tensor;
   EXPECT_TRUE(
       tensor.FromProto(mul_const->mutable_attr()->at({"value"}).tensor()));

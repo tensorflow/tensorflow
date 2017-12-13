@@ -598,8 +598,8 @@ class NodeProcessor : public GraphProcessor {
   NodeDef* AddNodePermNHWCToNCHW(const string& suffix,
                                  const string& depended_node,
                                  const string& device) {
-    auto const_node = AddNodePermConst(
-        strings::StrCat(kPermNHWCToNCHW, "-", suffix), device, {0, 3, 1, 2});
+    string name = strings::StrCat(kPermNHWCToNCHW, "-", suffix);
+    auto const_node = AddNodePermConst(name, device, {0, 3, 1, 2});
     // This is to ensure the transpose node and the const node are in the
     // same frame.
     *const_node->add_input() = AsControlDependency(depended_node);
@@ -658,8 +658,17 @@ class NodeProcessor : public GraphProcessor {
   string GetOrAddNodePermNHWCToNCHW(int pos) {
     string const_name;
     if (is_in_frame_) {
-      auto const_node = AddNodePermNHWCToNCHW(
-          node_->input(pos), NodeName(node_->input(pos)), node_->device());
+      string suffix = strings::StrCat(node_->name(), "_", pos);
+      string input = NodeName(node_->input(pos));
+      string depended_node;
+      if (!IsNodeNCHWToNHWC(input)) {
+        depended_node = input;
+      } else {
+        auto input_node = node_map_->GetNode(input);
+        depended_node = NodeName(input_node->input(0));
+      }
+      auto const_node =
+          AddNodePermNHWCToNCHW(suffix, depended_node, node_->device());
       const_name = const_node->name();
     } else {
       const_name = kPermNHWCToNCHW;
@@ -1008,7 +1017,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     return false;
   }
 
-  NodeDef* AddNodeShapeConst(const string& name, int num_channels) {
+  NodeDef* AddNodeShapeConst(const string& name, int num_channels,
+                             const string& depended_node) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(name, node);
     node->set_name(name);
@@ -1026,6 +1036,11 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    if (is_in_frame_) {
+      // This is to ensure the transpose node and the const node are in the
+      // same frame.
+      *node->add_input() = AsControlDependency(depended_node);
+    }
     return node;
   }
 
@@ -1058,8 +1073,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
       vector_index = 0;
     }
     if (vector_index != -1) {
-      string base_name =
-          strings::StrCat(node_->name(), "-", node_->input(vector_index));
+      string base_name = strings::StrCat(node_->name(), "-", vector_index);
       string reshape_node_name =
           AddPrefixToNodeName(base_name, kReshapeNHWCToNCHW, "-");
       string shape_const_node_name =
@@ -1068,7 +1082,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
           input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
-      AddNodeShapeConst(shape_const_node_name, vector_size);
+      AddNodeShapeConst(shape_const_node_name, vector_size,
+                        NodeName(node_->input(vector_index)));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       AddNodeReshape(reshape_node_name, node_->input(vector_index),
                      shape_const_node_name, node_->attr().at("T").type());
