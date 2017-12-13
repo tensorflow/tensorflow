@@ -48,9 +48,6 @@ uint32_t NameHash(const string& name) {
 // convenience function for printing message
 string MessageTypeToString(RdmaMessageType rmt) {
   switch (rmt) {
-    case RDMA_MESSAGE_ACK:
-      return "RDMA_MESSAGE_ACK";
-      break;
     case RDMA_MESSAGE_BUFFER_REQUEST:
       return "RDMA_MESSAGE_BUFFER_REQUEST";
       break;
@@ -59,9 +56,6 @@ string MessageTypeToString(RdmaMessageType rmt) {
       break;
     case RDMA_MESSAGE_TENSOR_REQUEST:
       return "RDMA_MESSAGE_TENSOR_REQUEST";
-      break;
-    case RDMA_MESSAGE_TENSOR_WRITE:
-      return "RDMA_MESSAGE_TENSOR_WRITE";
       break;
     default:
       return "UNKNOWN MESSAGE";
@@ -466,25 +460,34 @@ void RdmaAdapter::Process_CQ() {
         uint32_t imm_data = wc_[i].imm_data;
         RdmaBuffer* rb;
         RdmaMessage rm;
-        if (imm_data == RDMA_IMM_DATA_MESSAGE) {
-          rb = rc->rx_message_buffer_;
-          RdmaMessage::ParseMessage(rm, rb->buffer_);
-          RdmaBuffer::SendAck(rc);
-          RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
-                      << ": Received " << MessageTypeToString(rm.type_) << " "
-                      << "#" << rm.request_index_ << ": " << rm.name_;
-        } else if (imm_data == RDMA_IMM_DATA_ACK) {
-          rm.type_ = RDMA_MESSAGE_ACK;
-        } else {
-          rm.type_ = RDMA_MESSAGE_TENSOR_WRITE;
-        }
 
-        if (rm.type_ == RDMA_MESSAGE_ACK) {
+        if (imm_data == RDMA_IMM_DATA_ACK) {
           // receive an ack to a message
           rb = rc->tx_message_buffer_;
           rb->SetBufferStatus(remote, idle);
           rb->SendNextItem();
-        } else if (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) {
+          continue;
+        }
+
+        if (imm_data < RDMA_IMM_DATA_ACK) {
+          // receive a tensor RDMA write
+          worker_env_->compute_pool->Schedule([imm_data, rc]() {
+            uint32_t request_index = imm_data;
+            RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
+            request->RecvTensorContent();
+          });
+          continue;
+        }
+
+        // receive a control message
+        rb = rc->rx_message_buffer_;
+        RdmaMessage::ParseMessage(rm, rb->buffer_);
+        RdmaBuffer::SendAck(rc);
+        RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
+                    << ": Received " << MessageTypeToString(rm.type_) << " "
+                    << "#" << rm.request_index_ << ": " << rm.name_;
+
+        if (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) {
           // received a request-for-tensor message
           // find or create buffer
           RdmaBuffer* tb = rc->FindOrCreateBuffer(rm.name_);
@@ -508,13 +511,6 @@ void RdmaAdapter::Process_CQ() {
           tb->SetBufferStatus(local, idle);
           tb->SetBufferStatus(remote, idle);
           worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
-        } else if (rm.type_ == RDMA_MESSAGE_TENSOR_WRITE) {
-          // tensor RDMA write completed
-          worker_env_->compute_pool->Schedule([imm_data, rc]() {
-            uint32_t request_index = imm_data;
-            RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
-            request->RecvTensorContent();
-          });
         }
       } else if (wc_[i].opcode == IBV_WC_RDMA_WRITE) {
         RdmaWriteID* wr_id = reinterpret_cast<RdmaWriteID*>(wc_[i].wr_id);
@@ -1325,7 +1321,7 @@ void RdmaTensorBuffer::PostCopyOperations(
 
     uint32_t lkey = (mr == nullptr) ? 0 : mr->lkey;
     RDMA_LOG(1) << "Step 0x" << std::hex << step_id << std::dec
-                << ": Sending  RDMA_MESSAGE_TENSOR_WRITE #" << request_index
+                << ": Sending tensor content #" << request_index
                 << " from " << std::hex << src_addr << " (0x" << lkey << ")"
                 << " to " << response.rm_.remote_addr_
                 << " (0x" << response.rm_.rkey_ << "): " << key
@@ -1359,7 +1355,7 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   // BUFFER_RESPONSE: Imm-type: MESSAGE
   //                  Fields: type, request_index, name, step_id, remote_addr,
   //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
-  // TENSOR_WRITE:    Imm-type: request_index
+  // Tensor content:  Imm-type: request_index
   char message[kMessageTotalBytes];
   // type
   message[kTypeStartIndex] = static_cast<char>(rm.type_) & 0xff;
@@ -1624,7 +1620,7 @@ void RdmaTensorRequest::RecvTensorContent() {
   size_t message_size =
       can_memcpy ? result_tensor_->TotalBytes() : meta_data_->proto_size_;
   RDMA_LOG(1) << "Step 0x" << std::hex << step_id_ << std::dec
-              << ": Received RDMA_MESSAGE_TENSOR_WRITE #" << index_ << ": "
+              << ": Received tensor content #" << index_ << ": "
               << key_ << " (Size: 0x" << std::hex << message_size << ")";
 
   Tensor val;
