@@ -83,7 +83,7 @@ class DbTest(summary_test_util.SummaryDbTest):
           sess.run(summary_ops.all_summary_ops())
           events = summary_test_util.events_from_logdir(logdir)
           self.assertEqual(len(events), 2)
-          self.assertEqual(events[1].summary.value[0].tag, 'cond/my_scalar')
+          self.assertEqual(events[1].summary.value[0].tag, 'my_scalar')
 
   def testSummaryGraphModeCond(self):
     with ops.Graph().as_default(), self.test_session():
