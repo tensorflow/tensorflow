@@ -751,6 +751,7 @@ def fill_triangular(x, upper=False, name=None):
   """
 
   with ops.name_scope(name, "fill_triangular", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
     if x.shape.with_rank_at_least(1)[-1].value is not None:
       # Formula derived by solving for n: m = n(n+1)/2.
       m = np.int32(x.shape[-1].value)

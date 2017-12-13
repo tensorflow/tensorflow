@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-//#include "absl/strings/string_view_utils.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
@@ -495,7 +494,7 @@ void ConvertIdentityOperator(const NodeDef& node,
                              const TensorFlowImportFlags& tf_import_flags,
                              Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
-        node.op() == "PlaceholderWithDefault");
+        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -1135,18 +1134,6 @@ void ConvertNoOpOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {}
 
-ArrayDataType GetArrayDataType(tensorflow::DataType tf_data_type) {
-  if (tf_data_type == DT_UINT8) {
-    return ArrayDataType::kUint8;
-  } else if (tf_data_type == DT_INT32) {
-    return ArrayDataType::kInt32;
-  } else if (tf_data_type == DT_FLOAT) {
-    return ArrayDataType::kFloat;
-  } else {
-    return ArrayDataType::kNone;
-  }
-}
-
 void ConvertCastOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -1154,15 +1141,9 @@ void ConvertCastOperator(const NodeDef& node,
   CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
   const auto tf_src_dtype = GetDataTypeAttr(node, "SrcT");
   const auto tf_dst_dtype = GetDataTypeAttr(node, "DstT");
-  CHECK(tf_src_dtype == DT_UINT8 || tf_src_dtype == DT_INT32 ||
-        tf_src_dtype == DT_FLOAT);
-  CHECK(tf_dst_dtype == DT_UINT8 || tf_dst_dtype == DT_INT32 ||
-        tf_dst_dtype == DT_FLOAT);
-  CHECK_NE(tf_src_dtype, tf_dst_dtype)
-      << "Same input and output data type. No need to cast.";
   auto* op = new CastOperator;
-  op->src_data_type = GetArrayDataType(tf_src_dtype);
-  op->dst_data_type = GetArrayDataType(tf_dst_dtype);
+  op->src_data_type = ConvertDataType(tf_src_dtype);
+  op->dst_data_type = ConvertDataType(tf_dst_dtype);
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
@@ -1380,6 +1361,167 @@ void ConvertSvdfOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+// This is just bare bones support to get the shapes to propagate.
+void ConvertTransposeConvOperator(const NodeDef& node,
+                                  const TensorFlowImportFlags& tf_import_flags,
+                                  Model* model) {
+  CHECK_EQ(node.op(), "Conv2DBackpropInput");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  auto* op = new TransposeConvOperator;
+  op->inputs.push_back(node.input(2));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  const auto& strides = GetListAttr(node, "strides");
+  CHECK_EQ(strides.i_size(), 4);
+  CHECK_EQ(strides.i(0), 1);
+  op->stride_height = strides.i(1);
+  op->stride_width = strides.i(2);
+  CHECK_EQ(strides.i(3), 1);
+  auto const& padding = GetStringAttr(node, "padding");
+  if (padding == "SAME") {
+    op->padding.type = PaddingType::kSame;
+  } else if (padding == "VALID") {
+    op->padding.type = PaddingType::kValid;
+  } else {
+    LOG(FATAL) << "Only SAME and VALID padding supported on "
+                  "Conv2DBackpropInput nodes.";
+  }
+  model->operators.emplace_back(op);
+}
+
+void ConvertExpandDimsOperator(const NodeDef& node,
+                               const TensorFlowImportFlags& tf_import_flags,
+                               Model* model) {
+  CHECK_EQ(node.op(), "ExpandDims");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new ExpandDimsOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFillOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "Fill");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FillOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFloorDivOperator(const NodeDef& node,
+                             const TensorFlowImportFlags& tf_import_flags,
+                             Model* model) {
+  CHECK_EQ(node.op(), "FloorDiv");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FloorDivOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertFloorModOperator(const NodeDef& node,
+                             const TensorFlowImportFlags& tf_import_flags,
+                             Model* model) {
+  CHECK(node.op() == "FloorMod");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new FloorModOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertRangeOperator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK_EQ(node.op(), "Range");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  auto* op = new RangeOperator;
+  if (HasAttr(node, "Tidx")) {
+    const auto dtype = toco::GetDataTypeAttr(node, "Tidx");
+    CHECK(dtype == DT_UINT8 || dtype == DT_INT32 || dtype == DT_INT64 ||
+          dtype == DT_FLOAT);
+    op->dtype = ConvertDataType(dtype);
+  }
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertRankOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "Rank");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  auto* op = new RankOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertStackOperator(const NodeDef& node,
+                          const TensorFlowImportFlags& tf_import_flags,
+                          Model* model) {
+  CHECK((node.op() == "Stack") || (node.op() == "Pack"));
+  auto* op = new StackOperator;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  CHECK_GE(num_inputs, 1);
+  CHECK_EQ(num_inputs, GetIntAttr(node, "N"));
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  // Both "Stack" and "Pack" have the "axis" attribute.
+  op->axis = GetIntAttr(node, "axis");
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+void ConvertTransposeOperator(const NodeDef& node,
+                              const TensorFlowImportFlags& tf_import_flags,
+                              Model* model) {
+  CHECK_EQ(node.op(), "Transpose");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  auto* op = new TransposeOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
+// Some TensorFlow ops only occur in graph cycles, representing
+// control flow. We do not currently support control flow, so we wouldn't
+// be able to fully support such graphs, including performing inference,
+// anyway. However, rather than erroring out early on graphs being cyclic,
+// it helps to at least support these just enough to allow getting a
+// graph visualization. This is not trivial, as we require graphs to be
+// acyclic aside from RNN back-edges. The solution is to special-case
+// such ops as RNN back-edges, which is technically incorrect (does not
+// allow representing the op's semantics) but good enough to get a
+// graph visualization.
+void ConvertOperatorSpecialCasedAsRNNBackEdge(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // At the moment, the only type of operator special-cased in this way is
+  // NextIteration, occuring only in control-flow cycles.
+  CHECK_EQ(node.op(), "NextIteration");
+  CHECK_EQ(node.input_size(), 1);
+  auto* rnn_state = model->flags.add_rnn_states();
+  // This RNN state is not explicitly created by the user, so it's
+  // OK for some later graph transformation to discard it.
+  rnn_state->set_discardable(true);
+  rnn_state->set_state_array(node.name());
+  rnn_state->set_back_edge_source_array(node.input(0));
+}
+
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -1402,26 +1544,61 @@ void StripZeroOutputIndexFromInputs(NodeDef* node) {
   }
 }
 
-void AddExtraOutputsFedIntoOtherOps(Model* model) {
+// In TensorFlow GraphDef, when a node has multiple outputs, they are named
+// name:0, name:1, ...
+// where 'name' is the node's name(). Just 'name' is an equivalent shorthand
+// form for name:0.
+// A TensorFlow GraphDef does not explicitly list all the outputs of each node
+// (unlike inputs), it being implied by the node's name and operator type
+// (the latter implies the number of outputs).
+// This makes it non-trivial for us to reconstruct the list of all arrays
+// present in the graph and, for each operator, the list of its outputs.
+// We do that by taking advantage of the fact that
+// at least each node lists explicitly its inputs, so after we've loaded
+// all nodes, we can use that information.
+void AddExtraOutputs(Model* model) {
+  // Construct the list of all arrays consumed by anything in the graph.
+  std::vector<string> consumed_arrays;
+  // Add arrays consumed by an op.
   for (const auto& consumer_op : model->operators) {
     for (const string& input : consumer_op->inputs) {
-      const std::vector<string>& split = absl::StrSplit(input, ':');
-      if (split.size() != 2) {
-        continue;
-      }
-      int output_index = 0;
-      if (!absl::SimpleAtoi(split[1], &output_index)) {
-        continue;
-      }
-      auto* producer_op = GetOpWithOutput(*model, split[0]);
-      if (!producer_op) {
-        continue;
-      }
-      while (producer_op->outputs.size() <= output_index) {
-        using toco::port::StringF;
-        producer_op->outputs.push_back(
-            StringF("%s:%d", split[0], producer_op->outputs.size()));
-      }
+      consumed_arrays.push_back(input);
+    }
+  }
+  // Add global outputs of the model.
+  for (const string& output_array : model->flags.output_arrays()) {
+    consumed_arrays.push_back(output_array);
+  }
+  // Add arrays consumed by a RNN back-edge.
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    consumed_arrays.push_back(rnn_state.back_edge_source_array());
+  }
+  // Now add operator outputs so that all arrays that are consumed,
+  // are produced.
+  for (const string& consumed_array : consumed_arrays) {
+    // Split the consumed array name into the form name:output_index.
+    const std::vector<string>& split = absl::StrSplit(consumed_array, ':');
+    // If not of the form name:output_index, then this is not an additional
+    // output of a node with multiple outputs, so nothing to do here.
+    if (split.size() != 2) {
+      continue;
+    }
+    int output_index = 0;
+    if (!absl::SimpleAtoi(split[1], &output_index)) {
+      continue;
+    }
+    // Each op is initially recorded as producing at least the array that
+    // has its name. We use that to identify the producer node.
+    auto* producer_op = GetOpWithOutput(*model, split[0]);
+    if (!producer_op) {
+      continue;
+    }
+    // Add extra outputs to that producer node, all the way to the
+    // output_index.
+    while (producer_op->outputs.size() <= output_index) {
+      using toco::port::StringF;
+      producer_op->outputs.push_back(
+          StringF("%s:%d", split[0], producer_op->outputs.size()));
     }
   }
 }
@@ -1514,6 +1691,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertConstOperator(node, tf_import_flags, model);
     } else if (node.op() == "Conv2D") {
       ConvertConvOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Conv2DBackpropInput") {
+      ConvertTransposeConvOperator(node, tf_import_flags, model);
     } else if (node.op() == "DepthwiseConv2dNative") {
       ConvertDepthwiseConvOperator(node, tf_import_flags, model);
     } else if (node.op() == "DepthToSpace") {
@@ -1540,7 +1719,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertMatMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Div" || node.op() == "RealDiv") {
       ConvertDivOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Identity" || node.op() == "CheckNumerics") {
+    } else if (node.op() == "Identity" || node.op() == "CheckNumerics" ||
+               node.op() == "StopGradient") {
       ConvertIdentityOperator(node, tf_import_flags, model);
     } else if (node.op() == "FakeQuantWithMinMaxVars") {
       ConvertFakeQuantWithMinMaxVars(node, tf_import_flags, model);
@@ -1633,6 +1813,24 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertMeanOperator(node, tf_import_flags, model);
     } else if (node.op() == "Svdf") {
       ConvertSvdfOperator(node, tf_import_flags, model);
+    } else if (node.op() == "NextIteration") {
+      ConvertOperatorSpecialCasedAsRNNBackEdge(node, tf_import_flags, model);
+    } else if (node.op() == "ExpandDims") {
+      ConvertExpandDimsOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Fill") {
+      ConvertFillOperator(node, tf_import_flags, model);
+    } else if (node.op() == "FloorDiv") {
+      ConvertFloorDivOperator(node, tf_import_flags, model);
+    } else if (node.op() == "FloorMod") {
+      ConvertFloorModOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Range") {
+      ConvertRangeOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Rank") {
+      ConvertRankOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Stack" || node.op() == "Pack") {
+      ConvertStackOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Transpose") {
+      ConvertTransposeOperator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }
@@ -1641,7 +1839,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   ResolveModelFlags(model_flags, model);
 
   StripCaretFromArrayNames(model);
-  AddExtraOutputsFedIntoOtherOps(model);
+  AddExtraOutputs(model);
   FixNoMissingArray(model);
   FixNoOrphanedArray(model);
   FixOperatorOrdering(model);

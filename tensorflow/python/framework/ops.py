@@ -1619,6 +1619,7 @@ class Operation(object):
                           "a Tensor, or IndexedSlices: %s" % c)
         self._control_inputs.append(control_op)
 
+    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
@@ -1671,12 +1672,6 @@ class Operation(object):
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
-    # NOTE(keveman): Control flow context's AddOp could be creating new ops and
-    # setting op.inputs[index] = new_op. Thus the new ops' id could be larger
-    # than this op's id even though this op depend on them. Therefore, delaying
-    # assigning id to this op until all ops this could be dependent on are
-    # created.
-    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
@@ -1944,6 +1939,13 @@ class Operation(object):
       c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
     else:
       self._add_control_inputs([op])
+
+  def _remove_all_control_inputs(self):
+    """Removes any control inputs to this operation."""
+    if self._c_op:
+      c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
+    else:
+      del self.control_inputs[:]
 
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
@@ -3181,6 +3183,14 @@ class Graph(object):
     input_ops = set(self._get_operation_by_tf_operation(output.oper)
                     for output in tf_outputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
+
+    # Update _names_in_use before calling the Operation constructor since the
+    # control flow code may create more Operations, and we don't want the names
+    # to conflict.
+    op_name = c_api.TF_OperationName(c_op)
+    assert op_name not in self._names_in_use
+    self._names_in_use[op_name] = 1
+
     ret = Operation(c_op, self, control_inputs=control_inputs)
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
@@ -5342,11 +5352,18 @@ class name_scope(object):  # pylint: disable=invalid-name
     """
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
-      if self._name:
-        scope_name = (self._old_name + self._name + "/"
-                      if self._old_name else self._name + "/")
-      else:
+      if not self._name:
         scope_name = ""
+      else:
+        if self._name[-1] == "/":
+          # A trailing slash breaks out of nested name scopes, indicating a
+          # fully specified scope name, for compatibility with Graph.name_scope.
+          scope_name = self._name
+        else:
+          name_with_trailing_slash = self._name + "/"
+          scope_name = (
+              self._old_name + name_with_trailing_slash
+              if self._old_name else name_with_trailing_slash)
       self._ctx.scope_name = scope_name
       return scope_name
     else:

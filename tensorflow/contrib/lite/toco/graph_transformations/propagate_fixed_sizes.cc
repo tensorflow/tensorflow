@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -698,7 +699,10 @@ void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
+  if (input_shape.dimensions_count() != 4) {
+    // This method only handles input dimensions of 4
+    return;
+  }
   const auto input_height = input_shape.dims(1);
   const auto input_width = input_shape.dims(2);
 
@@ -977,6 +981,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSub:
     case OperatorType::kMul:
     case OperatorType::kDiv:
+    case OperatorType::kFloorDiv:
+    case OperatorType::kFloorMod:
     case OperatorType::kTensorFlowLess:
     case OperatorType::kTensorFlowLessEqual:
     case OperatorType::kTensorFlowGreater:
@@ -987,6 +993,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kConv:
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));
+      break;
+    case OperatorType::kTransposeConv:
+      // Unimplemented, hopefully another graph transformation will drop it or
+      // rewrite it.
       break;
     case OperatorType::kDepthwiseConv:
       ProcessDepthwiseConvOperator(model,
@@ -1062,8 +1072,14 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       // a more general non-depth concatenation that will hopefully be dropped,
       // or else at the moment we will abort.
       break;
+    case OperatorType::kExpandDims:
+    case OperatorType::kFill:
+    case OperatorType::kRange:
+    case OperatorType::kRank:
     case OperatorType::kTensorFlowShape:
-      // Unimplemented, hopefully another graph transformation will drop it or
+    case OperatorType::kStack:
+    case OperatorType::kTranspose:
+      // Unimplemented. Hopefully another graph transformation will drop it or
       // rewrite it.
       break;
     case OperatorType::kReorderAxes:
@@ -1114,6 +1130,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
   for (const auto& output : op->outputs) {
     if (model->arrays[output]->has_shape() &&
         (old_output_dims[output] != model->arrays[output]->shape().dims())) {
+      AddMessageF("Set shape of %s to [%s]", output,
+                  absl::StrJoin(model->arrays[output]->shape().dims(), ","));
       return true;
     }
   }

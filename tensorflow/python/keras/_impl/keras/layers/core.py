@@ -104,13 +104,13 @@ class Dropout(tf_core_layers.Dropout, Layer):
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
-    self.supports_masking = True
     # Inheritance call order:
     # 1) tf.layers.Dropout, 2) keras.layers.Layer, 3) tf.layers.Layer
     super(Dropout, self).__init__(rate=rate,
                                   noise_shape=noise_shape,
                                   seed=seed,
                                   **kwargs)
+    self.supports_masking = True
 
   def call(self, inputs, training=None):
     if training is None:

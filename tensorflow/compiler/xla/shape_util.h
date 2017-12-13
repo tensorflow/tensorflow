@@ -351,6 +351,10 @@ class ShapeUtil {
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
   static Shape SliceTuple(const Shape& tuple, int64 start, int64 limit);
 
+  // Returns the shape of the real/imaginary components of the given complex
+  // shape.
+  static Shape ComplexComponentShape(const Shape& complex_shape);
+
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.
   //

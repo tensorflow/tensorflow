@@ -433,14 +433,11 @@ bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 }
 
 port::Status StreamExecutor::BlockHostUntilDoneWithStatus(Stream *stream) {
-  // TODO(toddw): Change TraceListener::BlockHostUntilDone to record Status
-  // rather than bool.
-  bool trace_result;
-  SCOPED_TRACE(TraceListener::BlockHostUntilDone, &trace_result, stream);
+  port::Status result;
+  SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
 
-  port::Status status = implementation_->BlockHostUntilDoneWithStatus(stream);
-  trace_result = status.ok();
-  return status;
+  result = implementation_->BlockHostUntilDoneWithStatus(stream);
+  return result;
 }
 
 void *StreamExecutor::Allocate(uint64 size) {
@@ -569,19 +566,18 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
           << device_src.opaque() << ", size=" << size
           << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
+  port::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H, &result, device_src, size,
                host_dst);
 
-  port::Status status =
-      implementation_->SynchronousMemcpy(host_dst, device_src, size);
-  if (!status.ok()) {
-    return port::Status{port::error::INTERNAL,
-                        port::Printf("failed to synchronously memcpy "
-                                     "device-to-host: device %p to host %p "
-                                     "size %lld: %s",
-                                     device_src.opaque(), host_dst, size,
-                                     status.ToString().c_str())};
+  result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
+  if (!result.ok()) {
+    result = port::Status{port::error::INTERNAL,
+                          port::Printf("failed to synchronously memcpy "
+                                       "device-to-host: device %p to host %p "
+                                       "size %lld: %s",
+                                       device_src.opaque(), host_dst, size,
+                                       result.ToString().c_str())};
   }
 
   return result;
@@ -593,19 +589,18 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(
           << ", size=" << size << ", device_dst" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
-  port::Status result{port::Status::OK()};
+  port::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D, &result, host_src, size,
                device_dst);
 
-  port::Status status =
-      implementation_->SynchronousMemcpy(device_dst, host_src, size);
-  if (!status.ok()) {
+  result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
+  if (!result.ok()) {
     result = port::Status{
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
                      "%p to device %p size %lld: %s",
                      host_src, device_dst->opaque(), size,
-                     status.ToString().c_str())};
+                     result.ToString().c_str())};
   }
 
   return result;

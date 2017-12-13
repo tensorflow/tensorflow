@@ -31,9 +31,18 @@ bool IsAdd(const NodeDef& node) {
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
 
+bool IsAnyDiv(const NodeDef& node) {
+  return node.op() == "RealDiv" || node.op() == "Div" ||
+         node.op() == "FloorDiv" || node.op() == "TruncateDiv";
+}
+
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
+
+bool IsBiasAdd(const NodeDef& node) {
+  return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
+}
 
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
@@ -70,6 +79,8 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
+
 bool IsEnter(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Enter" || op == "RefEnter";
@@ -92,13 +103,13 @@ bool IsIdentity(const NodeDef& node) {
 }
 
 bool IsMatMul(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
          op == "SparseMatMul";
 }
 
 bool IsMerge(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "Merge" || op == "RefMerge";
 }
 
@@ -114,7 +125,7 @@ bool IsNextIteration(const NodeDef& node) {
 bool IsPad(const NodeDef& node) { return node.op() == "Pad"; }
 
 bool IsPlaceholder(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
 }

@@ -763,6 +763,63 @@ def _num_conv_locations(input_shape, strides):
   return input_shape[1] * input_shape[2] // (strides[1] * strides[2])
 
 
+class FullyConnectedMultiIndepFB(KroneckerProductFB):
+  """FisherBlock for fully-connected layers that share parameters.
+  """
+
+  def __init__(self, layer_collection, inputs, outputs, has_bias=False):
+    """Creates a FullyConnectedMultiIndepFB block.
+
+    Args:
+      layer_collection: LayerCollection instance.
+      inputs: list or tuple of Tensors. Each Tensor has shape [batch_size,
+        inputs_size].
+      outputs: list or tuple of Tensors. Each Tensor has shape [batch_size,
+        outputs_size].
+      has_bias: bool. If True, estimates Fisher with respect to a bias
+        parameter as well as the layer's parameters.
+    """
+
+    assert len(inputs) == len(outputs)
+    # We need to make sure inputs and outputs are tuples and not lists so that
+    # they get hashed by layer_collection.make_or_get_factor properly.
+    self._inputs = tuple(inputs)
+    self._outputs = tuple(outputs)
+    self._has_bias = has_bias
+    self._num_uses = len(inputs)
+
+    super(FullyConnectedMultiIndepFB, self).__init__(layer_collection)
+
+  @property
+  def num_registered_minibatches(self):
+    # TODO(b/69411207): Add support for registering additional minibatches.
+    return 1
+
+  def instantiate_factors(self, grads_list, damping):
+
+    self._input_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.FullyConnectedMultiKF,
+        ((self._inputs,), self._has_bias))
+
+    self._output_factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.FullyConnectedMultiKF, (grads_list,))
+
+    if NORMALIZE_DAMPING_POWER:
+      damping /= self._num_uses**NORMALIZE_DAMPING_POWER
+
+    self._register_damped_input_and_output_inverses(damping)
+
+  @property
+  def _renorm_coeff(self):
+    return self._num_uses
+
+  def tensors_to_compute_grads(self):
+    return self._outputs
+
+  def num_inputs(self):
+    return len(self._inputs)
+
+
 class SeriesFBApproximation(enum.IntEnum):
   """See FullyConnectedSeriesFB.__init__ for description and usage."""
   option1 = 1
@@ -770,7 +827,7 @@ class SeriesFBApproximation(enum.IntEnum):
 
 
 class FullyConnectedSeriesFB(FisherBlock):
-  """FisherBlock for fully-connected RNN cells.
+  """FisherBlock for fully-connected layers that share parameters across time.
 
   See the following preprint for details:
     https://openreview.net/pdf?id=HyMTkQZAb
@@ -828,7 +885,8 @@ class FullyConnectedSeriesFB(FisherBlock):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF, (grads_list,))
 
-    damping /= self._num_timesteps**NORMALIZE_DAMPING_POWER
+    if NORMALIZE_DAMPING_POWER:
+      damping /= self._num_timesteps**NORMALIZE_DAMPING_POWER
 
     self._damping_input, self._damping_output = _compute_pi_adjusted_damping(
         self._input_factor.get_cov(),
@@ -926,8 +984,8 @@ class FullyConnectedSeriesFB(FisherBlock):
       # Be careful with the outer product.  We don't want to accidentally
       # make it an inner-product instead.
       tmp = 1.0 - array_ops.reshape(mu_G, [int(mu_G.shape[0]), -1]) * mu_A
-      # Prevent some numerical issues by setting 0 eigs to 1.0
-      tmp += 1.0 * array_ops.cast(math_ops.equal(tmp, 0.0), dtype=tmp.dtype)
+      # Prevent some numerical issues by setting any 0.0 eigs to 1.0
+      tmp += 1.0 * math_ops.cast(math_ops.equal(tmp, 0.0), dtype=tmp.dtype)
       Z /= tmp
 
       # We now perform the transpose/reverse version of the operations
@@ -943,7 +1001,7 @@ class FullyConnectedSeriesFB(FisherBlock):
       # Note that this normalization is done because we compute the statistics
       # by averaging, not summing, over time. (And the gradient is presumably
       # summed over time, not averaged, and thus their scales are different.)
-      Z /= array_ops.cast(self._num_timesteps, Z.dtype)
+      Z /= math_ops.cast(self._num_timesteps, Z.dtype)
 
     # Convert back to the "batch_dim==0" orientation.
     Z = array_ops.transpose(Z)

@@ -87,4 +87,16 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
   }
 }
 
+void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  std::vector<const Edge*> control_edges;
+  for (const Edge* edge : op->node.in_edges()) {
+    if (!edge->IsControlEdge()) continue;
+    control_edges.push_back(edge);
+  }
+  for (const Edge* edge : control_edges) {
+    graph->graph.RemoveControlEdge(edge);
+  }
+}
+
 }  // namespace tensorflow

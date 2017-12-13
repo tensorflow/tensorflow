@@ -169,6 +169,7 @@ cc_library(
 cc_library(
     name = "graph_transformations",
     srcs = [
+        "graph_transformations/convert_expanddims_to_reshape.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/create_im2col_arrays.cc",
         "graph_transformations/dequantize.cc",

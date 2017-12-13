@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 
 #include <initializer_list>
 #include <memory>

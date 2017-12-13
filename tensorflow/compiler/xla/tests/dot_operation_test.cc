@@ -334,9 +334,7 @@ XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1_FT) {
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = false;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestSquareMatrixDot<float>(false, false);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFT) {
@@ -347,10 +345,24 @@ XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTF) {
   TestSquareMatrixDot<float>(true, false);
 }
 
-TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = true;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
+  TestSquareMatrixDot<float>(true, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFF) {
+  TestSquareMatrixDot<complex64>(false, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFT) {
+  TestSquareMatrixDot<complex64>(false, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTF) {
+  TestSquareMatrixDot<complex64>(true, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTT) {
+  TestSquareMatrixDot<complex64>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF64) {
@@ -559,26 +571,6 @@ TEST_F(DotOperationTest, TransposeFolding) {
       }
     }
   }
-}
-
-XLA_TEST_F(DotOperationTest, DotGeneralUnimplemented) {
-  ComputationBuilder builder(client_, TestName());
-  auto lhs = builder.ConstantR3FromArray3D<float>(
-      {{{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}}});
-  auto rhs = builder.ConstantR3FromArray3D<float>(
-      {{{1.0, 0.0}, {0.0, 1.0}}, {{0.0, 1.0}, {1.0, 0.0}}});
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(2);
-  dot_dnums.add_rhs_contracting_dimensions(1);
-  dot_dnums.add_lhs_batch_dimensions(0);
-  dot_dnums.add_rhs_batch_dimensions(0);
-  builder.DotGeneral(lhs, rhs, dot_dnums);
-
-  auto status = Execute(&builder, {}).status();
-  EXPECT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      ::testing::HasSubstr("Dot with batch dimensions not implemented."));
 }
 
 }  // namespace

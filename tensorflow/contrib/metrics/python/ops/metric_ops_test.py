@@ -3162,7 +3162,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = random_ops.random_uniform(
         (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.7)
+        labels, predictions, precision=0.7)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3182,7 +3182,7 @@ class RecallAtPrecisionTest(test.TestCase):
     predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
     labels = constant_op.constant(inputs)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=1.0)
+        labels, predictions, precision=1.0)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3197,7 +3197,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.8)
+        labels, predictions, precision=0.8)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3212,7 +3212,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.4)
+        labels, predictions, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3230,7 +3230,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = constant_op.constant(labels_values)
     weights = constant_op.constant(weights_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, weights=weights, precision=0.4)
+        labels, predictions, weights=weights, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())

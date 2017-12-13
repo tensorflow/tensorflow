@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -110,6 +111,10 @@ class LiteralTestUtil {
   static void ExpectR4EqualArray4D(const Array4D<NativeT>& expected,
                                    const Literal& actual);
 
+  // Returns whether the two tuples are equal.
+  static ::testing::AssertionResult EqualTuple(
+      const Literal& expected, const Literal& actual) TF_MUST_USE_RESULT;
+
   // Expects that the values of the elements in the expected and actual tuples
   // are equal. Tuples are matched recursively.
   static void ExpectEqualTuple(const Literal& expected, const Literal& actual);
@@ -176,6 +181,19 @@ class LiteralTestUtil {
   // Expects that the expected and actual values are near.
   static void ExpectNearTuple(const Literal& expected, const Literal& actual,
                               const ErrorSpec& error);
+
+  // If the error spec is given, returns whether the expected and the actual are
+  // within the error bound; otherwise, returns whether they are equal. Tuples
+  // will be compared recursively.
+  static ::testing::AssertionResult NearOrEqual(
+      const Literal& expected, const Literal& actual,
+      const tensorflow::gtl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
+
+  // If the error spec is given, expects the expected and the actual to be near;
+  // otherwise, expects them to be equal. Tuples will be compared recursively.
+  static void ExpectNearOrEqual(
+      const Literal& expected, const Literal& actual,
+      const tensorflow::gtl::optional<ErrorSpec>& error);
 
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,

@@ -29,22 +29,28 @@ bool ResolveMeanAttributes::Run(Model* model, std::size_t op_index) {
   if (mean_op->type != OperatorType::kMean) return false;
   auto* op = static_cast<MeanOperator*>(mean_op);
 
-  if (!op->reduction_indices.empty()) return false;
+  if (!op->reduction_indices.empty()) {
+    // Attributes already resolved
+    return false;
+  }
   if (op->inputs.size() != 2) return false;
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
 
   const auto& indices_array = *model->arrays[op->inputs[1]];
   if (!indices_array.has_shape()) return false;
 
-  op->reduction_indices = indices_array.GetBuffer<ArrayDataType::kInt32>().data;
+  // We only support simultaneous reduction over width and height.
+  std::vector<int> reduction_indices =
+      indices_array.GetBuffer<ArrayDataType::kInt32>().data;
+  if (reduction_indices.size() != 2) {
+    return false;
+  }
+  if (!((reduction_indices[0] == 1 && reduction_indices[1] == 2) ||
+        (reduction_indices[0] == 2 && reduction_indices[1] == 1))) {
+    return false;
+  }
 
-  // At the moment, we only support simultaneous reduction over width and
-  // height. This is mainly limited by the fact that currently, the runtime
-  // arrays are always 4-dimensional.
-  CHECK_EQ(op->reduction_indices.size(), 2);
-  CHECK((op->reduction_indices[0] == 1 && op->reduction_indices[1] == 2) ||
-        (op->reduction_indices[0] == 2 && op->reduction_indices[1] == 1));
-
+  op->reduction_indices = reduction_indices;
   return true;
 }
 

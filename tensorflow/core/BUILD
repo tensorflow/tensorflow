@@ -2178,6 +2178,7 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_util.h",
     "common_runtime/gpu/pool_allocator.h",
     "common_runtime/gpu/process_state.h",
+    "common_runtime/gpu_device_context.h",
 ]
 
 tf_cuda_library(
@@ -2194,7 +2195,6 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util_platform_specific.cc",
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
-        "common_runtime/gpu_device_context.h",
     ],
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),
@@ -2781,6 +2781,18 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
+)
+
+tf_cc_tests_gpu(
+    name = "gpu_device_on_non_gpu_machine_test",
+    size = "small",
+    srcs = ["common_runtime/gpu/gpu_device_on_non_gpu_machine_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":gpu_headers_lib",
+        ":gpu_runtime",
+        ":test",
+    ],
 )
 
 tf_cc_tests_gpu(

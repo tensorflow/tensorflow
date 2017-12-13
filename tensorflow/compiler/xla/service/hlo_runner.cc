@@ -40,6 +40,14 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
+                                  const DebugOptions& debug_options) {
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return tools::Parse(hlo_string, config);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
 HloRunner::ReadModuleFromHloProtoFile(const std::string& filename,
                                       const DebugOptions& debug_options) {
   HloProto proto;

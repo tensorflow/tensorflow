@@ -47,6 +47,11 @@ class CoreLayersTest(test.TestCase):
                   'noise_shape': [3, 1]},
           input_shape=(3, 2))
 
+    # https://github.com/tensorflow/tensorflow/issues/14819
+    with self.test_session():
+      dropout = keras.layers.Dropout(0.5)
+      self.assertEqual(True, dropout.supports_masking)
+
     with self.test_session():
       testing_utils.layer_test(
           keras.layers.SpatialDropout1D,

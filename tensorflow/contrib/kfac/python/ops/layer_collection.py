@@ -26,7 +26,9 @@ from __future__ import print_function
 
 from collections import defaultdict
 from collections import OrderedDict
+from functools import partial
 
+import math
 import six
 
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
@@ -57,11 +59,21 @@ _CONV2D_APPROX_TO_BLOCK_TYPES = {
     APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
 }
 
+APPROX_KRONECKER_INDEP_NAME = "kron_indep"
+APPROX_KRONECKER_SERIES_1_NAME = "kron_series_1"
+APPROX_KRONECKER_SERIES_2_NAME = "kron_series_2"
+
+_FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES = {
+    APPROX_KRONECKER_INDEP_NAME: fb.FullyConnectedMultiIndepFB,
+    APPROX_KRONECKER_SERIES_1_NAME: partial(fb.FullyConnectedSeriesFB,
+                                            option=1),
+    APPROX_KRONECKER_SERIES_2_NAME: partial(fb.FullyConnectedSeriesFB,
+                                            option=2)
+}
+
 # Possible value for 'reuse' keyword argument. Sets 'reuse' to
 # tf.get_variable_scope().reuse.
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
-
-# TODO(jamesmartens): need to add find_canonical_output back into this somewhere
 
 
 def ensure_sequence(obj):
@@ -142,6 +154,8 @@ class LayerCollection(object):
     self._default_generic_approximation = APPROX_FULL_NAME
     self._default_fully_connected_approximation = APPROX_KRONECKER_NAME
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
+    self._default_fully_connected_multi_approximation = (
+        APPROX_KRONECKER_SERIES_2_NAME)
     self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
@@ -207,6 +221,16 @@ class LayerCollection(object):
               value))
     self._default_convolution_2d_approximation = value
 
+  @property
+  def default_fully_connected_multi_approximation(self):
+    return self._default_fully_connected_multi_approximation
+
+  def set_default_fully_connected_multi_approximation(self, value):
+    if value not in _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES:
+      raise ValueError("{} is not a valid approximation for a fully-connected "
+                       "multi layer.".format(value))
+    self._default_fully_connected_multi_approximation = value
+
   def register_block(self, layer_key, fisher_block, reuse=VARIABLE_SCOPE):
     """Validates and registers the layer_key associated with the fisher_block.
 
@@ -215,7 +239,7 @@ class LayerCollection(object):
           existing registrations and to register if valid.
       fisher_block: The associated `FisherBlock`.
       reuse: Method to use for inserting new `FisherBlock`s. One of True, False,
-        or VARIABLE_SCOPE.
+        or 'VARIABLE_SCOPE'.
 
     Raises:
       ValueError: If `layer_key` was already registered and reuse is `False`,
@@ -266,12 +290,64 @@ class LayerCollection(object):
 
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
+    # TODO(b/70283403): Reimplement this in the old way, where each
+    # registration function would be responsible for incrementing the count.
+    # Also, this version has a bug: it won't do the right thing for generic
+    # registration for parameters that are shared.  i.e. it won't set the use
+    # count to infinity.
     vars_to_uses = defaultdict(int)
     for key, block in six.iteritems(self.fisher_blocks):
-      key = key if isinstance(key, (tuple, list)) else (key,)
+      n = (
+          block.num_inputs()*block.num_registered_minibatches if isinstance(
+              block, (fb.FullyConnectedSeriesFB, fb.FullyConnectedMultiIndepFB))
+          else block.num_registered_minibatches)
+      key = ensure_sequence(key)
       for k in key:
-        vars_to_uses[k] += block.num_registered_minibatches
+        vars_to_uses[k] += n
     return vars_to_uses
+
+  def check_registration(self, variables):
+    """Checks that all variable uses have been registered properly.
+
+    Args:
+      variables: List of variables.
+
+    Raises:
+      ValueError: If any registered variables are not included in the list.
+      ValueError: If any variable in the list is not registered.
+      ValueError: If any variable in the list is registered with the wrong
+          number of "uses" in the subgraph recorded (vs the number of times that
+          variable is actually used in the subgraph).
+    """
+    # Note that overlapping parameters (i.e. those that share variables) will
+    # be caught by layer_collection.LayerParametersDict during registration.
+
+    reg_use_map = self.get_use_count_map()
+
+    error_messages = []
+
+    for var in variables:
+      total_uses = self.subgraph.variable_uses(var)
+      reg_uses = reg_use_map[var]
+
+      if reg_uses == 0:
+        error_messages.append("Variable {} not registered.".format(var))
+      elif (not math.isinf(reg_uses)) and reg_uses != total_uses:
+        error_messages.append(
+            "Variable {} registered with wrong number of uses ({} "
+            "registrations vs {} uses).".format(var, reg_uses, total_uses))
+
+    num_get_vars = len(reg_use_map)
+
+    if num_get_vars > len(variables):
+      error_messages.append("{} registered variables were not included in list."
+                            .format(num_get_vars - len(variables)))
+
+    if error_messages:
+      error_messages = [
+          "Found the following errors with variable registration:"
+      ] + error_messages
+      raise ValueError("\n\t".join(error_messages))
 
   def get_blocks(self):
     return self.fisher_blocks.values()
@@ -364,11 +440,11 @@ class LayerCollection(object):
         this layer. Weight matrix should have shape [input_size, output_size].
         Bias should have shape [output_size].
       inputs: Tensor of shape [batch_size, input_size]. Inputs to layer.
-      outputs: Tensor of shape [batch_size, output_size]. Preactivations
+      outputs: Tensor of shape [batch_size, output_size]. Outputs
         produced by layer.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      approx: str. One of "kron" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -410,10 +486,10 @@ class LayerCollection(object):
       inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
         to layer.
       outputs: Tensor of shape [batch_size, height, width, out_channels].
-        Preactivations produced by layer.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+        Output produced by layer.
+      approx: str. One of "kron" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -443,14 +519,11 @@ class LayerCollection(object):
     """Registers a generic layer.
 
     Args:
-      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
-        this layer. Weight matrix should have shape [kernel_height,
-        kernel_width, in_channels, out_channels].  Bias should have shape
-        [out_channels].
+      params: Tensor or tuple of Tensors corresponding to the parameters.
       batch_size: 0-D Tensor. Size of the minibatch.
-      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      approx: str. One of "full" or "diagonal".
       reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
-        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        create a new FisherBlock.  If "VARIABLE_SCOPE", use
         tf.get_variable_scope().reuse.
 
     Raises:
@@ -470,6 +543,47 @@ class LayerCollection(object):
     block_type = _GENERIC_APPROX_TO_BLOCK_TYPES[approx]
     block = self.register_block(params, block_type(self, params), reuse=reuse)
     block.register_additional_minibatch(batch_size)
+
+  def register_fully_connected_multi(self, params, inputs, outputs,
+                                     approx=None):
+    """Register fully connected layers with shared parameters.
+
+    This can handle general fully-connected layers with shared parameters, but
+    has specialized approximations to deal with the case where there is a
+    meaningful linear order to the share instances (such as in an RNN).
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [input_size, output_size].
+        Bias should have shape [output_size].
+      inputs: A list of tensors, each of shape [batch_size, input_size]. Inputs
+        to layer. In the case of RNNs, one Tensor per time step.
+      outputs: A list of tensors, the same length as 'inputs', each of shape
+        [batch_size, output_size]. Outputs produced by layer. In the case of
+        RNNs, one Tensor per time step.
+      approx: str. One of "kron_indep", "kron_series_1", or "kron_series_2".
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+    """
+    if approx is None:
+      approx = self._get_linked_approx(params)
+      if approx is None:
+        approx = self.default_fully_connected_multi_approximation
+    has_bias = isinstance(params, (tuple, list))
+
+    # TODO(b/70283649): something along the lines of find_canonical_output
+    # should be added back in here (and for the other block types, arguably).
+
+    if approx not in _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES:
+      raise ValueError("Bad value {} for approx.".format(approx))
+    block_type = _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES[approx]
+
+    # For now we don't support multiple minibatches for this type of layer, so
+    # we set reuse=False
+    self.register_block(params,
+                        block_type(self, inputs, outputs, has_bias=has_bias),
+                        reuse=False)
 
   def register_categorical_predictive_distribution(self,
                                                    logits,
