@@ -144,7 +144,7 @@ class ElasticAverageOptimizerTest(test.TestCase):
     self.assertAllEqual(1.0, sessions[0].run(var_1_g))
     self.assertAllEqual(0, sessions[0].run(global_step))
 
-    # iteration 2, global varibale update
+    # iteration 2, global variable update
     sessions[0].run(train_ops[0])
 
     self.assertAllEqual(0.0, sessions[0].run(var_0))
