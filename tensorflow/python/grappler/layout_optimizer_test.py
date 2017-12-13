@@ -188,10 +188,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1-0',
-                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-0-0', nodes)
 
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -222,9 +220,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-Sum-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-0-0', nodes)
       self.assertIn('LayoutOptimizerDataFormatOp_split_0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -259,10 +256,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-Identity-0',
-                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-0-0', nodes)
       self.assertIn('LayoutOptimizerDataFormatOp_Slice_2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 

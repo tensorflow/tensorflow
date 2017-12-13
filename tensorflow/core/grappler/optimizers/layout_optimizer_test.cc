@@ -258,8 +258,7 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
   GraphDef output;
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
-  EXPECT_TRUE(
-      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
+  EXPECT_TRUE(node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0"));
 }
 
 TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
@@ -272,8 +271,7 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   GraphDef output;
   Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
   NodeMap node_map(&output);
-  EXPECT_TRUE(
-      node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Input-0"));
+  EXPECT_TRUE(node_map.GetNode("LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0"));
 }
 
 TEST_F(LayoutOptimizerTest, Pad) {
@@ -780,7 +778,7 @@ TEST_F(LayoutOptimizerTest, Mul4DAndUnknownRank) {
   // Node mul should not be processed by layout optimizer, because one of its
   // inputs is of unknown rank.
   EXPECT_EQ(mul_node->input(0),
-            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-mul-0");
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-0-0");
   EXPECT_EQ(mul_node->input(1), "unknown");
 }
 

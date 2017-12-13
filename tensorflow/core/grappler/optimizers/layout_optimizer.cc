@@ -281,9 +281,9 @@ class NodeProcessor : public GraphProcessor {
   }
 
  protected:
-  bool IsDimsN(const NodeDef& node, int n) const {
+  bool IsPortDimsN(const NodeDef& node, int port, int n) const {
     if (node.attr().find("_output_shapes") != node.attr().end()) {
-      auto shape = node.attr().at("_output_shapes").list().shape(0);
+      auto shape = node.attr().at("_output_shapes").list().shape(port);
       if (shape.unknown_rank()) {
         return false;
       }
@@ -294,7 +294,13 @@ class NodeProcessor : public GraphProcessor {
     return false;
   }
 
-  bool IsDimsFour(const NodeDef& node) const { return IsDimsN(node, 4); }
+  bool IsDimsN(const NodeDef& node, int n) const {
+    return IsPortDimsN(node, 0, n);
+  }
+
+  bool IsDimsFour(const NodeDef& node) const {
+    return NodeProcessor::IsDimsN(node, 4) || IsNodeNCHWToNHWC(node.name());
+  }
 
   bool IsNHWC() const {
     if (node_->attr().find("data_format") != node_->attr().end()) {
@@ -507,16 +513,14 @@ class NodeProcessor : public GraphProcessor {
   virtual Status AddLayoutTransposeToInputs() {
     std::vector<int> input_pos = GetInputPos();
     for (const auto& pos : input_pos) {
-      int output_pos;
-      string input_node_name = ParseNodeName(node_->input(pos), &output_pos);
-      string base_name =
-          strings::StrCat(node_->name(), "-", input_node_name, "-", output_pos);
       string node_name =
-          AddPrefixToNodeName(base_name, kTransposeNHWCToNCHW, "-");
-      auto input_node = node_map_->GetNode(node_->input(pos));
+          strings::StrCat(kTransposeNHWCToNCHW, "-", node_->name(), "-", pos);
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+      auto input_node = node_map_->GetNode(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       string const_name = GetOrAddNodePermNHWCToNCHW(pos);
+      int output_pos;
+      ParseNodeName(node_->input(pos), &output_pos);
       AddNodeTranspose(
           node_name, node_->input(pos), const_name,
           node_->attr().at("T").type(),
@@ -532,29 +536,38 @@ class NodeProcessor : public GraphProcessor {
   virtual Status AddLayoutTransposeToOutputs() {
     auto outputs = node_map_->GetOutputs(node_->name());
     string const_name = GetOrAddNodePermNCHWToNHWC();
+    int output_count = 0;
     for (const auto& output : outputs) {
+      int connections = 0;
+      int connections_removed = 0;
       for (int i = 0; i < output->input_size(); i++) {
         auto& input = *output->mutable_input(i);
         int input_port;
         string input_name = ParseNodeName(input, &input_port);
         auto output_pos = GetOutputPos();
-        if (input_name == node_->name() &&
-            output_pos.find(input_port) != output_pos.end()) {
-          string base_name =
-              strings::StrCat(node_->name(), "-", output->name(), "-", i);
-          string node_name =
-              AddPrefixToNodeName(base_name, kTransposeNCHWToNHWC, "-");
-          TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-          TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
-          AddNodeTranspose(
-              node_name, input, const_name, node_->attr().at("T").type(),
-              node_->attr().at("_output_shapes").list().shape(0), false);
-          input = node_name;
-          node_map_->AddOutput(node_->name(), node_name);
-          node_map_->AddOutput(node_name, output->name());
+        if (input_name == node_->name()) {
+          connections++;
+          if (output_pos.find(input_port) != output_pos.end()) {
+            connections_removed++;
+            string added_node_name =
+                strings::StrCat(kTransposeNCHWToNHWC, "-", node_->name(), "-",
+                                output_count, "-", i);
+            TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+            TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
+            AddNodeTranspose(added_node_name, input, const_name,
+                             node_->attr().at("T").type(),
+                             node_->attr().at("_output_shapes").list().shape(0),
+                             false);
+            input = added_node_name;
+            node_map_->AddOutput(node_->name(), added_node_name);
+            node_map_->AddOutput(added_node_name, output->name());
+          }
         }
       }
-      node_map_->RemoveOutput(node_->name(), output->name());
+      if (connections == connections_removed) {
+        node_map_->RemoveOutput(node_->name(), output->name());
+      }
+      output_count++;
     }
     return Status::OK();
   }
@@ -583,10 +596,10 @@ class NodeProcessor : public GraphProcessor {
     return const_node;
   }
 
-  void AddNodeDataFormatOp(const string& op, int input_pos, DataType dtype) {
+  NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
+                               const string& op, DataType dtype) {
     NodeDef* added_node = graph_->add_node();
-    added_node->set_name(
-        strings::StrCat(kDataFormatOp, "_", node_->name(), "_", input_pos));
+    added_node->set_name(name);
     added_node->set_op(op);
     node_map_->AddNode(added_node->name(), added_node);
     added_node->set_device(node_->device());
@@ -598,7 +611,16 @@ class NodeProcessor : public GraphProcessor {
     added_node->mutable_attr()->insert({"src_format", attr_format});
     attr_format.set_s("NCHW");
     added_node->mutable_attr()->insert({"dst_format", attr_format});
-    *added_node->add_input() = node_->input(input_pos);
+    *added_node->add_input() = input_name;
+    return added_node;
+  }
+
+  void AddDataFormatTranformToInput(const string& op, int input_pos,
+                                    DataType dtype) {
+    string name =
+        strings::StrCat(kDataFormatOp, "_", node_->name(), "_", input_pos);
+    auto added_node =
+        AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype);
     *node_->mutable_input(input_pos) = added_node->name();
     node_map_->UpdateOutput(added_node->input(0), node_->name(),
                             added_node->name());
@@ -671,7 +693,7 @@ class BiasAddGradProcessor : public NodeProcessor {
     }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
-      if ((IsNHWC() && IsDimsFour(*input)) || IsNodeNCHWToNHWC(input->name())) {
+      if (IsNHWC() && IsDimsFour(*input)) {
         return true;
       }
     }
@@ -796,7 +818,7 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     if (IsConstant(*input_size_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(0));
     } else {
-      AddNodeDataFormatOp("DataFormatVecPermute", 0, DT_INT32);
+      AddDataFormatTranformToInput("DataFormatVecPermute", 0, DT_INT32);
     }
     return Status::OK();
   }
@@ -945,10 +967,6 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     return input_pos;
   }
 
-  bool IsDimsFour(const NodeDef& node) const {
-    return NodeProcessor::IsDimsFour(node) || IsNodeNCHWToNHWC(node.name());
-  }
-
   bool IsNDOperateWithMD(int n, int m) const {
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
@@ -1062,7 +1080,7 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     } else {
       DataType dtype =
           (IsSplit(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
-      AddNodeDataFormatOp("DataFormatDimMap", axis_node_pos_, dtype);
+      AddDataFormatTranformToInput("DataFormatDimMap", axis_node_pos_, dtype);
     }
     return Status::OK();
   }
@@ -1149,8 +1167,8 @@ class SliceProcessor : public AgnosticNodeProcessor {
       if (IsConstant(*index_node)) {
         TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
       } else {
-        AddNodeDataFormatOp("DataFormatVecPermute", i,
-                            node_->attr().at("Index").type());
+        AddDataFormatTranformToInput("DataFormatVecPermute", i,
+                                     node_->attr().at("Index").type());
       }
     }
     return Status::OK();
@@ -1216,8 +1234,7 @@ class SumProcessor : public AgnosticNodeProcessor {
   bool ShouldProcess() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           (IsDimsFour(*input0) || IsNodeNCHWToNHWC(input0->name())) &&
-           IsAlongDimNHW() && IsOnGPU();
+           IsDimsFour(*input0) && IsAlongDimNHW() && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
