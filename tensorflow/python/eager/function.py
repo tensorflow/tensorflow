@@ -296,7 +296,7 @@ class GraphModeFunction(object):
                variables=None):
     defined_function = _EagerDefinedFunction(
         name, graph, operations, input_placeholders, outputs)
-    if  len(input_placeholders) != len(defined_function.signature.input_arg):
+    if len(input_placeholders) != len(defined_function.signature.input_arg):
       raise ValueError("Internal error: invalid lengths. %s %s" % (
           len(input_placeholders), len(defined_function.signature.input_arg)))
     self._input_placeholders = input_placeholders
@@ -360,12 +360,9 @@ class GraphModeFunction(object):
     if ctx.in_graph_mode():
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
-      def make_tensor(x):
-        if isinstance(x, ops.Tensor):
-          return x
-        return ops.internal_convert_to_tensor(x, ctx=ctx)
       op = g.create_op(
-          signature.name, [make_tensor(x) for x in all_args],
+          signature.name,
+          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in all_args],
           tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
           op_def=signature,
           name="FunctionCall",
@@ -421,7 +418,8 @@ class GraphModeFunction(object):
       signature = self._function_def.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(
-          signature.name, [ops.convert_to_tensor(x) for x in args],
+          signature.name,
+          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
           tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
           op_def=signature,
           name="FunctionCall",
