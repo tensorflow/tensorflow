@@ -226,6 +226,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         toco_flags.has_default_ranges_max()) {
       UseDefaultMinMaxRangeValues(model, toco_flags.default_ranges_min(),
                                   toco_flags.default_ranges_max());
+      // The new MinMax info may need to be propagated a bit.
+      RunGraphTransformations(
+          model, "default min-max range propagation graph transformations",
+          {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
     RunGraphTransformations(
