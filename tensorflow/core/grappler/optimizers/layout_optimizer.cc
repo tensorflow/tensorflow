@@ -37,11 +37,12 @@ namespace grappler {
 namespace {
 
 const char kPrefix[] = "LayoutOptimizer";
-const char kDataFormatOp[] = "LayoutOptimizerDataFormatOp";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
 const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
+const char kVecPermuteNHWCToNCHW[] = "LayoutOptimizerVecPermuteNHWCToNCHW";
+const char kVecPermuteNCHWToNHWC[] = "LayoutOptimizerVecPermuteNCHWToNHWC";
 const char kReshapeNHWCToNCHW[] = "LayoutOptimizerReshapeNHWCToNCHW";
 const char kReshapeConst[] = "LayoutOptimizerReshapeConst";
 const char kReductionConst[] = "LayoutOptimizerReductionConst";
@@ -109,6 +110,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Relu6",
                                           "ReluGrad",
                                           "Rint",
+                                          "Shape",
+                                          "ShapeN",
                                           "Sigmoid",
                                           "SigmoidGrad",
                                           "Sign",
@@ -533,7 +536,7 @@ class NodeProcessor : public GraphProcessor {
     return Status::OK();
   }
 
-  virtual Status AddLayoutTransposeToOutputs() {
+  Status AddTransformToOutputs(const string& op) {
     auto outputs = node_map_->GetOutputs(node_->name());
     string const_name = GetOrAddNodePermNCHWToNHWC();
     int output_count = 0;
@@ -549,15 +552,29 @@ class NodeProcessor : public GraphProcessor {
           connections++;
           if (output_pos.find(input_port) != output_pos.end()) {
             connections_removed++;
-            string added_node_name =
-                strings::StrCat(kTransposeNCHWToNHWC, "-", node_->name(), "-",
-                                output_count, "-", i);
-            TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-            TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
-            AddNodeTranspose(added_node_name, input, const_name,
-                             node_->attr().at("T").type(),
-                             node_->attr().at("_output_shapes").list().shape(0),
-                             false);
+            string added_node_base_name =
+                strings::StrCat(node_->name(), "-", output_count, "-", i);
+            string added_node_name;
+            if (op == "Transpose") {
+              added_node_name = AddPrefixToNodeName(added_node_base_name,
+                                                    kTransposeNCHWToNHWC, "-");
+              TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+              TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
+              AddNodeTranspose(
+                  added_node_name, input, const_name,
+                  node_->attr().at("T").type(),
+                  node_->attr().at("_output_shapes").list().shape(0), false);
+            } else if (op == "DataFormatVecPermute") {
+              added_node_name = AddPrefixToNodeName(added_node_base_name,
+                                                    kVecPermuteNCHWToNHWC, "-");
+              TF_RETURN_IF_ERROR(HasAttribute(*node_, "out_type"));
+              DataType dtype = (IsSplit(*node_))
+                                   ? DT_INT32
+                                   : node_->attr().at("out_type").type();
+              AddNodeDataFormatOp(added_node_name, input, op, dtype, false);
+            } else {
+              return errors::InvalidArgument("Unsupported op type: ", op);
+            }
             input = added_node_name;
             node_map_->AddOutput(node_->name(), added_node_name);
             node_map_->AddOutput(added_node_name, output->name());
@@ -570,6 +587,10 @@ class NodeProcessor : public GraphProcessor {
       output_count++;
     }
     return Status::OK();
+  }
+
+  virtual Status AddLayoutTransposeToOutputs() {
+    return AddTransformToOutputs("Transpose");
   }
 
   virtual Status CustomizedProcessing() { return Status::OK(); }
@@ -597,7 +618,8 @@ class NodeProcessor : public GraphProcessor {
   }
 
   NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
-                               const string& op, DataType dtype) {
+                               const string& op, DataType dtype,
+                               bool nhwc_to_nchw) {
     NodeDef* added_node = graph_->add_node();
     added_node->set_name(name);
     added_node->set_op(op);
@@ -606,10 +628,12 @@ class NodeProcessor : public GraphProcessor {
     AttrValue attr_data_type;
     attr_data_type.set_type(dtype);
     added_node->mutable_attr()->insert({"T", attr_data_type});
+    string src_format = (nhwc_to_nchw) ? "NHWC" : "NCHW";
+    string dst_format = (nhwc_to_nchw) ? "NCHW" : "NHWC";
     AttrValue attr_format;
-    attr_format.set_s("NHWC");
+    attr_format.set_s(src_format);
     added_node->mutable_attr()->insert({"src_format", attr_format});
-    attr_format.set_s("NCHW");
+    attr_format.set_s(dst_format);
     added_node->mutable_attr()->insert({"dst_format", attr_format});
     *added_node->add_input() = input_name;
     return added_node;
@@ -617,10 +641,10 @@ class NodeProcessor : public GraphProcessor {
 
   void AddDataFormatTranformToInput(const string& op, int input_pos,
                                     DataType dtype) {
-    string name =
-        strings::StrCat(kDataFormatOp, "_", node_->name(), "_", input_pos);
+    string name = strings::StrCat(kVecPermuteNHWCToNCHW, "_", node_->name(),
+                                  "_", input_pos);
     auto added_node =
-        AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype);
+        AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype, true);
     *node_->mutable_input(input_pos) = added_node->name();
     node_map_->UpdateOutput(added_node->input(0), node_->name(),
                             added_node->name());
@@ -905,7 +929,6 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  private:
   std::vector<int> DataInputPos(const NodeDef& node) const {
-    std::vector<int> pos;
     if (IsSplit(node)) {
       return {1};
     }
@@ -915,6 +938,13 @@ class AgnosticNodeProcessor : public NodeProcessor {
     if (IsAdd(node) || IsMul(node) || IsRealDiv(node) ||
         IsSquaredDifference(node) || IsSub(node)) {
       return {0, 1};
+    }
+    if (IsShapeN(node)) {
+      std::vector<int> pos;
+      for (int i = 0; i < node.input_size(); i++) {
+        pos.push_back(i);
+      }
+      return pos;
     }
     if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
       return {0};
@@ -1154,6 +1184,43 @@ class ReluGradProcessor : public AgnosticNodeProcessor {
   }
 };
 
+class ShapeProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit ShapeProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos;
+    for (int i = 0; i < node_->input_size(); i++) {
+      auto input = node_map_->GetNode(node_->input(i));
+      if (IsDimsFour(*input)) {
+        input_pos.push_back(i);
+      }
+    }
+    return input_pos;
+  }
+
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos{};
+    for (const auto& input_pos : GetInputPos()) {
+      output_pos.insert(input_pos);
+    }
+    return output_pos;
+  }
+
+  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+
+  Status CustomizedProcessing() override {
+    return AddTransformToOutputs("DataFormatVecPermute");
+  }
+};
+
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
   explicit SliceProcessor(const OptimizeContext& opt_cxt)
@@ -1376,6 +1443,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ReluGradProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
+          } else if (IsShape(*node) || IsShapeN(*node)) {
+            node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
             node_processor.reset(new SplitProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
