@@ -884,7 +884,23 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
               static_cast<int>(*mantissa_bits)));
       break;
     }
-    case HloOpcode::kConditional:
+    case HloOpcode::kConditional: {
+      optional<HloComputation*> true_computation;
+      optional<HloComputation*> false_computation;
+      attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                   &true_computation};
+      attrs["false_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                    &false_computation};
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateConditional(
+          shape, /*pred=*/operands[0],
+          /*true_computation_arg=*/operands[1], *true_computation,
+          /*false_computation_arg=*/operands[2], *false_computation));
+      break;
+    }
     case HloOpcode::kCustomCall:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",

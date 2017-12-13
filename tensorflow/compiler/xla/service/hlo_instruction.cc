@@ -2033,6 +2033,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
     extra.push_back(StrCat("select=%", select()->name()));
     extra.push_back(StrCat("scatter=%", scatter()->name()));
+  } else if (opcode() == HloOpcode::kConditional) {
+    extra.push_back(StrCat("true_computation=%", true_computation()->name()));
+    extra.push_back(StrCat("false_computation=%", false_computation()->name()));
   } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
              opcode() == HloOpcode::kReduceWindow ||
              opcode() == HloOpcode::kReduce) {
