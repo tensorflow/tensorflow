@@ -19,6 +19,12 @@ limitations under the License.
 #include <type_traits>
 #include "tensorflow/core/lib/gtl/flatset.h"
 
+#ifdef _WIN64
+typedef __int64 ssize_t;
+#elif defined(_WIN32)
+typedef long ssize_t;
+#endif
+
 namespace tensorflow {
 namespace gtl {
 
