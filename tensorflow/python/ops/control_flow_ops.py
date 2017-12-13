@@ -751,6 +751,7 @@ class GradLoopState(object):
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
                                         forward_ctxt.swap_memory,
+                                        forward_ctxt.maximum_iterations,
                                         forward_ctxt.name,
                                         self)
       real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
@@ -762,6 +763,7 @@ class GradLoopState(object):
       self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
                                         forward_ctxt.back_prop,
                                         forward_ctxt.swap_memory,
+                                        forward_ctxt.maximum_iterations,
                                         forward_ctxt.name,
                                         self)
       self._grad_index = self._grad_context.AddBackpropLoopCounter(
@@ -894,7 +896,11 @@ class GradLoopState(object):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
         # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack_v2(-1, value.dtype.base_dtype,
+        max_size = -1
+        if self._forward_context.maximum_iterations is not None:
+          max_size = self._forward_context.maximum_iterations
+        acc = gen_data_flow_ops._stack_v2(max_size,
+                                          value.dtype.base_dtype,
                                           name="f_acc")
         # pylint: enable=protected-access
       if curr_ctxt: curr_ctxt.Exit()
@@ -1958,11 +1964,9 @@ def _resource_safe_shape(t):
 # not only conditionals and loops but also control dependency and
 # subgraphs.
 class WhileContext(ControlFlowContext):
-  """The context for the loop construct."""
-
   def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
-               name="while_context", grad_state=None, context_def=None,
-               import_scope=None):
+               maximum_iterations=None, name="while_context", grad_state=None,
+               context_def=None, import_scope=None):
     """"Creates a `WhileContext`.
 
     Args:
@@ -1981,12 +1985,14 @@ class WhileContext(ControlFlowContext):
     else:
       ControlFlowContext.__init__(self)
       self._init_from_args(parallel_iterations, back_prop, swap_memory,
-                           name)
+                           maximum_iterations, name)
     # The gradient loop state.
     self._grad_state = grad_state
 
+  """The context for the loop construct."""
+
   def _init_from_args(self, parallel_iterations, back_prop, swap_memory,
-                      name):
+                      maximum_iterations, name):
     """Creates a new `WhileContext` from arguments.
 
     Args:
@@ -2005,6 +2011,7 @@ class WhileContext(ControlFlowContext):
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
     self._swap_memory = swap_memory
+    self._maximum_iterations = maximum_iterations
     # We use this node to control constants created by the pred lambda.
     self._pivot_for_pred = None
     # We use this node to control constants created by the body lambda.
@@ -2032,6 +2039,7 @@ class WhileContext(ControlFlowContext):
     self._parallel_iterations = context_def.parallel_iterations
     self._back_prop = context_def.back_prop
     self._swap_memory = context_def.swap_memory
+    self._maximum_iterations = context_def.maximum_iterations
     self._pivot_for_pred = g.as_graph_element(ops.prepend_name_scope(
         context_def.pivot_for_pred_name, import_scope))
     # We use this node to control constants created by the body lambda.
@@ -2072,6 +2080,11 @@ class WhileContext(ControlFlowContext):
     return self._swap_memory
 
   @property
+  def maximum_iterations(self):
+    """The upper limit of the number of iterations of the while loop"""
+    return self._maximum_iterations
+
+  @property
   def pivot(self):
     """The boolean tensor representing the loop termination condition."""
     return self._pivot
@@ -2108,6 +2121,8 @@ class WhileContext(ControlFlowContext):
       context_def.parallel_iterations = self._parallel_iterations
       context_def.back_prop = self._back_prop
       context_def.swap_memory = self._swap_memory
+      if self._maximum_iterations:
+        context_def.maximum_iterations = self._maximum_iterations
       context_def.pivot_for_pred_name = ops.strip_name_scope(
           self._pivot_for_pred.name, export_scope)
       context_def.pivot_for_body_name = ops.strip_name_scope(
@@ -2889,7 +2904,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
         shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
+    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory,
+                                maximum_iterations)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     if maximum_iterations is not None:

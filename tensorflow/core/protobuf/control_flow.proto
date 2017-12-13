@@ -49,6 +49,9 @@ message WhileContextDef {
   // Whether GPU-CPU memory swap is enabled for this loop.
   bool swap_memory = 4;
 
+  // Maximum number of iterations
+  int32 maximum_iterations = 11;
+
   // Name of the pivot tensor.
   string pivot_name = 5;
 
