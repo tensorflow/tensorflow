@@ -1048,7 +1048,8 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
 // column major.
 bool ProfitableToMakeDotRhsColumnMajor(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kDot &&
-         hlo.shape().dimensions_size() == 2 && hlo.shape().dimensions(0) == 1;
+         hlo.shape().dimensions_size() == 2 && hlo.shape().dimensions(0) == 1 &&
+         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) == 0;
 }
 
 bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot) {

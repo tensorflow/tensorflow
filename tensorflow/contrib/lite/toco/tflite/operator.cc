@@ -153,12 +153,12 @@ class Concatenation
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateConcatenationOptions(*builder, op.concat_dim);
+    return ::tflite::CreateConcatenationOptions(*builder, op.axis);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->concat_dim = options.axis();
+    op->axis = options.axis();
   }
 };
 
@@ -345,6 +345,30 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
                    TocoOperator* op) const override {
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+};
+
+class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
+                                   ::tflite::BuiltinOptions_PadOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto before_padding = builder->CreateVector(op.left_padding);
+    auto after_padding = builder->CreateVector(op.right_padding);
+    return ::tflite::CreatePadOptions(*builder, before_padding, after_padding);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->left_padding.insert(op->left_padding.end(),
+                            options.before_padding()->begin(),
+                            options.before_padding()->end());
+    op->right_padding.insert(op->right_padding.end(),
+                             options.after_padding()->begin(),
+                             options.after_padding()->end());
   }
 };
 
@@ -551,6 +575,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new MaxPool(::tflite::BuiltinOperator_MAX_POOL_2D,
                                OperatorType::kMaxPool));
   ops.emplace_back(new Mul(::tflite::BuiltinOperator_MUL, OperatorType::kMul));
+  ops.emplace_back(new Pad(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
   ops.emplace_back(new Reshape(::tflite::BuiltinOperator_RESHAPE,
                                OperatorType::kTensorFlowReshape));
   ops.emplace_back(

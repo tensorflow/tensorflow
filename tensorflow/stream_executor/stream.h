@@ -1905,15 +1905,12 @@ class Stream {
   //
   // Returns an OK status if the blocking was successful and the stream is ok().
   // Otherwise returns an error describing why the blocking failed.
-  //
-  // TODO(b/70298427): Rename to BlockHostUntilDone, once all callers have been
-  // converted from the bool form.
-  port::Status BlockHostUntilDoneWithStatus() LOCKS_EXCLUDED(mu_);
+  port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
-  // DEPRECATED(b/70298427) - new code should use BlockHostUntilDoneWithStatus()
+  // DEPRECATED(b/70298427) - new code should use BlockHostUntilDone()
   //
-  // Equivalent to BlockHostUntilDoneWithStatus().ok().
-  bool BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
+  // Equivalent to BlockHostUntilDone()
+  port::Status BlockHostUntilDoneWithStatus() LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal

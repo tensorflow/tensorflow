@@ -61,8 +61,8 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensor) {
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
-  auto result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_shape, HloOpcode::kDot, dot_lhs, dot_rhs));
+  auto result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -98,10 +98,10 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor0) {
       HloInstruction::CreateParameter(1, lhs_shape, "param1"));
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
-  auto dot_a_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_shape, HloOpcode::kDot, dot_a_lhs, dot_rhs));
-  auto dot_b_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_shape, HloOpcode::kDot, dot_b_lhs, dot_rhs));
+  auto dot_a_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_shape, dot_a_lhs, dot_rhs));
+  auto dot_b_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_shape, dot_b_lhs, dot_rhs));
   builder.AddInstruction(HloInstruction::CreateBinary(
       result_shape, HloOpcode::kAdd, dot_a_result, dot_b_result));
 
@@ -142,10 +142,10 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor1) {
       HloInstruction::CreateParameter(1, lhs_b_shape, "param1"));
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
-  auto dot_a_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_a_shape, HloOpcode::kDot, dot_a_lhs, dot_rhs));
-  auto dot_b_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_b_shape, HloOpcode::kDot, dot_b_lhs, dot_rhs));
+  auto dot_a_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_a_shape, dot_a_lhs, dot_rhs));
+  auto dot_b_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_b_shape, dot_b_lhs, dot_rhs));
   auto tuple_result = builder.AddInstruction(
       HloInstruction::CreateTuple({dot_a_result, dot_b_result}));
 
@@ -180,8 +180,8 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantLhsTensor) {
       HloInstruction::CreateConstant(Literal::CreateFromShape(lhs_shape)));
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, rhs_shape, "param0"));
-  auto dot_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_shape, HloOpcode::kDot, dot_lhs, dot_rhs));
+  auto dot_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -220,8 +220,8 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensorThroughGTE) {
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(rhs_shape, constant, 1));
-  auto dot_result = builder.AddInstruction(HloInstruction::CreateBinary(
-      result_shape, HloOpcode::kDot, dot_lhs, dot_rhs));
+  auto dot_result = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());

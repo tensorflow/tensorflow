@@ -2296,5 +2296,152 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Values(1, 2), ::testing::Bool(),
                        ::testing::Bool()));
 
+struct DotOfConcatTestSpec {
+  int64 m;
+  int64 k;
+  int64 n;
+};
+
+class DotOfConcatSimplificationTest
+    : public HloTestBase,
+      public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
+
+// Test that we transform
+//  dot(const, concat(A, B, C))
+// to
+//  add(dot(const_0, A), dot(const_1, B),  dot(const_2, C))
+TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
+  HloComputation::Builder builder(TestName());
+
+  DotOfConcatTestSpec spec = GetParam();
+
+  ASSERT_GE(spec.k, 3);
+
+  int64 k0 = spec.k / 3;
+  int64 k1 = spec.k / 3;
+  int64 k2 = spec.k - k0 - k1;
+
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.k});
+  auto* lhs = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+          /*from=*/10.0, /*to=*/10000.0, /*rows=*/spec.m, /*cols=*/spec.k)));
+
+  Shape rhs0_shape = ShapeUtil::MakeShape(F32, {k0, spec.n});
+  Shape rhs1_shape = ShapeUtil::MakeShape(F32, {k1, spec.n});
+  Shape rhs2_shape = ShapeUtil::MakeShape(F32, {k2, spec.n});
+
+  HloInstruction* rhs0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rhs0_shape, "rhs0"));
+  HloInstruction* rhs1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs1_shape, "rhs1"));
+  HloInstruction* rhs2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, rhs2_shape, "rhs2"));
+
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {spec.k, spec.n});
+  HloInstruction* rhs = builder.AddInstruction(
+      HloInstruction::CreateConcatenate(rhs_shape, {rhs0, rhs1, rhs2}, 0));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+
+  Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
+  builder.AddInstruction(
+      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(module.get()));
+  ASSERT_TRUE(run_successful);
+
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), dot_shape));
+
+  auto match_dot_0 = op::Dot(op::Slice(op::Constant()), op::Parameter(0));
+  auto match_dot_1 = op::Dot(op::Slice(op::Constant()), op::Parameter(1));
+  auto match_dot_2 = op::Dot(op::Slice(op::Constant()), op::Parameter(2));
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Add(match_dot_0, match_dot_1), match_dot_2));
+}
+
+// Test that we transform
+//  dot(concat(A, B, C), const)
+// to
+//  add(dot(A, const_0), dot(B, const_1),  dot(C, const_2))
+TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
+  HloComputation::Builder builder(TestName());
+
+  DotOfConcatTestSpec spec = GetParam();
+
+  ASSERT_GE(spec.k, 4);
+
+  int64 k0 = spec.k / 4;
+  int64 k1 = spec.k / 4;
+  int64 k2 = spec.k / 4;
+  int64 k3 = spec.k - k0 - k1 - k2;
+
+  Shape lhs0_shape = ShapeUtil::MakeShape(F32, {spec.m, k0});
+  Shape lhs1_shape = ShapeUtil::MakeShape(F32, {spec.m, k1});
+  Shape lhs2_shape = ShapeUtil::MakeShape(F32, {spec.m, k2});
+  Shape lhs3_shape = ShapeUtil::MakeShape(F32, {spec.m, k3});
+
+  HloInstruction* lhs0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs0_shape, "lhs0"));
+  HloInstruction* lhs1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, lhs1_shape, "lhs1"));
+  HloInstruction* lhs2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, lhs2_shape, "lhs2"));
+  HloInstruction* lhs3 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, lhs2_shape, "lhs3"));
+
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.k});
+  HloInstruction* lhs =
+      builder.AddInstruction(HloInstruction::CreateConcatenate(
+          lhs_shape, {lhs0, lhs1, lhs2, lhs3}, 1));
+
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {spec.k, spec.m});
+  auto* rhs = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+          /*from=*/10.0, /*to=*/10000.0, /*rows=*/spec.k, /*cols=*/spec.m)));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+
+  Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
+  builder.AddInstruction(
+      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(module.get()));
+  ASSERT_TRUE(run_successful);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), dot_shape));
+
+  auto match_dot_0 = op::Dot(op::Parameter(0), op::Slice(op::Constant()));
+  auto match_dot_1 = op::Dot(op::Parameter(1), op::Slice(op::Constant()));
+  auto match_dot_2 = op::Dot(op::Parameter(2), op::Slice(op::Constant()));
+  auto match_dot_3 = op::Dot(op::Parameter(3), op::Slice(op::Constant()));
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Add(op::Add(match_dot_0, match_dot_1), match_dot_2),
+                      match_dot_3));
+}
+
+DotOfConcatTestSpec kDotOfConcatTestSpecs[] = {
+    {/*m=*/3, /*k=*/9, /*n=*/3},    //
+    {/*m=*/3, /*k=*/20, /*n=*/3},   //
+    {/*m=*/1, /*k=*/18, /*n=*/5},   //
+    {/*m=*/20, /*k=*/20, /*n=*/1},  //
+    {/*m=*/1, /*k=*/16, /*n=*/1},   //
+};
+
+INSTANTIATE_TEST_CASE_P(DotOfConcatSimplificationTestInstantiation,
+                        DotOfConcatSimplificationTest,
+                        ::testing::ValuesIn(kDotOfConcatTestSpecs));
 }  // namespace
 }  // namespace xla

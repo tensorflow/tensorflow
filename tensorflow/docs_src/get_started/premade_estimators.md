@@ -106,8 +106,10 @@ and [*Iris virginica*](https://www.flickr.com/photos/33397993@N05/3352169862)
 
 ### The data set
 
-The Iris data set contains four features and one label.  The four features
-identify the following botanical characteristics of individual Iris flowers:
+The Iris data set contains four features and one
+[label](https://developers.google.com/machine-learning/glossary/#label).
+The four features identify the following botanical characteristics of
+individual Iris flowers:
 
 * sepal length
 * sepal width
@@ -207,7 +209,9 @@ tuple:
 * "features" - A Python dictionary in which:
     * Each key is the name of a feature.
     * Each value is an array containing all of that feature's values.
-* "label" - An array containing the values of the label for every example.
+* "label" - An array containing the values of the
+  [label](https://developers.google.com/machine-learning/glossary/#label) for
+  every example.
 
 Just to demonstrate the format of the input function here's a simple
 implementation:
@@ -256,7 +260,7 @@ Here is the input function used for training in this program:
 def train_input_fn(features, labels, batch_size):
     """An input function for training"""
     # Convert the inputs to a Dataset.
-    dataset = tf.data.Dataset.from_tensor_slices((features, labels))
+    dataset = tf.data.Dataset.from_tensor_slices((dict(features), labels))
 
     # Shuffle, repeat, and batch the examples.
     dataset = dataset.shuffle(1000).repeat().batch(batch_size)

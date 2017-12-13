@@ -78,6 +78,25 @@ def _two_layer_model(x):
   return h_pool2
 
 
+def _model_with_branch(x):
+  x_image = array_ops.reshape(x, [-1, 28, 28, 1])
+  w_conv1 = _weight([5, 5, 1, 32])
+  w_conv2 = _weight([5, 5, 1, 32])
+  c_conv1 = _conv2d(x_image, w_conv1)
+  c_conv2 = _conv2d(x_image, w_conv2)
+  add = math_ops.add(c_conv1, c_conv2)
+  return add
+
+
+def _model_with_vec_and_4d(x):
+  x_image = array_ops.reshape(x, [-1, 28, 28, 1])
+  w_conv1 = _weight([5, 5, 1, 32])
+  c_conv1 = _conv2d(x_image, w_conv1)
+  vector = constant_op.constant(6.4, shape=[32])
+  add = math_ops.add(c_conv1, vector)
+  return add
+
+
 def _loop():
   random_seed.set_random_seed(0)
   x1 = random_ops.truncated_normal([1, 784], seed=0)
@@ -86,6 +105,30 @@ def _loop():
   x4 = random_ops.truncated_normal([1, 784], seed=0)
   elems = (x1, x2, x3, x4)
   outputs = functional_ops.map_fn(_two_layer_model, elems, dtype=dtypes.float32)
+  return outputs
+
+
+def _loop_with_branch():
+  random_seed.set_random_seed(0)
+  x1 = random_ops.truncated_normal([1, 784], seed=0)
+  x2 = random_ops.truncated_normal([1, 784], seed=0)
+  x3 = random_ops.truncated_normal([1, 784], seed=0)
+  x4 = random_ops.truncated_normal([1, 784], seed=0)
+  elems = (x1, x2, x3, x4)
+  outputs = functional_ops.map_fn(
+      _model_with_branch, elems, dtype=dtypes.float32)
+  return outputs
+
+
+def _loop_with_vec_and_4d():
+  random_seed.set_random_seed(0)
+  x1 = random_ops.truncated_normal([1, 784], seed=0)
+  x2 = random_ops.truncated_normal([1, 784], seed=0)
+  x3 = random_ops.truncated_normal([1, 784], seed=0)
+  x4 = random_ops.truncated_normal([1, 784], seed=0)
+  elems = (x1, x2, x3, x4)
+  outputs = functional_ops.map_fn(
+      _model_with_vec_and_4d, elems, dtype=dtypes.float32)
   return outputs
 
 
@@ -188,10 +231,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1-0',
-                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-0-0', nodes)
 
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -222,10 +263,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-Sum-0', nodes)
-      self.assertIn('LayoutOptimizerDataFormatOp_split_0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-0-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_split_0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSliceWithNonConstAxis(self):
@@ -259,12 +299,41 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-Identity-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerDataFormatOp_Slice_2', nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-0-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Slice_2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testShapeN(self):
+    if test.is_gpu_available(cuda_only=True):
+      x = array_ops.placeholder(dtype='float32')
+      conv = _two_layer_model(x)
+      shapen = array_ops.shape_n([conv, conv])
+      output = math_ops.add(shapen[0], shapen[1])
+
+      x_val = [1.7] * 784
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={x: x_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                x: x_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 1
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNCHWToNHWC-ShapeN-0-0', nodes)
+      self.assertAllEqual(output_val_ref, output_val)
 
   def testLoop(self):
     if test.is_gpu_available(cuda_only=True):
@@ -277,6 +346,74 @@ class LayoutOptimizerTest(test.TestCase):
         metadata = config_pb2.RunMetadata()
         output_val = sess.run(output, run_metadata=metadata)
 
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn(
+          'LayoutOptimizerTransposeNCHWToNHWC-map/while/MaxPool_1-0-2', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testLoopWithBranch(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _loop_with_branch()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
+                    nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testLoopWithVecAnd4D(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _loop_with_vec_and_4d()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
+                    nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testGradient(self):
