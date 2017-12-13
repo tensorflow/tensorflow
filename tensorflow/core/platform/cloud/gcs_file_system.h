@@ -136,6 +136,8 @@ class GcsFileSystem : public FileSystem {
           write(write) {}
   };
 
+  Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
+
  private:
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
   ///

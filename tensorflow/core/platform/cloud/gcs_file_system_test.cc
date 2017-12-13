@@ -2340,5 +2340,28 @@ TEST(GcsFileSystemTest, OverrideCacheParameters) {
   EXPECT_EQ(40, fs5.timeouts().write);
 }
 
+TEST(GcsFileSystemTest, CreateHttpRequest) {
+  std::vector<HttpRequest*> requests(
+      {// IsDirectory is checking whether there are children objects.
+       new FakeHttpRequest("Uri: https://www.googleapis.com/fake\n"
+                           "Auth Token: fake_token\n"
+                           "Header Hello: world\n",
+                           "{}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig);
+
+  std::unique_ptr<HttpRequest> request;
+  TF_EXPECT_OK(fs.CreateHttpRequest(&request));
+  TF_EXPECT_OK(request->SetUri("https://www.googleapis.com/fake"));
+  TF_EXPECT_OK(request->AddHeader("Hello", "world"));
+  TF_EXPECT_OK(request->Send());
+}
+
 }  // namespace
 }  // namespace tensorflow

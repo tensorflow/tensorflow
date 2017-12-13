@@ -295,15 +295,13 @@ class GcsRandomAccessFile : public RandomAccessFile {
 class GcsWritableFile : public WritableFile {
  public:
   GcsWritableFile(const string& bucket, const string& object,
-                  AuthProvider* auth_provider,
-                  HttpRequest::Factory* http_request_factory,
+                  GcsFileSystem* filesystem,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
                   int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
-        auth_provider_(auth_provider),
-        http_request_factory_(http_request_factory),
+        filesystem_(filesystem),
         timeouts_(timeouts),
         file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
@@ -320,16 +318,13 @@ class GcsWritableFile : public WritableFile {
   /// with the content to be appended. The class takes onwnership of the
   /// specified tmp file and deletes it on close.
   GcsWritableFile(const string& bucket, const string& object,
-                  AuthProvider* auth_provider,
-                  const string& tmp_content_filename,
-                  HttpRequest::Factory* http_request_factory,
+                  GcsFileSystem* filesystem, const string& tmp_content_filename,
                   GcsFileSystem::TimeoutConfig* timeouts,
                   std::function<void()> file_cache_erase,
                   int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
-        auth_provider_(auth_provider),
-        http_request_factory_(http_request_factory),
+        filesystem_(filesystem),
         timeouts_(timeouts),
         file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
@@ -450,16 +445,13 @@ class GcsWritableFile : public WritableFile {
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
-
     std::vector<char> output_buffer;
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    std::unique_ptr<HttpRequest> request;
+    TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+
     TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
         kGcsUploadUriBase, "b/", bucket_,
         "/o?uploadType=resumable&name=", request->EscapeString(object_))));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->AddHeader("X-Upload-Content-Length",
                                           std::to_string(file_size)));
     TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
@@ -490,13 +482,9 @@ class GcsWritableFile : public WritableFile {
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
-
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    std::unique_ptr<HttpRequest> request;
+    TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
     TF_RETURN_IF_ERROR(request->SetUri(session_uri));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetTimeouts(timeouts_->connect, timeouts_->idle,
                                             timeouts_->metadata));
     TF_RETURN_IF_ERROR(request->AddHeader(
@@ -541,13 +529,9 @@ class GcsWritableFile : public WritableFile {
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
-
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    std::unique_ptr<HttpRequest> request;
+    TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
     TF_RETURN_IF_ERROR(request->SetUri(session_uri));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     if (file_size > 0) {
       TF_RETURN_IF_ERROR(request->AddHeader(
           "Content-Range", strings::StrCat("bytes ", start_offset, "-",
@@ -571,10 +555,9 @@ class GcsWritableFile : public WritableFile {
 
   string bucket_;
   string object_;
-  AuthProvider* auth_provider_;
+  GcsFileSystem* const filesystem_;  // Not owned.
   string tmp_content_filename_;
   std::ofstream outfile_;
-  HttpRequest::Factory* http_request_factory_;
   GcsFileSystem::TimeoutConfig* timeouts_;
   std::function<void()> file_cache_erase_;
   bool sync_needed_;  // whether there is buffered data that needs to be synced
@@ -660,6 +643,11 @@ GcsFileSystem::GcsFileSystem()
   if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
                 &resolve_frequency_secs)) {
     dns_cache_.reset(new GcsDnsCache(resolve_frequency_secs));
+    VLOG(1) << "GCS DNS cache is enabled.  " << kResolveCacheSecs << " = "
+            << resolve_frequency_secs;
+  } else {
+    VLOG(1) << "GCS DNS cache is disabled, because " << kResolveCacheSecs
+            << " = 0 (or is not set)";
   }
   // Apply the overrides for request timeouts
   uint32 timeout_value;
@@ -725,23 +713,16 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
                                         size_t n, std::vector<char>* out) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   TF_RETURN_IF_ERROR(
       request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket,
                                       "/", request->EscapeString(object))));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(out));
   TF_RETURN_IF_ERROR(
       request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read));
-
-  if (dns_cache_) {
-    TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
-  }
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
@@ -771,8 +752,8 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
-      bucket, object, auth_provider_.get(), http_request_factory_.get(),
-      &timeouts_, [this, fname]() { file_block_cache_->RemoveFile(fname); },
+      bucket, object, this, &timeouts_,
+      [this, fname]() { file_block_cache_->RemoveFile(fname); },
       initial_retry_delay_usec_));
   return Status::OK();
 }
@@ -812,8 +793,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
-      bucket, object, auth_provider_.get(), old_content_filename,
-      http_request_factory_.get(), &timeouts_,
+      bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { file_block_cache_->RemoveFile(fname); },
       initial_retry_delay_usec_));
   return Status::OK();
@@ -889,24 +869,16 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
 
   StatCache::ComputeFunc compute_func =
       [this, &bucket, &object](const string& fname, FileStatistics* stat) {
-        string auth_token;
-        TF_RETURN_IF_ERROR(
-            AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
         std::vector<char> output_buffer;
-        std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-        TF_RETURN_IF_ERROR(request->Init());
+        std::unique_ptr<HttpRequest> request;
+        TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
         TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
             kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object),
             "?fields=size%2Cupdated")));
-        TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
         TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
         TF_RETURN_IF_ERROR(request->SetTimeouts(
             timeouts_.connect, timeouts_.idle, timeouts_.metadata));
 
-        if (dns_cache_) {
-          TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
-        }
         TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                         " when reading metadata of gs://",
                                         bucket, "/", object);
@@ -945,14 +917,11 @@ Status GcsFileSystem::BucketExists(const string& bucket, bool* result) {
   if (!result) {
     return errors::Internal("'result' cannot be nullptr.");
   }
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   TF_RETURN_IF_ERROR(
       request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket)));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetTimeouts(timeouts_.connect, timeouts_.idle,
                                           timeouts_.metadata));
   const Status status = request->Send();
@@ -1054,13 +1023,9 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
   string nextPageToken;
   uint64 retrieved_results = 0;
   while (true) {  // A loop over multiple result pages.
-    string auth_token;
-    TF_RETURN_IF_ERROR(
-        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
     std::vector<char> output_buffer;
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    std::unique_ptr<HttpRequest> request;
+    TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
     auto uri = strings::StrCat(kGcsUriBase, "b/", bucket, "/o");
     if (recursive) {
       uri = strings::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
@@ -1084,14 +1049,9 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
           strings::StrCat(uri, "&maxResults=", max_results - retrieved_results);
     }
     TF_RETURN_IF_ERROR(request->SetUri(uri));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
     TF_RETURN_IF_ERROR(request->SetTimeouts(timeouts_.connect, timeouts_.idle,
                                             timeouts_.metadata));
-
-    if (dns_cache_) {
-      TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(request.get()));
-    }
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     Json::Value root;
@@ -1204,17 +1164,14 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
       kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object))));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetTimeouts(timeouts_.connect, timeouts_.idle,
                                           timeouts_.metadata));
   TF_RETURN_IF_ERROR(request->SetDeleteRequest());
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when deleting ", fname);
   file_block_cache_->RemoveFile(fname);
   return Status::OK();
@@ -1297,16 +1254,12 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   TF_RETURN_IF_ERROR(
       ParseGcsPath(target, false, &target_bucket, &target_object));
 
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
+  std::unique_ptr<HttpRequest> request;
+  TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
       kGcsUriBase, "b/", src_bucket, "/o/", request->EscapeString(src_object),
       "/rewriteTo/b/", target_bucket, "/o/",
       request->EscapeString(target_object))));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
   TF_RETURN_IF_ERROR(request->SetTimeouts(timeouts_.connect, timeouts_.idle,
                                           timeouts_.metadata));
@@ -1406,6 +1359,25 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
       }
     }
   }
+  return Status::OK();
+}
+
+// Creates an HttpRequest and sets several parameters that are common to all
+// requests.  All code (in GcsFileSystem) that creates an HttpRequest should
+// go through this method, rather than directly using http_request_factory_.
+Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
+  std::unique_ptr<HttpRequest> new_request{http_request_factory_->Create()};
+  TF_RETURN_IF_ERROR(new_request->Init());
+  if (dns_cache_) {
+    TF_RETURN_IF_ERROR(dns_cache_->AnnotateRequest(new_request.get()));
+  }
+
+  string auth_token;
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+  TF_RETURN_IF_ERROR(new_request->AddAuthBearerHeader(auth_token));
+
+  *request = std::move(new_request);
   return Status::OK();
 }
 
