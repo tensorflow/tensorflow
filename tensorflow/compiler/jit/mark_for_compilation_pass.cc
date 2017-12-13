@@ -310,7 +310,7 @@ Status MarkForCompilationPass::Run(
 
     // Don't compile control trigger nodes. We won't preserve their deadness
     // semantics correctly, so it's safest not to compile them.
-    if (node->IsControlTrigger()) return false;
+    //if (node->IsControlTrigger()) return false;
 
     // If this device requires a JIT, we must say yes.
     if (registration->requires_compilation) return true;
@@ -374,58 +374,10 @@ Status MarkForCompilationPass::RunImpl(
 
   // The clustering code must avoid adding cycles to the graph to prevent
   // deadlock. However, the graph may contain loops, which would trigger the
-  // cycle detection code. To handle loops, we alter the structure of the cycle
-  // detection graph, disconnecting each loop from the enclosing graph.
-  // Specifically, we:
-  // * add a new "frame" node for each loop.
-  // * replace edges to "Enter" nodes, and edges from "Exit" nodes with edges
-  //   to/from the corresponding frame node. In essence, we collapse the loop
-  //   into a single node for the purpose of cycle detection in the enclosing
-  //   graph.
-  // * the body of the loop should now be disconnected from the rest of the
-  //   graph; we make it acyclic by breaking loop backedges (edges outgoing from
-  //   "NextIteration" nodes.
-
-  // Map from frame name strings to node IDs in the cycle detection graph.
-  std::unordered_map<string, int> frame_nodes;
-
-  // Get the cycle graph node ID for frame 'frame_name', or add one if none
-  // exists.
-  auto GetOrAddFrameNodeId = [&frame_nodes, &cycles](const string& frame_name) {
-    int& frame_id = frame_nodes.emplace(frame_name, -1).first->second;
-    if (frame_id < 0) {
-      // The emplace succeeded; we have not allocated a frame node yet.
-      frame_id = cycles.NewNode();
-    }
-    return frame_id;
-  };
+  // cycle detection code. To handle while loops we break the loop at the
+  // looping point.
 
   for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles.InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
-      }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles.InsertEdge(src, edge->dst()->id())) {
-        return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
-      }
-      // Drop the original edge.
-      continue;
-    }
     if (edge->src()->IsNextIteration()) {
       // Break loop back-edges.
       continue;
@@ -464,11 +416,6 @@ Status MarkForCompilationPass::RunImpl(
     string from_scope;
     string to_scope;
     for (int to : cycles.Successors(from)) {
-      if (to >= graph->num_node_ids()) {
-        // Node is a "frame" node that is present only in the cycle detection
-        // graph. No clustering is possible.
-        continue;
-      }
       Node* node_to = graph->FindNodeId(to);
       if (compilation_candidates.find(node_to) ==
           compilation_candidates.cend()) {
@@ -561,6 +508,7 @@ Status MarkForCompilationPass::RunImpl(
     // operators.
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
         registration->requires_compilation) {
+//      cluster = 0;
       string& name = cluster_names[cluster];
 
       if (name.empty()) {
