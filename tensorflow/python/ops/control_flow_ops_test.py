@@ -883,8 +883,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "More than one condition evaluated as True"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 2})
 
   def testCase_multiple_matches_non_exclusive(self):
@@ -909,11 +908,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r"\[None of the conditions evaluated as True. "
-          r"Conditions: \(Equal:0, Equal_1:0, Equal_2:0\), Values:\] "
-          r"\[0 0 0\]"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
   def testCase_withoutDefault_oneCondition(self):
@@ -922,10 +917,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     output = control_flow_ops.case(conditions, exclusive=True)
     with self.test_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r"\[None of the conditions evaluated as True. "
-          r"Conditions: \(Equal:0\), Values:\] \[0\]"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
 
