@@ -175,6 +175,28 @@ void TestCopies(const Tensor& t) {
   }
 }
 
+TEST(Tensor_Half, Simple) {
+  Tensor t(DT_HALF, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<Eigen::half>()(a, b) = static_cast<Eigen::half>(a * b);
+    }
+  }
+  TestCopies<Eigen::half>(t);
+}
+
+TEST(Tensor_Bfloat16, Simple) {
+  Tensor t(DT_BFLOAT16, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<bfloat16>()(a, b) = static_cast<bfloat16>(a * b);
+    }
+  }
+  TestCopies<bfloat16>(t);
+}
+
 TEST(Tensor_Float, Simple) {
   Tensor t(DT_FLOAT, TensorShape({10, 20}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
