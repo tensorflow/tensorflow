@@ -472,6 +472,7 @@ void RdmaAdapter::Process_CQ() {
         if (imm_data == RDMA_IMM_DATA_MESSAGE) {
           rb = rc->rx_message_buffer_;
           RdmaMessage::ParseMessage(rm, rb->buffer_);
+          RdmaBuffer::SendAck(rc);
           RDMA_LOG(1) << "Step 0x" << std::hex << rm.step_id_ << std::dec
                       << ": Received " << MessageTypeToString(rm.type_) << " "
                       << "#" << rm.request_index_ << ": " << rm.name_;
@@ -488,9 +489,6 @@ void RdmaAdapter::Process_CQ() {
           rb->SendNextItem();
         } else if (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) {
           // received a request-for-tensor message
-          // send ack to release remote tx message buffer
-          RdmaBuffer* ab = rc->tx_ack_buffer_;
-          ab->SendNextItem();
           // find or create buffer
           RdmaBuffer* tb = rc->FindOrCreateBuffer(rm.name_);
           string key_with_step_id =
@@ -501,9 +499,6 @@ void RdmaAdapter::Process_CQ() {
           worker_env_->compute_pool->Schedule([tb]() { tb->SendNextItem(); });
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_IDLE) {
           // receive tensor-buffer-ready message
-          // send ack to release remote tx message buffer
-          RdmaBuffer* ab = rc->tx_ack_buffer_;
-          ab->SendNextItem();
           // find buffer
           RdmaTensorBuffer* tb =
               reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
@@ -511,18 +506,11 @@ void RdmaAdapter::Process_CQ() {
           worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) {
           // remote host requests to create a tensor buffer;
-          // send ack to release remote tx message buffer
-          RdmaBuffer* ab = rc->tx_ack_buffer_;
-          ab->SendNextItem();
-          // find or create the buffer
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
           request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
                                       rm.is_dead_, rm.tensor_bytes_);
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE) {
           // remote creates a buffer and responds
-          // send ack to release remote tx message buffer
-          RdmaBuffer* ab = rc->tx_ack_buffer_;
-          ab->SendNextItem();
           // find buffer
           RdmaTensorBuffer* tb =
               reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
@@ -542,12 +530,8 @@ void RdmaAdapter::Process_CQ() {
         RdmaWriteID* wr_id = reinterpret_cast<RdmaWriteID*>(wc_[i].wr_id);
         RDMA_LOG(2) << "Write complete of type " << wr_id->write_type;
         switch (wr_id->write_type) {
-          case RDMA_WRITE_ID_ACK: {
-            RdmaBuffer* rb =
-                reinterpret_cast<RdmaBuffer*>(wr_id->write_context);
-            rb->SetBufferStatus(local, idle);
+          case RDMA_WRITE_ID_ACK:
             break;
-          }
           case RDMA_WRITE_ID_MESSAGE: {
             RdmaBuffer* rb =
                 reinterpret_cast<RdmaBuffer*>(wr_id->write_context);
@@ -669,22 +653,15 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
 
   // create message and ack buffers, then initialize the tables.
   {
-    const string buffer_names[] = {"tx_message_buffer", "rx_message_buffer",
-                                   "tx_ack_buffer",     "rx_ack_buffer"};
+    const string buffer_names[] = {"tx_message_buffer", "rx_message_buffer"};
     tx_message_buffer_ = new RdmaMessageBuffer(this, buffer_names[0]);
     rx_message_buffer_ = new RdmaMessageBuffer(this, buffer_names[1]);
-    tx_ack_buffer_ = new RdmaAckBuffer(this, buffer_names[2]);
-    rx_ack_buffer_ = new RdmaAckBuffer(this, buffer_names[3]);
     message_buffers_.reserve(kNumMessageBuffers);
     message_buffers_.push_back(tx_message_buffer_);
     message_buffers_.push_back(rx_message_buffer_);
-    message_buffers_.push_back(tx_ack_buffer_);
-    message_buffers_.push_back(rx_ack_buffer_);
     // create buffer on host
     tx_message_buffer_->CreateCPUBuffer(RdmaMessage::kRdmaMessageBufferSize);
     rx_message_buffer_->CreateCPUBuffer(RdmaMessage::kRdmaMessageBufferSize);
-    tx_ack_buffer_->CreateCPUBuffer(RdmaMessage::kRdmaAckBufferSize);
-    rx_ack_buffer_->CreateCPUBuffer(RdmaMessage::kRdmaAckBufferSize);
     // bt_mu_.lock() is not used in constructor.
     for (int i = 0; i < kNumMessageBuffers; i++) {
       uint32_t index = NameHash(buffer_names[i]);
@@ -702,8 +679,6 @@ RdmaChannel::~RdmaChannel() {
   CHECK(!ibv_destroy_qp(qp_)) << "Failed to destroy QP";
   delete tx_message_buffer_;
   delete rx_message_buffer_;
-  delete tx_ack_buffer_;
-  delete rx_ack_buffer_;
 }
 
 void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
@@ -773,7 +748,7 @@ RdmaBuffer* RdmaChannel::FindBuffer(const string& name) {
 // The memory inside the created buffer is not allocated.
 // Args:
 //   name: the name of the buffer
-//   buffer_type: TENSOR, MESSAGE or ACK.
+//   buffer_type: TENSOR, MESSAGE.
 // Returns:
 //   the named buffer
 RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name,
@@ -794,8 +769,6 @@ RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name,
       rb = new RdmaTensorBuffer(this, name);
     } else if (buffer_type == MESSAGE) {
       rb = new RdmaMessageBuffer(this, name);
-    } else if (buffer_type == ACK) {
-      rb = new RdmaAckBuffer(this, name);
     }
     buffer_name_index_table_.insert({name, index});
     buffer_index_name_table_.insert({index, name});
@@ -983,11 +956,8 @@ void RdmaBuffer::EnqueueItem(string item) {
 
 // Rdma-Write the content of the buffer
 void RdmaBuffer::Write(uint32_t imm_data, size_t buffer_size) {
-  RdmaWriteIDType write_type = (imm_data == RDMA_IMM_DATA_ACK)
-                                   ? RDMA_WRITE_ID_ACK
-                                   : RDMA_WRITE_ID_MESSAGE;
   Write(channel_, imm_data, buffer_size, (uint64_t)buffer_, self_->lkey,
-        remote_.remote_addr, remote_.rkey, write_type, this);
+        remote_.remote_addr, remote_.rkey, RDMA_WRITE_ID_MESSAGE, this);
 }
 
 // Generalized Write method
@@ -1015,9 +985,6 @@ void RdmaBuffer::Write(const RdmaChannel* channel, uint32_t imm_data,
   CHECK(!ibv_post_send(channel->qp_, &wr, &bad_wr)) << "Failed to post send";
 }
 
-RdmaAckBuffer::RdmaAckBuffer(RdmaChannel* channel, string name)
-    : RdmaBuffer(channel, name) {}
-
 RdmaMessageBuffer::RdmaMessageBuffer(RdmaChannel* channel, string name)
     : RdmaBuffer(channel, name) {}
 
@@ -1031,15 +998,8 @@ RdmaTensorBuffer::~RdmaTensorBuffer() {
 }
 
 // Send the next ack from the buffer's job queue.
-void RdmaAckBuffer::SendNextItem() {
-  uint32_t imm_data = RDMA_IMM_DATA_ACK;
-  RdmaMessage rm;
-  rm.name_ = "rx_ack_buffer";
-  rm.type_ = RDMA_MESSAGE_ACK;
-  rm.name_size_ = rm.name_.size();
-  string message = RdmaMessage::CreateMessage(rm);
-  memcpy(buffer_, message.data(), message.size());
-  Write(imm_data, message.size());
+void RdmaBuffer::SendAck(const RdmaChannel* channel) {
+  Write(channel, RDMA_IMM_DATA_ACK, 0, 0, 0, 0, 0, RDMA_WRITE_ID_ACK, nullptr);
 }
 
 // Send the next message from the buffer's job queue.
