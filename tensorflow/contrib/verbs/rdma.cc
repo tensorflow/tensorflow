@@ -51,9 +51,6 @@ string MessageTypeToString(RdmaMessageType rmt) {
     case RDMA_MESSAGE_ACK:
       return "RDMA_MESSAGE_ACK";
       break;
-    case RDMA_MESSAGE_BUFFER_IDLE:
-      return "RDMA_MESSAGE_BUFFER_IDLE";
-      break;
     case RDMA_MESSAGE_BUFFER_REQUEST:
       return "RDMA_MESSAGE_BUFFER_REQUEST";
       break;
@@ -497,13 +494,6 @@ void RdmaAdapter::Process_CQ() {
           tb->EnqueueItem(key_with_step_id);
           // send the next tensor
           worker_env_->compute_pool->Schedule([tb]() { tb->SendNextItem(); });
-        } else if (rm.type_ == RDMA_MESSAGE_BUFFER_IDLE) {
-          // receive tensor-buffer-ready message
-          // find buffer
-          RdmaTensorBuffer* tb =
-              reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
-          tb->SetBufferStatus(remote, idle);
-          worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
         } else if (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) {
           // remote host requests to create a tensor buffer;
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
@@ -1370,7 +1360,6 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   //                  Fields: type, request_index, name, step_id, remote_addr,
   //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
   // TENSOR_WRITE:    Imm-type: request_index
-  // BUFFER_IDLE:     OBSOLETE. Will be removed in the next commits.
   char message[kMessageTotalBytes];
   // type
   message[kTypeStartIndex] = static_cast<char>(rm.type_) & 0xff;
