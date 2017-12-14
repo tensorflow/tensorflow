@@ -467,13 +467,20 @@ class _OutfeedThreadController(_InfeedOutfeedThreadBaseController):
 class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
   """This wraps the infeed thread and stops when Estimator finishes."""
 
-  def __init__(self, session, enqueue_ops):
+  def __init__(self, session, enqueue_ops, initial_infeed_sleep_secs):
     super(_InfeedThreadController, self).__init__(
-        threading.Thread(target=self._input_thread_fn_for_loading,
-                         args=(session, enqueue_ops)))
+        threading.Thread(
+            target=self._input_thread_fn_for_loading,
+            args=(session, enqueue_ops, initial_infeed_sleep_secs)))
 
-  def _input_thread_fn_for_loading(self, session, enqueue_ops):
+  def _input_thread_fn_for_loading(self, session, enqueue_ops,
+                                   initial_infeed_sleep_secs):
     count = 0
+    if initial_infeed_sleep_secs:
+      logging.info('Infeed thread sleeping for %d seconds.',
+                   initial_infeed_sleep_secs)
+      time.sleep(initial_infeed_sleep_secs)
+      logging.info('Infeed thread starting after sleep')
     try:
       while True:
         signal = self._signal_queue.get()
@@ -535,6 +542,8 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
+    self._initial_infeed_sleep_secs = (
+        ctx.config.tpu_config.initial_infeed_sleep_secs)
 
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
@@ -549,7 +558,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     logging.info('Start infeed thread controller')
     self._infeed_thd_controller = _InfeedThreadController(
-        session, self._enqueue_ops)
+        session, self._enqueue_ops, self._initial_infeed_sleep_secs)
 
     if self._dequeue_ops is not None:
       logging.info('Start outfeed thread controller')
