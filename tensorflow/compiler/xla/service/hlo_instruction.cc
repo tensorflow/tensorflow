@@ -2082,6 +2082,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
+  if (opcode() == HloOpcode::kCustomCall) {
+    extra.push_back(
+        StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
+  }
   return extra;
 }
 

@@ -901,7 +901,17 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           /*false_computation_arg=*/operands[2], *false_computation));
       break;
     }
-    case HloOpcode::kCustomCall:
+    case HloOpcode::kCustomCall: {
+      optional<string> custom_call_target;
+      attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
+                                     &custom_call_target};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
+          shape, operands, *custom_call_target));
+      break;
+    }
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
