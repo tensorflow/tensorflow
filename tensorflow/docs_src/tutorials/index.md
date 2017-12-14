@@ -48,7 +48,7 @@ The following tutorials focus on linear models:
 
 The following tutorial covers building a classification model for sequences:
 
-  * ${$recurrent_quickdraw$Classifying Drawings using Recurrent Neural Networks}
+  * @{$recurrent_quickdraw$Classifying Drawings using Recurrent Neural Networks}
 
 Although TensorFlow specializes in machine learning, you may also use
 TensorFlow to solve other kinds of math problems.  For example:
