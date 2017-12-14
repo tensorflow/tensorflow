@@ -25,9 +25,9 @@ typedef Eigen::GpuDevice GPUDevice;
 //   Device: E.g., CPUDevice, GPUDevice.
 //   Functor: defined above. E.g., functor::clip.
 template <typename Device, typename T>
-class TenaryOp : public OpKernel {
+class ClipOp : public OpKernel {
  public:
-  explicit TenaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ClipOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
@@ -178,7 +178,7 @@ INSTANTIATE_CPU(uint16);
 #define REGISTER_CPU_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("ClipByValue").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      TenaryOp<CPUDevice, type>);
+      ClipOp<CPUDevice, type>);
 
 REGISTER_CPU_KERNEL(Eigen::half);
 REGISTER_CPU_KERNEL(float);
@@ -196,7 +196,7 @@ REGISTER_CPU_KERNEL(uint16);
 #define REGISTER_GPU_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("ClipByValue").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      TenaryOp<GPUDevice, type>);
+      ClipOp<GPUDevice, type>);
 REGISTER_GPU_KERNEL(Eigen::half);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
@@ -216,7 +216,7 @@ REGISTER_KERNEL_BUILDER(Name("ClipByValue")
                             .HostMemory("clip_value_max")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
-                        TenaryOp<CPUDevice, int32>);
+                        ClipOp<CPUDevice, int32>);
 
 #undef REGISTER_GPU_KERNEL
 #endif
