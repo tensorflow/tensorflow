@@ -1,18 +1,14 @@
 import tensorflow as tf
 import numpy as np
 
-from tensorflow.contrib.keras.python.keras.models import Sequential
-from tensorflow.contrib.keras.python.keras.layers import Dense, Activation
-
 # Set variables to resource variables
 vscope = tf.get_variable_scope()
 vscope.set_use_resource(True)
 
 # Create Keras model
-model = Sequential()
-model.add(Dense(32, activation='relu', input_dim=100))
-model.add(Dense(1, activation='sigmoid'))
-#model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+model = tf.keras.Sequential()
+model.add(tf.keras.layers.Dense(32, activation='relu', input_dim=100))
+model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 model.compile(optimizer='rmsprop', loss='binary_crossentropy')
 
 # Generate dummy data
