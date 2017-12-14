@@ -4850,8 +4850,69 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
     super(_DefaultGraphStack, self).reset()
     self._global_default_graph = None
 
+  @tf_contextlib.contextmanager
+  def get_controller(self, default):
+    try:
+      context.context_stack.push(default.building_function, default.as_default)
+      with super(_DefaultGraphStack, self).get_controller(default) as g:
+        yield g
+    finally:
+      context.context_stack.pop()
+
 
 _default_graph_stack = _DefaultGraphStack()
+
+
+# pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_contextlib.contextmanager
+def init_scope():
+  """A context manager that lifts ops out of control-flow scopes and function-building graphs.
+
+  There is often a need to lift variable initialization ops out of control-flow
+  scopes, function-building graphs, and gradient tapes. Entering an
+  `init_scope` is a mechanism for satisfying these desiderata. In particular,
+  entering an `init_scope` has three effects:
+
+    (1) All control dependencies are cleared the moment the scope is entered;
+        this is equivalent to entering the context manager returned from
+        `control_dependencies(None)`, which has the side-effect of exiting
+        control-flow scopes like `tf.cond` and `tf.while_loop`.
+
+    (2) All operations that are created while the scope is active are lifted
+        into the lowest context on the `context_stack` that is not building a
+        graph function. Here, a context is defined as either a graph or an eager
+        context. Every context switch, i.e., every installation of a graph as
+        the default graph and every switch into eager mode, is logged in a
+        thread-local stack called the `context_stack`; the log entry for a
+        context switch is popped from the stack when the context is exited.
+        Entering an `init_scope` is equivalent to crawling up the
+        `context_stack`, finding the first context that is not building a graph
+        function, and entering it.
+
+    (3) The gradient tape is paused while the scope is active.
+  """
+# pylint: enable=g-doc-return-or-yield,line-too-long
+
+  outer_context = None
+  if not context.context_stack.stack:
+    # This is correct because of an invariant: the stack is
+    # empty if and only if eager execution has not been enabled.
+    outer_context = get_default_graph().as_default
+  else:
+    for stack_entry in reversed(context.context_stack.stack):
+      if not stack_entry.is_building_function:
+        outer_context = stack_entry.enter_context_fn
+        break
+
+  if outer_context is None:
+    raise AssertionError("All graphs are building functions, and no "
+                         "eager context was previously active.")
+
+  try:
+    with outer_context(), control_dependencies(None), tape.stop_recording():
+      yield
+  finally:
+    pass
 
 
 def enable_eager_execution(config=None, device_policy=None):

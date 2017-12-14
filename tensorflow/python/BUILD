@@ -1108,6 +1108,7 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
