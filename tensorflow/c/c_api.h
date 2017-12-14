@@ -962,16 +962,16 @@ TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsReturnOperations(
     TF_ImportGraphDefResults* results, int* num_opers, TF_Operation*** opers);
 
 // Fetches any input mappings requested via
-// TF_ImportGraphDefOptionsAddInputMapping() that weren't used as input to any
-// node in the imported graph def. The number of fetched mappings is returned in
-// `num_unused_input_mappings`. The array of each mapping's source node name is
-// returned in `src_names`, and the array of each mapping's source index is
-// returned in `src_indexes`.
+// TF_ImportGraphDefOptionsAddInputMapping() that didn't appear in the GraphDef
+// and weren't used as input to any node in the imported graph def. The number
+// of fetched mappings is returned in `num_missing_unused_input_mappings`. The
+// array of each mapping's source node name is returned in `src_names`, and the
+// array of each mapping's source index is returned in `src_indexes`.
 //
 // `*src_names`, `*src_indexes`, and the memory backing each string in
 // `src_names` are owned by and have the lifetime of `results`.
-TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsUnusedInputMappings(
-    TF_ImportGraphDefResults* results, int* num_unused_input_mappings,
+TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsMissingUnusedInputMappings(
+    TF_ImportGraphDefResults* results, int* num_missing_unused_input_mappings,
     const char*** src_names, int** src_indexes);
 
 // Deletes a results object returned by TF_GraphImportGraphDefWithResults().

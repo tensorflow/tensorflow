@@ -838,8 +838,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // Dot operation is complicated so we delegate to a helper class.
   return DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
-      hlo_module_config_);
+      lhs_array, rhs_array, /*addend_array=*/nullptr,
+      GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -2172,8 +2172,8 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
         *root, root->operand(0)->IsRank2Transpose(),
         root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
-        rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
-        hlo_module_config_));
+        rhs_array, /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(),
+        &ir_builder_, hlo_module_config_));
     return Status::OK();
   } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
                                                             assignment_)) {
@@ -2194,6 +2194,35 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());
+  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kOutput) {
+    VLOG(3) << "HandleFusion kOutput";
+    int64 dot_op_index = root->operand(0)->opcode() == HloOpcode::kDot ? 0 : 1;
+    const HloInstruction* dot = root->operand(dot_op_index);
+    CHECK_EQ(dot->opcode(), HloOpcode::kDot)
+        << dot->ToString() << "  "
+        << fusion->fused_instructions_computation()->ToString();
+
+    int64 dot_lhs_param_number = dot->operand(0)->parameter_number();
+    int64 dot_rhs_param_number = dot->operand(1)->parameter_number();
+    int64 addend_param_number =
+        root->operand(1 - dot_op_index)->parameter_number();
+
+    Shape target_shape = fusion->shape();
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+    llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
+
+    llvm_ir::IrArray lhs_array(
+        GetIrArrayFor(fusion->operand(dot_lhs_param_number)));
+    llvm_ir::IrArray rhs_array(
+        GetIrArrayFor(fusion->operand(dot_rhs_param_number)));
+    llvm_ir::IrArray addend_array(
+        GetIrArrayFor(fusion->operand(addend_param_number)));
+
+    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
+        *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
+        lhs_array, rhs_array, &addend_array, GetExecutableRunOptionsArgument(),
+        &ir_builder_, hlo_module_config_));
+    return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
   }

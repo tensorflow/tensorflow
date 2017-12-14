@@ -854,12 +854,24 @@ void ConvertReshapeOperator(const NodeDef& node,
 void ConvertMatMulOperator(const NodeDef& node,
                            const TensorFlowImportFlags& tf_import_flags,
                            Model* model) {
-  CHECK_EQ(node.op(), "MatMul");
   CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  // Transpose flags should be easy to support, but we don't have a
-  // GraphDef with them to test on at the moment.
-  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+  if (node.op() == "MatMul") {
+    // Transpose flags should be easy to support, but we don't have a
+    // GraphDef with them to test on at the moment.
+    CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
+    CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+    CHECK(!HasAttr(node, "adjoint_a") ||
+          (GetBoolAttr(node, "adjoint_a") == false));
+    CHECK(!HasAttr(node, "adjoint_b") ||
+          (GetBoolAttr(node, "adjoint_b") == false));
+  } else if (node.op() == "BatchMatMul") {
+    // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+    CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
+    CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
+  } else {
+    LOG(FATAL) << "op must be 'MatMul' or 'BatchMatMul'";
+  }
+
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
   const auto& reordered_weights_name = weights_name + "_reordered";
@@ -1715,7 +1727,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertAvgPoolOperator(node, tf_import_flags, model);
     } else if (node.op() == "Reshape") {
       ConvertReshapeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "MatMul") {
+    } else if (node.op() == "MatMul" || node.op() == "BatchMatMul") {
       ConvertMatMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Div" || node.op() == "RealDiv") {
       ConvertDivOperator(node, tf_import_flags, model);

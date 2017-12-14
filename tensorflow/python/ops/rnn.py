@@ -665,7 +665,7 @@ def _dynamic_rnn_loop(cell,
     final_outputs:
       A `Tensor` of shape `[time, batch_size, cell.output_size]`.  If
       `cell.output_size` is a (possibly nested) tuple of ints or `TensorShape`
-      objects, then this returns a (possibly nsted) tuple of Tensors matching
+      objects, then this returns a (possibly nested) tuple of Tensors matching
       the corresponding shapes.
     final_state:
       A `Tensor`, or possibly nested tuple of Tensors, matching in length
@@ -806,11 +806,17 @@ def _dynamic_rnn_loop(cell,
 
     return (time + 1, output_ta_t, new_state)
 
+  # TODO(pbar) `loop_bound` can be reduced to `max_sequence_length` once
+  # TensorArray shape inference is working.  When sequence lengths are highly
+  # variable, this will reduce the performance overheads of padding to a fixed
+  # maximum length.
+  loop_bound = time_steps
   _, output_final_ta, final_state = control_flow_ops.while_loop(
-      cond=lambda time, *_: time < time_steps,
+      cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
+      maximum_iterations=time_steps,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.

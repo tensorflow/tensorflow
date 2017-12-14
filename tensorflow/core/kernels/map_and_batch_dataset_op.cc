@@ -132,7 +132,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         if (current_batch_index_ != -1) {
           for (size_t batch_index = 0;
                batch_index < dataset()->num_parallel_batches_; ++batch_index) {
-            WaitForBatch(batch_index).IgnoreError();
+            int64 num_elements;
+            WaitForBatch(batch_index, &num_elements).IgnoreError();
             // Deallocate tensors allocated for the output.
             batch_results_[batch_index].output.clear();
           }
@@ -166,17 +167,35 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        if (end_of_input_) {
+        int64 num_elements = 0;
+        Status status = WaitForBatch(current_batch_index_, &num_elements);
+        if (num_elements == 0) {
           *end_of_sequence = true;
           return Status::OK();
         }
-
-        Status status = WaitForBatch(current_batch_index_);
         if (!status.ok()) {
           // Deallocate tensors allocated for the output.
           batch_results_[current_batch_index_].output.clear();
         } else {
-          *out_tensors = std::move(batch_results_[current_batch_index_].output);
+          if (num_elements < dataset()->batch_size_) {
+            const std::vector<Tensor>& output =
+                batch_results_[current_batch_index_].output;
+            for (size_t i = 0; i < output.size(); ++i) {
+              TensorShape component_shape(
+                  batch_results_[current_batch_index_].output[i].shape());
+              component_shape.set_dim(0, num_elements);
+              Tensor component(cpu_allocator(), output[i].dtype(),
+                               component_shape);
+              TF_RETURN_IF_ERROR(
+                  CopyPartialBatch(&component, output[i], num_elements));
+              out_tensors->emplace_back(std::move(component));
+            }
+            // Deallocate tensors allocated for the output.
+            batch_results_[current_batch_index_].output.clear();
+          } else {
+            *out_tensors =
+                std::move(batch_results_[current_batch_index_].output);
+          }
           *end_of_sequence = false;
         }
         StartInvocationBatch(ctx, current_batch_index_);
@@ -195,11 +214,35 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       struct InvocationResult {
         Status status;
+        bool end_of_input;
         std::vector<Tensor> return_values;
       };
 
       int64 ComputeInvocationIndex(int64 batch_index, int64 offset) {
         return batch_index * dataset()->batch_size_ + offset;
+      }
+
+      Status CopyPartialBatch(Tensor* output, const Tensor& value,
+                              int64 num_elements) {
+        switch (value.dtype()) {
+#define CASE(type)                                                \
+  case DataTypeToEnum<type>::value: {                             \
+    auto output_t = output->flat_outer_dims<type>();              \
+    auto value_t = value.flat_outer_dims<type>();                 \
+    for (size_t i = 0; i < num_elements; i++) {                   \
+      output_t.template chip<0>(i) = value_t.template chip<0>(i); \
+    }                                                             \
+    return Status::OK();                                          \
+  }
+          TF_CALL_NUMBER_TYPES(CASE);
+          TF_CALL_string(CASE);
+          TF_CALL_variant(CASE);
+#undef CASE
+          default:
+            return errors::InvalidArgument("Unsupported data type: ",
+                                           value.dtype());
+        }
+        return Status::OK();
       }
 
       void EnsureOutputAllocated(BatchResult* batch_result,
@@ -228,8 +271,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // Get the next input element.
         std::vector<Tensor> input_element;
         result->status =
-            input_impl_->GetNext(ctx, &input_element, &end_of_input_);
-        if (end_of_input_ || !result->status.ok()) {
+            input_impl_->GetNext(ctx, &input_element, &result->end_of_input);
+        if (result->end_of_input || !result->status.ok()) {
           batch_result->counter->DecrementCount();
           return;
         }
@@ -316,9 +359,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < dataset()->batch_size_; ++i) {
           size_t index = ComputeInvocationIndex(batch_index, i);
           InvocationResult* result = &invocation_results_[index];
-          // Reset the state of `result`.
-          // NOTE(mrry): `result->return_values` were cleared when the previous
-          // invocation completed.
+          // Reset the state of `result`; `result->return_values` was cleared
+          // when the previous invocation completed.
+          result->end_of_input = false;
           result->status = Status::OK();
         }
         // Start individual invocations.
@@ -327,13 +370,18 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
-      Status WaitForBatch(int64 batch_index) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status WaitForBatch(int64 batch_index, int64* num_elements)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         port::Tracing::TraceMe activity(strings::StrCat(prefix(), "::Wait"));
         batch_results_[batch_index].counter->Wait();
         Status status = Status::OK();
-        for (size_t i = 0; i < dataset()->batch_size_; ++i) {
+        for (size_t i = 0; i < dataset()->batch_size_; ++i, ++*num_elements) {
           size_t index = ComputeInvocationIndex(batch_index, i);
           InvocationResult* result = &invocation_results_[index];
+          if (result->end_of_input) {
+            VLOG(3) << "end of input encountered at element[" << i << "]: ";
+            return Status::OK();
+          }
           if (!result->status.ok()) {
             VLOG(3) << "failed to process element[" << i
                     << "]: " << result->status;
@@ -348,7 +396,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<InvocationResult> invocation_results_ GUARDED_BY(mu_);
       std::vector<BatchResult> batch_results_ GUARDED_BY(mu_);
-      bool end_of_input_ GUARDED_BY(mu_) = false;
     };
 
     const DatasetBase* const input_;

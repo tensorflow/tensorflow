@@ -279,6 +279,11 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
+  StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
+      const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+      HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped);
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -711,6 +716,146 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   return false;
 }
 
+StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
+    HloInstruction* dot) {
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  if (dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.lhs_batch_dimensions_size() != 0) {
+    return nullptr;
+  }
+
+  const int64 lhs_contracting_dim = dnums.lhs_contracting_dimensions(0);
+  const int64 rhs_contracting_dim = dnums.rhs_contracting_dimensions(0);
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * optimized_lhs_concat,
+      OptimizeDotOfConcatHelper(dot->shape(), lhs, lhs_contracting_dim, rhs,
+                                rhs_contracting_dim, /*swapped=*/false));
+  if (optimized_lhs_concat) {
+    return optimized_lhs_concat;
+  }
+
+  return OptimizeDotOfConcatHelper(dot->shape(), rhs, rhs_contracting_dim, lhs,
+                                   lhs_contracting_dim, /*swapped=*/true);
+}
+
+StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
+    const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+    HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped) {
+  bool can_optimize = lhs->opcode() == HloOpcode::kConcatenate &&
+                      lhs->concatenate_dimension() == lhs_contracting_dim &&
+                      rhs->opcode() == HloOpcode::kConstant;
+  if (!can_optimize) {
+    return nullptr;
+  }
+
+  // We're replacing this:
+  //
+  //   +-----+-----+-----+      +-------------------+
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      |        R_0        |
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      +-------------------+
+  //   |     |     |     |      |                   |
+  //   | L_0 | L_1 | L_2 |   *  |        R_1        |
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      +-------------------+
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      |        R_2        |
+  //   |     |     |     |      |                   |
+  //   +-----+-----+-----+      +-------------------+
+  //
+  // with this:
+  //
+  // [Sum over i]
+  //
+  //   +-----+     +-------------------+
+  //   |     |     |                   |
+  //   |     |  *  |        R_i        |
+  //   |     |     |                   |
+  //   |     |     +-------------------+
+  //   |     |
+  //   | L_i |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   +-----+
+  //
+  // where the LHS is a concatenate operation (so we can "split" the LHS tensor
+  // for free) and the RHS is a constant tensor (and thus can be split at
+  // compile time).  In the future, we may also want to do this when both the
+  // LHS and the RHS are concatenate operations that line up along the dimension
+  // being contracted over.
+  //
+  // We should be able to generalize this transform to work on a non-constant
+  // RHS when/if we have in-place slices or support input-fusing slices into
+  // Dots.
+
+  // Dimension numbers for the new dot instructions we'll create (L_i * R_i in
+  // the diagram above).
+  DotDimensionNumbers new_dot_dnums;
+  new_dot_dnums.add_lhs_contracting_dimensions(swapped ? rhs_contracting_dim
+                                                       : lhs_contracting_dim);
+  new_dot_dnums.add_rhs_contracting_dimensions(swapped ? lhs_contracting_dim
+                                                       : rhs_contracting_dim);
+
+  // Here we use the MKN notation, where the contracted dimension has K
+  // elements and the two non-contracted dimensions have M and N elements.
+  HloInstruction* add_result = nullptr;
+  int64 rhs_contracting_dim_offset = 0;
+  int64 n = rhs->shape().dimensions(1 - rhs_contracting_dim);
+  for (HloInstruction* concat_op : lhs->operands()) {
+    int64 sub_k = concat_op->shape().dimensions(lhs_contracting_dim);
+    Shape rhs_slice_shape(rhs->shape());
+    rhs_slice_shape.set_dimensions(rhs_contracting_dim, sub_k);
+
+    std::array<int64, 2> start_indices;
+    start_indices[rhs_contracting_dim] = rhs_contracting_dim_offset;
+    start_indices[1 - rhs_contracting_dim] = 0;
+
+    std::array<int64, 2> limit_indices;
+    limit_indices[rhs_contracting_dim] = rhs_contracting_dim_offset + sub_k;
+    limit_indices[1 - rhs_contracting_dim] = n;
+
+    HloInstruction* rhs_slice =
+        computation_->AddInstruction(HloInstruction::CreateSlice(
+            rhs_slice_shape, rhs, /*start_indices=*/start_indices,
+            /*limit_indices=*/limit_indices, /*strides=*/{1, 1}));
+
+    // TODO(b/69062148): We can get rid of `swapped` once all backends support
+    // "non-canonical" contraction dimensions (that contracts dimension 1 of the
+    // LHS with dimension 0 of the RHS).  But for now we keep the same
+    // contraction dimensions as the incoming dot operation to ensure the new
+    // dot operations can be lowered.
+    HloInstruction *new_dot_lhs, *new_dot_rhs;
+    if (swapped) {
+      new_dot_lhs = rhs_slice;
+      new_dot_rhs = concat_op;
+    } else {
+      new_dot_lhs = concat_op;
+      new_dot_rhs = rhs_slice;
+    }
+
+    auto* new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
+        dot_shape, new_dot_lhs, new_dot_rhs, new_dot_dnums));
+
+    if (add_result) {
+      add_result = computation_->AddInstruction(HloInstruction::CreateBinary(
+          dot_shape, HloOpcode::kAdd, add_result, new_dot));
+    } else {
+      add_result = new_dot;
+    }
+
+    rhs_contracting_dim_offset += sub_k;
+  }
+
+  return add_result;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   auto lhs = dot->mutable_operand(0);
   auto rhs = dot->mutable_operand(1);
@@ -730,6 +875,14 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
+  }
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_concat_optimized,
+                      OptimizeDotOfConcat(dot));
+  if (dot_of_concat_optimized) {
+    VLOG(10) << "Replaced dot(concat(...), constant) with add(dot(..., "
+                "constant)...)";
+    return ReplaceInstruction(dot, dot_of_concat_optimized);
   }
 
   if (enable_dot_strength_reduction_ && !is_layout_sensitive_) {
