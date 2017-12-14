@@ -349,10 +349,10 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
 // }
 // result = {p0, p1, ..., pN}
 //
-// TODO(b/70173746): Times out during compilation on GPU and CPU-parallel
-// backend as of 2017-12-03.
-XLA_TEST_F(ParamsTest, DISABLED_ON_CPU_PARALLEL(
-                           DISABLED_ON_GPU(ManyParametersIntoWhileLoop))) {
+// TODO(b/70173746): Times out during compilation on GPU and CPU backends as of
+// 2017-12-12.
+XLA_TEST_F(ParamsTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(ManyParametersIntoWhileLoop))) {
   ComputationBuilder builder(client_, TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;

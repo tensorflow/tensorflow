@@ -498,14 +498,14 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
     CHECK_EQ(input_array.shape().dimensions_count(),
              output_array.shape().dimensions_count());
     const std::vector<int>& input_dims = input_array.shape().dims();
-    CHECK_LT(op->concat_dim, input_dims.size());
-    concat_size += input_dims[op->concat_dim];
+    CHECK_LT(op->axis, input_dims.size());
+    concat_size += input_dims[op->axis];
   }
   // Write out the concat_size on the output array shape.
   auto& output_shape = *output_array.mutable_shape();
   auto& output_dims = *output_shape.mutable_dims();
-  CHECK_LT(op->concat_dim, output_shape.dimensions_count());
-  output_dims[op->concat_dim] = concat_size;
+  CHECK_LT(op->axis, output_shape.dimensions_count());
+  output_dims[op->axis] = concat_size;
 }
 
 void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {

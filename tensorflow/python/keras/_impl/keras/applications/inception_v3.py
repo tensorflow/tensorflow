@@ -121,7 +121,7 @@ def InceptionV3(include_top=True,
       include_top: whether to include the fully-connected
           layer at the top of the network.
       weights: one of `None` (random initialization),
-          'imagenet' (pre-training on ImageNet),
+          "imagenet" (pre-training on ImageNet),
           or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
@@ -159,7 +159,6 @@ def InceptionV3(include_top=True,
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
                      'or the path to the weights file to be loaded.')
-
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as imagenet with `include_top`'

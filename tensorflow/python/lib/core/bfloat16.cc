@@ -527,7 +527,15 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<int64>(NPY_INT64, /*cast_is_safe=*/false)) {
     return false;
   }
-
+  // Following the numpy convention. imag part is dropped when converting to
+  // float.
+  if (!RegisterBfloat16Cast<complex64>(NPY_COMPLEX64, /*cast_is_safe=*/true)) {
+    return false;
+  }
+  if (!RegisterBfloat16Cast<complex128>(NPY_COMPLEX128,
+                                        /*cast_is_safe=*/true)) {
+    return false;
+  }
   return true;
 }
 

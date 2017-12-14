@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python import train
+from tensorflow.contrib.gan.python.features.python import random_tensor_pool
 from tensorflow.contrib.slim.python.slim import learning as slim_learning
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -410,6 +411,51 @@ class GANLossTest(test.TestCase):
 
   def test_callable_acgan(self):
     self._test_acgan_helper(create_callable_acgan_model)
+
+  # Test tensor pool.
+  def _test_tensor_pool_helper(self, create_gan_model_fn):
+    model = create_gan_model_fn()
+    if isinstance(model, namedtuples.InfoGANModel):
+
+      def tensor_pool_fn_impl(input_values):
+        generated_data, generator_inputs = input_values
+        output_values = random_tensor_pool.tensor_pool(
+            [generated_data] + generator_inputs, pool_size=5)
+        return output_values[0], output_values[1:]
+
+      tensor_pool_fn = tensor_pool_fn_impl
+    else:
+
+      def tensor_pool_fn_impl(input_values):
+        return random_tensor_pool.tensor_pool(input_values, pool_size=5)
+
+      tensor_pool_fn = tensor_pool_fn_impl
+    loss = train.gan_loss(model, tensor_pool_fn=tensor_pool_fn)
+    self.assertTrue(isinstance(loss, namedtuples.GANLoss))
+
+    # Check values.
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      for _ in range(10):
+        sess.run([loss.generator_loss, loss.discriminator_loss])
+
+  def test_tensor_pool_gan(self):
+    self._test_tensor_pool_helper(create_gan_model)
+
+  def test_tensor_pool_callable_gan(self):
+    self._test_tensor_pool_helper(create_callable_gan_model)
+
+  def test_tensor_pool_infogan(self):
+    self._test_tensor_pool_helper(create_infogan_model)
+
+  def test_tensor_pool_callable_infogan(self):
+    self._test_tensor_pool_helper(create_callable_infogan_model)
+
+  def test_tensor_pool_acgan(self):
+    self._test_tensor_pool_helper(create_acgan_model)
+
+  def test_tensor_pool_callable_acgan(self):
+    self._test_tensor_pool_helper(create_callable_acgan_model)
 
   def test_doesnt_crash_when_in_nested_scope(self):
     with variable_scope.variable_scope('outer_scope'):

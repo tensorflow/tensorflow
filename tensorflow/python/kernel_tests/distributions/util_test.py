@@ -557,6 +557,124 @@ class PickVectorTest(test.TestCase):
                               constant_op.constant(False), x, y))  # No eval.
 
 
+class PreferStaticRankTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(3, rank)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(1, rank)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(0, rank)
+
+  def testDynamicRankEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(2, rank.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicRankEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(1, rank.eval(feed_dict={x: []}))
+
+  def testDynamicRankEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(0, rank.eval(feed_dict={x: 1}))
+
+
+class PreferStaticShapeTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([2, 3, 4]), shape)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([0]), shape)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([]), shape)
+
+  def testDynamicShapeEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual((2, 3), shape.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicShapeEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([0]), shape.eval(feed_dict={x: []}))
+
+  def testDynamicShapeEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([]), shape.eval(feed_dict={x: 1}))
+
+
+class PreferStaticValueTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.zeros((2, 3, 4)), value)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array([]), value)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array(1.), value)
+
+  def testDynamicValueEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.zeros((2, 3)),
+                          value.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicValueEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([]), value.eval(feed_dict={x: []}))
+
+  def testDynamicValueEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.array(1), value.eval(feed_dict={x: 1}))
+
+
 class FillTriangularTest(test.TestCase):
 
   def setUp(self):

@@ -248,7 +248,6 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
                      '(pre-training on ImageNet), '
                      'or the path to the weights file to be loaded.')
 
-
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as imagenet with `include_top`'
                      ' as true, `classes` should be 1000')
@@ -370,5 +369,7 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
           cache_subdir='models',
           file_hash='d19885ff4a710c122648d3b5c3b684e4')
     model.load_weights(weights_path)
+  elif weights is not None:
+    model.load_weights(weights)
 
   return model

@@ -392,6 +392,23 @@ py_test(
 )
 
 py_test(
+    name = "scan_dataset_op_test",
+    size = "small",
+    srcs = ["scan_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "sequence_dataset_op_test",
     size = "medium",
     srcs = ["sequence_dataset_op_test.py"],

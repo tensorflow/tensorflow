@@ -32,7 +32,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();
   // Test for unary ops of types that we know how to resolve
-  if (unary_op->type != OperatorType::kTensorFlowRsqrt &&
+  if (unary_op->type != OperatorType::kCast &&
+      unary_op->type != OperatorType::kTensorFlowRsqrt &&
       unary_op->type != OperatorType::kTensorFlowSqrt &&
       unary_op->type != OperatorType::kTensorFlowSquare &&
       unary_op->type != OperatorType::kTensorFlowSum &&
@@ -56,6 +57,12 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     }
   }
 
+  auto& output_array = model->GetArray(unary_op->outputs[0]);
+  if (!output_array.has_shape()) {
+    // Yield until the output array dims have been resolved.
+    return false;
+  }
+
   // At the moment we don't want to care about fused activation functions.
   // The idea is that we should do the present constants-propagation before
   // activation functions get fused.
@@ -67,48 +74,76 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
         LogName(*unary_op));
     return false;
   }
+
   const auto& input_array = model->GetArray(unary_op->inputs[0]);
   // We have already tested above for existence of buffers (synonymous to being
   // a constant param).
   CHECK(input_array.buffer);
-  // At the moment we only support float buffers.
-  if (input_array.buffer->type != ArrayDataType::kFloat) {
-    return false;
-  }
-  const auto& input_float_data =
-      input_array.GetBuffer<ArrayDataType::kFloat>().data;
-  // Create the float buffer on the output array, effectively turning it into
-  // a constant parameter
-  const auto& output_name = unary_op->outputs[0];
-  auto& output_array = model->GetArray(output_name);
-  // Yield until the output array dims have been resolved.
-  if (!output_array.has_shape()) {
-    return false;
+  std::vector<DataType<ArrayDataType::kFloat>> const* input_float_data;
+  if (unary_op->type == OperatorType::kCast) {
+    CastOperator const* cast_op = static_cast<CastOperator const*>(unary_op);
+    if (cast_op->dst_data_type != ArrayDataType::kFloat) {
+      AddMessageF(
+          "Not resolving constant %s because we currently only support casting "
+          "to float",
+          LogName(*unary_op));
+      return false;
+    }
+    if (cast_op->src_data_type != input_array.buffer->type) {
+      AddMessageF(
+          "Not resolving constant %s because cast op source type does not "
+          "match input type",
+          LogName(*unary_op));
+    }
+  } else {
+    if (input_array.buffer->type != ArrayDataType::kFloat) {
+      return false;
+    }
+    input_float_data = &(input_array.GetBuffer<ArrayDataType::kFloat>().data);
   }
 
-  int input_buffer_size = RequiredBufferSizeForShape(input_array.shape());
-  int output_buffer_size = RequiredBufferSizeForShape(output_array.shape());
-  const Shape& input_shape = input_array.shape();
+  // Create a float buffer on the output array, which are always constant.
   const Shape& output_shape = output_array.shape();
-
+  const int output_dims_count = output_shape.dimensions_count();
+  const int output_buffer_size = RequiredBufferSizeForShape(output_shape);
   auto& output_float_data =
       output_array.GetMutableBuffer<ArrayDataType::kFloat>().data;
   output_float_data.resize(output_buffer_size);
 
-  const int output_dims_count = output_shape.dimensions_count();
-  if (unary_op->type == OperatorType::kTensorFlowReshape) {
+  const Shape& input_shape = input_array.shape();
+  const int input_buffer_size = RequiredBufferSizeForShape(input_shape);
+  if (unary_op->type == OperatorType::kCast) {
+    for (int i = 0; i < output_buffer_size; i++) {
+      float outval = 0.0f;
+      if (input_array.buffer->type == ArrayDataType::kFloat) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kFloat>().data[i]);
+      } else if (input_array.buffer->type == ArrayDataType::kUint8) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kUint8>().data[i]);
+      } else if (input_array.buffer->type == ArrayDataType::kInt32) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kInt32>().data[i]);
+      } else if (input_array.buffer->type == ArrayDataType::kInt64) {
+        outval = static_cast<float>(
+            input_array.GetBuffer<ArrayDataType::kInt64>().data[i]);
+      } else {
+        LOG(FATAL) << "Unsupported cast op input type";
+      }
+      output_float_data[i] = outval;
+    }
+  } else if (unary_op->type == OperatorType::kTensorFlowReshape) {
     CHECK(input_buffer_size == output_buffer_size);
-    memcpy(output_float_data.data(), input_float_data.data(),
-           input_buffer_size * sizeof(input_float_data[0]));
+    memcpy(output_float_data.data(), (*input_float_data).data(),
+           output_buffer_size * sizeof(output_float_data[0]));
   } else if (unary_op->type == OperatorType::kTensorFlowSum) {
     // At the moment only full reduction across all dimensions is supported.
     for (int i = 0; i < output_dims_count; i++) {
       CHECK_EQ(output_shape.dims(i), 1);
     }
     float sum = 0.f;
-    const int input_size = RequiredBufferSizeForShape(input_shape);
-    for (int i = 0; i < input_size; i++) {
-      sum += input_float_data[i];
+    for (int i = 0; i < input_buffer_size; i++) {
+      sum += (*input_float_data)[i];
     }
     output_float_data[0] = sum;
   } else if (unary_op->type == OperatorType::kTensorFlowMin) {
@@ -117,10 +152,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_dims_count; i++) {
       CHECK_EQ(output_shape.dims(i), 1);
     }
-    float min = input_float_data[0];
-    const int input_size = RequiredBufferSizeForShape(input_shape);
-    for (int i = 0; i < input_size; i++) {
-      min = std::min(min, input_float_data[i]);
+    float min = (*input_float_data)[0];
+    for (int i = 0; i < input_buffer_size; i++) {
+      min = std::min(min, (*input_float_data)[i]);
     }
     output_float_data[0] = min;
   } else if (unary_op->type == OperatorType::kTensorFlowMax) {
@@ -129,23 +163,21 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_dims_count; i++) {
       CHECK_EQ(output_shape.dims(i), 1);
     }
-    float max = input_float_data[0];
-    const int input_size = RequiredBufferSizeForShape(input_shape);
-    for (int i = 0; i < input_size; i++) {
-      max = std::max(max, input_float_data[i]);
+    float max = (*input_float_data)[0];
+    for (int i = 0; i < input_buffer_size; i++) {
+      max = std::max(max, (*input_float_data)[i]);
     }
     output_float_data[0] = max;
   } else if (unary_op->type == OperatorType::kTensorFlowRsqrt ||
              unary_op->type == OperatorType::kTensorFlowSqrt ||
              unary_op->type == OperatorType::kTensorFlowSquare) {
     // Element-wise ops. Should have perfectly matching sizes here.
-    const int input_size = RequiredBufferSizeForShape(input_shape);
     for (int i = 0; i < output_dims_count; i++) {
       CHECK_EQ(output_shape.dims(i), input_shape.dims(i));
     }
 
-    for (int i = 0; i < input_size; i++) {
-      const float val = input_float_data[i];
+    for (int i = 0; i < output_buffer_size; i++) {
+      const float val = (*input_float_data)[i];
       float outval = 0.f;
       if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
         outval = 1.0f / std::sqrt(val);

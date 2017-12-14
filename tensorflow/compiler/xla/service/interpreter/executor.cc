@@ -85,7 +85,7 @@ bool InterpreterExecutor::HostCallback(Stream *stream,
 bool InterpreterExecutor::CreateStreamDependency(Stream *dependent,
                                                  Stream *other) {
   AsExecutorStream(dependent)->EnqueueTask(
-      [other]() { other->BlockHostUntilDone(); });
+      [other]() { SE_CHECK_OK(other->BlockHostUntilDoneWithStatus()); });
   AsExecutorStream(dependent)->BlockUntilDone();
   return true;
 }

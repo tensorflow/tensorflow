@@ -300,6 +300,25 @@ bool HloParser::ParseComputation() {
       is_entry_computation
           ? module_->AddEntryComputation(builder->Build(root))
           : module_->AddEmbeddedComputation(builder->Build(root));
+
+  // The parameters and result layouts were set to default layout. Here we set
+  // the layouts to what the hlo text says.
+  if (is_entry_computation) {
+    for (int i = 0; i < computation->num_parameters(); i++) {
+      const Shape& param_shape = computation->parameter_instruction(i)->shape();
+      if (param_shape.has_layout()) {
+        module_->mutable_entry_computation_layout()
+            ->mutable_parameter_layout(i)
+            ->ResetLayout(param_shape.layout());
+      }
+    }
+    const Shape& result_shape = computation->root_instruction()->shape();
+    if (result_shape.has_layout()) {
+      module_->mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ResetLayout(result_shape.layout());
+    }
+  }
   return AddComputation(name, computation, name_loc);
 }
 
@@ -865,8 +884,34 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
               static_cast<int>(*mantissa_bits)));
       break;
     }
-    case HloOpcode::kConditional:
-    case HloOpcode::kCustomCall:
+    case HloOpcode::kConditional: {
+      optional<HloComputation*> true_computation;
+      optional<HloComputation*> false_computation;
+      attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                   &true_computation};
+      attrs["false_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                    &false_computation};
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateConditional(
+          shape, /*pred=*/operands[0],
+          /*true_computation_arg=*/operands[1], *true_computation,
+          /*false_computation_arg=*/operands[2], *false_computation));
+      break;
+    }
+    case HloOpcode::kCustomCall: {
+      optional<string> custom_call_target;
+      attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
+                                     &custom_call_target};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
+          shape, operands, *custom_call_target));
+      break;
+    }
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
