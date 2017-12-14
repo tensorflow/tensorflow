@@ -594,6 +594,10 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
         shape, dtype=updates.dtype))
     return array_ops.scatter_nd_non_aliasing_add(input_, indices, updates)
 
+  def testString(self):
+    # Not supported yet.
+    pass
+
 
 if __name__ == "__main__":
   test.main()
