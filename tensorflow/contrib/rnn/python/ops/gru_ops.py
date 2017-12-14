@@ -182,12 +182,12 @@ class GRUBlockCell(LayerRNNCell):
       raise ValueError("Expecting input_size to be set.")
 
     self._gate_kernel = vs.get_variable(
-        "w_c", [input_size + self._cell_size, self._cell_size * 2])
+        "w_ru", [input_size + self._cell_size, self._cell_size * 2])
     self._gate_bias = vs.get_variable(
         "b_ru", [self._cell_size * 2],
         initializer=init_ops.constant_initializer(1.0))
     self._candidate_kernel = vs.get_variable(
-        "w_ru", [input_size + self._cell_size, self._cell_size])
+        "w_c", [input_size + self._cell_size, self._cell_size])
     self._candidate_bias = vs.get_variable(
         "b_c", [self._cell_size],
         initializer=init_ops.constant_initializer(0.0))
