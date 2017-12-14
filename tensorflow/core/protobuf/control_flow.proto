@@ -66,4 +66,9 @@ message WhileContextDef {
 
   // Values and external values in control flow context.
   ValuesDef values_def = 9;
+
+  // Optional name of the maximum_iterations tensor.
+  string maximum_iterations_name = 11;
+
+  // Next available id: 12.
 }

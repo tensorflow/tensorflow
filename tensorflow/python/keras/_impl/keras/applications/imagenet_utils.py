@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import json
 
+import numpy as np
+
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
@@ -28,12 +30,15 @@ from tensorflow.python.platform import tf_logging as logging
 CLASS_INDEX = None
 CLASS_INDEX_PATH = 'https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json'
 
+# Global tensor of imagenet mean for preprocessing symbolic inputs
+_IMAGENET_MEAN = None
 
-def preprocess_input(x, data_format=None, mode='caffe'):
-  """Preprocesses a tensor encoding a batch of images.
+
+def _preprocess_numpy_input(x, data_format, mode):
+  """Preprocesses a image tensor as a Numpy array.
 
   Arguments:
-      x: input Numpy tensor, 4D.
+      x: input Numpy, 3D or 4D.
       data_format: data format of the image tensor.
       mode: One of "caffe", "tf".
           - caffe: will convert the images from RGB to BGR,
@@ -44,16 +49,11 @@ def preprocess_input(x, data_format=None, mode='caffe'):
               sample-wise.
 
   Returns:
-      Preprocessed tensor.
+      Preprocessed array.
   """
-  if data_format is None:
-    data_format = K.image_data_format()
-  assert data_format in {'channels_last', 'channels_first'}
-
   if mode == 'tf':
-    x /= 255.
-    x -= 0.5
-    x *= 2.
+    x /= 127.5
+    x -= 1.
     return x
 
   if data_format == 'channels_first':
@@ -77,6 +77,81 @@ def preprocess_input(x, data_format=None, mode='caffe'):
     x[..., 1] -= 116.779
     x[..., 2] -= 123.68
   return x
+
+
+def _preprocess_symbolic_input(x, data_format, mode):
+  """Preprocesses a symbolic image tensor.
+
+  Arguments:
+      x: symoblic tensor, 3D or 4D.
+      data_format: data format of the image tensor.
+      mode: One of "caffe", "tf".
+          - caffe: will convert the images from RGB to BGR,
+              then will zero-center each color channel with
+              respect to the ImageNet dataset,
+              without scaling.
+          - tf: will scale pixels between -1 and 1,
+              sample-wise.
+
+  Returns:
+      Preprocessed tensor.
+  """
+  global _IMAGENET_MEAN
+
+  if mode == 'tf':
+    x /= 127.5
+    x -= 1.
+    return x
+
+  if data_format == 'channels_first':
+    # 'RGB'->'BGR'
+    if K.ndim(x) == 3:
+      x = x[::-1, ...]
+    else:
+      x = x[:, ::-1, ...]
+  else:
+    # 'RGB'->'BGR'
+    x = x[..., ::-1]
+
+  if _IMAGENET_MEAN is None:
+    _IMAGENET_MEAN = K.constant(-np.array([103.939, 116.779, 123.68]))
+  # Zero-center by mean pixel
+  if K.dtype(x) != K.dtype(_IMAGENET_MEAN):
+    x = K.bias_add(x, K.cast(_IMAGENET_MEAN, K.dtype(x)), data_format)
+  else:
+    x = K.bias_add(x, _IMAGENET_MEAN, data_format)
+  return x
+
+
+def preprocess_input(x, data_format=None, mode='caffe'):
+  """Preprocesses a tensor encoding a batch of images.
+
+  Arguments:
+      x: input Numpy or symoblic tensor, 3D or 4D.
+      data_format: data format of the image tensor.
+      mode: One of "caffe", "tf".
+          - caffe: will convert the images from RGB to BGR,
+              then will zero-center each color channel with
+              respect to the ImageNet dataset,
+              without scaling.
+          - tf: will scale pixels between -1 and 1,
+              sample-wise.
+
+  Returns:
+      Preprocessed tensor.
+
+  Raises:
+      ValueError: in case of incorrect data_format.
+  """
+  if data_format is None:
+    data_format = K.image_data_format()
+  if data_format not in {'channels_first', 'channels_last'}:
+    raise ValueError('Unknown data_format ' + str(data_format))
+
+  if isinstance(x, np.ndarray):
+    return _preprocess_numpy_input(x, data_format=data_format, mode=mode)
+  else:
+    return _preprocess_symbolic_input(x, data_format=data_format, mode=mode)
 
 
 def decode_predictions(preds, top=5):

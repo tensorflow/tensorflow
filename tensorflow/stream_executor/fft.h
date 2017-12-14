@@ -34,8 +34,8 @@ limitations under the License.
 //     stream_exec.AsFft()->Create1dPlan(&stream, 1024, Type::kC2CForward);
 //  stream
 //    .Init()
-//    .ThenFft(plan.get(), x, &y)
-//    .BlockHostUntilDone();
+//    .ThenFft(plan.get(), x, &y);
+//  SE_CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
 // kernel launches (via StreamExecutor::ThenLaunch()) with these pre-canned FFT

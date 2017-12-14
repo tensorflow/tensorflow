@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -563,14 +564,64 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
   return !!model.arrays.at(name)->buffer;
 }
 
-void CheckNoMissingArray(const Model& model) {
-  for (const auto& op : model.operators) {
-    for (const auto& input : op->inputs) {
-      CHECK(model.arrays.count(input));
+namespace {
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
+  for (const auto& input_array : model_flags.input_arrays()) {
+    for (const string& output_array : model_flags.output_arrays()) {
+      QCHECK_NE(input_array.name(), output_array)
+          << "The array " << output_array
+          << " is listed in both --input_arrays and --output_arrays.";
     }
-    for (const auto& output : op->outputs) {
-      CHECK(model.arrays.count(output));
+  }
+}
+
+bool IsAsciiPrintable(const string& name) {
+  for (char c : name) {
+    if (!absl::ascii_isprint(c)) {
+      return false;
     }
+  }
+  return true;
+}
+
+string DumpAscii(const string& name) {
+  string result;
+  port::AppendF(&result, "ASCII | Hex\n");
+  port::AppendF(&result, "------+----\n");
+  for (char c : name) {
+    if (absl::ascii_isprint(c)) {
+      port::AppendF(&result, "%c     | %x\n", c, c);
+    } else {
+      port::AppendF(&result, "      | %x   Not ASCII printable!\n", c);
+    }
+  }
+  return result;
+}
+
+void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
+  if (model_flags.allow_nonascii_arrays()) {
+    return;
+  }
+  for (const auto& input_array : model_flags.input_arrays()) {
+    QCHECK(IsAsciiPrintable(input_array.name()))
+        << "Non-ASCII-printable character found in --input_arrays: "
+        << input_array.name()
+        << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(input_array.name());
+  }
+  for (const string& output_array : model_flags.output_arrays()) {
+    QCHECK(IsAsciiPrintable(output_array))
+        << "Non-ASCII-printable character found in --output_arrays: "
+        << output_array << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(output_array);
+  }
+}
+
+void CheckNonExistentIOArrays(const Model& model) {
+  if (model.flags.allow_nonexistent_arrays()) {
+    return;
   }
   for (const auto& input_array : model.flags.input_arrays()) {
     CHECK(model.arrays.count(input_array.name()))
@@ -587,6 +638,19 @@ void CheckNoMissingArray(const Model& model) {
     }
   }
 }
+}  // namespace
+
+void CheckNoMissingArray(const Model& model) {
+  for (const auto& op : model.operators) {
+    for (const auto& input : op->inputs) {
+      CHECK(model.arrays.count(input));
+    }
+    for (const auto& output : op->outputs) {
+      CHECK(model.arrays.count(output));
+    }
+  }
+  CheckNonExistentIOArrays(model);
+}
 
 void FixNoMissingArray(Model* model) {
   for (const auto& op : model->operators) {
@@ -601,14 +665,14 @@ void FixNoMissingArray(Model* model) {
       }
     }
   }
-  for (const string& output_array : model->flags.output_arrays()) {
-    if (!model->arrays.count(output_array)) {
+  if (model->flags.allow_nonexistent_arrays()) {
+    for (const string& output_array : model->flags.output_arrays()) {
       model->GetOrCreateArray(output_array);
     }
-  }
-  for (const auto& rnn_state : model->flags.rnn_states()) {
-    model->GetOrCreateArray(rnn_state.state_array());
-    model->GetOrCreateArray(rnn_state.back_edge_source_array());
+    for (const auto& rnn_state : model->flags.rnn_states()) {
+      model->GetOrCreateArray(rnn_state.state_array());
+      model->GetOrCreateArray(rnn_state.back_edge_source_array());
+    }
   }
 }
 
@@ -818,6 +882,8 @@ void FixOperatorOrdering(Model* model) {
 }
 
 void CheckInvariants(const Model& model) {
+  CheckInputArraysAreNotOutputArrays(model.flags);
+  CheckNonAsciiIOArrays(model.flags);
   CheckNoMissingArray(model);
   CheckNoOrphanedArray(model);
   CheckArrayFieldsConsistent(model);
@@ -1111,6 +1177,10 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       CHECK(input_array.shape().dims_size());
     }
   }
+
+  model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
+  model->flags.set_allow_nonexistent_arrays(
+      model_flags.allow_nonexistent_arrays());
 }
 
 void CheckIsReadyForQuantization(const Model& model) {

@@ -1822,7 +1822,7 @@ class CompiledWrapper(rnn_cell_impl.RNNCell):
         return not _REGISTERED_OPS[node_def.op].is_stateful
 
     with jit.experimental_jit_scope(compile_ops=compile_ops):
-      return self._cell(inputs, state, scope)
+      return self._cell(inputs, state, scope=scope)
 
 
 def _random_exp_initializer(minval,

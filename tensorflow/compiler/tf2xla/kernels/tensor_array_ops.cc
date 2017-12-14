@@ -311,18 +311,20 @@ class TensorArrayGatherOp : public XlaOpKernel {
 
     xla::ComputationDataHandle ta = resource->value;
 
+    // Look for the case where the gather takes a simple slice from the
+    // tensor array (0, 1, 2, 3, 4, ..., N)
     std::vector<int64> const_indices;
     Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
     if (status.ok()) {
-      bool is_simple_gather = true;
+      bool gather_is_dense_slice = true;
       for (auto i = 0; i < const_indices.size(); i++) {
         if (const_indices[i] != i) {
-          is_simple_gather = false;
+          gather_is_dense_slice = false;
           break;
         }
       }
 
-      if (is_simple_gather) {
+      if (gather_is_dense_slice) {
         std::vector<int64> begin(ta_shape.dims(), 0);
         std::vector<int64> strides(ta_shape.dims(), 1);
         std::vector<int64> end(ta_shape.dims(), 1);
@@ -376,23 +378,23 @@ class TensorArrayScatterOp : public XlaOpKernel {
     const xla::ComputationDataHandle value = ctx->Input(2);
     const xla::ComputationDataHandle flow = ctx->Input(3);
 
-    bool is_simple = false;
-
+    // Look for the case where the scatter is for each sub-tensor in order. The
+    // tensor array implementation allows for this to be a straight addition.
+    bool scatter_all_elements_in_order = false;
     std::vector<int64> const_indices;
     Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
-    if (status.ok() && num_indices==value_shape.dim_size(0)) {
-      is_simple = true;
+    if (status.ok() && num_indices == value_shape.dim_size(0)) {
+      scatter_all_elements_in_order = true;
       for (auto i = 0; i < num_indices; i++) {
         if (const_indices[i] != i) {
-          is_simple = false;
+          scatter_all_elements_in_order = false;
           break;
         }
       }
     }
 
-    if (is_simple) {
+    if (scatter_all_elements_in_order) {
       ta = b->Add(ta, value);
-
     } else {
       auto slice_dims = value_shape.dim_sizes();
       slice_dims[0] = 1LL;

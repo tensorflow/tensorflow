@@ -132,10 +132,10 @@ TEST_F(OperatorTest, CustomCast) {
 
 TEST_F(OperatorTest, CustomConcatenation) {
   ConcatenationOperator op;
-  op.concat_dim = 123;
+  op.axis = 123;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("CONCATENATION", OperatorType::kConcatenation), op);
-  EXPECT_EQ(op.concat_dim, output_toco_op->concat_dim);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
 TEST_F(OperatorTest, CustomDepthToSpace) {
@@ -213,6 +213,16 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
   EXPECT_EQ(op.kwidth, output_toco_op->kwidth);
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
+}
+
+TEST_F(OperatorTest, BuiltinPad) {
+  PadOperator op;
+  op.left_padding = {1, 2, 3};
+  op.right_padding = {1, 2, 3};
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("PAD", OperatorType::kPad), op);
+  EXPECT_EQ(op.left_padding, output_toco_op->left_padding);
+  EXPECT_EQ(op.right_padding, output_toco_op->right_padding);
 }
 
 TEST_F(OperatorTest, BuiltinReshape) {

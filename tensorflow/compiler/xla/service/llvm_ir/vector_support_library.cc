@@ -205,22 +205,28 @@ llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
 }
 
 std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
-    std::vector<llvm::Value*> vectors) {
+    std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
   // TODO(sanjoy): Move this magic constant to TargetMachineFeatures.
   const int kAvxVectorWidth = 8;
   if (vector_size() == kAvxVectorWidth && vectors.size() == kAvxVectorWidth) {
-    return ComputeAvxOptimizedHorizontalSums(std::move(vectors));
+    return ComputeAvxOptimizedHorizontalSums(std::move(vectors), init_values);
   }
 
   std::vector<llvm::Value*> result;
   std::transform(vectors.begin(), vectors.end(), std::back_inserter(result),
                  [this](llvm::Value* vector) { return AddReduce(vector); });
+  if (init_values) {
+    for (int64 i = 0, e = result.size(); i < e; i++) {
+      result[i] = Add(result[i], ir_builder()->CreateExtractElement(
+                                     init_values, ir_builder()->getInt32(i)));
+    }
+  }
   return result;
 }
 
 std::vector<llvm::Value*>
 VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
-    std::vector<llvm::Value*> vectors) {
+    std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
     for (int i = 0; i < vectors.size(); i += 2) {
@@ -232,8 +238,14 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
 
   llvm::Value* low =
       AddInternal(ExtractLowHalf(vectors[0]), ExtractHighHalf(vectors[0]));
+  if (init_values) {
+    low = AddInternal(ExtractLowHalf(init_values), low);
+  }
   llvm::Value* high =
       AddInternal(ExtractLowHalf(vectors[1]), ExtractHighHalf(vectors[1]));
+  if (init_values) {
+    high = AddInternal(ExtractHighHalf(init_values), high);
+  }
 
   std::vector<llvm::Value*> results;
   for (int i = 0; i < 8; i++) {

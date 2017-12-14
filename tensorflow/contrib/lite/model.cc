@@ -175,6 +175,27 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   return ret;
 }
 
+// Copies the contents from the flatbuffer int vector `flatbuffer` into the
+// int array `buffer`. `flat_vector` and `buffer` represent the same
+// configuration operation for a given operation.
+void FlatBufferIntVectorToArray(int max_size_of_buffer,
+                                const flatbuffers::Vector<int32_t>* flat_vector,
+                                int* buffer, ErrorReporter* error_reporter) {
+  if (!flat_vector) {
+    error_reporter->Report("Input array not provided for operation.\n");
+  } else {
+    int num_dimensions = flat_vector->Length();
+    if (num_dimensions > max_size_of_buffer / sizeof(int)) {
+      error_reporter->Report(
+          "Found too many dimensions in the operation's input array.\n");
+    } else {
+      for (int i = 0; i < num_dimensions; ++i) {
+        buffer[i] = flat_vector->Get(i);
+      }
+    }
+  }
+}
+
 // Allocate a structure using C malloc, but make sure the structure is a
 // POD structure that doesn't require constructors to run. The reason we do
 // this, is that Interpreter's C extension part will take ownership and wants
@@ -190,6 +211,9 @@ T* MallocPOD() {
 // This handles builtin data explicitly as there are flatbuffer schemas.
 //
 // Returns memory that must be feed.
+//
+// TODO(nupurgarg): Pass in void ** and return TfLiteStatus to ensure program
+// crashes if error reporter is called.
 void* ParseOpData(const Operator* op, BuiltinOperator op_type,
                   ErrorReporter* error_reporter) {
   auto parse_padding = [](Padding padding) {
@@ -432,23 +456,35 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_PAD: {
+      auto* params = MallocPOD<TfLitePadParams>();
+      if (auto* schema_params = op->builtin_options_as_PadOptions()) {
+        auto* before_padding = schema_params->before_padding();
+        FlatBufferIntVectorToArray(sizeof(params->before_padding),
+                                   before_padding, params->before_padding,
+                                   error_reporter);
+
+        auto* after_padding = schema_params->after_padding();
+        FlatBufferIntVectorToArray(sizeof(params->after_padding), after_padding,
+                                   params->after_padding, error_reporter);
+
+        if (before_padding->Length() != after_padding->Length()) {
+          error_reporter->Report(
+              "Before padding and after padding arrays need to contain the "
+              "same number of dimensions.\n");
+        }
+        params->num_dimensions = after_padding->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_RESHAPE: {
       auto* params = MallocPOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        if (!new_shape) {
-          error_reporter->Report("No new_shape provided for Reshape\n");
-        } else {
-          params->num_dimensions = new_shape->Length();
-          if (params->num_dimensions > sizeof(params->shape) / sizeof(int)) {
-            error_reporter->Report(
-                "Found too many dimensions in Reshape's new_shape\n");
-          } else {
-            for (int i = 0; i < params->num_dimensions; ++i) {
-              params->shape[i] = new_shape->Get(i);
-            }
-          }
-        }
+        FlatBufferIntVectorToArray(sizeof(params->shape), new_shape,
+                                   params->shape, error_reporter);
+        params->num_dimensions = new_shape->Length();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

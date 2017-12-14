@@ -228,7 +228,9 @@ template <typename LiteralPtr>
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
-    return ::testing::AssertionFailure() << "failed parsing hlo textual IR";
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
   }
   return RunAndCompare(module_or_status.ConsumeValueOrDie(), error,
                        reference_preprocessor);
@@ -254,7 +256,9 @@ template <typename LiteralPtr>
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
-    return ::testing::AssertionFailure() << "failed parsing hlo textual IR";
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
   }
   return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
                                   reference_preprocessor);

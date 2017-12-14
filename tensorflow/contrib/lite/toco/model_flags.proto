@@ -117,7 +117,7 @@ message RnnState {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 16.
+// Next ID to USE: 18.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -147,4 +147,17 @@ message ModelFlags {
     optional int32 count_max = 3 [default = -1];
   }
   repeated ModelCheck model_checks = 14;
+
+  // If true, will allow passing inexistent arrays in --input_arrays
+  // and --output_arrays. This makes little sense, is only useful to
+  // more easily get graph visualizations.
+  optional bool allow_nonexistent_arrays = 16;
+
+  // If true, will allow passing non-ascii-printable characters in
+  // --input_arrays and --output_arrays. By default (if false), only
+  // ascii printable characters are allowed, i.e. character codes
+  // ranging from 32 to 127. This is disallowed by default so as to
+  // catch common copy-and-paste issues where invisible unicode
+  // characters are unwittingly added to these strings.
+  optional bool allow_nonascii_arrays = 17;
 }
