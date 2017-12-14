@@ -360,6 +360,8 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 REGISTER_SPLIT(quint8);
+// TODO(xpan): Merge bfloat16 into TF_CALL_ALL_TYPES
+REGISTER_SPLIT(bfloat16);
 
 #undef REGISTER_SPLIT
 

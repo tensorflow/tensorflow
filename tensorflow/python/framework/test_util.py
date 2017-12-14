@@ -50,6 +50,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -1108,11 +1109,16 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
+    # types with lower tol are put later to overwrite previous ones.
     if (a.dtype == np.float32 or b.dtype == np.float32 or
         a.dtype == np.complex64 or b.dtype == np.complex64):
       rtol = max(rtol, float_rtol)
       atol = max(atol, float_atol)
     if a.dtype == np.float16 or b.dtype == np.float16:
+      rtol = max(rtol, half_rtol)
+      atol = max(atol, half_atol)
+    if (a.dtype == dtypes.bfloat16.as_numpy_dtype or
+        b.dtype == dtypes.bfloat16.as_numpy_dtype):
       rtol = max(rtol, half_rtol)
       atol = max(atol, half_atol)
 

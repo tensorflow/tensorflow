@@ -573,7 +573,8 @@ class UnaryOpsTest(XLATestCase):
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = [dtypes.bool, dtypes.int32, dtypes.float32] + self.complex_tf_types
+    types = (set([dtypes.bool, dtypes.int32, dtypes.float32]) |
+             self.complex_tf_types)
     for shape in shapes:
       for src_type in types:
         for dst_type in types:

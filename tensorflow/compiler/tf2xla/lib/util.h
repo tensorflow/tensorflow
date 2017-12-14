@@ -25,7 +25,7 @@ namespace tensorflow {
 
 // Returns a zero-filled tensor with shape `shape`.
 xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
-                                 xla::Shape& shape);
+                                 const xla::Shape& shape);
 
 // Returns a floating point scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.
