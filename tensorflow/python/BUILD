@@ -171,7 +171,10 @@ tf_py_test(
     name = "flags_test",
     size = "small",
     srcs = ["platform/flags_test.py"],
-    additional_deps = [":platform"],
+    additional_deps = [
+        ":client_testlib",
+        ":platform",
+    ],
 )
 
 tf_py_test(
