@@ -28,6 +28,7 @@ static const char* names[] = {
   "relu",
   "relu",
   "sigmoid",
+  "sigmoid",
   "relugrad",
   "biasadd_broadcast",
   "biasadd",
@@ -83,6 +84,16 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kMultiply, true, nullptr, {4, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {4, -1}},
+   {HloOpcode::kConstant, true, IsConstantHalf, {}}},
+
+  // Sigmoid with broadcast
+  {{HloOpcode::kAdd, true, nullptr, {4, 1}},
+   {HloOpcode::kMultiply, true, nullptr, {5, 2}},
+   {HloOpcode::kTanh, true, nullptr, {3}},
+   {HloOpcode::kMultiply, true, nullptr, {6, -1}},
+   {HloOpcode::kBroadcast, true, nullptr, {7}},
+   {HloOpcode::kBroadcast, true, nullptr, {7}},
+   {HloOpcode::kBroadcast, true, nullptr, {7}},
    {HloOpcode::kConstant, true, IsConstantHalf, {}}},
 
   // ReluGrad

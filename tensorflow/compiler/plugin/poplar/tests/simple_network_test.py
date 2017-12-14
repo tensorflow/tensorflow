@@ -132,5 +132,14 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
 
                 result = sess.run(i, {a: [1], b: [2], c: [3], d: [4]})
 
+    def testSigmoid(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                a = tf.placeholder(tf.float32, [2,2])
+                b = tf.sigmoid(a)
+
+                result = sess.run(b, {a: [[0,0],[0,0]]})
+                self.assertAllClose(result, [[0.5,0.5],[0.5,0.5]])
+
 if __name__ == "__main__":
     googletest.main()

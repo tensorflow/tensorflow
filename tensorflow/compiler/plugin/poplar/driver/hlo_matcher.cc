@@ -230,8 +230,8 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;
-  for (auto i = instructions_to_outline.begin();
-       i != instructions_to_outline.end(); ++i) {
+  for (auto i = instruction_set_to_outline.begin();
+       i != instruction_set_to_outline.end(); ++i) {
     HloInstruction* inst = *i;
     if (inst->user_count() == 0) {
       TF_CHECK_OK(matched.computation->RemoveInstruction(inst));
