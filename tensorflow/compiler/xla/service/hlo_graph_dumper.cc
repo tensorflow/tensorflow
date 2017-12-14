@@ -1438,7 +1438,8 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+      env, path,
+      module.ToString(HloPrintOptions().set_print_large_constants(true))));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

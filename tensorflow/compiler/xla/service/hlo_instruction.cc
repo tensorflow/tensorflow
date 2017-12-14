@@ -1915,16 +1915,14 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-string HloInstruction::ToString(bool compact_operands, bool include_metadata,
-                                bool include_large_constants) const {
+string HloInstruction::ToString(const HloPrintOptions& options) const {
   string result =
       StrCat("%", name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-             HloOpcodeString(opcode()), "(",
-             OperandsToString(compact_operands, include_large_constants), ")");
+             HloOpcodeString(opcode()), "(", OperandsToString(options), ")");
   for (const string& extra : ExtraAttributesToString()) {
     StrAppend(&result, ", ", extra);
   }
-  if (include_metadata &&
+  if (options.print_metadata() &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
@@ -1932,14 +1930,13 @@ string HloInstruction::ToString(bool compact_operands, bool include_metadata,
   return result;
 }
 
-string HloInstruction::OperandsToString(bool compact,
-                                        bool include_large_constants) const {
+string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
     if ((!ShapeUtil::IsTuple(shape()) &&
          ShapeUtil::ElementsIn(shape()) <= 10) ||
-        include_large_constants) {
+        options.print_large_constants()) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();
@@ -1964,12 +1961,13 @@ string HloInstruction::OperandsToString(bool compact,
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
-    if (compact && slice.size() > kMaxOperandsToShowIfCompact) {
+    if (options.compact_operands() &&
+        slice.size() > kMaxOperandsToShowIfCompact) {
       slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
     }
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
       *out += ShapeUtil::HumanStringWithLayout(operand->shape());
-      if (!compact) {
+      if (!options.compact_operands()) {
         StrAppend(out, " %", operand->name());
       }
     });

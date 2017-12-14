@@ -137,12 +137,13 @@ TEST_F(HloModuleTest, LargeConstantToString) {
   EXPECT_EQ(
       "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
       "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
-      module->ToString(/*include_large_constants=*/false));
+      module->ToString(HloPrintOptions().set_print_large_constants(false)));
+
   EXPECT_EQ(
       "HloModule LargeConstantToString:\n\nENTRY %Constant () -> f32[16] {\n  "
       "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
       "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
-      module->ToString(/*include_large_constants=*/true));
+      module->ToString(HloPrintOptions().set_print_large_constants(true)));
 }
 
 }  // namespace

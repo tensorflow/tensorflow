@@ -364,26 +364,21 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString(int nested_level,
-                                bool include_large_constants) const {
+string HloComputation::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
   s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
     << " {\n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    for (int i = 0; i < nested_level; i++) {
+    for (int i = 0; i < options.indent_amount(); i++) {
       s << "    ";
     }
     s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString(
-             /*compact_operands=*/false,
-             /*include_metadata=*/true,
-             /*include_large_constants=*/include_large_constants)
-      << "\n";
+      << instruction->ToString(options) << "\n";
   }
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
   s << "}";

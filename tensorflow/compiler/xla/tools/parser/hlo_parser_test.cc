@@ -761,8 +761,8 @@ class HloParserTest : public ::testing::Test,
     const string& original = GetParam().module_string;
     auto result = Parse(original);
     TF_ASSERT_OK(result.status());
-    EXPECT_EQ(original,
-              result.ValueOrDie()->ToString(/*include_large_constants=*/true));
+    EXPECT_EQ(original, result.ValueOrDie()->ToString(
+                            HloPrintOptions().set_print_large_constants(true)));
   }
 };
 

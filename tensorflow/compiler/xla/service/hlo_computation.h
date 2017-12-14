@@ -138,8 +138,7 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0,
-                  bool include_large_constants = false) const;
+  string ToString(const HloPrintOptions& options = HloPrintOptions()) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;

@@ -56,6 +56,54 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
+// A bunch of switches that control how the hlo text should be printed.
+class HloPrintOptions {
+ public:
+  // Constructs the default print options: don't print large constants, print
+  // metadata, don't compact operands, and no indentation.
+  HloPrintOptions()
+      : print_large_constants_(false),
+        print_metadata_(true),
+        compact_operands_(false),
+        indent_amount_(0) {}
+
+  // If true, large constants will be printed out.
+  HloPrintOptions& set_print_large_constants(bool value) {
+    print_large_constants_ = value;
+    return *this;
+  }
+
+  // If true, metatdata will be printed.
+  HloPrintOptions& set_print_metadata(bool value) {
+    print_metadata_ = value;
+    return *this;
+  }
+
+  // If true, only a part of operands will be printed out, and their names will
+  // be omitted (note that in this case the text will not be parsable).
+  HloPrintOptions& set_compact_operands(bool value) {
+    compact_operands_ = value;
+    return *this;
+  }
+
+  // The indent of the hlo text block.
+  HloPrintOptions& set_indent_amount(int value) {
+    indent_amount_ = value;
+    return *this;
+  }
+
+  bool print_large_constants() const { return print_large_constants_; }
+  bool print_metadata() const { return print_metadata_; }
+  bool compact_operands() const { return compact_operands_; }
+  int indent_amount() const { return indent_amount_; }
+
+ private:
+  bool print_large_constants_;
+  bool print_metadata_;
+  bool compact_operands_;
+  int indent_amount_;
+};
+
 // HLO instructions are the IR used by the high-level compiler.
 class HloInstruction {
  public:
@@ -650,18 +698,15 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false, bool include_metadata = true,
-                  bool include_large_constants = false) const;
+  string ToString(const HloPrintOptions& options = HloPrintOptions()) const;
 
   // Components of the ToString() representation:
 
   // Returns a string representation of the operand list.
-  string OperandsToString(bool compact, bool include_large_constants) const;
+  string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<string> ExtraAttributesToString() const;
-
-  string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
