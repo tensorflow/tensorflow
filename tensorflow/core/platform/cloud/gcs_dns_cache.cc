@@ -44,6 +44,8 @@ inline void print_getaddrinfo_error(const string& name, int error_code) {
   // TODO:WSAGetLastError is better than gai_strerror
   LOG(ERROR) << "Error resolving " << name << ": " << gai_strerror(error_code);
 #endif
+}
+
 // Selects one item at random from a vector of items, using a uniform
 // distribution.
 template <typename T>
