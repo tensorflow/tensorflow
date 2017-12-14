@@ -1386,8 +1386,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
 
       // Replace 1 / y with Reciprocal op.
       if (y_matches_output_shape && is_any_div && x_is_one) {
-        ReplaceDivisionOfOnesByReciprocal(node);
-        continue;
+        DataType type = node->attr().at("T").type();
+        if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
+          ReplaceDivisionOfOnesByReciprocal(node);
+          continue;
+        }
       }
 
       const TensorShapeProto& x_shape =
@@ -1443,7 +1446,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         continue;
       }
       DataType type = node->attr().at("T").type();
-      if (IsDiv(*node) && !DataTypeIsFloating(type)) {
+      if (IsDiv(*node) &&
+          !(DataTypeIsFloating(type) || DataTypeIsComplex(type))) {
         continue;
       }
       // Insert new reciprocal op and change node from Div to Mul.
