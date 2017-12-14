@@ -1355,9 +1355,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     const bool is_add = IsAdd(*node) || IsBiasAdd(*node);
     const bool is_sub = IsSub(*node);
     const bool is_any_div = IsAnyDiv(*node);
-    // Simplify multiplication by ones or zeros, and addition/subtraction of
-    // zeros.
-    if (is_aggressive && use_shape_info &&
+    // Simplify arithmetic operations with ones or zeros.
+    if (safe_to_use_shapes &&
         (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
         properties.HasInputProperties(node->name()) &&
         properties.HasOutputProperties(node->name())) {
@@ -1370,7 +1369,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const TensorShapeProto& output_shape =
           properties.GetOutputProperties(node->name())[0].shape();
 
-      // Simplify element-wise  multiplication by ones or addition/subtraction
+      // Simplify element-wise multiplication by ones or addition/subtraction
       // of zeros.
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node->name())[1].shape();
