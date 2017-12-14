@@ -2026,7 +2026,6 @@ class WhileContext(ControlFlowContext):
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
     self._swap_memory = swap_memory
-    self._maximum_iterations = maximum_iterations
     # We use this node to control constants created by the pred lambda.
     self._pivot_for_pred = None
     # We use this node to control constants created by the body lambda.
@@ -2060,7 +2059,6 @@ class WhileContext(ControlFlowContext):
     self._parallel_iterations = context_def.parallel_iterations
     self._back_prop = context_def.back_prop
     self._swap_memory = context_def.swap_memory
-    self._maximum_iterations = context_def.maximum_iterations
     self._pivot_for_pred = g.as_graph_element(ops.prepend_name_scope(
         context_def.pivot_for_pred_name, import_scope))
     # We use this node to control constants created by the body lambda.
@@ -2106,11 +2104,6 @@ class WhileContext(ControlFlowContext):
     return self._swap_memory
 
   @property
-  def maximum_iterations(self):
-    """The upper limit of the number of iterations of the while loop"""
-    return self._maximum_iterations
-
-  @property
   def pivot(self):
     """The boolean tensor representing the loop termination condition."""
     return self._pivot
@@ -2150,8 +2143,6 @@ class WhileContext(ControlFlowContext):
             self._maximum_iterations.name, export_scope)
       context_def.back_prop = self._back_prop
       context_def.swap_memory = self._swap_memory
-      if self._maximum_iterations:
-        context_def.maximum_iterations = self._maximum_iterations
       context_def.pivot_for_pred_name = ops.strip_name_scope(
           self._pivot_for_pred.name, export_scope)
       context_def.pivot_for_body_name = ops.strip_name_scope(
