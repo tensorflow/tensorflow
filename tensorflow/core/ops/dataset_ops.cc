@@ -151,6 +151,28 @@ REGISTER_OP("IgnoreErrorsDataset")
 Creates a dataset that contains the elements of `input_dataset` ignoring errors.
 )doc");
 
+REGISTER_OP("BytesProducedStatsDataset")
+    .Input("input_dataset: variant")
+    .Input("tag: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Records the bytes size of each element of `input_dataset` in a StatsAggregator.
+)doc");
+
+REGISTER_OP("LatencyStatsDataset")
+    .Input("input_dataset: variant")
+    .Input("tag: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Records the latency of producing `input_dataset` elements in a StatsAggregator.
+)doc");
+
 REGISTER_OP("MapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -445,6 +467,24 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
 start: corresponds to start in python's xrange().
 stop: corresponds to stop in python's xrange().
 step: corresponds to step in python's xrange().
+)doc");
+
+REGISTER_OP("RandomDataset")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a Dataset that returns pseudorandom numbers.
+
+seed: A scalar seed for the random number generator. If either seed or
+  seed2 is set to be non-zero, the random number generator is seeded
+  by the given seed.  Otherwise, a random seed is used.
+seed2: A second scalar seed to avoid seed collision.
 )doc");
 
 REGISTER_OP("ShuffleDataset")
@@ -742,6 +782,31 @@ Converts the given variant tensor to an iterator and stores it in the given reso
 resource_handle: A handle to an iterator resource.
 serialized: A variant tensor storing the state of the iterator contained in the
   resource.
+)doc");
+
+REGISTER_OP("StatsAggregatorHandle")
+    .Output("handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Doc(R"doc(
+Creates a statistics manager resource.
+)doc");
+
+REGISTER_OP("IteratorSetStatsAggregator")
+    .Input("iterator_handle: resource")
+    .Input("stats_aggregator_handle: resource")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Associates the given iterator with the given statistics aggregator.
+)doc");
+
+REGISTER_OP("StatsAggregatorSummary")
+    .Input("iterator: resource")
+    .Output("summary: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Produces a summary of any statistics recorded by the given statistics manager.
 )doc");
 
 }  // namespace tensorflow

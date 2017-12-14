@@ -118,6 +118,33 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "categorical_op_test",
+    size = "small",
+    srcs = ["categorical_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "cholesky_op_test",
+    size = "small",
+    srcs = ["cholesky_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "clustering_test",
     size = "small",
     srcs = ["clustering_test.py"],
@@ -248,6 +275,19 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "image_ops_test",
+    size = "small",
+    srcs = ["image_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -390,6 +430,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "scan_ops_test",
+    size = "small",
+    srcs = ["scan_ops_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
@@ -425,6 +479,19 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "stateless_random_ops_test",
+    size = "small",
+    srcs = ["stateless_random_ops_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/stateless",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
@@ -645,7 +712,7 @@ tf_library(
     cpp_class = "LSTMLayerInference",
     graph = "lstm_layer_inference.pbtxt",
     tags = ["manual"],
-    tfcompile_flags = "--xla_cpu_multi_thread_eigen=false",
+    tfcompile_flags = ["--xla_cpu_multi_thread_eigen=false"],
 )
 
 # -----------------------------------------------------------------------------

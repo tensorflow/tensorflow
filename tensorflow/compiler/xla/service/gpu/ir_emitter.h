@@ -84,7 +84,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleSend(HloInstruction* send) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;
@@ -93,6 +95,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleRng(HloInstruction* random) override;
+  Status HandleConditional(HloInstruction* conditional) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -103,10 +106,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   explicit IrEmitter(const HloModuleConfig& hlo_module_config,
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
-  // A convenient helper for calling HloToIrBindings::GetIrArray.
+  // Helper for calling HloToIrBindings::GetIrArray.
+  //
+  // Gets the IrArray which contains inst.  This array has metadata that makes
+  // it valid only within the IR that implements consumer.  If you are
+  // implementing an HLO and want to get its own output buffer, call
+  // GetIrArray(hlo, hlo).
   llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {}) {
-    return bindings_.GetIrArray(inst, shape_index);
+    return bindings_.GetIrArray(inst, consumer, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
@@ -177,9 +186,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // be simply implemented using an LLVM atomic instruction. If "computation" is
   // one of this kind, emits code to do that and returns true; otherwise,
   // returns false.
-  bool MaybeEmitSpecialAtomicOperation(const HloComputation& computation,
-                                       llvm::Value* output_address,
-                                       llvm::Value* source_address);
+  bool MaybeEmitDirectAtomicOperation(const HloComputation& computation,
+                                      llvm::Value* output_address,
+                                      llvm::Value* source_address);
+
+  // A helper method for EmitAtomicOperationForNestedComputation. It implements
+  // binary atomic operations using atomicCAS with special handling to support
+  // small data types.
+  Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
+                                     llvm::Value* output_address,
+                                     llvm::Value* source_address);
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
@@ -219,6 +235,7 @@ class IrEmitterUnnested : public IrEmitter {
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter.
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFusion(HloInstruction* fusion) override;

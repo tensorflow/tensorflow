@@ -41,7 +41,17 @@ genrule(
     # every module exported using tf_export. For e.g. if an op is decorated with
     # @tf_export('module1.module2', 'module3'). Then, outs should include
     # api/module1/module2/__init__.py and api/module3/__init__.py.
-    outs = ["api/__init__.py"],
+    outs = [
+        "api/__init__.py",
+        "api/bitwise/__init__.py",
+        "api/contrib/__init__.py",
+        "api/contrib/stat_summarizer/__init__.py",
+        "api/image/__init__.py",
+        "api/linalg/__init__.py",
+        "api/nn/__init__.py",
+        "api/spectral/__init__.py",
+        "api/train/__init__.py",
+    ],
     cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],
 )

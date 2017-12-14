@@ -58,6 +58,7 @@ __all__ = [
     'get_sequential_train_hooks',
     'get_joint_train_hooks',
     'get_sequential_train_steps',
+    'RunTrainOpsHook',
 ]
 
 
@@ -214,7 +215,8 @@ def infogan_model(
       disc_scope,
       lambda x, y: discriminator_fn(x, y)[0],  # conform to non-InfoGAN API
       structured_generator_inputs,
-      predicted_distributions)
+      predicted_distributions,
+      discriminator_fn)
 
 
 def acgan_model(
@@ -421,7 +423,7 @@ def gan_loss(
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
         model, add_summaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
-  # Gathers auxilliary losses.
+  # Gathers auxiliary losses.
   if model.generator_scope:
     gen_reg_loss = losses.get_regularization_loss(model.generator_scope.name)
   else:

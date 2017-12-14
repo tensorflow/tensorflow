@@ -55,10 +55,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/sparse_column_iterable.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/tensor_utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/common/partitioners/example_partitioner.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/bias-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/categorical-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/dense-quantized-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/models/multiple_additive_trees.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/trees/decision_tree.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc"
@@ -154,9 +150,6 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/neon/*"
       # not in core - those are loaded dynamically as dll
       "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"
@@ -183,6 +176,7 @@ file(GLOB_RECURSE tf_core_gpu_kernels_srcs
     "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/*.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/*.cu.cc"
 )
 
 if(WIN32 AND tensorflow_ENABLE_GPU)
@@ -206,16 +200,16 @@ endif(WIN32 AND tensorflow_ENABLE_GPU)
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 add_dependencies(tf_core_kernels tf_core_cpu)
 
-if(WIN32)
+if (WIN32)
   target_compile_options(tf_core_kernels PRIVATE /MP)
-  if (tensorflow_ENABLE_GPU)
-    set_source_files_properties(${tf_core_gpu_kernels_srcs} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
-    set(tf_core_gpu_kernels_lib tf_core_gpu_kernels)
-    cuda_add_library(${tf_core_gpu_kernels_lib} ${tf_core_gpu_kernels_srcs})
-    set_target_properties(${tf_core_gpu_kernels_lib}
-                          PROPERTIES DEBUG_POSTFIX ""
-                          COMPILE_FLAGS "${TF_REGULAR_CXX_FLAGS}"
-    )
-    add_dependencies(${tf_core_gpu_kernels_lib} tf_core_cpu)
-  endif()
+endif (WIN32)
+if (tensorflow_ENABLE_GPU)
+  set_source_files_properties(${tf_core_gpu_kernels_srcs} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+  set(tf_core_gpu_kernels_lib tf_core_gpu_kernels)
+  cuda_add_library(${tf_core_gpu_kernels_lib} ${tf_core_gpu_kernels_srcs})
+  set_target_properties(${tf_core_gpu_kernels_lib}
+                        PROPERTIES DEBUG_POSTFIX ""
+                        COMPILE_FLAGS "${TF_REGULAR_CXX_FLAGS}"
+  )
+  add_dependencies(${tf_core_gpu_kernels_lib} tf_core_cpu)
 endif()

@@ -21,6 +21,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -223,6 +224,7 @@ BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
 LogMatrixDeterminant
+MatrixExponential
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -340,6 +342,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -354,6 +357,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

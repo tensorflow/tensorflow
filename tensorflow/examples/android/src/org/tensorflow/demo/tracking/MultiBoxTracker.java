@@ -161,15 +161,16 @@ public class MultiBoxTracker {
   }
 
   public synchronized void draw(final Canvas canvas) {
-    // TODO(andrewharp): This may not work for non-90 deg rotations.
+    final boolean rotated = sensorOrientation % 180 == 90;
     final float multiplier =
-        Math.min(canvas.getWidth() / (float) frameHeight, canvas.getHeight() / (float) frameWidth);
+        Math.min(canvas.getHeight() / (float) (rotated ? frameWidth : frameHeight),
+                 canvas.getWidth() / (float) (rotated ? frameHeight : frameWidth));
     frameToCanvasMatrix =
         ImageUtils.getTransformationMatrix(
             frameWidth,
             frameHeight,
-            (int) (multiplier * frameHeight),
-            (int) (multiplier * frameWidth),
+            (int) (multiplier * (rotated ? frameHeight : frameWidth)),
+            (int) (multiplier * (rotated ? frameWidth : frameHeight)),
             sensorOrientation,
             false);
     for (final TrackedRecognition recognition : trackedObjects) {

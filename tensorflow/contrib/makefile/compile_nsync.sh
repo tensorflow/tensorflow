@@ -28,7 +28,7 @@ usage="usage: $prog [-t linux|ios|android|macos|native]
         [-a architecture] [-v android_api_version]
 
 A script to build nsync for tensorflow.
-This script can be run on Linux or MacOS host platforms, and can target 
+This script can be run on Linux or MacOS host platforms, and can target
 Linux, MacOS, iOS, or Android.
 
 Options:
@@ -265,7 +265,7 @@ for arch in $archs; do
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
-                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE
+                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE -fPIC
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
@@ -301,6 +301,9 @@ done
 
 case "$target_platform" in
 ios)    nsync_platform_dir="$nsync_builds_dir/lipo.$target_platform.c++11"
+        if [ -d "$nsync_platform_dir" ]; then
+            rm -rf "$nsync_platform_dir"
+        fi
         mkdir "$nsync_platform_dir"
         eval lipo $platform_libs -create -output '$nsync_platform_dir/nsync.a'
         echo "$nsync_platform_dir/nsync.a"

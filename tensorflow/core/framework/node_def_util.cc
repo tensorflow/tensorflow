@@ -243,6 +243,10 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
+  return node_def.attr().find(attr_name.ToString()) != node_def.attr().end();
+}
+
 static const string& kEmptyString = *new string();
 
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name) {

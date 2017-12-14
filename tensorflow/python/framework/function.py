@@ -100,7 +100,7 @@ class Defun(object):
          grad_func - (optional).  A function implementing the gradient
            of the function-to-register.  This is must be a
            `_DefinedFunction` object. The gradient
-           function must satisify the criterion defined in
+           function must satisfy the criterion defined in
            function.proto:GradientDef.
 
          python_grad_func - (optional).  A function implementing the
@@ -692,7 +692,10 @@ class _FuncGraph(ops.Graph):
         else:
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
-          ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          # Hoist the new input placeholder out of any control flow context
+          # we're currently in.
+          with ops.control_dependencies(None):
+            ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
           # pylint: disable=protected-access
           ph._handle_data = x._handle_data
           # pylint: enable=protected-access

@@ -90,8 +90,7 @@ class MultivariateNormalLinearOperator(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.linalg
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
@@ -103,9 +102,9 @@ class MultivariateNormalLinearOperator(
   #      [ 0.2,  0.5,  0. ],
   #      [ 0.1, -0.3,  0.4]])
 
-  mvn = ds.MultivariateNormalLinearOperator(
+  mvn = tfd.MultivariateNormalLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorLowerTriangular(scale))
+      scale=tf.linalg.LinearOperatorLowerTriangular(scale))
 
   # Covariance agrees with cholesky(cov) parameterization.
   mvn.covariance().eval()
@@ -122,9 +121,9 @@ class MultivariateNormalLinearOperator(
   scale_diag = [[1., 2, 3],
                 [0.5, 1, 1.5]]     # shape: [2, 3]
 
-  mvn = ds.MultivariateNormalLinearOperator(
+  mvn = tfd.MultivariateNormalLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorDiag(scale_diag))
+      scale=tf.linalg.LinearOperatorDiag(scale_diag))
 
   # Compute the pdf of two `R^3` observations; return a length-2 vector.
   x = [[-0.9, 0, 0.1],

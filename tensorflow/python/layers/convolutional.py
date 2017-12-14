@@ -813,6 +813,7 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -919,6 +920,7 @@ class SeparableConv2D(Conv2D):
         trainable=trainable,
         name=name,
         **kwargs)
+    self.data_format = data_format
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
     self.pointwise_initializer = pointwise_initializer
@@ -1230,9 +1232,8 @@ class Conv2DTranspose(Conv2D):
 
   def build(self, input_shape):
     if len(input_shape) != 4:
-      raise ValueError('Inputs should have rank ' +
-                       str(4) +
-                       'Received input shape:', str(input_shape))
+      raise ValueError('Inputs should have rank 4. Received input shape: ' +
+                       str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1746,6 +1747,7 @@ def conv3d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

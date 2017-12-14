@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = [
+    "erfinv",
     "ndtr",
     "ndtri",
     "log_ndtr",
@@ -197,9 +198,10 @@ def _ndtri(p):
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
+  one_half = constant_op.constant(0.5, dtype=p.dtype)
   sanitized_mcp = array_ops.where(
       maybe_complement_p <= 0.,
-      constant_op.constant(0.5, dtype=p.dtype, shape=p.shape),
+      array_ops.fill(array_ops.shape(p), one_half),
       maybe_complement_p)
 
   # Compute x for p > exp(-2): x/sqrt(2pi) = w + w**3 P0(w**2)/Q0(w**2).
@@ -226,7 +228,8 @@ def _ndtri(p):
                       array_ops.where(z >= 8.0, x_for_small_p, x_otherwise))
 
   x = array_ops.where(p > 1. - np.exp(-2.), x, -x)
-  infinity = constant_op.constant(np.inf, dtype=x.dtype, shape=x.shape)
+  infinity_scalar = constant_op.constant(np.inf, dtype=p.dtype)
+  infinity = array_ops.fill(array_ops.shape(p), infinity_scalar)
   x_nan_replaced = array_ops.where(
       p <= 0.0, -infinity, array_ops.where(p >= 1.0, infinity, x))
   return x_nan_replaced
@@ -346,6 +349,29 @@ def _log_ndtr_asymptotic_series(x, series_order):
       even_sum += _double_factorial(2 * n - 1) / x_2n
     x_2n *= x_2
   return 1. + even_sum - odd_sum
+
+
+def erfinv(x, name="erfinv"):
+  """The inverse function for erf, the error function.
+
+  Args:
+    x: `Tensor` of type `float32`, `float64`.
+    name: Python string. A name for the operation (default="erfinv").
+
+  Returns:
+    x: `Tensor` with `dtype=x.dtype`.
+
+  Raises:
+    TypeError: if `x` is not floating-type.
+  """
+
+  with ops.name_scope(name, values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.as_numpy_dtype not in [np.float32, np.float64]:
+      raise TypeError(
+          "x.dtype=%s is not handled, see docstring for supported types."
+          % x.dtype)
+    return ndtri((x + 1.0) / 2.0) / np.sqrt(2)
 
 
 def _double_factorial(n):

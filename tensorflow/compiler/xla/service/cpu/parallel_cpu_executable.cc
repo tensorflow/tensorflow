@@ -58,20 +58,21 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<const HloModule> hlo_module,
-    std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
-    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+    std::unique_ptr<const HloInstructionMap<string>> function_names,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
-        aligned_constants)
-    : Executable(std::move(hlo_module)),
+        aligned_constants,
+    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+                 std::move(hlo_profile_index_map)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       function_names_(std::move(function_names)),
-      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
       aligned_constants_(std::move(aligned_constants)) {}
 
 // Type of the computation function we expect in the JIT.
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                     int64*, uint64*);
+                                     int64*, int64*);
 
 // Given a pointer to an output buffer (following the CPU JIT calling
 // conventions), mark addresses that are "live". The initial pointer itself is
@@ -102,11 +103,11 @@ namespace {
 // in 'pending' on 'thread_pool' (storing resulting data in 'results').
 class Executor {
  public:
-  Executor(const std::map<HloInstruction*, ComputeFunctionType>& functions,
+  Executor(const HloInstructionMap<ComputeFunctionType>& functions,
            const ServiceExecutableRunOptions* run_options,
            std::list<HloInstruction*>* pending,
-           std::map<HloInstruction*, const void*>* results, void** temps_array,
-           uint64* profile_counters_array, const BufferAssignment* assignment)
+           HloInstructionMap<const void*>* results, void** temps_array,
+           int64* profile_counters_array, const BufferAssignment* assignment)
       : functions_(functions),
         run_options_(run_options),
         pending_(pending),
@@ -142,12 +143,12 @@ class Executor {
   const void** GetOperandBuffers(HloInstruction* instruction);
 
   // Arguments passed into Executor.
-  const std::map<HloInstruction*, ComputeFunctionType>& functions_;
+  const HloInstructionMap<ComputeFunctionType>& functions_;
   const ServiceExecutableRunOptions* run_options_;
   std::list<HloInstruction*>* pending_;
-  std::map<HloInstruction*, const void*>* results_;
+  HloInstructionMap<const void*>* results_;
   void** temps_array_;
-  uint64* profile_counters_array_;
+  int64* profile_counters_array_;
   tensorflow::thread::ThreadPool* thread_pool_;
   const BufferAssignment* assignment_;
 
@@ -389,9 +390,11 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   // Allocate profiling counters for each hlo instruction that we would like to
-  // profile.  Allocate an additional profile counter for the entire
-  // computation.
-  std::vector<uint64> profile_counters(hlo_to_profile_idx_.size() + 1);
+  // profile.
+  std::vector<int64>* profile_counters = nullptr;
+  if (hlo_execution_profile) {
+    profile_counters = hlo_execution_profile->mutable_profile_counters();
+  }
 
   std::vector<void*> buffer_pointers;
   buffer_pointers.reserve(buffers.size());
@@ -400,7 +403,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Resolve functions for all the HLO instructions ahead of time.
-  std::map<HloInstruction*, ComputeFunctionType> functions;
+  HloInstructionMap<ComputeFunctionType> functions;
   for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
@@ -412,7 +415,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   }
 
   // Map containing pointers to result buffers for each instruction.
-  std::map<HloInstruction*, const void*> results;
+  HloInstructionMap<const void*> results;
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -441,9 +444,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   // For example, if we expect a library conv/matmul call to run at max
   // concurrency, we should not dispatch runnable instructions until the
   // library call is finished (to avoid expensive cache invalidation).
-  Executor executor(functions, run_options, &pending, &results,
-                    buffer_pointers.data(), profile_counters.data(),
-                    assignment_.get());
+  Executor executor(
+      functions, run_options, &pending, &results, buffer_pointers.data(),
+      profile_counters ? profile_counters->data() : nullptr, assignment_.get());
 
   TF_RETURN_IF_ERROR(executor.Run());
 
@@ -453,18 +456,6 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     tensorflow::mutex_lock lock(mutex_);
     double nanoseconds = (end_micros - start_micros) * 1000.0;
     execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
-    // The last profile counter is used for the computation as a whole.
-    execution_profile_.set_compute_cycle_count(profile_counters.back());
-  }
-  if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(entry_computation,
-                                                     profile_counters.back());
-
-    for (auto hlo_prof_idx : hlo_to_profile_idx_) {
-      const HloInstruction* hlo = hlo_prof_idx.first;
-      uint64 cycles_taken = profile_counters[hlo_prof_idx.second];
-      hlo_execution_profile->AddProfileResult(hlo, cycles_taken);
-    }
   }
 
   return Status::OK();
@@ -616,11 +607,6 @@ ParallelCpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& ParallelCpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
-}
-
-std::unique_ptr<HloCostAnalysis> ParallelCpuExecutable::CreateCostAnalysis()
-    const {
-  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

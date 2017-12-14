@@ -56,6 +56,30 @@ class LossFunction(object):
     """The inputs to the loss function (excluding the targets)."""
     pass
 
+  @property
+  def input_minibatches(self):
+    """A `list` of inputs to the loss function, separated by minibatch.
+
+    Typically there will be one minibatch per tower in a multi-tower setup.
+    Returns a list consisting of `self.inputs` by default; `LossFunction`s
+    supporting registering multiple minibatches should override this method.
+
+    Returns:
+      A `list` of `Tensor`s representing
+    """
+    return [self.inputs]
+
+  @property
+  def num_registered_minibatches(self):
+    """Number of minibatches registered for this LossFunction.
+
+    Typically equal to the number of towers in a multi-tower setup.
+
+    Returns:
+      An `int` representing the number of registered minibatches.
+    """
+    return len(self.input_minibatches)
+
   def evaluate(self):
     """Evaluate the loss function on the targets."""
     if self.targets is not None:
@@ -75,7 +99,6 @@ class LossFunction(object):
     Returns:
       log probability of each target, summed across all targets.
     """
-
     pass
 
   @abc.abstractmethod
@@ -415,8 +438,8 @@ class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
         array_ops.ones(array_ops.shape(self._mean)[:1], dtype=self._mean.dtype),
         axis=-1)
     output_slice = self._var**-0.5 * ones_slice
-    return insert_slice_in_zeros(output_slice, 1,
-                                 int(self._mean.shape[1]), index[0])
+    return insert_slice_in_zeros(output_slice, 1, int(self._mean.shape[1]),
+                                 index[0])
 
   @property
   def fisher_factor_inner_shape(self):
@@ -474,24 +497,23 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
 
   @property
   def _fisher_mean(self):
-    return 1./self._variance
+    return 1. / self._variance
 
   @property
   def _fisher_mean_factor(self):
-    return 1./self._scale
+    return 1. / self._scale
 
   @property
   def _fisher_var(self):
-    return 1./(2*math_ops.square(self._variance))
+    return 1. / (2 * math_ops.square(self._variance))
 
   @property
   def _fisher_var_factor(self):
-    return 1./(math_ops.sqrt(2.)*self._variance)
+    return 1. / (math_ops.sqrt(2.) * self._variance)
 
   def multiply_fisher(self, vecs):
     mean_vec, var_vec = vecs
-    return (self._fisher_mean * mean_vec,
-            self._fisher_var * var_vec)
+    return (self._fisher_mean * mean_vec, self._fisher_var * var_vec)
 
   def multiply_fisher_factor(self, vecs):
     mean_vec, var_vec = self._split(vecs)
@@ -511,8 +533,8 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
       # Index corresponds to mean parameter.
       mean_slice = self._fisher_mean_factor[:, index]
       mean_slice = array_ops.expand_dims(mean_slice, axis=-1)
-      mean_output = insert_slice_in_zeros(mean_slice, 1,
-                                          int(self._mean.shape[1]), index)
+      mean_output = insert_slice_in_zeros(mean_slice, 1, int(
+          self._mean.shape[1]), index)
       var_output = array_ops.zeros_like(mean_output)
     else:
       index -= int(self._mean.shape[-1])
@@ -527,13 +549,17 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
 
   @property
   def fisher_factor_inner_shape(self):
-    return array_ops.concat([array_ops.shape(self._mean)[:-1],
-                             2*array_ops.shape(self._mean)[-1:]], axis=0)
+    return array_ops.concat(
+        [
+            array_ops.shape(self._mean)[:-1],
+            2 * array_ops.shape(self._mean)[-1:]
+        ],
+        axis=0)
 
   @property
   def fisher_factor_inner_static_shape(self):
     shape = self._mean.shape.as_list()
-    return tensor_shape.TensorShape(shape[-1:] + [2*shape[-1]])
+    return tensor_shape.TensorShape(shape[-1:] + [2 * shape[-1]])
 
   def multiply_hessian(self, vector):
     raise NotImplementedError()
@@ -604,6 +630,10 @@ class CategoricalLogitsNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   @property
   def _logits(self):
     return array_ops.concat(self._logits_components, axis=0)
+
+  @property
+  def input_minibatches(self):
+    return self._logits_components
 
   @property
   def targets(self):
@@ -710,8 +740,8 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
     assert len(index) == 1, "Length of index was {}".format(len(index))
     probs_slice = array_ops.expand_dims(self._probs[:, index[0]], -1)
     output_slice = math_ops.sqrt(probs_slice * (1 - probs_slice))
-    return insert_slice_in_zeros(output_slice, 1,
-                                 int(self._logits.shape[1]), index[0])
+    return insert_slice_in_zeros(output_slice, 1, int(self._logits.shape[1]),
+                                 index[0])
 
   @property
   def fisher_factor_inner_shape(self):

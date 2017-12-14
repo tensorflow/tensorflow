@@ -165,12 +165,13 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
         "Exogenous inputs are not implemented for this example.")
 
 
-def train_and_predict(csv_file_name=_DATA_FILE, training_steps=200):
+def train_and_predict(
+    csv_file_name=_DATA_FILE, training_steps=200, estimator_config=None):
   """Train and predict using a custom time series model."""
   # Construct an Estimator from our LSTM model.
   estimator = ts_estimators.TimeSeriesRegressor(
       model=_LSTMModel(num_features=5, num_units=128),
-      optimizer=tf.train.AdamOptimizer(0.001))
+      optimizer=tf.train.AdamOptimizer(0.001), config=estimator_config)
   reader = tf.contrib.timeseries.CSVReader(
       csv_file_name,
       column_names=((tf.contrib.timeseries.TrainEvalFeatures.TIMES,)

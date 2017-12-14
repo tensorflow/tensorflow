@@ -71,10 +71,10 @@ then
     exit 1
 fi
 
-GENDIR="$(pwd)/gen/protobuf"
+GENDIR="$(pwd)/gen/protobuf_android"
 HOST_GENDIR="$(pwd)/gen/protobuf-host"
 mkdir -p "${GENDIR}"
-mkdir -p "${HOST_GENDIR}"
+mkdir -p "${GENDIR}/${ARCHITECTURE}"
 
 if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     echo "You need to download dependencies before running this script." 1>&2
@@ -153,7 +153,7 @@ then
   exit 1
 fi
 
-./configure --prefix="${GENDIR}" \
+./configure --prefix="${GENDIR}/${ARCHITECTURE}" \
 --host="${bin_prefix}" \
 --with-sysroot="${SYSROOT}" \
 --disable-shared \

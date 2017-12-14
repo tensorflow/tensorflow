@@ -17,8 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import collections
 import itertools
 import os
+import sys
 import unittest
 
 import numpy as np
@@ -49,6 +52,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
 
+
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
 CUDNN_GRU = cudnn_rnn_ops.CUDNN_GRU
 CUDNN_RNN_RELU = cudnn_rnn_ops.CUDNN_RNN_RELU
@@ -78,9 +82,10 @@ class CudnnTestModel(object):
                dropout=0.,
                dtype=dtypes.float32,
                training=False,
+               seed=None,
                kernel_initializer=None,
                bias_initializer=None):
-    if dtype not in (dtypes.float32, dtypes.float64):
+    if dtype not in (dtypes.float16, dtypes.float32, dtypes.float64):
       raise ValueError("Invalid dtype: %s" % dtype)
     self._dtype = dtype
 
@@ -110,6 +115,7 @@ class CudnnTestModel(object):
         direction=direction,
         dropout=dropout,
         dtype=dtype,
+        seed=seed,
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer)
     self._rnn.build([None, None, input_size])
@@ -499,7 +505,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
 
   def _TestSaveRestoreHelper(self, rnn_mode):
     directions = [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
-    dtype_list = [dtypes.float32, dtypes.float64]
+    dtype_list = [dtypes.float16, dtypes.float32, dtypes.float64]
     for direction, dtype in itertools.product(directions, dtype_list):
       self._TestSaveRestoreVariable(rnn_mode, direction, dtype)
       self._TestSaveRestoreTwoVariables(rnn_mode, direction, dtype)
@@ -722,19 +728,17 @@ class CudnnRNNTestCompatibleRNNCells(TensorFlowTestCase):
           outputs_v, output_state_v = sess.run(
               [outputs, output_state],
               feed_dict={cell_inputs: inference_input})
-          self.assertAllClose(cudnn_outputs_v, outputs_v, atol=1e-5, rtol=1e-5)
+          self.assertAllClose(cudnn_outputs_v, outputs_v, atol=2e-5, rtol=2e-5)
           (cudnn_output_h_v,) = cudnn_output_states_v
-          self.assertAllClose(cudnn_output_h_v, output_state_v, atol=1e-5,
-                              rtol=1e-5)
+          self.assertAllClose(cudnn_output_h_v, output_state_v, atol=2e-5,
+                              rtol=2e-5)
 
 
 class CudnnRNNTestParamsSize(TensorFlowTestCase):
 
   def _TestOpaqueParamsSize(self, rnn_mode, num_layers, num_units, input_size,
-                            direction):
+                            dtype, direction):
     logging.info("Testing one lstm param size with config: %s", locals())
-    dtype = dtypes.float32
-
     model = CudnnTestModel(
         rnn_mode,
         num_layers,
@@ -767,13 +771,14 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
         [3, 200, 400],
     ]
     directions = [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
+    dtype_list = [dtypes.float16, dtypes.float32, dtypes.float64]
     rnns = [CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_RELU, CUDNN_RNN_TANH]
-    for (rnn, config, direction) in itertools.product(rnns, test_configs,
-                                                      directions):
+    for (rnn, config, dtype, direction) in itertools.product(
+        rnns, test_configs, dtype_list, directions):
       num_layers, num_units, input_size = config
       with ops.Graph().as_default():
         self._TestOpaqueParamsSize(rnn, num_layers, num_units, input_size,
-                                   direction)
+                                   dtype, direction)
 
 
 class CudnnRNNTestTraining(TensorFlowTestCase):
@@ -819,9 +824,63 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
       numeric_grad[i] = (y_pos - y_neg) / (2 * delta)
     return numeric_grad.reshape(x_shape)
 
+  def _GetShape(self, sess, inputs):
+    if not isinstance(inputs, collections.Iterable):
+      return sess.run(array_ops.shape(inputs))
+    else:
+      return sess.run([array_ops.shape(x) for x in inputs])
+
+  def _GradientCheckFp16(self, sess, y, xs, num_samples,
+                         tolerance=1e-6, delta=1e-4):
+    """Gradient check for Fp16.
+
+    Fp16 numerical gradients end up being zeros. Use a new way to check
+    gradients:
+
+    Given multi-variant function:
+    y = f(x1, x2, ... xn)
+    delta_y = f(x1 + delta_x1, x2+delta_x2, ..., xn+delta_xn) -
+              f(x1, x2, ..., xn)
+            = f'(x1) * delta_x1 + f'(x2) * delta_x2 + .. + f'(xn) * delta_xn
+    where:
+      delta_xi are very small disturbance.
+      f'(xi) is the gradient of y w.r.t xi.
+
+    The gradient check verifies the expected delta_y calculated by the above
+    equation is close to the actual delta_y.
+    Args:
+      sess: tf.Session object.
+      y: output tensor.
+      xs: a tensor or a list of input tensors.
+      num_samples: number of test samples to run.
+      tolerance: error tolerance.
+      delta: the order of magnititued of input disturbance to apply to calculate
+        the output change w.r.t inputs.
+    """
+    sym_grads = self._ComputeSymGrads(sess, y, xs)
+    xs_shapes = self._GetShape(sess, xs)
+
+    x_vals = [sess.run(x) for x in xs]
+    for _ in range(num_samples):
+      delta_xs = [delta * np.random.rand(*shape.tolist())
+                  for shape in xs_shapes]
+
+      feed_dict = {}
+      for x, x_val, delta_x in zip(xs, x_vals, delta_xs):
+        feed_dict[x] = x_val + delta_x
+      actual_delta_y = (float(sess.run(y, feed_dict=feed_dict)) -
+                        float(sess.run(y)))
+
+      expected_delta_y = 0.
+      for sym_grad, delta_x in zip(sym_grads, delta_xs):
+        expected_delta_y += np.dot(
+            sym_grad.astype(np.float32).flatten(),
+            delta_x.astype(np.float32).flatten())
+      self.assertAllClose(expected_delta_y, actual_delta_y,
+                          atol=tolerance, rtol=tolerance)
+
   def _GradientCheck(self, sess, y, xs, tolerance=1e-6, delta=1e-4):
-    sym_grads_t = gradients.gradients(y, xs)
-    sym_grads = sess.run(sym_grads_t)
+    sym_grads = self._ComputeSymGrads(sess, y, xs)
 
     num_grads = [self._ComputeNumericGrad(sess, y, x, delta) for x in xs]
     self.assertEqual(len(sym_grads), len(num_grads))
@@ -829,6 +888,10 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
       self.assertFalse(np.any(np.isnan(sym)))
       self.assertFalse(np.any(np.isnan(num)))
       self.assertAllClose(sym, num, atol=tolerance, rtol=tolerance)
+
+  def _ComputeSymGrads(self, sess, y, xs):
+    sym_grads_t = gradients.gradients(y, xs)
+    return sess.run(sym_grads_t)
 
   def _TestOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
                              batch_size, seq_length, dir_count, dropout, dtype,
@@ -838,6 +901,8 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
     logging.info("Training test with config: %s", locals())
     old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
     os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
+
+    np.random.seed(1234)
     random_seed.set_random_seed(5678)
     has_input_c = (rnn_mode == CUDNN_LSTM)
     direction = (CUDNN_RNN_UNIDIRECTION
@@ -879,12 +944,22 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
       all_inputs = [inputs, params]
       for s in initial_state:
         all_inputs.append(s)
-      self._GradientCheck(
-          sess, total_sum, all_inputs, tolerance=tolerance, delta=delta)
+      if dtype == dtypes.float16:
+        self._GradientCheckFp16(
+            sess, total_sum, all_inputs,
+            num_samples=FLAGS.grad_check_num_samples,
+            tolerance=tolerance, delta=delta)
+      else:
+        for _ in range(FLAGS.grad_check_num_samples):
+          # Each time choose a different set of inputs.
+          sess.run(variables.global_variables_initializer())
+          self._GradientCheck(
+              sess, total_sum, all_inputs,
+              tolerance=tolerance, delta=delta)
       os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
 
   def _TestSimpleTrainingHelper(self, rnn_mode, test_configs):
-    dropouts = [0., 0.5, 1.]
+    dropouts = [0, 0.5, 1.]
     for config, dropout in itertools.product(test_configs, dropouts):
       dtype = config.get("dtype", dtypes.float32)
       delta = config.get("delta", 1e-4)
@@ -895,11 +970,12 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
         self._TestOneSimpleTraining(rnn_mode, shape["num_layers"],
                                     shape["num_units"], shape["input_size"],
                                     shape["batch_size"], shape["seq_length"],
-                                    dir_count, dropout, dtype, delta, tolerance)
+                                    dir_count, dropout, dtype, delta,
+                                    tolerance)
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingLSTM64(self):
+  def testSimpleTrainingLSTMFp64(self):
     test_configs = [
         {
             "dtype": dtypes.float64,
@@ -917,7 +993,7 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingLSTM32(self):
+  def testSimpleTrainingLSTMFp32(self):
     test_configs = [
         {
             "dtype": dtypes.float32,
@@ -936,7 +1012,38 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingGRU64(self):
+  def testSimpleTrainingLSTMFp16(self):
+    test_configs = [
+        {
+            "dtype": dtypes.float16,
+            "delta": 1e-3,
+            "tolerance": 9e-2,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+            },
+        },
+        {
+            "dtype": dtypes.float16,
+            "delta": 1e-2,
+            "tolerance": 9e-2,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 6,
+                "input_size": 8,
+                "batch_size": 6,
+                "seq_length": 4,
+            },
+        },
+    ]
+    self._TestSimpleTrainingHelper(CUDNN_LSTM, test_configs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSimpleTrainingGRUFp64(self):
     test_configs = [
         {
             "dtype": dtypes.float64,
@@ -954,7 +1061,7 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingGRU32(self):
+  def testSimpleTrainingGRUFp32(self):
     test_configs = [
         {
             "dtype": dtypes.float32,
@@ -973,7 +1080,26 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingRNNTanh64(self):
+  def testSimpleTrainingGRUFp16(self):
+    test_configs = [
+        {
+            "dtype": dtypes.float16,
+            "delta": 2e-3,
+            "tolerance": 6e-2,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+            },
+        },
+    ]
+    self._TestSimpleTrainingHelper(CUDNN_GRU, test_configs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSimpleTrainingRNNTanhFp64(self):
     test_configs = [
         {
             "dtype": dtypes.float64,
@@ -991,7 +1117,7 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingRNNTanh32(self):
+  def testSimpleTrainingRNNTanhFp32(self):
     test_configs = [
         {
             "dtype": dtypes.float32,
@@ -1010,7 +1136,26 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingRNNRelu64(self):
+  def testSimpleTrainingRNNTanhFp16(self):
+    test_configs = [
+        {
+            "dtype": dtypes.float16,
+            "delta": 1e-3,
+            "tolerance": 5e-2,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+            },
+        },
+    ]
+    self._TestSimpleTrainingHelper(CUDNN_RNN_TANH, test_configs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSimpleTrainingRNNReluFp64(self):
     test_configs = [
         {
             "dtype": dtypes.float64,
@@ -1028,10 +1173,29 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTrainingRNNRelu32(self):
+  def testSimpleTrainingRNNReluFp32(self):
     test_configs = [
         {
             "dtype": dtypes.float32,
+            "delta": 1e-4,
+            "tolerance": 3e-1,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+            },
+        },
+    ]
+    self._TestSimpleTrainingHelper(CUDNN_RNN_RELU, test_configs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testSimpleTrainingRNNReluFp16(self):
+    test_configs = [
+        {
+            "dtype": dtypes.float16,
             "delta": 1e-3,
             "tolerance": 7e-2,
             "shape": {
@@ -1047,4 +1211,13 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
 
 if __name__ == "__main__":
+  argv0 = sys.argv[0]
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      "--grad_check_num_samples",
+      type=int,
+      default=5,
+      help="Number of samples to run for gradient check.")
+  FLAGS, unparsed = parser.parse_known_args()
+  sys.argv = [argv0] + unparsed
   googletest.main()

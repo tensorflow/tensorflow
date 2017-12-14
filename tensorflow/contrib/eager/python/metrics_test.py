@@ -26,6 +26,7 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training_util
 
@@ -41,6 +42,17 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testVariableCollections(self):
+    with context.graph_mode(), ops.Graph().as_default():
+      m = metrics.Mean()
+      m(1000)
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)))
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
+
   def testInitVariables(self):
     m = metrics.Mean()
     m([1, 10, 100, 1000])
@@ -55,12 +67,12 @@ class MetricsTest(test.TestCase):
     m([1, 10, 100])
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name="t0").as_default(), summary_ops.always_record_summaries():
       m.result()  # As a side-effect will write summaries.
 
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 

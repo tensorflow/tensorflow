@@ -24,8 +24,6 @@ import tempfile
 
 import numpy as np
 import six
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
@@ -84,37 +82,25 @@ def assert_close(expected, actual, rtol=1e-04, message='', name='assert_close'):
         name=scope)
 
 
-def create_checkpoint(weights_and_biases, global_step, model_dir, num_logits=1):
+def create_checkpoint(weights_and_biases, global_step, model_dir):
   """Create checkpoint file with provided model weights.
 
   Args:
     weights_and_biases: Iterable of tuples of weight and bias values.
     global_step: Initial global step to save in checkpoint.
     model_dir: Directory into which checkpoint is saved.
-    num_logits: Number of logits trailing in weights_and_biases.
   """
   weights, biases = zip(*weights_and_biases)
   model_weights = {}
 
   # Hidden layer weights.
-  for i in range(0, len(weights) - num_logits):
+  for i in range(0, len(weights) - 1):
     model_weights[HIDDEN_WEIGHTS_NAME_PATTERN % i] = weights[i]
     model_weights[HIDDEN_BIASES_NAME_PATTERN % i] = biases[i]
 
   # Output layer weights.
-  for logit_ind in xrange(num_logits):
-    # Iteration is reversed.
-    reverse_logit_ind = num_logits - logit_ind - 1
-    logits_weight_name = (
-        LOGITS_WEIGHTS_NAME if num_logits == 1
-        else LOGITS_WEIGHTS_NAME.replace(
-            'logits', 'logits_head_{}'.format(reverse_logit_ind)))
-    logits_bias_name = (
-        LOGITS_BIASES_NAME if num_logits == 1
-        else LOGITS_BIASES_NAME.replace(
-            'logits', 'logits_head_{}'.format(reverse_logit_ind)))
-    model_weights[logits_weight_name] = weights[-(logit_ind + 1)]
-    model_weights[logits_bias_name] = biases[-(logit_ind + 1)]
+  model_weights[LOGITS_WEIGHTS_NAME] = weights[-1]
+  model_weights[LOGITS_BIASES_NAME] = biases[-1]
 
   with ops.Graph().as_default():
     # Create model variables.
@@ -496,7 +482,7 @@ class BaseDNNLogitFnTest(object):
       shutil.rmtree(self._model_dir)
 
   def _test_logits(self, mode, hidden_units, logits_dimension, inputs,
-                   expected_logits, multi_logit=False):
+                   expected_logits):
     """Tests that the expected logits are calculated."""
     with ops.Graph().as_default():
       # Global step needed for MonitoredSession, which is in turn used to
@@ -522,12 +508,7 @@ class BaseDNNLogitFnTest(object):
             features={'age': constant_op.constant(inputs)}, mode=mode)
         with monitored_session.MonitoredTrainingSession(
             checkpoint_dir=self._model_dir) as sess:
-          if multi_logit:
-            for expected_logit, obtained_logit in zip(expected_logits,
-                                                      sess.run(logits)):
-              self.assertAllClose(expected_logit, obtained_logit)
-          else:
-            self.assertAllClose(expected_logits, sess.run(logits))
+          self.assertAllClose(expected_logits, sess.run(logits))
 
   def test_one_dim_logits(self):
     """Tests one-dimensional logits.
@@ -552,35 +533,6 @@ class BaseDNNLogitFnTest(object):
           logits_dimension=1,
           inputs=[[10.]],
           expected_logits=[[-2.08]])
-
-  def test_multihead_logits(self):
-    """Tests returning list of logits for MultiHead case.
-
-    input_layer = [[10]]
-    hidden_layer_0 = [[relu(0.6*10 +0.1), relu(0.5*10 -0.1)]] = [[6.1, 4.9]]
-    hidden_layer_1 = [[relu(1*6.1 -0.8*4.9 +0.2), relu(0.8*6.1 -1*4.9 -0.1)]]
-                   = [[relu(2.38), relu(-0.12)]] = [[2.38, 0]]
-    logits_1 = [[-1*2.38 + 1*0 + 0.3]] = [[-2.08]]
-    logits_2 = [[-1*2.38 + 1*0 + 0.3, -2*2.38 + 2*0 + 0.5]] = [[-2.08, -4.26]]
-    """
-    base_global_step = 100
-    create_checkpoint(
-        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
-         ([[-1.], [1.]], [.3]),  # First logit weights (1d head).
-         ([[-1., -2.], [1., 2.]], [.3, .5])),  # Second logit weights (2d head).
-        base_global_step,
-        self._model_dir, num_logits=2)
-    for mode in [
-        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
-        model_fn.ModeKeys.PREDICT
-    ]:
-      self._test_logits(
-          mode,
-          hidden_units=(2, 2),
-          logits_dimension=[1, 2],
-          inputs=[[10.]],
-          expected_logits=[[[-2.08]], [[-2.08, -4.26]]],
-          multi_logit=True)
 
   def test_multi_dim_logits(self):
     """Tests multi-dimensional logits.

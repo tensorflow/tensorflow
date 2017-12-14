@@ -67,12 +67,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import warnings
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
+from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.engine import InputSpec
@@ -97,10 +99,15 @@ def relu6(x):
 
 
 def preprocess_input(x):
-  x /= 255.
-  x -= 0.5
-  x *= 2.
-  return x
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments:
+      x: a 4D numpy array consists of RGB values within [0, 255].
+
+  Returns:
+      Preprocessed array.
+  """
+  return imagenet_utils.preprocess_input(x, mode='tf')
 
 
 class DepthwiseConv2D(Conv2D):
@@ -342,8 +349,9 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       dropout: dropout rate
       include_top: whether to include the fully-connected
           layer at the top of the network.
-      weights: `None` (random initialization) or
-          `imagenet` (ImageNet weights)
+      weights: one of `None` (random initialization),
+          'imagenet' (pre-training on ImageNet),
+          or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -378,10 +386,12 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
                        'as other backends do not support '
                        'depthwise convolution.')
 
-  if weights not in {'imagenet', None}:
+  if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
-                     '`None` (random initialization) or `imagenet` '
-                     '(pre-training on ImageNet).')
+                     '`None` (random initialization), `imagenet` '
+                     '(pre-training on ImageNet), '
+                     'or the path to the weights file to be loaded.')
+
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as ImageNet with `include_top` '
@@ -531,6 +541,8 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
 
   if old_data_format:
     K.set_image_data_format(old_data_format)
+  elif weights is not None:
+    model.load_weights(weights)
   return model
 
 

@@ -29,10 +29,12 @@ namespace {
 // description of the following op.
 
 template <typename T>
-class Dataset : public DatasetBase {
+class Dataset : public GraphDatasetBase {
  public:
-  explicit Dataset(const sparse::SparseTensor& sparse_tensor)
-      : sparse_tensor_(sparse_tensor),
+  explicit Dataset(OpKernelContext* ctx,
+                   const sparse::SparseTensor& sparse_tensor)
+      : GraphDatasetBase(ctx),
+        sparse_tensor_(sparse_tensor),
         dtypes_({DT_INT64, sparse_tensor.dtype(), DT_INT64}),
         shapes_({{-1, sparse_tensor.dims() - 1},
                  {-1},
@@ -51,6 +53,27 @@ class Dataset : public DatasetBase {
 
   string DebugString() override {
     return "SparseTensorSliceDatasetOp::Dataset";
+  }
+
+ protected:
+  Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* indices_node;
+    TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.indices(), &indices_node));
+    Node* value_node;
+    TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.values(), &value_node));
+    Node* dense_shape_node;
+    std::vector<int64> dense_shape;
+    dense_shape.reserve(sparse_tensor_.shape().size());
+    for (int i = 0; i < sparse_tensor_.shape().size(); i++)
+      dense_shape.emplace_back(sparse_tensor_.shape()[i]);
+    TF_RETURN_IF_ERROR(b->AddVector(dense_shape, &dense_shape_node));
+    AttrValue val_dtype;
+    b->BuildAttrValue(sparse_tensor_.dtype(), &val_dtype);
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {indices_node, value_node, dense_shape_node},
+                      {{"Tvalues", val_dtype}}, output));
+    return Status::OK();
   }
 
  private:
@@ -106,7 +129,6 @@ class Dataset : public DatasetBase {
 
         ++iter_;
       }
-
       if (i_ == next_non_empty_i_) {
         // The current position is non-empty in the input
         // `SparseTensor`, and we have already read the value from the
@@ -126,6 +148,42 @@ class Dataset : public DatasetBase {
 
       ++i_;
       *end_of_sequence = false;
+      return Status::OK();
+    }
+
+   protected:
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::full_name("i"), i_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(Iterator::full_name("iter_loc"), iter_.loc()));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          Iterator::full_name("next_non_empty_i_"), next_non_empty_i_));
+      if (i_ <= next_non_empty_i_) {
+        TF_RETURN_IF_ERROR(writer->WriteTensor(
+            Iterator::full_name("next_indices_"), next_indices_));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(
+            Iterator::full_name("next_values_"), next_values_));
+      }
+      return Status::OK();
+    }
+
+    Status RestoreInternal(OpKernelContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::full_name("i"), &i_));
+      int64 iter_loc;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(Iterator::full_name("iter_loc"), &iter_loc));
+      iter_ = group_iterable_.at(iter_loc);
+      TF_RETURN_IF_ERROR(reader->ReadScalar(
+          Iterator::full_name("next_non_empty_i_"), &next_non_empty_i_));
+      if (i_ <= next_non_empty_i_) {
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            Iterator::full_name("next_indices_"), &next_indices_));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            Iterator::full_name("next_values_"), &next_values_));
+      }
       return Status::OK();
     }
 
@@ -198,7 +256,7 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
     sparse::SparseTensor sparse_tensor(
         *indices, *values, TensorShape(dense_shape->vec<int64>()), std_order);
 
-    *output = new Dataset<T>(sparse_tensor);
+    *output = new Dataset<T>(ctx, sparse_tensor);
   }
 
  private:

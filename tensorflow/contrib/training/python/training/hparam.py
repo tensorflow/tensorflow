@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import numbers
 import re
 
 import six
@@ -76,7 +77,7 @@ def _process_scalar_value(name, parse_fn, var_type, m_dict, values,
       function.
 
   Raises:
-    ValueError: If the name has already been sued.
+    ValueError: If the name has already been used.
   """
   try:
     parsed_value = parse_fn(m_dict['val'])
@@ -136,6 +137,54 @@ def _process_list_value(name, parse_fn, var_type, m_dict, values,
     results_dictionary[name] = [parse_fn(e) for e in elements]
   except ValueError:
     _parse_fail(name, var_type, m_dict['vals'], values)
+
+
+def _cast_to_type_if_compatible(name, param_type, value):
+  """Cast hparam to the provided type, if compatible.
+
+  Args:
+    name: Name of the hparam to be cast.
+    param_type: The type of the hparam.
+    value: The value to be cast, if compatible.
+
+  Returns:
+    The result of casting `value` to `param_type`.
+
+  Raises:
+    ValueError: If the type of `value` is not compatible with param_type.
+      * If `param_type` is a string type, but `value` is not.
+      * If `param_type` is a boolean, but `value` is not, or vice versa.
+      * If `param_type` is an integer type, but `value` is not.
+      * If `param_type` is a float type, but `value` is not a numeric type.
+  """
+  fail_msg = (
+      "Could not cast hparam '%s' of type '%s' from value %r" %
+      (name, param_type, value))
+
+  # Some callers use None, for which we can't do any casting/checking. :(
+  if issubclass(param_type, type(None)):
+    return value
+
+  # Avoid converting a non-string type to a string.
+  if (issubclass(param_type, (six.string_types, six.binary_type)) and
+      not isinstance(value, (six.string_types, six.binary_type))):
+    raise ValueError(fail_msg)
+
+  # Avoid converting a number or string type to a boolean or vice versa.
+  if issubclass(param_type, bool) != isinstance(value, bool):
+    raise ValueError(fail_msg)
+
+  # Avoid converting float to an integer (the reverse is fine).
+  if (issubclass(param_type, numbers.Integral) and
+      not isinstance(value, numbers.Integral)):
+    raise ValueError(fail_msg)
+
+  # Avoid converting a non-numeric type to a numeric type.
+  if (issubclass(param_type, numbers.Number) and
+      not isinstance(value, numbers.Number)):
+    raise ValueError(fail_msg)
+
+  return param_type(value)
 
 
 def parse_values(values, type_map):
@@ -438,17 +487,18 @@ class HParams(object):
     Raises:
       ValueError: If there is a type mismatch.
     """
-    _, is_list = self._hparam_types[name]
+    param_type, is_list = self._hparam_types[name]
     if isinstance(value, list):
       if not is_list:
         raise ValueError(
             'Must not pass a list for single-valued parameter: %s' % name)
-      setattr(self, name, value)
+      setattr(self, name, [
+          _cast_to_type_if_compatible(name, param_type, v) for v in value])
     else:
       if is_list:
         raise ValueError(
             'Must pass a list for multi-valued parameter: %s.' % name)
-      setattr(self, name, value)
+      setattr(self, name, _cast_to_type_if_compatible(name, param_type, value))
 
   def parse(self, values):
     """Override hyperparameter values, parsing new values from a string.
@@ -500,13 +550,26 @@ class HParams(object):
   def get_model_structure(self):
     return self._model_structure
 
-  def to_json(self):
+  def to_json(self, indent=None, separators=None, sort_keys=False):
     """Serializes the hyperparameters into JSON.
+
+    Args:
+      indent: If a non-negative integer, JSON array elements and object members
+        will be pretty-printed with that indent level. An indent level of 0, or
+        negative, will only insert newlines. `None` (the default) selects the
+        most compact representation.
+      separators: Optional `(item_separator, key_separator)` tuple. Default is
+        `(', ', ': ')`.
+      sort_keys: If `True`, the output dictionaries will be sorted by key.
 
     Returns:
       A JSON string.
     """
-    return json.dumps(self.values())
+    return json.dumps(
+        self.values(),
+        indent=indent,
+        separators=separators,
+        sort_keys=sort_keys)
 
   def parse_json(self, values_json):
     """Override hyperparameter values, parsing new values from a json object.
@@ -531,6 +594,33 @@ class HParams(object):
       hyperparameter values.
     """
     return {n: getattr(self, n) for n in self._hparam_types.keys()}
+
+  def get(self, key, default=None):
+    """Returns the value of `key` if it exists, else `default`."""
+    if key in self._hparam_types:
+      # Ensure that default is compatible with the parameter type.
+      if default is not None:
+        param_type, is_param_list = self._hparam_types[key]
+        type_str = 'list<%s>' % param_type if is_param_list else str(param_type)
+        fail_msg = ("Hparam '%s' of type '%s' is incompatible with "
+                    'default=%s' % (key, type_str, default))
+
+        is_default_list = isinstance(default, list)
+        if is_param_list != is_default_list:
+          raise ValueError(fail_msg)
+
+        try:
+          if is_default_list:
+            for value in default:
+              _cast_to_type_if_compatible(key, param_type, value)
+          else:
+            _cast_to_type_if_compatible(key, param_type, default)
+        except ValueError as e:
+          raise ValueError('%s. %s' % (fail_msg, e))
+
+      return getattr(self, key)
+
+    return default
 
   def __contains__(self, key):
     return key in self._hparam_types

@@ -23,11 +23,14 @@ from tensorflow.contrib.quantize.python import quantize
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
 conv2d = layers.conv2d
+separable_conv2d = layers.separable_conv2d
 
 
 class QuantizeTest(test_util.TensorFlowTestCase):
@@ -51,6 +54,53 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       context._InsertQuantOp('test', conv.op, [relu.op], 'FailingQuantOp')
     self.assertEqual(
         str(err.exception), 'Some inputs not quantized for ops: [Relu6]')
+
+  def testInsertQuantOpForAddAfterConv2d(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+      conv = conv2d(input1, 32, [5, 5], stride=2, padding='SAME',
+                    weights_initializer=self._WeightInit(0.09),
+                    activation_fn=None, scope='test/test')
+      node = math_ops.add(conv, input2, name='test/add')
+      node = array_ops.identity(node, name='test/identity')
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
+                      activation_bits=8)
+
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    add_quant = graph.get_operation_by_name('test/add_quant/' +
+                                            quantization_node_name)
+    self.assertEqual(add_quant.type, quantization_node_name)
+
+  def testInsertQuantOpForAddAfterSeparableConv2d(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, depth))
+      conv = separable_conv2d(input1, None, [5, 5], stride=2,
+                              depth_multiplier=1.0, padding='SAME',
+                              weights_initializer=self._WeightInit(0.09),
+                              activation_fn=None, scope='test/test')
+      node = math_ops.add(conv, input2, name='test/add')
+      node = array_ops.identity(node, name='test/identity')
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
+                      activation_bits=8)
+
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    add_quant = graph.get_operation_by_name('test/add_quant/' +
+                                            quantization_node_name)
+    self.assertEqual(add_quant.type, quantization_node_name)
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.

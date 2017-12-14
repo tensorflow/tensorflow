@@ -28,12 +28,9 @@ limitations under the License.
 namespace se = ::perftools::gputools;
 
 namespace xla {
-
-/* static */ tensorflow::mutex*
-TransferManager::platform_transfer_manager_mutex() {
-  static tensorflow::mutex* m = new tensorflow::mutex;
-  return m;
-}
+/* static */ tensorflow::mutex
+    TransferManager::platform_transfer_manager_mutex_(
+        tensorflow::LINKER_INITIALIZED);
 
 /* static */ std::map<perftools::gputools::Platform::Id,
                       TransferManager::State>*
@@ -47,7 +44,7 @@ TransferManager::GetPlatformTransferManagers() {
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -56,7 +53,7 @@ TransferManager::GetPlatformTransferManagers() {
 /* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());
@@ -73,6 +70,39 @@ TransferManager::GetPlatformTransferManagers() {
   }
 
   return it->second.manager.get();
+}
+
+Status TransferManager::WriteTupleIndexTables(
+    perftools::gputools::StreamExecutor* executor,
+    const ShapedBuffer& device_buffer) {
+  VLOG(2) << "Writing tuple index tables to ShapedBuffer rooted at "
+          << device_buffer.buffer(/*index=*/{}).opaque()
+          << "; shape: " << ShapeUtil::HumanString(device_buffer.shape());
+
+  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      device_buffer.shape(),
+      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
+        if (ShapeUtil::IsTuple(device_subshape)) {
+          se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
+                       device_memory.size());
+
+          std::vector<se::DeviceMemoryBase> elements;
+          ShapeIndex element_index = index;
+          for (int64 i = 0; i < ShapeUtil::TupleElementCount(device_subshape);
+               ++i) {
+            element_index.push_back(i);
+            elements.push_back(device_buffer.buffer(element_index));
+            element_index.pop_back();
+          }
+          return WriteTuplePointersToDevice(executor, elements, device_subshape,
+                                            &device_memory);
+        }
+
+        return Status::OK();
+      });
 }
 
 Status TransferManager::TransferBufferFromDevice(

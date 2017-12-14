@@ -1,7 +1,7 @@
 path: "tensorflow.keras.layers.InputLayer"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.InputLayer\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.InputLayer\'>"
+  is_instance: "<class \'tensorflow.python.layers.network.InputLayer\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"

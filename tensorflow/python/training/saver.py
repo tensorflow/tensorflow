@@ -349,7 +349,7 @@ class BaseSaverBuilder(object):
     last_device = None
     for shard, (device, saveables) in enumerate(per_device):
       last_device = device
-      with ops.device(device):
+      with ops.device(_set_cpu0(device)):
         sharded_filename = self.sharded_filename(tmp_checkpoint_prefix, shard,
                                                  num_shards_tensor)
         sharded_prefixes.append(sharded_filename)
@@ -357,7 +357,7 @@ class BaseSaverBuilder(object):
 
     with ops.control_dependencies([x.op for x in sharded_saves]):
       # Co-locates the merge step with the last device.
-      with ops.device(last_device):
+      with ops.device(_set_cpu0(last_device)):
         # V2 format write path consists of a metadata merge step.  Once merged,
         # attempts to delete the temporary directory, "<user-fed prefix>_temp".
         merge_step = gen_io_ops.merge_v2_checkpoints(
@@ -503,11 +503,13 @@ class BaseSaverBuilder(object):
     return sorted(per_device.items(), key=lambda t: t[0])
 
   @staticmethod
-  def OpListToDict(op_list):
+  def OpListToDict(op_list, convert_variable_to_tensor=True):
     """Create a dictionary of names to operation lists.
 
     Args:
       op_list: A list, tuple, or set of Variables or SaveableObjects.
+      convert_variable_to_tensor: Whether or not to convert single Variables
+        with no slice info into Tensors.
 
     Returns:
       A dictionary of names to the operations that must be saved under
@@ -521,7 +523,10 @@ class BaseSaverBuilder(object):
     if not isinstance(op_list, (list, tuple, set)):
       raise TypeError("Variables to save should be passed in a dict or a "
                       "list: %s" % op_list)
-    op_list = set(op_list)
+    # When ResourceVariables are converted to Tensors, read ops are added to the
+    # graph. Sorting the op_list ensures that the resulting graph is always
+    # constructed in a deterministic way:
+    op_list = sorted(op_list, key=lambda x: x.name)
     names_to_saveables = {}
     # pylint: disable=protected-access
     for var in op_list:
@@ -543,9 +548,10 @@ class BaseSaverBuilder(object):
           names_to_saveables[name] = [var]
       else:
         if context.in_graph_mode():
-          var = ops.internal_convert_to_tensor(var, as_ref=True)
-          if not BaseSaverBuilder._IsVariable(var):
-            raise TypeError("Variable to save is not a Variable: %s" % var)
+          if convert_variable_to_tensor:
+            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            if not BaseSaverBuilder._IsVariable(var):
+              raise TypeError("Variable to save is not a Variable: %s" % var)
           if var.op.type == "ReadVariableOp":
             name = var.op.inputs[0].op.name
           else:

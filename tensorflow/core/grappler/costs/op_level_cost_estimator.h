@@ -45,11 +45,11 @@ class OpLevelCostEstimator {
   // Returns basic device performance info.
   virtual DeviceInfo GetDeviceInfo(const DeviceProperties& device) const;
 
-  // For operations for which we haven't yet built estimates, returns a dummy
-  // value based on input size.
-  Costs DummyExecutionTime(const OpContext& op_context) const;
+  // Predict cost of an op for which no accurate estimator is defined.
+  Costs PredictCostOfAnUnknownOp(const OpContext& op_context) const;
 
-  // Naive cost estimate based on operations divided by device ops/sec.
+  // Naive cost estimate based on operations divided by device ops/sec,
+  // and input/output tensor sizes.
   Costs PredictOpCountBasedCost(double operations,
                                 const OpInfo& op_features) const;
 

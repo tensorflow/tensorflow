@@ -70,7 +70,7 @@ TEST(TFCompileTest, Add) {
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
 // non-existent buffers.
 TEST(TFCompileTest, Add_SetArg) {
-  AddComp add(AddComp::AllocMode::RESULTS_AND_TEMPS_ONLY);
+  AddComp add(AddComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
   int32 arg_x = 10;
   int32 arg_y = 32;
@@ -258,7 +258,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   foo::bar::MatMulComp matmul(
-      foo::bar::MatMulComp::AllocMode::RESULTS_AND_TEMPS_ONLY);
+      foo::bar::MatMulComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.

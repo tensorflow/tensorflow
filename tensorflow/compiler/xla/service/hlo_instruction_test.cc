@@ -792,8 +792,8 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //   sub = Sub(mul, clamp)
   //   tuple = Tuple({sub, sub, mul, C1})
   //
-  // Notable complexities are repeated operands in a same instruction, different
-  // shapes, use of value in different expressions.
+  // Notable complexities are repeated operands in the same instruction,
+  // different shapes, use of value in different expressions.
   auto c1 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
   auto c2 = builder.AddInstruction(
@@ -1068,8 +1068,11 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(sout, HloOpcode::kDot, x, reshape));
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
 
   HloModule module(TestName());
   auto* computation = module.AddEntryComputation(builder.Build());
@@ -1088,48 +1091,6 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
                                root2->operand(1)->operand(0)->shape()));
 }
 
-TEST_F(HloInstructionTest, IsRandomFusable) {
-  auto shape = ShapeUtil::MakeShape(F32, {2, 2});
-  {
-    auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewModule();
-    auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(0.0)));
-    auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(1.0)));
-    auto rng = builder.AddInstruction(HloInstruction::CreateRng(
-        shape, RandomDistribution::RNG_NORMAL, {const0, const1}));
-
-    auto* computation = hlo_module->AddEntryComputation(builder.Build());
-    computation->CreateFusionInstruction({rng, const0, const1},
-      HloInstruction::FusionKind::kLoop);
-
-    auto* root = computation->root_instruction();
-
-    EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-  }
-  {
-    auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewModule();
-    auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(0.0)));
-    auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(1.0)));
-    auto rng = builder.AddInstruction(HloInstruction::CreateRng(
-        shape, RandomDistribution::RNG_NORMAL, {const0, const1}));
-    builder.AddInstruction(HloInstruction::CreateUnary(
-        shape, HloOpcode::kNegate, rng));
-    auto* computation = hlo_module->AddEntryComputation(builder.Build());
-    computation->CreateFusionInstruction({rng, const0, const1},
-      HloInstruction::FusionKind::kLoop);
-
-    auto* root = computation->root_instruction();
-
-    EXPECT_EQ(HloOpcode::kFusion, root->operand(0)->opcode());
-  }
-}
-
-
 TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test that the suffix string added to cloned instructions is not
   // duplicated. Rather a numeric incrementing value should be appended. That
@@ -1138,35 +1099,34 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test cloning the same instruction multiple times.
   auto foo =
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
-  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
-  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
-  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
+  EXPECT_EQ(foo->Clone()->name(), "foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "foo.clone3");
 
   // Test custom suffixes.
-  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
-            "%foo.bar2.clone");
+  EXPECT_EQ(foo->Clone("bar")->name(), "foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(), "foo.bar2.clone");
 
   // Test instruction name with a dot.
   auto foo_baz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
-  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
+  EXPECT_EQ(foo_baz->Clone()->name(), "foo.baz.clone");
 
   // Test incrementing a large number after the suffix.
   auto foo_clone234 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
-  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "foo.clone235");
 
   // Test a non-numeric string after the cloning suffix.
   auto foo_clonexyz = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
-  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "foo.clonexyz.clone");
 
   // Test a name with multiple appearances of the suffix.
   auto foo_clone_clone3 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
-  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "foo.clone.clone4");
 }
 
 TEST_F(HloInstructionTest, Stringification) {
@@ -1183,21 +1143,25 @@ TEST_F(HloInstructionTest, Stringification) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
   HloInstruction* reshape =
       builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   HloInstruction* dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(sout, HloOpcode::kDot, x, reshape));
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
 
   EXPECT_EQ(dot->ToString(false, false),
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
-            "%transpose)");
+            "%transpose), lhs_contracting_dims=1,rhs_contracting_dims=0");
 
   HloModule module(TestName());
   auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
-  EXPECT_EQ(fusion->ToString(false, false),
-            "%fusion = f32[5,20]{1,0} fusion:kTransposeDot(f32[5,10]{1,0} %x, "
-            "f32[20,10]{1,0} %y), calls=%fused_computation");
+  EXPECT_EQ(
+      fusion->ToString(false, false),
+      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));

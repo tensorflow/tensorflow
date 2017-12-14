@@ -76,8 +76,11 @@ class MultiOutputFusionTest : public HloTestBase {
         elem_shape2, HloOpcode::kAdd, broadcast, param1));
     HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
         elem_shape2, HloOpcode::kSubtract, param1, broadcast));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(
-        HloInstruction::CreateBinary(elem_shape2, HloOpcode::kDot, sub, add2));
+        HloInstruction::CreateDot(elem_shape2, sub, add2, dot_dnums));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -133,8 +136,11 @@ class MultiOutputFusionTest : public HloTestBase {
     HloInstruction* reshape =
         builder.AddInstruction(HloInstruction::CreateReshape(
             ShapeUtil::MakeShape(F32, {size, 1}), add));
-    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(F32, {1}), HloOpcode::kDot, sub, reshape));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(0);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+        ShapeUtil::MakeShape(F32, {1}), sub, reshape, dot_dnums));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {

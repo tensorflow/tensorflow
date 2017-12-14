@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "Log1p"
+  summary: "Computes natural logarithm of (1 + x) element-wise."
+  description: <<END
+I.e., \\(y = \log_e (1 + x)\\).
+END
+}

@@ -26,7 +26,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
-from tensorflow.python.layers import base as tf_base_layers
+from tensorflow.python.layers import utils as tf_layers_util
 
 
 class Wrapper(Layer):
@@ -77,7 +77,7 @@ class Wrapper(Layer):
     # get the updates from the inner layer.
     inner_inputs = inputs
     if inputs is not None:
-      uid = tf_base_layers._object_list_uid(inputs)
+      uid = tf_layers_util.object_list_uid(inputs)
       if uid in self._input_map:
         inner_inputs = self._input_map[uid]
 
@@ -96,10 +96,6 @@ class Wrapper(Layer):
       losses = self.layer.get_losses_for(None)
       return losses + super(Wrapper, self).get_losses_for(None)
     return super(Wrapper, self).get_losses_for(inputs)
-
-  @property
-  def constraints(self):
-    return self.layer.constraints
 
   def get_weights(self):
     return self.layer.get_weights()
@@ -227,7 +223,7 @@ class TimeDistributed(Wrapper):
         input_length = K.shape(inputs)[1]
       # Shape: (num_samples * timesteps, ...). And track the
       # transformation in self._input_map.
-      input_uid = tf_base_layers._object_list_uid(inputs)
+      input_uid = tf_layers_util.object_list_uid(inputs)
       inputs = K.reshape(inputs, (-1,) + input_shape[2:])
       self._input_map[input_uid] = inputs
       # (num_samples * timesteps, ...)
@@ -340,7 +336,8 @@ class Bidirectional(Wrapper):
       output = [y, y_rev]
 
     # Properly set learning phase
-    if 0 < self.layer.dropout + self.layer.recurrent_dropout:
+    if (getattr(y, '_uses_learning_phase', False) or
+        getattr(y_rev, '_uses_learning_phase', False)):
       if self.merge_mode is None:
         for out in output:
           out._uses_learning_phase = True

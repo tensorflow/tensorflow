@@ -200,11 +200,8 @@ py_library(
 # Model Ops.
 cc_library(
     name = "model_ops_lib",
-    srcs = [
-        "kernels/model_ops.cc",
-    ],
+    srcs = ["kernels/model_ops.cc"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
@@ -270,8 +267,11 @@ tf_custom_op_py_library(
     deps = [
         ":gen_model_ops_py",
         ":stats_ops_py",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -286,12 +286,10 @@ tf_cc_test(
         ":forest_proto_impl",
         ":model_ops_lib",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
-        "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -364,8 +362,12 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_stats_ops_py",
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -382,6 +384,7 @@ tf_cc_test(
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -495,9 +498,13 @@ py_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "@six_archive//:six",
     ],
@@ -524,13 +531,17 @@ py_library(
     deps = [
         ":client_lib",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
     ],

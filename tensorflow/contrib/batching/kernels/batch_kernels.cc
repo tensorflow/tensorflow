@@ -461,7 +461,7 @@ class BatchResource : public ResourceBase {
     return Status::OK();
   }
 
-  // Looks up the batcher queue for 'queue_name'. If it did't previously exist,
+  // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
   // creates it.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
                                     BatcherQueue** queue) {

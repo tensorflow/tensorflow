@@ -145,14 +145,16 @@ def get_infogan_model():
   return namedtuples.InfoGANModel(
       *get_gan_model(),
       structured_generator_inputs=[constant_op.constant(0)],
-      predicted_distributions=[categorical.Categorical([1.0])])
+      predicted_distributions=[categorical.Categorical([1.0])],
+      discriminator_and_aux_fn=infogan_discriminator_model)
 
 
 def get_callable_infogan_model():
   return namedtuples.InfoGANModel(
       *get_callable_gan_model(),
       structured_generator_inputs=[constant_op.constant(0)],
-      predicted_distributions=[categorical.Categorical([1.0])])
+      predicted_distributions=[categorical.Categorical([1.0])],
+      discriminator_and_aux_fn=infogan_discriminator_model)
 
 
 def create_infogan_model():

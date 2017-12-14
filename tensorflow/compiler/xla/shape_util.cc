@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -263,6 +264,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     case S32:
     case S64:
     case F16:
+    case BF16:
     case F32:
     case F64:
       return true;
@@ -326,6 +328,14 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
   return MakeTupleShape(new_elements);
+}
+
+// Returns the shape of a real or imaginary component.
+/* static */ Shape ShapeUtil::ComplexComponentShape(
+    const Shape& complex_shape) {
+  CHECK(ElementIsComplex(complex_shape)) << HumanString(complex_shape);
+  return ChangeElementType(complex_shape, primitive_util::ComplexComponentType(
+                                              complex_shape.element_type()));
 }
 
 /* static */ bool ShapeUtil::ShapeIs(const Shape& shape,
@@ -395,6 +405,26 @@ const string& LowercasePrimitiveTypeName(PrimitiveType s) {
   static PrimitiveTypeNameGenerator* gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
+
+StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
+  static std::unordered_map<string, PrimitiveType>* name_to_type = [] {
+    static auto* map = new std::unordered_map<string, PrimitiveType>;
+    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+      if (PrimitiveType_IsValid(i)) {
+        auto value = static_cast<PrimitiveType>(i);
+        (*map)[LowercasePrimitiveTypeName(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = name_to_type->find(name);
+  if (found == name_to_type->end()) {
+    return InvalidArgument("Invalid element type string: \"%s\".",
+                           name.c_str());
+  }
+  return found->second;
+}
+
 }  // namespace
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -499,17 +529,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                         comma_list_to_int64s(dimensions_string));
 
     // Extract the primitive element type.
-    PrimitiveType primitive_type = PRIMITIVE_TYPE_INVALID;
-    for (PrimitiveType i =
-             static_cast<PrimitiveType>(PRIMITIVE_TYPE_INVALID + 1);
-         i < TUPLE; i = static_cast<PrimitiveType>(i + 1)) {
-      if (tensorflow::str_util::Lowercase(PrimitiveType_Name(i)) ==
-          element_type_string) {
-        primitive_type = i;
-        break;
-      }
-    }
-    if (primitive_type == PRIMITIVE_TYPE_INVALID) {
+    TF_ASSIGN_OR_RETURN(const PrimitiveType primitive_type,
+                        StringToPrimitiveType(element_type_string));
+    if (primitive_type == PRIMITIVE_TYPE_INVALID || primitive_type == TUPLE ||
+        primitive_type == OPAQUE) {
       return InvalidArgument("Invalid element type string: \"%s\".",
                              element_type_string.c_str());
     }
@@ -552,6 +575,16 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return SameDimensions(lhs, rhs) && SameElementType(lhs, rhs);
 }
 
+/* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringElementType);
+  }
+  return SameDimensions(lhs, rhs);
+}
+
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
                                            int64 dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));
@@ -591,6 +624,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return sizeof(uint32);
     case U64:
       return sizeof(uint64);
+    case BF16:
+      return sizeof(float) / 2;
     case F16:
       return sizeof(float) / 2;
     case F32:
@@ -681,9 +716,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return LayoutUtil::ValidateLayoutInShape(shape);
 }
 
-/* static */ Shape ShapeUtil::ChangeElementType(const Shape& shape,
+/* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = shape;
+  Shape new_shape = original;
   new_shape.set_element_type(type);
   return new_shape;
 }

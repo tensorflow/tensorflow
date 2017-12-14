@@ -29,7 +29,7 @@ REGISTER_OP("RandomUniform")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {half,float,double}")
+    .Attr("dtype: {half,bfloat16,float,double}")
     .Attr("T: {int32, int64}")
     .SetShapeFn(shape_inference::RandomShape)
     .Doc(R"doc(
@@ -87,7 +87,7 @@ REGISTER_OP("RandomStandardNormal")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {half,float,double}")
+    .Attr("dtype: {half,bfloat16,float,double}")
     .Attr("T: {int32, int64}")
     .SetShapeFn(shape_inference::RandomShape)
     .Doc(R"doc(
@@ -115,7 +115,7 @@ REGISTER_OP("ParameterizedTruncatedNormal")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {half,float,double}")
+    .Attr("dtype: {half,bfloat16,float,double}")
     .Attr("T: {int32, int64}")
     .SetShapeFn(shape_inference::RandomShape)
     .Doc(R"doc(
@@ -145,7 +145,7 @@ REGISTER_OP("TruncatedNormal")
     .Output("output: dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .Attr("dtype: {half,float,double}")
+    .Attr("dtype: {half,bfloat16,float,double}")
     .Attr("T: {int32, int64}")
     .SetShapeFn(shape_inference::RandomShape)
     .Doc(R"doc(
@@ -201,10 +201,11 @@ REGISTER_OP("Multinomial")
     .SetIsStateful()
     .Input("logits: T")
     .Input("num_samples: int32")
-    .Output("output: int64")
+    .Output("output: output_dtype")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: realnumbertype")
+    .Attr("output_dtype: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle logits_shape;
       ShapeHandle unused;
@@ -265,8 +266,6 @@ output: A tensor with shape `shape + shape(alpha)`. Each slice
   `alpha[i0, i1, ...iN]`. The dtype of the output matches the dtype of alpha.
 )doc");
 
-// TODO(dhananayn): Deprecate RandomPoisson and switch over to RandomPoissonV2
-// after forward compatibility period has passed.
 REGISTER_OP("RandomPoisson")
     .SetIsStateful()
     .Input("shape: S")
@@ -283,32 +282,9 @@ REGISTER_OP("RandomPoisson")
       c->set_output(0, out);
       return Status::OK();
     })
+    .Deprecated(25, "Replaced by RandomPoissonV2")
     .Doc(R"doc(
-Outputs random values from the Poisson distribution(s) described by rate.
-
-This op uses two algorithms, depending on rate. If rate >= 10, then
-the algorithm by Hormann is used to acquire samples via
-transformation-rejection.
-See http://www.sciencedirect.com/science/article/pii/0167668793909974.
-
-Otherwise, Knuth's algorithm is used to acquire samples via multiplying uniform
-random variables.
-See Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer
-Programming, Volume 2. Addison Wesley
-
-shape: 1-D integer tensor. Shape of independent samples to draw from each
-  distribution described by the shape parameters given in rate.
-rate: A tensor in which each scalar is a "rate" parameter describing the
-  associated poisson distribution.
-seed: If either `seed` or `seed2` are set to be non-zero, the random number
-  generator is seeded by the given seed.  Otherwise, it is seeded by a
-  random seed.
-seed2: A second seed to avoid seed collision.
-
-output: A tensor with shape `shape + shape(rate)`. Each slice
-  `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
-  `rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of
-  rate.
+Use RandomPoissonV2 instead.
 )doc");
 
 REGISTER_OP("RandomPoissonV2")

@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
@@ -85,6 +86,9 @@ class StagingAreaOpsTest(test.TestCase):
       self._event.wait()
       elem = sess.run(prefetch_op)
       self.assertEqual(elem, [5.0])
+      sess.run(
+          resource_variable_ops.destroy_resource_op(
+              buffer_resource_handle, ignore_lookup_error=True))
 
   def testSameDeviceCPU(self):
     self._prefetch_fn_helper("same_device_cpu",
