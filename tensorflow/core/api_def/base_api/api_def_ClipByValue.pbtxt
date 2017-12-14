@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "ClipByValue"
+  in_arg {
+    name: "t"
+    description: <<END
+A `Tensor`.
+END
+  }
+  in_arg {
+    name: "clip_value_min"
+    description: <<END
+A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+as `t`. The minimum value to clip by.
+END
+  }
+  in_arg {
+    name: "clip_value_max"
+    description: <<END
+A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+as `t`. The maximum value to clip by.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A clipped `Tensor` with the same shape as input 't'.
+END
+  }
+  summary: "Clips tensor values to a specified min and max."
+  description: <<END
+Given a tensor `t`, this operation returns a tensor of the same type and
+shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
+Any values less than `clip_value_min` are set to `clip_value_min`. Any values
+greater than `clip_value_max` are set to `clip_value_max`.
+END
+}
