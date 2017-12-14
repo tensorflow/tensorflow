@@ -18,7 +18,7 @@ The arguments accepted by the `Dataset.map()` transformation have changed:
 
 * `dataset.map(..., num_threads=T)` is now `dataset.map(num_parallel_calls=T)`.
 * `dataset.map(..., output_buffer_size=B)` is now
-  `dataset.map(...).prefetch(B).
+  `dataset.map(...).prefetch(B)`.
 
 Some transformations have been removed from `tf.data.Dataset`, and you must
 instead apply them using `Dataset.apply()` transformation. The full list of

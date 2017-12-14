@@ -81,7 +81,7 @@ class MklCPUAllocator : public Allocator {
       }
 #if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
       if (user_val > max_mem_bytes) {
-        LOG(WARNING) << "The user specifed a memory limit " << kMaxLimitStr
+        LOG(WARNING) << "The user specified a memory limit " << kMaxLimitStr
                      << "=" << user_val
                      << " greater than available physical memory: "
                      << max_mem_bytes

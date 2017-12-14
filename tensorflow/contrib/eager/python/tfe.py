@@ -23,15 +23,13 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@list_devices
 @@num_gpus
 
+@@py_func
 @@defun
 @@implicit_gradients
 @@implicit_value_and_gradients
 @@gradients_function
 @@value_and_gradients_function
 @@GradientTape
-
-@@enable_tracing
-@@flush_trace
 
 @@run
 @@enable_eager_execution
@@ -46,12 +44,15 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@seterr
 
 @@Iterator
-@@Network
 @@Saver
 @@restore_variables_on_create
 @@Variable
 @@get_optimizer_variables
 @@EagerVariableStore
+
+@@Network
+@@save_network_checkpoint
+@@restore_network_checkpoint
 
 @@in_eager_mode
 @@in_graph_mode
@@ -74,6 +75,8 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.network import save_network_checkpoint
+from tensorflow.contrib.eager.python.network import restore_network_checkpoint
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
@@ -86,7 +89,6 @@ from tensorflow.python.eager.context import in_eager_mode
 from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
-from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
@@ -100,8 +102,10 @@ from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore
+from tensorflow.python.ops import script_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
+py_func = script_ops.eager_py_func
 defun = function.defun
 implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad

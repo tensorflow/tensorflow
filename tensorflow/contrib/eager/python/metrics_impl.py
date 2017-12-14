@@ -73,7 +73,7 @@ class Metric(object):
   * `result()`: Computes and returns a final value for the metric
     from the variables in `self`.
 
-  Decendants may override `aggregate()`, but usually won't need to.  It
+  Descendants may override `aggregate()`, but usually won't need to.  It
   adds in the state from a list of metrics of the same type as `self`.
   (Default is to sum all the variables.) Note that users should not call
   `aggregate()`, it is for use by TensorFlow infrastructure.
@@ -223,8 +223,17 @@ class Metric(object):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    v = variable_scope.get_variable(name, shape, dtype, initializer,
-                                    trainable=False, use_resource=True)
+    collections = None if context.in_eager_mode() else [
+        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
+    ]
+    v = variable_scope.get_variable(
+        name,
+        shape,
+        dtype,
+        initializer,
+        trainable=False,
+        collections=collections,
+        use_resource=True)
     self._vars.append(v)
     if context.in_eager_mode():
       self._initial_values[v] = v.value()

@@ -1345,10 +1345,19 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
+
+  def testDropoutSeed(self):
+    """Test that providing the same seed produces the same result."""
+    height, width = 10, 10
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, name='images')
+      output1 = _layers.dropout(images, seed=1)
+      output2 = _layers.dropout(images, seed=1)
+      self.assertAllEqual(*sess.run([output1, output2]))
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1358,7 +1367,6 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images, is_training=False)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])
@@ -1766,10 +1774,13 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'undefined'):
         _layers.batch_norm(inputs, data_format='NCHW')
 
-  def _testCreateOp(self, fused):
+  def _testCreateOp(self, fused, dtype=None):
+    if dtype is None:
+      dtype = dtypes.float32
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      images = np.random.uniform(size=(5, height, width, 3)).astype(
+          dtype.as_numpy_dtype)
       output = _layers.batch_norm(images, fused=fused)
       expected_name = ('BatchNorm/FusedBatchNorm' if fused else
                        'BatchNorm/batchnorm')
@@ -1784,28 +1795,43 @@ class BatchNormTest(test.TestCase):
   def testCreateOpFused(self):
     self._testCreateOp(True)
 
-  def testCreateOpBetaRegularizer(self):
+  def testCreateOpFusedFloat16(self):
+    self._testCreateOp(True, dtypes.float16)
+
+  def _testCreateOpBetaRegularizer(self, fused=True):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
-      _layers.batch_norm(images, param_regularizers={'beta': reg})
+      _layers.batch_norm(images, param_regularizers={'beta': reg}, fused=fused)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
       beta_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(beta_decay.op.name, 'BatchNorm/beta/Regularizer/mul')
 
-  def testCreateOpGammaRegularizer(self):
+  def testCreateOpBetaRegularizerFused(self):
+    self._testCreateOpBetaRegularizer(fused=True)
+
+  def testCreateOpBetaRegularizerNonFused(self):
+    self._testCreateOpBetaRegularizer(fused=False)
+
+  def _testCreateOpGammaRegularizer(self, fused=True):
     height, width = 3, 3
     with self.test_session():
       reg = lambda x: 0.1 * math_ops.reduce_sum(x)
       images = np.random.uniform(size=(5, height, width, 3)).astype('f')
       _layers.batch_norm(
-          images, param_regularizers={'gamma': reg}, scale=True)
+          images, param_regularizers={'gamma': reg}, scale=True, fused=fused)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
       gamma_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
       self.assertEqual(gamma_decay.op.name, 'BatchNorm/gamma/Regularizer/mul')
+
+  def testCreateOpGammaRegularizerFused(self):
+    self._testCreateOpGammaRegularizer(fused=True)
+
+  def testCreateOpGammaRegularizerNonFused(self):
+    self._testCreateOpGammaRegularizer(fused=False)
 
   def testCreateVariables(self):
     height, width = 3, 3
@@ -2639,10 +2665,63 @@ class BatchNormTest(test.TestCase):
   def testBatchNormBeta(self):
     # Test case for 11673
     with self.test_session() as sess:
-      a = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
-      b = _layers.batch_norm(a, center=False, data_format='NCHW',
-                                       zero_debias_moving_mean=True)
+      a_32 = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
+      _layers.batch_norm(
+          a_32, center=False, data_format='NCHW', zero_debias_moving_mean=True)
+      a_16 = array_ops.placeholder(dtypes.float16, shape=(10, 10, 10, 10))
+      _layers.batch_norm(
+          a_16, center=False, data_format='NCHW', zero_debias_moving_mean=True)
       sess.run(variables_lib.global_variables_initializer())
+
+  def testVariablesAreFloat32(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, dtype=dtypes.float16)
+      _layers.batch_norm(images, scale=True)
+      beta = variables.get_variables_by_name('beta')[0]
+      gamma = variables.get_variables_by_name('gamma')[0]
+      self.assertEqual(beta.dtype, dtypes.float32_ref)
+      self.assertEqual(gamma.dtype, dtypes.float32_ref)
+      moving_mean = variables.get_variables_by_name('moving_mean')[0]
+      moving_variance = variables.get_variables_by_name('moving_variance')[0]
+      self.assertEqual(moving_mean.dtype, dtypes.float32_ref)
+      self.assertEqual(moving_variance.dtype, dtypes.float32_ref)
+
+  def _runFusedBatchNorm(self, shape, dtype):
+    channels = shape[1]
+    images = np.arange(np.product(shape), dtype=dtype).reshape(shape)
+    beta = init_ops.constant_initializer(
+        np.arange(2, channels + 2, dtype=np.float32))
+    gamma = init_ops.constant_initializer(
+        np.arange(10, channels + 10, dtype=np.float32) * 2.0)
+    mean = init_ops.constant_initializer(
+        np.arange(3, channels + 3, dtype=np.float32) * 5.0)
+    variance = init_ops.constant_initializer(
+        np.arange(1, channels + 1, dtype=np.float32) * 4.0)
+    output = _layers.batch_norm(
+        images,
+        fused=True,
+        is_training=True,
+        scale=True,
+        epsilon=0.5,
+        param_initializers={
+            'beta': beta,
+            'gamma': gamma,
+            'moving_mean': mean,
+            'moving_variance': variance,
+        },
+        data_format='NCHW')
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      return sess.run(output)
+
+  def testFusedBatchNormFloat16MatchesFloat32(self):
+    if test.is_gpu_available(cuda_only=True):
+      shape = [5, 4, 2, 3]
+      res_32 = self._runFusedBatchNorm(shape, np.float32)
+      res_16 = self._runFusedBatchNorm(shape, np.float16)
+      self.assertAllClose(res_32, res_16, rtol=1e-3)
 
   def testAdjustmentCreated(self):
     # Tests that the adjustment is appropriately passed to and used by the core
@@ -3247,16 +3326,24 @@ class SeparableConv2dTest(test.TestCase):
           for model_variable in model_variables:
             self.assertEqual(trainable, model_variable in trainable_variables)
 
-  def testConvNCHW(self):
-    for num_filters, correct_output_filters in [(None, 6), (8, 8)]:
+  def testSepConvNCHW(self):
+    for num_filters, correct_output_filters in zip((None, 5), (6, 5)):
       with self.test_session():
-        batch, height, width = 4, 5, 6
+        batch, height, width = 4, 10, 12
+        kernel_dim, stride = 3, 2
         images = random_ops.random_uniform((batch, 3, height, width), seed=1)
         output = layers_lib.separable_conv2d(
-            images, num_filters, [3, 3], 2, padding='VALID', data_format='NCHW')
-        self.assertListEqual(
-            output.get_shape().as_list(), [batch, correct_output_filters,
-                                           height - 2, width - 2])
+            images,
+            num_outputs=num_filters,
+            kernel_size=[kernel_dim, kernel_dim],
+            depth_multiplier=2,
+            stride=stride,
+            padding='VALID',
+            data_format='NCHW')
+        self.assertListEqual(output.get_shape().as_list(), [
+            batch, correct_output_filters, (height - kernel_dim + 1) // stride,
+            (width - kernel_dim + 1) // stride
+        ])
 
 
 class ScaleGradientTests(test.TestCase):

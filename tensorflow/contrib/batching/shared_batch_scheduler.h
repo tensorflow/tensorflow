@@ -248,6 +248,9 @@ class Queue {
   // BatchScheduler::SchedulingCapacity().
   size_t SchedulingCapacity() const;
 
+  // Returns the maximum allowed size of tasks submitted to the queue.
+  size_t max_task_size() const { return options_.max_batch_size; }
+
   // Called by a thread that is ready to process a batch, to request one from
   // this queue. Either returns a batch that is ready to be processed, or
   // nullptr if the queue declines to schedule a batch at this time. If it
@@ -337,6 +340,8 @@ class QueueHandle : public BatchScheduler<TaskType> {
   Status Schedule(std::unique_ptr<TaskType>* task) override;
   size_t NumEnqueuedTasks() const override;
   size_t SchedulingCapacity() const override;
+
+  size_t max_task_size() const override { return queue_->max_task_size(); }
 
  private:
   // The scheduler that owns 'queue_'.

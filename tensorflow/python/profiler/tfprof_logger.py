@@ -139,8 +139,8 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
   return logged_ops, string_to_id
 
 
-def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
-                              add_trace=True, add_trainable_var=True):
+def merge_default_with_oplog(graph, op_log=None, run_meta=None,
+                             add_trace=True, add_trainable_var=True):
   """Merge the tfprof default extra info with caller's op_log.
 
   Args:
@@ -199,7 +199,7 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
     add_trace: Whether to add python code trace information.
         Used to support "code" view.
   """
-  op_log = _merge_default_with_oplog(graph, op_log, run_meta, add_trace)
+  op_log = merge_default_with_oplog(graph, op_log, run_meta, add_trace)
 
   with gfile.Open(os.path.join(log_dir, 'tfprof_log'), 'w') as log:
     log.write(op_log.SerializeToString())

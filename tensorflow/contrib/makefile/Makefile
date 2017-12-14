@@ -300,7 +300,7 @@ ifeq ($(TARGET),ANDROID)
 	ifeq ($(ANDROID_ARCH),x86_64)
 		TOOLCHAIN := x86_64-4.9
 		SYSROOT_ARCH := x86_64
-		BIN_PREFIX := x86-64-linux-android
+		BIN_PREFIX := x86_64-linux-android
 		MARCH_OPTION :=
 	endif
     
@@ -314,7 +314,8 @@ ifeq ($(TARGET),ANDROID)
 -Wno-narrowing \
 -fomit-frame-pointer \
 $(MARCH_OPTION) \
--fPIE
+-fPIE \
+-fPIC
 	INCLUDES = \
 -I$(NDK_ROOT)/sources/android/support/include \
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/include \

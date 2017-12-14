@@ -30,8 +30,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 
 
@@ -321,6 +323,13 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))
 
+  def testIdentityOnVariable(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with context.device('/gpu:0'):
+      v = resource_variable_ops.ResourceVariable(True)
+    self.assertAllEqual(True, array_ops.identity(v))
+
   def testIncompatibleSetShape(self):
     x = constant_op.constant(1)
     with self.assertRaises(ValueError):
@@ -344,6 +353,13 @@ class OpsTest(test_util.TensorFlowTestCase):
       int(x)
     with self.assertRaises(TypeError):
       float(x)
+
+  def testFormatString(self):
+    x = constant_op.constant(3.1415)
+    self.assertEqual('3.14', '{:.2f}'.format(x))
+
+  def testNoOpIsNone(self):
+    self.assertTrue(control_flow_ops.no_op() is None)
 
 
 if __name__ == '__main__':

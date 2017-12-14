@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "WholeFileReader"
-  visibility: HIDDEN
-}
-op {
-  graph_op_name: "WholeFileReaderV2"
-  visibility: HIDDEN
-}

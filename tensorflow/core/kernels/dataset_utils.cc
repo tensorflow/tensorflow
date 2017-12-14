@@ -32,12 +32,13 @@ Status MakeIteratorFromInputElement(
   // is always 0, so a negative random step ID should suffice.
   opts.step_id = CapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
-      opts.step_id, [captured_func, ctx](const string& name) {
+      opts.step_id, [captured_func](const string& name) {
         captured_func->resource_manager()->Cleanup(name).IgnoreError();
       });
   opts.step_container = &step_container;
   std::vector<Tensor> return_values;
-  TF_RETURN_IF_ERROR(captured_func->Run(opts, input_element, &return_values));
+  TF_RETURN_IF_ERROR(
+      captured_func->RunWithBorrowedArgs(opts, input_element, &return_values));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {

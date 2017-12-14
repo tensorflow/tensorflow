@@ -71,6 +71,10 @@ class TextLineDataset(Dataset):
         self._filenames, self._compression_type, self._buffer_size)
 
   @property
+  def output_classes(self):
+    return ops.Tensor
+
+  @property
   def output_shapes(self):
     return tensor_shape.scalar()
 
@@ -109,6 +113,10 @@ class TFRecordDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
+
+  @property
+  def output_classes(self):
+    return ops.Tensor
 
   @property
   def output_shapes(self):
@@ -158,6 +166,10 @@ class FixedLengthRecordDataset(Dataset):
     return gen_dataset_ops.fixed_length_record_dataset(
         self._filenames, self._header_bytes, self._record_bytes,
         self._footer_bytes, self._buffer_size)
+
+  @property
+  def output_classes(self):
+    return ops.Tensor
 
   @property
   def output_shapes(self):

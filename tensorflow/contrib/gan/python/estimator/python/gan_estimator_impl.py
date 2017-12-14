@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import enum
 
 from tensorflow.contrib.framework.python.ops import variables as variable_lib
@@ -29,6 +30,7 @@ from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import tf_inspect as inspect
 
 
 __all__ = [
@@ -76,7 +78,7 @@ class GANEstimator(estimator.Estimator):
         return logits
 
       # Create GAN estimator.
-      gan_estimator = estimator.GANEstimator(
+      gan_estimator = tfgan.estimator.GANEstimator(
           model_dir,
           generator_fn=generator_fn,
           discriminator_fn=discriminator_fn,
@@ -105,6 +107,7 @@ class GANEstimator(estimator.Estimator):
                discriminator_loss_fn=None,
                generator_optimizer=None,
                discriminator_optimizer=None,
+               get_hooks_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
                config=None):
@@ -116,7 +119,10 @@ class GANEstimator(estimator.Estimator):
         to continue training a previously saved model.
       generator_fn: A python function that takes a Tensor, Tensor list, or
         Tensor dictionary as inputs and returns the outputs of the GAN
-        generator. See `TFGAN` for more details and examples.
+        generator. See `TFGAN` for more details and examples. Additionally, if
+        it has an argument called `mode`, the Estimator's `mode` will be passed
+        in (ex TRAIN, EVAL, PREDICT). This is useful for things like batch
+        normalization.
       discriminator_fn: A python function that takes the output of
         `generator_fn` or real data in the GAN setup, and `generator_inputs`.
         Outputs a Tensor in the range [-inf, inf]. See `TFGAN` for more details
@@ -132,6 +138,10 @@ class GANEstimator(estimator.Estimator):
         work.
       discriminator_optimizer: Same as `generator_optimizer`, but for the
         discriminator updates.
+      get_hooks_fn: A function that takes a `GANTrainOps` tuple and returns a
+        list of hooks. These hooks are run on the generator and discriminator
+        train ops, and can be used to implement the GAN training scheme.
+        Defaults to `train.get_sequential_train_hooks()`.
       add_summaries: `None`, a single `SummaryType`, or a list of `SummaryType`.
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
@@ -146,7 +156,7 @@ class GANEstimator(estimator.Estimator):
               else discriminator_optimizer)
       gan_head = head_lib.gan_head(
           generator_loss_fn, discriminator_loss_fn, gopt, dopt,
-          use_loss_summaries)
+          use_loss_summaries, get_hooks_fn=get_hooks_fn)
       return _gan_model_fn(
           features, labels, mode, generator_fn, discriminator_fn, gan_head,
           add_summaries)
@@ -225,9 +235,12 @@ def _gan_model_fn(
       labels=None)
 
 
-def _make_train_gan_model(generator_fn, discriminator_fn, real_data,
-                          generator_inputs, generator_scope, add_summaries):
-  """Make a `GANModel` for training."""
+def _make_gan_model(generator_fn, discriminator_fn, real_data,
+                    generator_inputs, generator_scope, add_summaries, mode):
+  """Make a `GANModel`, and optionally pass in `mode`."""
+  # If `generator_fn` has an argument `mode`, pass mode to it.
+  if 'mode' in inspect.getargspec(generator_fn).args:
+    generator_fn = functools.partial(generator_fn, mode=mode)
   gan_model = tfgan_train.gan_model(
       generator_fn,
       discriminator_fn,
@@ -245,15 +258,28 @@ def _make_train_gan_model(generator_fn, discriminator_fn, real_data,
   return gan_model
 
 
+def _make_train_gan_model(generator_fn, discriminator_fn, real_data,
+                          generator_inputs, generator_scope, add_summaries):
+  """Make a `GANModel` for training."""
+  return _make_gan_model(generator_fn, discriminator_fn, real_data,
+                         generator_inputs, generator_scope, add_summaries,
+                         model_fn_lib.ModeKeys.TRAIN)
+
+
 def _make_eval_gan_model(generator_fn, discriminator_fn, real_data,
                          generator_inputs, generator_scope, add_summaries):
   """Make a `GANModel` for evaluation."""
-  return _make_train_gan_model(generator_fn, discriminator_fn, real_data,
-                               generator_inputs, generator_scope, add_summaries)
+  return _make_gan_model(generator_fn, discriminator_fn, real_data,
+                         generator_inputs, generator_scope, add_summaries,
+                         model_fn_lib.ModeKeys.EVAL)
 
 
 def _make_prediction_gan_model(generator_inputs, generator_fn, generator_scope):
   """Make a `GANModel` from just the generator."""
+  # If `generator_fn` has an argument `mode`, pass mode to it.
+  if 'mode' in inspect.getargspec(generator_fn).args:
+    generator_fn = functools.partial(generator_fn,
+                                     mode=model_fn_lib.ModeKeys.PREDICT)
   with variable_scope.variable_scope(generator_scope) as gen_scope:
     generator_inputs = tfgan_train._convert_tensor_or_l_or_d(generator_inputs)  # pylint:disable=protected-access
     generated_data = generator_fn(generator_inputs)

@@ -51,4 +51,18 @@ REGISTER_OP("PyFuncStateless")
 A stateless version of PyFunc.
 )doc");
 
+REGISTER_OP("EagerPyFunc")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("token: string")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >=0")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Eagerly executes a python function to compute func(input)->output. The
+semantics of the input, output, and attributes are the same as those for
+PyFunc.
+)doc");
+
 }  // namespace tensorflow

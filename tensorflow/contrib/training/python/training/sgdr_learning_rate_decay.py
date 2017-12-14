@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops, control_flow_ops
 def sgdr_decay(learning_rate, global_step, initial_period_steps,
                t_mul=2.0, m_mul=1.0, name=None):
   """Implements Stochastic Gradient Descent with Warm Restarts (SGDR).
-  
+
   As described in "SGDR: Stochastic Gradient Descent
   with Warm Restarts" by Ilya Loshchilov & Frank Hutter, Proceedings of
   ICLR'2017, available at https://arxiv.org/pdf/1608.03983.pdf
@@ -48,7 +48,7 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
   where `t_0` = `initial_period_steps` is the user-defined number of batch
   iterations (not epochs as in the paper) to be performed before the first
   restart is launched.
-  
+
   Then, we perform the first restart (i=1) by setting the learning rate to
   `learning_rate*(m_mul^i)`, where `m_mul in [0,1]` (set to 1 by default).
   The i-th restart runs for `t_i=t_0*(t_mul^i)` steps, i.e., every new
@@ -73,7 +73,7 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
       Training dataset size: 10000
       If the user wants the first decay period to span across 5 epochs, then
       `initial_period_steps` = 5 * 10000/100 = 500
-  
+
       Train for 10000 batch iterations with the initial learning rate set to
       0.1, then restart to run 2 times longer, i.e, for 20000 batch iterations
       and with the initial learning rate 0.05, then restart again and again,

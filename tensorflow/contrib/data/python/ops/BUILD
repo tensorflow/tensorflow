@@ -14,11 +14,13 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 py_library(
     name = "dataset_ops",
     srcs = [
+        "counter.py",
         "dataset_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":transformation_ops",
+        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -35,6 +37,25 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "random_ops",
+    srcs = [
+        "random_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 
@@ -61,6 +82,19 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_ops",
+    srcs = [
+        "shuffle_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_ops",
+        ":transformation_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "transformation_ops",
     srcs = [
         "batching.py",
@@ -70,6 +104,7 @@ py_library(
         "interleave_ops.py",
         "resampling.py",
         "scan_ops.py",
+        "stats_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -84,8 +119,10 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",
     ],
 )
@@ -117,14 +154,7 @@ tf_custom_op_py_library(
     deps = [
         ":prefetching_ops",
         "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
     ],
 )
 

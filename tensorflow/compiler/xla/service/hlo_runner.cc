@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
 
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 
 #include <set>
 #include <string>
 #include <utility>
-
-#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,11 +40,29 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromHloProtoFile(const char* filename,
+HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
+                                  const DebugOptions& debug_options) {
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return tools::Parse(hlo_string, config);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::ReadModuleFromHloProtoFile(const std::string& filename,
                                       const DebugOptions& debug_options) {
   HloProto proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 filename, &proto));
+
+  const Status s =
+      tensorflow::ReadBinaryProto(tensorflow::Env::Default(), filename, &proto);
+
+  if (!s.ok()) {
+    const Status s2 =
+        tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto);
+    if (!s2.ok()) {
+      return Status(s2.code(), s.error_message() + "\n" + s2.error_message());
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromProto(proto.hlo_module()));
@@ -52,6 +70,30 @@ HloRunner::ReadModuleFromHloProtoFile(const char* filename,
   TF_ASSIGN_OR_RETURN(auto module,
                       HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::ReadModuleFromHloTextDumpFile(const std::string& filename,
+                                         const DebugOptions& debug_options) {
+  string hlo_string;
+  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
+                                                  filename, &hlo_string));
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return tools::Parse(hlo_string, config);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>> HloRunner::ReadModule(
+    const std::string& filename, const DebugOptions& debug_options) {
+  auto module = HloRunner::ReadModuleFromHloProtoFile(filename, debug_options);
+  if (module.ok()) {
+    return module;
+  }
+  const std::string e = module.status().error_message();
+  module = HloRunner::ReadModuleFromHloTextDumpFile(filename, debug_options);
+  return module.ok() ? std::move(module)
+                     : Status(module.status().code(),
+                              e + "\n" + module.status().error_message());
 }
 
 // Define this in .cc file to avoid having to include eigen or forward declare
@@ -80,11 +122,16 @@ HloRunner::~HloRunner() {
 StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape) {
+    Shape* result_shape, bool run_hlo_passes) {
+  if (run_hlo_passes) {
+    TF_ASSIGN_OR_RETURN(
+        module, backend().compiler()->RunHloPasses(
+                    std::move(module), backend().default_stream_executor()));
+  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend().compiler()->Compile(std::move(module),
-                                    backend().default_stream_executor()));
+      backend().compiler()->RunBackend(std::move(module),
+                                       backend().default_stream_executor()));
 
   se::Stream stream(backend().default_stream_executor());
   stream.Init();
@@ -96,14 +143,13 @@ StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
   run_options.set_intra_op_thread_pool(
       backend().eigen_intra_op_thread_pool_device());
 
-  HloExecutionProfile hlo_execution_profile;
   ServiceExecutableRunOptions service_run_options(
       run_options, backend().StreamBorrower(),
       backend().inter_op_thread_pool());
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,
-                                  &hlo_execution_profile));
+                                  /*hlo_execution_profile=*/nullptr));
   TF_RET_CHECK(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);
@@ -160,10 +206,12 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::TransferFromDevice(
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
+    bool run_hlo_passes) {
   Shape result_shape;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase device_base,
-                      Execute(std::move(module), arguments, &result_shape));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase device_base,
+      Execute(std::move(module), arguments, &result_shape, run_hlo_passes));
   return TransferFromDevice(result_shape, device_base);
 }
 

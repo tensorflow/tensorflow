@@ -140,7 +140,8 @@ class Experiment(object):
                delay_workers_by_global_step=False,
                export_strategies=None,
                train_steps_per_iteration=None,
-               checkpoint_and_export=False):
+               checkpoint_and_export=False,
+               saving_listeners=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -200,6 +201,9 @@ class Experiment(object):
         `save_checkpoints_steps`. Also, this parameter leads to the creation of
         a default `CheckpointSaverHook` instead of a `ValidationMonitor`, so the
         provided `train_monitors` will need to be adjusted accordingly.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used by
+        tf.estimator.Estimator for callbacks that run immediately before or
+        after checkpoint savings.
 
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
@@ -221,6 +225,9 @@ class Experiment(object):
         raise ValueError(
             "`estimator` must implement `tf.contrib.learn.Trainable`"
             "or `tf.estimator.`Estimator`.")
+      if saving_listeners is not None:
+        raise ValueError("`saving_listeners` must be `None` with "
+                         "`tf.contrib.learn.Estimator`.")
 
     if isinstance(estimator, tpu_estimator.TPUEstimator):
       logging.warn(
@@ -242,6 +249,7 @@ class Experiment(object):
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
+    self._saving_listeners = saving_listeners
     # Using 1 on a non-cached file system requires a lot of overhead to
     # read the checkpoint state file. This is particular bad on GCS, so
     # we use a different default. This is a temporary band-aid, to be
@@ -362,9 +370,11 @@ class Experiment(object):
       logging.info("Waiting %d secs before starting training.", remaining)
       time.sleep(delay_secs)
 
-    return self._call_train(input_fn=self._train_input_fn,
-                            max_steps=self._train_steps,
-                            hooks=self._train_monitors + extra_hooks)
+    return self._call_train(
+        input_fn=self._train_input_fn,
+        max_steps=self._train_steps,
+        hooks=self._train_monitors + extra_hooks,
+        saving_listeners=self._saving_listeners)
 
   def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
@@ -712,9 +722,11 @@ class Experiment(object):
         break
 
       logging.info("Training model for %s steps", train_steps_per_iteration)
-      self._call_train(input_fn=self._train_input_fn,
-                       steps=train_steps_per_iteration,
-                       hooks=self._train_monitors)
+      self._call_train(
+          input_fn=self._train_input_fn,
+          steps=train_steps_per_iteration,
+          hooks=self._train_monitors,
+          saving_listeners=self._saving_listeners)
 
       logging.info("Evaluating model now.")
       eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
@@ -762,9 +774,11 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    self._call_train(input_fn=self._train_input_fn,
-                     steps=1,
-                     hooks=self._train_monitors)
+    self._call_train(
+        input_fn=self._train_input_fn,
+        steps=1,
+        hooks=self._train_monitors,
+        saving_listeners=self._saving_listeners)
 
     eval_result = self._call_evaluate(input_fn=self._eval_input_fn,
                                       steps=1,
@@ -792,7 +806,8 @@ class Experiment(object):
     return server
 
   def _call_train(self, _sentinel=None,  # pylint: disable=invalid-name,
-                  input_fn=None, steps=None, hooks=None, max_steps=None):
+                  input_fn=None, steps=None, hooks=None, max_steps=None,
+                  saving_listeners=None):
     if _sentinel is not None:
       raise ValueError("_call_train should be called with keyword args only")
 
@@ -801,10 +816,12 @@ class Experiment(object):
     # safe to convert for both cases.
     hooks = monitors.replace_monitors_with_hooks(hooks, self._estimator)
     if self._core_estimator_used:
-      return self._estimator.train(input_fn=input_fn,
-                                   steps=steps,
-                                   max_steps=max_steps,
-                                   hooks=hooks)
+      return self._estimator.train(
+          input_fn=input_fn,
+          steps=steps,
+          max_steps=max_steps,
+          hooks=hooks,
+          saving_listeners=saving_listeners)
     else:
       return self._estimator.fit(input_fn=input_fn,
                                  steps=steps,

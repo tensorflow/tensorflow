@@ -51,6 +51,7 @@ TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
+@test_util.with_c_api
 class GroupTestCase(test_util.TensorFlowTestCase):
 
   def _StripNode(self, nd):
@@ -132,6 +133,7 @@ class GroupTestCase(test_util.TensorFlowTestCase):
         control_flow_ops.group(1, 2)
 
 
+@test_util.with_c_api
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -143,6 +145,7 @@ class ShapeTestCase(test_util.TensorFlowTestCase):
                             [constant_op.constant(1.0)], tensor).get_shape())
 
 
+@test_util.with_c_api
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
   def testTupleDependencies(self):
@@ -174,6 +177,7 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         self.assertEquals(1, counter.eval())
 
 
+@test_util.with_c_api
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDenseShape(self):
@@ -431,6 +435,7 @@ class CondTest(test_util.TensorFlowTestCase):
           control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
+@test_util.with_c_api
 class ContextTest(test_util.TensorFlowTestCase):
 
   def testCondContext(self):
@@ -516,6 +521,7 @@ def _RawNestedShape(nested_shape):
 
 
 # TODO(yori): Add tests for indexed slices.
+@test_util.with_c_api
 class DataTypesTest(test_util.TensorFlowTestCase):
 
   def assertAllEqualNested(self, a, b):
@@ -540,7 +546,9 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   def _testReturnValues(self, fn_true, fn_false, expected_value_true,
                         expected_value_false, strict=False,
-                        check_cond=True):
+                        check_cond=True, feed_dict=None):
+    if feed_dict is None: feed_dict = {}
+
     condition = array_ops.placeholder(dtypes.bool)
     output_cond = control_flow_ops.cond(condition, fn_true, fn_false,
                                         strict=strict)
@@ -549,13 +557,17 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as sess:
       variables.global_variables_initializer().run()
+      true_feed_dict = {condition: True}
+      true_feed_dict.update(feed_dict)
       result_cond, result_case = sess.run([output_cond, output_case],
-                                          feed_dict={condition: True})
+                                          feed_dict=true_feed_dict)
       self.assertAllEqualNested(result_cond, expected_value_true)
       if check_cond:
         self.assertAllEqualNested(result_case, expected_value_true)
+      false_feed_dict = {condition: False}
+      false_feed_dict.update(feed_dict)
       result_cond, result_case = sess.run([output_cond, output_case],
-                                          feed_dict={condition: False})
+                                          feed_dict=false_feed_dict)
       self.assertAllEqualNested(result_cond, expected_value_false)
       if check_cond:
         self.assertAllEqualNested(result_case, expected_value_false)
@@ -631,26 +643,26 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   def test_tensors_unknown_shape(self):
     def _BuildTrueBranch(dtype):
+      tensor = array_ops.placeholder(dtype=dtype, shape=None)
       def _Build():
-        tensor = array_ops.zeros([2, 2], dtype=dtype)
-        tensor._shape = tensor_shape.TensorShape(None)
         return tensor
-      return _Build
+      return _Build, tensor
 
     def _BuildFalseBranch(dtype):
+      tensor = array_ops.placeholder(dtype=dtype, shape=None)
       def _Build():
-        tensor = array_ops.ones([2, 2], dtype=dtype)
-        tensor._shape = tensor_shape.TensorShape(None)
         return tensor
-      return _Build
+      return _Build, tensor
 
     for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
       shape = tensor_shape.TensorShape(None)
-      fn_true = _BuildTrueBranch(dtype)
-      fn_false = _BuildFalseBranch(dtype)
+      fn_true, true_tensor = _BuildTrueBranch(dtype)
+      fn_false, false_tensor = _BuildFalseBranch(dtype)
       self._testShape(fn_true, fn_false, shape)
       self._testReturnValues(fn_true, fn_false,
-                             np.zeros([2, 2]), np.ones([2, 2]))
+                             np.zeros([2, 2]), np.ones([2, 2]),
+                             feed_dict={true_tensor: np.zeros([2, 2]),
+                                        false_tensor: np.ones([2, 2])})
 
   def test_sparse_tensors(self):
     shape = tensor_shape.TensorShape([None, None])
@@ -674,26 +686,29 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   def test_tensors_with_partially_specified_shapes(self):
     def _BuildBranch(dtype, shape):
+      a = array_ops.placeholder(dtype=dtype, shape=shape[0])
+      b = array_ops.placeholder(dtype=dtype, shape=shape[1])
+      c = array_ops.placeholder(dtype=dtype, shape=shape[2])
       def _Build():
-        a = array_ops.zeros([2, 2], dtype=dtype)
-        b = array_ops.zeros([5], dtype=dtype)
-        c = array_ops.ones([3, 3], dtype=dtype)
-        a._shape = tensor_shape.TensorShape(shape[0])
-        b._shape = tensor_shape.TensorShape(shape[1])
-        c._shape = tensor_shape.TensorShape(shape[2])
         return a, b, c
-      return _Build
+      return _Build, (a, b, c)
 
     for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
       shape = (tensor_shape.TensorShape([None, 2]),
                tensor_shape.TensorShape([None]),
                tensor_shape.TensorShape([3, None]))
-      fn_true = _BuildBranch(dtype, shape)
-      fn_false = _BuildBranch(dtype, shape)
+      fn_true, true_tensors = _BuildBranch(dtype, shape)
+      fn_false, false_tensors = _BuildBranch(dtype, shape)
       self._testShape(fn_true, fn_false, shape)
       self._testReturnValues(fn_true, fn_false,
                              (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
-                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])))
+                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
+                             feed_dict={true_tensors[0]: np.zeros([2, 2]),
+                                        false_tensors[0]: np.zeros([2, 2]),
+                                        true_tensors[1]: np.zeros([5]),
+                                        false_tensors[1]: np.zeros([5]),
+                                        true_tensors[2]: np.ones([3, 3]),
+                                        false_tensors[2]: np.ones([3, 3])})
 
   def test_tensor_arrays(self):
     element_shape = tensor_shape.TensorShape([2])
@@ -837,6 +852,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
+@test_util.with_c_api
 class CaseTest(test_util.TensorFlowTestCase):
 
   def testCase_withDefault(self):

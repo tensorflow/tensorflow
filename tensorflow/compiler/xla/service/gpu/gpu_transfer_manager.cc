@@ -44,7 +44,7 @@ GpuTransferManager::GpuTransferManager()
     : GenericTransferManager(
           se::cuda::kCudaPlatformId,
           /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
-              .getPointerSize()) {}
+              .getPointerSize(0 /* default address space */)) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {

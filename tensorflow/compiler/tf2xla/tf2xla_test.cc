@@ -70,10 +70,7 @@ TEST(ConvertGraphDefToXla, Sum) {
 
   xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
   xla::Computation computation;
-  bool requires_runtime_context;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation,
-                                    &requires_runtime_context));
-  ASSERT_FALSE(requires_runtime_context);
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
 
   // Set up arguments.
   auto x_literal = xla::Literal::CreateR0<int32>(10);
@@ -92,7 +89,7 @@ TEST(ConvertGraphDefToXla, Sum) {
       client->ExecuteAndTransfer(computation, {x_global.get(), y_global.get()});
   TF_EXPECT_OK(result_or.status());
   std::unique_ptr<xla::Literal> result = std::move(result_or.ValueOrDie());
-  EXPECT_EQ("(s32[]) (\n42,\n)", result->ToString());
+  EXPECT_EQ("(s32[]) (\n42\n)", result->ToString());
 }
 
 }  // namespace

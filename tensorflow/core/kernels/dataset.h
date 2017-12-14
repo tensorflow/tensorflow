@@ -17,20 +17,18 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -39,14 +37,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ResourceMgr;
-
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state.
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece key, string* val) = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
   virtual bool Contains(StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
@@ -58,9 +55,16 @@ class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
   virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
+
+// Forward declarations to avoid introducing a dependency on headers in
+// "tensorflow/core/graph/...".
+class GraphDefBuilder;
+class GraphDatasetBase;
+class Node;
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -86,6 +90,7 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // TODO(shivaniagrawal): Consider changing to gtl::ArraySlice?
   template <typename T>
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
@@ -112,6 +117,11 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
+  Status AddDataset(const GraphDatasetBase* dataset,
+                    const std::vector<Node*>& inputs, Node** output) {
+    return AddDataset(dataset, inputs, {}, output);
+  }
+
   // Adds a node corresponding to the `DatasetType` to the Graph.
   // Return value of `DatasetType::op_name()` is used as the op type for the
   // node.
@@ -120,86 +130,77 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
-  template <class DatasetType>
-  Status AddDataset(const DatasetType* dataset,
-                    std::vector<NodeBuilder::NodeOut> inputs, Node** output) {
-    const string& op_type_name = dataset->op_name();
-    std::unique_ptr<const GraphDefBuilder::Options> opts(
-        new GraphDefBuilder::Options(b_->opts()));
-    // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
-    // attributes defined. It will be nice to have a consistent pattern.
-    bool has_output_types_attr = HasAttr(op_type_name, "output_types");
-    bool has_output_shapes_attr = HasAttr(op_type_name, "output_shapes");
-    if (has_output_shapes_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_shapes", dataset->output_shapes())));
+  Status AddDataset(const GraphDatasetBase* dataset,
+                    const std::vector<Node*>& inputs,
+                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+                    Node** output) {
+    std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      enumerated_inputs[i] = std::make_pair(i, inputs[i]);
     }
-    if (has_output_types_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_types", dataset->output_dtypes())));
-    }
-    if (opts->HaveError()) {
-      return errors::Internal("AddDataset: Error building Options.");
-    }
-    NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
-                             opts->op_registry());
-    for (auto node_out : inputs) {
-      node_builder.Input(node_out);
-    }
-    *output = opts->FinalizeBuilder(&node_builder);
-    if (*output == nullptr) {
-      return errors::Internal("AddDataset: Failed to build ", op_type_name,
-                              " op.");
-    }
-    return Status::OK();
+    return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
   }
 
-  // TODO(shivaniagrawal): Single method for AddDataset for
-  // NodeOut/ArrraySlice<NodeOut>
-  template <class DatasetType>
-  Status AddDatasetWithInputAsList(const DatasetType* dataset,
-                                   gtl::ArraySlice<NodeBuilder::NodeOut> input,
-                                   Node** output) {
-    const string& op_type_name = dataset->op_name();
-    std::unique_ptr<const GraphDefBuilder::Options> opts(
-        new GraphDefBuilder::Options(b_->opts()));
-    bool has_output_types_attr = HasAttr(op_type_name, "output_types");
-    bool has_output_shapes_attr = HasAttr(op_type_name, "output_shapes");
-    if (has_output_shapes_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_shapes", dataset->output_shapes())));
-    }
-    if (has_output_types_attr) {
-      opts.reset(new GraphDefBuilder::Options(
-          opts->WithAttr("output_types", dataset->output_dtypes())));
-    }
-    if (opts->HaveError()) {
-      return errors::Internal("AddDataset: Error building Options.");
-    }
-    NodeBuilder node_builder(opts->GetNameForOp(op_type_name), op_type_name,
-                             opts->op_registry());
-    node_builder.Input(input);
-    *output = opts->FinalizeBuilder(&node_builder);
-    if (*output == nullptr) {
-      return errors::Internal("AddDataset: Failed to build ", op_type_name,
-                              " op.");
-    }
-    return Status::OK();
+  Status AddDataset(
+      const GraphDatasetBase* dataset,
+      const std::vector<std::pair<size_t, Node*>>& inputs,
+      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      Node** output);
+
+  // Adds a user-defined function with name `function_name` to the graph and
+  // recursively adds all functions it references. If a function with a matching
+  // name has already been added, returns with OK status. If a user-defined with
+  // name `function_name` is not found in the FunctionLibraryDefinition, returns
+  // an InvalidArgumentError. If the function with name `function_name` or any
+  // of its dependent functions are stateful, returns an InvalidArgument error.
+  Status AddFunction(OpKernelContext* ctx, const string& function_name);
+
+  template <typename T>
+  void BuildAttrValue(const T& value, AttrValue* attr) {
+    SetAttrValue(value, attr);
   }
 
  private:
-  void AddTensorInternal(const Tensor& val, Node** output) {
-    *output = ops::SourceOp(
-        "Const",
-        b_->opts().WithAttr("dtype", val.dtype()).WithAttr("value", val));
+  void AddTensorInternal(const Tensor& val, Node** output);
+
+  Status EnsureFunctionIsStateless(OpKernelContext* ctx,
+                                   const string& function_name) const {
+    const FunctionLibraryDefinition* lib_def =
+        ctx->function_library()->GetFunctionLibraryDefinition();
+    const FunctionDef* function_def = lib_def->Find(function_name);
+    if (!function_def) {
+      return errors::InvalidArgument("Unable to find FunctionDef for ",
+                                     function_name, " in registry.");
+    }
+    for (const NodeDef& node_def : function_def->node_def()) {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(lib_def->LookUpOpDef(node_def.op(), &op_def));
+      // TODO(b/65524810): Hack to allow functions to capture Dataset op
+      // nodes needed for FlatMap. Currently, source datasets nodes have been
+      // marked stateful to avoid constant folding since we do not have a
+      // good way of serializing them.
+      if (IsOpWhitelisted(op_def)) {
+        continue;
+      }
+      if (op_def->is_stateful()) {
+        return errors::InvalidArgument(
+            "Op[name: ", node_def.name(), ", type: ", node_def.op(), "] ",
+            "in function ", function_name, " is stateful. ",
+            "Saving stateful functions is not supported yet.");
+      }
+    }
+    return Status::OK();
   }
 
-  bool HasAttr(const string& op_type_name, const string& attr_name) {
-    const OpDef* op_def = nullptr;
-    Status s = b_->opts().op_registry()->LookUpOpDef(op_type_name, &op_def);
-    if (!s.ok() || op_def == nullptr) {
-      return false;
-    }
+  bool IsOpWhitelisted(const OpDef* op_def) const {
+    return StringPiece(op_def->name()).ends_with("Dataset") &&
+           HasAttr(op_def, "output_shapes");
+  }
+
+  bool HasAttr(const string& op_type_name, const string& attr_name) const;
+
+  bool HasAttr(const OpDef* op_def, const string& attr_name) const {
     for (auto attr : op_def->attr()) {
       if (attr.name() == attr_name) {
         return true;
@@ -208,8 +209,21 @@ class GraphDefBuilderWrapper {
     return false;
   }
 
+  Status AddAttrFunctions(const AttrValue& attr_value, OpKernelContext* ctx) {
+    if (attr_value.has_func()) {
+      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+    } else if (attr_value.has_list()) {
+      for (const NameAttrList& name_attr_list : attr_value.list().func()) {
+        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+      }
+    }
+    return Status::OK();
+  }
+
   GraphDefBuilder* b_;
 };
+
+class StatsAggregator;
 
 // A cut-down version of OpKernelContext for running computations in
 // iterators. Note that we cannot simply use OpKernelContext here
@@ -220,44 +234,47 @@ class GraphDefBuilderWrapper {
 // TODO(mrry): We will probably need to support more of
 // OpKernelContext here. For example, should allocation be handled by
 // the IteratorContext?
-// TODO(mrry): We will need to fabricate step IDs for calls to ops
-// that are not nested within a particular step.
 // TODO(mrry): We're making some daring assumptions about the lifetime
-// of the FunctionLibraryRuntime and runner passed in here. Once
-// created, a FunctionLibraryRuntime should stay alive for the
-// remainder of a session, so we copy the pointer. A runner will be
-// deleted when the original step ends, but all existing runners only
-// close over session-lifetime (or longer-lived) state, so we can make
-// a copy of the function. There's nothing in the definition of either
-// class to guarantee that what we are doing is safe. We should
-// formalize the properties here.
+// of the runner passed in here. A runner will be deleted when the original
+// step ends, but all existing runners only close over session-lifetime (or
+// longer-lived) state, so we can make a copy of the function. There's nothing
+// in the definition of the API from which we took the runner to guarantee that
+// what we are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
   struct Params {
     // Interface to operating system functionality.
     Env* env;
 
-    // The step being executed.
-    int64 step_id = 0;
-
-    // Shared resources accessible by this iterator invocation.
-    ResourceMgr* resource_manager = nullptr;
-
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
+
+    // A function that returns the current `StatsAggregator` instance to be
+    // used when recording statistics about the iterator.
+    //
+    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
+    // is a property of the `IteratorResource` (which this class does not know
+    // about), and (ii) it can change after the `IteratorContext` has been
+    // created. Better suggestions are welcome!
+    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
+        nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
 
   Env* env() const { return params_.env; }
 
-  int64 step_id() const { return params_.step_id; }
-
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
   }
 
-  ResourceMgr* resource_manager() const { return params_.resource_manager; }
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    if (params_.stats_aggregator_getter) {
+      return params_.stats_aggregator_getter();
+    } else {
+      return nullptr;
+    }
+  }
 
  private:
   Params params_;
@@ -298,27 +315,14 @@ class IteratorBase {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // Saves the state of this iterator.
-  virtual Status Save(IteratorStateWriter* writer) {
-    if (is_exhausted_) {
-      LOG(INFO) << "Iterator exhausted.";
-      return writer->WriteScalar(kIteratorExhausted, kIteratorExhausted);
-    } else {
-      return SaveInternal(writer);
-    }
+  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
+    return SaveInternal(writer);
   }
 
   // Restores the state of this iterator.
   virtual Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
-    if (reader->Contains(kIteratorExhausted)) {
-      LOG(INFO) << "Iterator exhausted. Nothing to restore.";
-      is_exhausted_ = true;
-      return Status::OK();
-    } else {
-      return RestoreInternal(ctx, reader);
-    }
+    return RestoreInternal(ctx, reader);
   }
-
-  static const char kIteratorExhausted[];
 
  protected:
   // This is needed so that sub-classes of IteratorBase can call
@@ -347,8 +351,6 @@ class IteratorBase {
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
-
-  bool is_exhausted_ = false;  // Whether the iterator has been exhausted.
 };
 
 // Represents a (potentially infinite) range of outputs, where each
@@ -384,7 +386,7 @@ class DatasetBase : public core::RefCounted {
   virtual string DebugString() = 0;
 
   // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(IteratorStateWriter* writer) const {
+  virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
     return errors::Unimplemented("DatasetBase::Save");
   }
 
@@ -396,10 +398,17 @@ class DatasetBase : public core::RefCounted {
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
-    Status AddParentDataset(const DatasetBase* dataset, Node** output) {
-      return dataset->AsGraphDefInternal(this, output);
+    Status AddParentDataset(OpKernelContext* ctx, const DatasetBase* dataset,
+                            Node** output) {
+      return dataset->AsGraphDefInternal(ctx, this, output);
     }
   };
+
+  virtual Status AsGraphDefInternal(OpKernelContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** node) const {
+    return AsGraphDefInternal(b, node);
+  }
 
   virtual Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
                                     Node** node) const {
@@ -415,10 +424,11 @@ class GraphDatasetBase : public DatasetBase {
 
   const string op_name() const { return op_name_; }
 
-  Status Save(IteratorStateWriter* writer) const override {
+  Status Save(OpKernelContext* ctx,
+              IteratorStateWriter* writer) const override {
     string serialized_graph_def;
     string output_node;
-    TF_RETURN_IF_ERROR(Serialize(&serialized_graph_def, &output_node));
+    TF_RETURN_IF_ERROR(Serialize(ctx, &serialized_graph_def, &output_node));
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
     TF_RETURN_IF_ERROR(
@@ -434,17 +444,8 @@ class GraphDatasetBase : public DatasetBase {
   static const char kDatasetGraphOutputNodeKey[];
 
  private:
-  Status Serialize(string* serialized_graph_def, string* output_node) const {
-    GraphDefBuilder b;
-    DatasetGraphDefBuilder db(&b);
-    Node* node = nullptr;
-    TF_RETURN_IF_ERROR(AsGraphDefInternal(&db, &node));
-    *output_node = node->name();
-    GraphDef graph_def;
-    TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-    graph_def.SerializeToString(serialized_graph_def);
-    return Status::OK();
-  }
+  Status Serialize(OpKernelContext* ctx, string* serialized_graph_def,
+                   string* output_node) const;
 
   const string op_name_;
 };
@@ -484,16 +485,12 @@ class DatasetIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     port::Tracing::TraceMe activity(params_.prefix);
-    if (is_exhausted_) {
-      *end_of_sequence = true;
-      return Status::OK();
-    }
     return GetNextInternal(ctx, out_tensors, end_of_sequence);
   }
 
-  Status Save(IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(dataset()->Save(writer));
-    return IteratorBase::Save(writer);
+  Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {
+    TF_RETURN_IF_ERROR(dataset()->Save(ctx, writer));
+    return IteratorBase::Save(ctx, writer);
   }
 
  protected:

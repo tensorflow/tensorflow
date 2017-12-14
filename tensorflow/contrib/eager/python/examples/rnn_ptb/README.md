@@ -20,6 +20,18 @@ Benchmarks (using synthetic data):
 
 ```
 # Using eager execution
+python rnn_ptb_test.py --benchmarks=.
+
+# Using graph execution
+python rnn_ptb_graph_test.py --benchmarks=.
+```
+
+The above uses the model definition included with the TensorFlow pip
+package. To build (and run benchmarks) from source:
+
+
+```
+# Using eager execution
 bazel run -c opt --config=cuda :rnn_ptb_test -- --benchmarks=.
 
 # Using graph execution

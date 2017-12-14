@@ -190,10 +190,10 @@ def main(_):
   else:
     train_dir = None
     test_dir = None
-  summary_writer = tf.contrib.summary.create_summary_file_writer(
-      train_dir, flush_secs=10)
-  test_summary_writer = tf.contrib.summary.create_summary_file_writer(
-      test_dir, flush_secs=10, name='test')
+  summary_writer = tf.contrib.summary.create_file_writer(
+      train_dir, flush_millis=10000)
+  test_summary_writer = tf.contrib.summary.create_file_writer(
+      test_dir, flush_millis=10000, name='test')
   checkpoint_prefix = os.path.join(FLAGS.checkpoint_dir, 'ckpt')
 
   with tf.device(device):
@@ -211,7 +211,7 @@ def main(_):
         test(model, test_ds)
       all_variables = (
           model.variables
-          + tfe.get_optimizer_variables(optimizer)
+          + optimizer.variables()
           + [global_step])
       tfe.Saver(all_variables).save(
           checkpoint_prefix, global_step=global_step)

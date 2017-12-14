@@ -128,9 +128,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-            memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS),
-        original_metagraph)
+            memory_optimization=rewriter_config_pb2.RewriterConfig.
+            RECOMPUTATION_HEURISTICS), original_metagraph)
     self.assertGreater(
         len(rewritten_graph_def.node),
         len(original_metagraph.graph_def.node))
@@ -151,8 +152,10 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-            memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS,
+            memory_optimization=rewriter_config_pb2.RewriterConfig.
+            RECOMPUTATION_HEURISTICS,
             memory_optimizer_target_node_name_prefix='optimizer/gradients/'),
         original_metagraph)
     self.assertGreater(

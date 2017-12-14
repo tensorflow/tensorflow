@@ -571,6 +571,12 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
   status->status = ctx->func_lib_def.AddFunctionDef(function_def);
 }
 
+void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
+                            TF_Status* status) {
+  tensorflow::mutex_lock l(ctx->functions_mu);
+  status->status = ctx->func_lib_def.AddFunctionDef(function->fdef);
+}
+
 }  // extern "C"
 
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {

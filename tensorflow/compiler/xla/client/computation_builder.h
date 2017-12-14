@@ -68,6 +68,7 @@ class ShardingBuilder {
                          const TileAssignment& tile_assignment) {
     OpSharding result;
     result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    *result.mutable_tile_shape() = tile_shape;
     for (int64 dim : tile_assignment.dimensions()) {
       result.add_tile_assignment_dimensions(dim);
     }
@@ -120,22 +121,22 @@ class ComputationBuilder {
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
   // OpMetadata attached until a call to ClearOpMetdata.
-  void SetOpMetadata(const OpMetadata& metadata) {
-    metadata_ = metadata;
-  }
+  void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.
-  void ClearOpMetadata() {
-    metadata_.Clear();
-  }
+  void ClearOpMetadata() { metadata_.Clear(); }
 
-  // Sets an OpDeviceAssignment that will be attached to all instructions
-  // until cleared.
+  // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
-  // Clears the device assignment. Ops will be placed according to the default
-  // placement policy.
+  // Clears the sharding. Ops will be sharded according to the default placement
+  // policy.
   void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
+
+  // Returns the OpSharding that will be attached to all instructions.
+  const tensorflow::gtl::optional<OpSharding>& sharding() const {
+    return sharding_;
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -392,6 +393,11 @@ class ComputationBuilder {
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
 
+  // Enqueues a general dot instruction onto the computation.
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
+
   // Default dimension numbers used for a 2D convolution.
   static constexpr int64 kConvBatchDimension = 0;
   static constexpr int64 kConvFeatureDimension = 1;
@@ -412,8 +418,9 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 input_batch, int64 input_feature, int64 output_batch,
-      int64 output_feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 input_first_spatial,
+      int64 input_second_spatial, int64 output_batch, int64 output_feature,
+      int64 output_first_spatial, int64 output_second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -668,6 +675,13 @@ class ComputationBuilder {
   ComputationDataHandle ConvertElementType(const ComputationDataHandle& operand,
                                            PrimitiveType new_element_type);
 
+  // Enqueues a no-op instruction onto the computation that changes
+  // the element type of the operand array to primitive_type. The
+  // bit-widths of the source and destination element types must be
+  // identical.
+  ComputationDataHandle BitcastConvertType(const ComputationDataHandle& operand,
+                                           PrimitiveType new_element_type);
+
   // Enqueues a float32 reciprocal instruction onto the computation.
   // (float32 is specified as there is an implicit float32 -1.0f constant
   // exponent).
@@ -727,6 +741,13 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a conditional node onto the computation.
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const Computation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const Computation& false_computation);
+
   // Enqueues a ReducePrecision node onto the computation.
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,
@@ -742,11 +763,12 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters, or on stateful operators such
-  // as `RngNormal` or `Infeed`. Unlike `ComputeConstant`, `IsConstant` tests
-  // whether a computation is a compile-time constant without evaluating the
-  // computation.
-  StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
+  // constant does not depend on parameters with higher index then
+  // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
+  // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
+  // compile-time constant without evaluating the computation.
+  StatusOr<bool> IsConstant(const ComputationDataHandle& operand,
+                            int64 num_parameters = 0);
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -791,7 +813,7 @@ class ComputationBuilder {
                                       float epsilon, int64 feature_index);
 
   // Computes the value of a constant indicated by a
-  // ComputationDataHandle.
+  // ComputationDataHandle using a non-optimized interpreter on the host.
   //
   // The operand must be from the computation currently being built -
   // i.e., returned from this builder with no intervening call to
@@ -799,8 +821,11 @@ class ComputationBuilder {
   // that may stop working at any time.
   //
   // The operand must represent a constant value, which in this case
-  // means that it must not statically depend on a parameter to the
-  // computation that is being built.
+  // means that it must not statically depend on any parameter of the
+  // computation that is being built other then the ones specified on the
+  // paramtere list. The parameters in the list will be indexed by their
+  // parameter id property so the number of parameters specified should be at
+  // least as many as the largest used parameter index.
   //
   // `IsConstant` can be used to test whether a computation is a compile-time
   // constant without evaluation it. `ComputeConstant` only succeeds for
@@ -818,7 +843,8 @@ class ComputationBuilder {
   // will be stored using that layout.
   StatusOr<std::unique_ptr<Literal>> ComputeConstant(
       const ComputationDataHandle& operand,
-      const Layout* output_layout = nullptr);
+      const Layout* output_layout = nullptr,
+      tensorflow::gtl::ArraySlice<Literal> parameters = {});
 
   // Returns a new ComputationBuilder whose resultant Computation is used only
   // by this ComputationBuilder. The sub-ComputationBuilder has the same
@@ -1037,6 +1063,33 @@ ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
   return ConstantFromArray(values);
 }
+
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+class ScopedShardingAssignment {
+ public:
+  ScopedShardingAssignment(xla::ComputationBuilder* builder,
+                           tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  ~ScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::ComputationBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedShardingAssignment);
+};
 
 }  // namespace xla
 

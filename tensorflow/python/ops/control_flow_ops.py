@@ -60,11 +60,13 @@ from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -86,6 +88,29 @@ from tensorflow.python.util import tf_should_use
 _basetuple = tuple
 
 
+def _summarize_eager(tensor, summarize=None):
+  """Returns a summarized string representation of eager `tensor`.
+
+  Args:
+    tensor: EagerTensor to summarize
+    summarize: Include these many first elements of `array`
+  """
+  # reshape((-1,)) is the fastest way to get a flat array view
+  if tensor._rank():  # pylint: disable=protected-access
+    flat = tensor.numpy().reshape((-1,))
+    lst = [str(x) for x in flat[:summarize]]
+    if len(lst) < flat.size:
+      lst.append("...")
+  else:
+    # tensor.numpy() returns a scalar for zero dimensional arrays
+    if summarize != 0:
+      lst = [str(tensor.numpy())]
+    else:
+      lst = []
+
+  return ", ".join(lst)
+
+
 # pylint: disable=protected-access
 
 
@@ -98,7 +123,8 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
-  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+  NOTE: In graph mode, to ensure that Assert executes, one usually attaches
+  a dependency:
 
   ```python
   # Ensure maximum element of x is smaller or equal to 1
@@ -117,7 +143,21 @@ def Assert(condition, data, summarize=None, name=None):
     assert_op: An `Operation` that, when executed, raises a
     `tf.errors.InvalidArgumentError` if `condition` is not true.
     @compatibility{eager} returns None.
+
+  Raises:
+    @compatibility{eager} `tf.errors.InvalidArgumentError` if `condition`
+    is not true
   """
+  if context.in_eager_mode():
+    if not condition:
+      xs = ops.convert_n_to_tensor(data)
+      data_str = [_summarize_eager(x, summarize) for x in xs]
+      raise errors.InvalidArgumentError(
+          node_def=None, op=None,
+          message="Expected '%s' to be true. Summarized data: %s" % (
+              condition, "\n".join(data_str)))
+    return
+
   with ops.name_scope(name, "Assert", [condition, data]) as name:
     xs = ops.convert_n_to_tensor(data)
     if all([x.dtype in {dtypes.string, dtypes.int32} for x in xs]):
@@ -466,29 +506,6 @@ def _convert_flows_to_tensorarrays(tensors_or_tensorarrays, tensors_or_flows):
       for (ta, t_or_flow) in zip(tensors_or_tensorarrays, tensors_or_flows)]
 
 
-def _IsLoopConstantEnter(op):
-  """Return true iff op is a loop invariant."""
-  is_enter = (op.type == "Enter" or op.type == "RefEnter")
-  return is_enter and op.get_attr("is_constant")
-
-
-def _GetLoopConstantEnter(value):
-  """Return the enter op if we can infer `value` to be a loop invariant."""
-  id_ops = {"Switch", "RefSwitch", "Identity", "RefIdentity"}
-  op = value.op
-  while op.type in id_ops:
-    op = op.inputs[0].op
-  return op if _IsLoopConstantEnter(op) else None
-
-
-def _GetOutputContext(op):
-  """Return the control flow context for the output of an op."""
-  ctxt = op._get_control_flow_context()
-  if IsLoopExit(op):
-    ctxt = ctxt.outer_context
-  return ctxt
-
-
 def _ShapeLessThanOrEqual(shape1, shape2):
   if shape2.dims is None:
     return True
@@ -573,6 +590,8 @@ def _EnforceShapeInvariant(merge_var, next_var):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
+      # TODO(skyewm): get original loop input that caused the shape error and
+      # report its name instead of the merge node's.
       raise ValueError(
           "The shape for %s is not an invariant for the loop. It enters "
           "the loop with shape %s, but has shape %s after one iteration. "
@@ -624,11 +643,17 @@ def _EnforceShapeInvariant(merge_var, next_var):
              n_values_shape, n_indices_shape, n_shape_shape))
 
 
-def _AddNextAndBackEdge(m, v):
+def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   """Add NextIteration and back edge from v to m."""
   if isinstance(m, ops.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
+    if enforce_shape_invariant:
+      # Make sure the shapes of loop outputs are correct. We do this before
+      # calling _update_input, which will raise a less-helpful error message if
+      # the types don't match.
+      # TODO(skyewm): call this for other cases below (needs testing)
+      _EnforceShapeInvariant(m, v)
     m.op._update_input(1, v)   # pylint: disable=protected-access
   elif isinstance(m, ops.IndexedSlices):
     # pylint: disable=protected-access
@@ -879,7 +904,7 @@ class GradLoopState(object):
 
       # Add the stack_push op in the context of value.op.
       swap_enabled = self.forward_context.swap_memory
-      value_ctxt = _GetOutputContext(value.op)
+      value_ctxt = util.GetOutputContext(value.op)
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
@@ -989,7 +1014,7 @@ class GradLoopState(object):
       cur_value = value
       cur_grad_state = self
       while True:
-        enter_op = _GetLoopConstantEnter(cur_value)
+        enter_op = util.GetLoopConstantEnter(cur_value)
         if enter_op:
           # Special case: cur_value comes from a constant Enter node.
           cur_value = enter_op.inputs[0]
@@ -1042,7 +1067,7 @@ class ControlFlowState(object):
 
   def GetGradState(self, op, before):
     """Return the grad state for this op if it's in a forward loop context."""
-    if before and IsLoopExit(op):
+    if before and util.IsLoopExit(op):
       forward_ctxt = op._get_control_flow_context()
       forward_ctxt = forward_ctxt.outer_context
       if forward_ctxt:
@@ -1202,8 +1227,8 @@ class ControlFlowState(object):
     Returns:
       A zero tensor of the same shape of op.outputs[index].
     """
-    if IsLoopSwitch(op): return None
-    dead_branch = IsSwitch(op)
+    if util.IsLoopSwitch(op): return None
+    dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
@@ -1303,7 +1328,7 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   """
   loop_state = None
   for op in between_op_list:
-    if IsLoopExit(op):
+    if util.IsLoopExit(op):
       if loop_state is None:
         loop_state = ControlFlowState()
       if colocate_gradients_with_ops:
@@ -1314,28 +1339,10 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   return loop_state
 
 
-def IsSwitch(op):
-  """Return true if `op` is a Switch."""
-  return op.type == "Switch" or op.type == "RefSwitch"
-
-
-def IsLoopExit(op):
-  """Return true if `op` is an Exit."""
-  return op.type == "Exit" or op.type == "RefExit"
-
-
-def IsLoopSwitch(op):
-  """Return true if `op` is the Switch for a while loop."""
-  if IsSwitch(op):
-    ctxt = op._get_control_flow_context()
-    return ctxt and isinstance(ctxt, WhileContext)
-  return False
-
-
 def ZerosLikeOutsideLoop(op, index):
   """Create zeros_like for the specified output of an op."""
   val = op.outputs[index]
-  if not IsSwitch(op):
+  if not util.IsSwitch(op):
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
@@ -1472,7 +1479,7 @@ class ControlFlowContext(object):
     return None
 
   def _IsInOuterContext(self, op):
-    op_ctxt = _GetOutputContext(op)
+    op_ctxt = util.GetOutputContext(op)
     outer_ctxt = self.outer_context
     while outer_ctxt != op_ctxt:
       if outer_ctxt is None:
@@ -1490,11 +1497,11 @@ class ControlFlowContext(object):
     else:
       internal_control_inputs = []
       for x in op.control_inputs:
-        ctxt = _GetOutputContext(x)
+        ctxt = util.GetOutputContext(x)
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
-      del op.control_inputs[:]
+      op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs
   # pylint: enable=protected-access
@@ -1507,6 +1514,12 @@ class ControlFlowContext(object):
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""
     return None
+
+  def IsWhileContext(self):
+    return False
+
+  def __str__(self):
+    return self.name
 
 
 class CondContext(ControlFlowContext):
@@ -1681,7 +1694,7 @@ class CondContext(ControlFlowContext):
         op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
 
-    if self._outer_context or not IsLoopExit(op):
+    if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
     if self._outer_context:
@@ -1725,7 +1738,19 @@ class CondContext(ControlFlowContext):
 
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
+    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     original_result = fn()
+    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+    if len(post_summaries) > len(pre_summaries):
+      new_summaries = post_summaries[len(pre_summaries):]
+      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+      summary_ref[:] = pre_summaries
+      with ops.control_dependencies(new_summaries):
+        if original_result is None:
+          return no_op(), None
+        else:
+          original_result = nest.map_structure(
+              array_ops.identity, original_result)
     if original_result is None:
       return None, None
 
@@ -1838,8 +1863,8 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   with ops.name_scope(name, "cond", [pred]):
     if context.in_eager_mode():
       if pred:
-        return true_fn()
-      return false_fn()
+        return _UnpackIfSingleton(true_fn())
+      return _UnpackIfSingleton(false_fn())
 
     # Add the Switch to the graph.
     if isinstance(pred, bool):
@@ -2139,7 +2164,7 @@ class WhileContext(ControlFlowContext):
         grad_ctxt = grad_ctxt.GetWhileContext()
         if grad_ctxt.grad_state:
           forward_ctxt = _GetWhileContext(val.op)
-          if IsLoopExit(val.op):
+          if util.IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
             if forward_ctxt:
               forward_ctxt = forward_ctxt.GetWhileContext()
@@ -2221,7 +2246,7 @@ class WhileContext(ControlFlowContext):
       self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
-    if self._outer_context or not IsLoopExit(op):
+    if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
       for x in op.outputs:
         op.graph.prevent_feeding(x)
@@ -2240,7 +2265,7 @@ class WhileContext(ControlFlowContext):
         return True
       # pylint: enable=protected-access
       for x in op.inputs:
-        if not _IsLoopConstantEnter(x.op):
+        if not util.IsLoopConstantEnter(x.op):
           return False
       return True
     if _IsOpFree(op):
@@ -2476,9 +2501,17 @@ class WhileContext(ControlFlowContext):
     if shape_acc is not None:
       self.AddName(shape_acc.name)
       init_acc.append(shape_acc)
+
+    # Set use_input_shape=False since the accumulator tensors will grow in
+    # size. If use_input_shape=True, the _update_input call below will result in
+    # incompatible shapes.
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
-                        name="b_acc") for x in init_acc]
+                        use_input_shape=False, name="b_acc") for x in init_acc]
+    # Manually set appropriate partial shapes.
+    enter_acc[0].set_shape([None])
+    if values_acc.shape.dims is not None:
+      enter_acc[1].set_shape([None] + values_acc.shape.as_list()[1:])
     self.loop_enters.extend(enter_acc)
 
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
@@ -2556,7 +2589,7 @@ class WhileContext(ControlFlowContext):
 
     if control_pivot is not None:
       for var in enter_vars:
-        if _IsLoopConstantEnter(var.op.inputs[0].op):
+        if util.IsLoopConstantEnter(var.op.inputs[0].op):
           # pylint: disable=protected-access
           var.op._add_control_input(control_pivot.op)
           # pylint: enable=protected-access
@@ -2590,9 +2623,23 @@ class WhileContext(ControlFlowContext):
     packed_vars_for_body = nest.pack_sequence_as(
         structure=original_loop_vars,
         flat_sequence=vars_for_body_with_tensor_arrays)
+    pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
+    post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     if not nest.is_sequence(body_result):
       body_result = [body_result]
+    if len(post_summaries) > len(pre_summaries):
+      new_summaries = post_summaries[len(pre_summaries):]
+      summary_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+      summary_ref[:] = pre_summaries
+      with ops.control_dependencies(new_summaries):
+        def map_fn(x):
+          # TODO(apassos) figure out how to trigger with tensor arrays as well
+          if isinstance(x, tensor_array_ops.TensorArray):
+            return x
+          return array_ops.identity(x)
+        body_result = nest.map_structure(map_fn, body_result)
+
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and
@@ -2617,11 +2664,6 @@ class WhileContext(ControlFlowContext):
     # Add the exit ops.
     exit_vars = [exit(x[0]) for x in switch_vars]
     self._loop_exits = exit_vars
-
-    # Make sure the shapes of loop outputs are correct.
-    for m_var, n_var in zip(merge_vars, next_vars):
-      if isinstance(m_var, ops.Tensor):
-        _EnforceShapeInvariant(m_var, n_var)
 
     # Exit the loop.
     self.ExitResult(exit_vars)
@@ -2669,7 +2711,7 @@ class WhileContext(ControlFlowContext):
         if shape is not None:
           xs.append(shape)
       for x in xs:
-        inp_op = x.op.inputs[0]
+        inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
         outer_control_inputs = [op for op in control_inputs
                                 if self._IsInOuterContext(op)]
@@ -2678,10 +2720,13 @@ class WhileContext(ControlFlowContext):
         graph._record_op_seen_by_control_dependencies(x.op)
     # pylint: enable=protected-access
 
+  def IsWhileContext(self):
+    return True
+
 
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
-               name=None):
+               name=None, maximum_iterations=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -2753,6 +2798,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     name: Optional name prefix for the returned tensors.
+    maximum_iterations: Optional maximum number of iterations of the while loop
+      to run.  If provided, the `cond` output is AND-ed with an additional
+      condition ensuring the number of iterations executed is no greater than
+      `maximum_iterations`.
 
   Returns:
     The output tensors for the loop variables after the loop. When the length
@@ -2806,18 +2855,47 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    if maximum_iterations is not None:
+      maximum_iterations = ops.convert_to_tensor(
+          maximum_iterations, name="maximum_iterations")
+      if maximum_iterations.shape.ndims != 0:
+        raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                         maximum_iterations.shape)
+      counter = constant_op.constant(
+          0, dtype=maximum_iterations.dtype, name="iteration_counter")
+      orig_cond = cond
+      orig_body = body
+      if len(loop_vars) == 1:
+        loop_vars = (counter, loop_vars[0])
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
+        body = lambda i, lv: (i + 1, orig_body(lv))
+      else:
+        loop_vars = (counter, loop_vars)
+        cond = lambda i, lv: (  # pylint: disable=g-long-lambda
+            math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
+        body = lambda i, lv: (i + 1, orig_body(*lv))
+
     if context.in_eager_mode():
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
-      return loop_vars
+      if maximum_iterations is not None:
+        return loop_vars[1]
+      else:
+        return loop_vars
 
     if shape_invariants is not None:
+      if maximum_iterations is not None:
+        shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
     loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
-    return result
+    if maximum_iterations is not None:
+      return result[1]
+    else:
+      return result
 
 
 def _AsTensorList(x, p):

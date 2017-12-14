@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -56,6 +57,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
 
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       false, [](const Shape&, const Shape&) { return false; });
+  pipeline.AddPass<WhileLoopSimplifier>();
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
@@ -67,13 +69,19 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
-StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::Compile(
+StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> hlo_module,
+    se::StreamExecutor* /*stream_exec*/) {
+  VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  return std::move(hlo_module);
+}
+
+StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  VLOG(1) << "Generate graph " << hlo_module->name();
-
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  VLOG(1) << "Run backend " << hlo_module->name();
 
   // Typically you would visit the HLO graph, building up a compiled equivalent
   // In this case we are using an HloEvaluator at execution time, so we don't

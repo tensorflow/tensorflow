@@ -88,17 +88,13 @@ extra_failing_gpu_cc_tests="\
     //tensorflow/core:cuda_libdevice_path_test + \
     //tensorflow/core:common_runtime_direct_session_test + \
     //tensorflow/core:common_runtime_direct_session_with_tracking_alloc_test + \
-    //tensorflow/core:gpu_tracer_test + \
+    //tensorflow/core:device_tracer_test + \
     //tensorflow/core:ops_math_grad_test \
 "
 
 exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
-
-function clean_output_base() {
-  bazel clean --expunge
-}
 
 function run_configure_for_cpu_build {
   # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
@@ -115,9 +111,9 @@ function run_configure_for_cpu_build {
     export TF_NEED_MKL=0
   fi
   export TF_NEED_VERBS=0
-  export TF_NEED_GCP=0
+  export TF_NEED_GCP=1
   export TF_NEED_HDFS=0
-  export TF_NEED_OPENCL=0
+  export TF_NEED_OPENCL_SYCL=0
   echo "" | ./configure
 }
 
@@ -141,7 +137,7 @@ function run_configure_for_gpu_build {
   export TF_NEED_MKL=0
   export TF_NEED_GCP=0
   export TF_NEED_HDFS=0
-  export TF_NEED_OPENCL=0
+  export TF_NEED_OPENCL_SYCL=0
 
   # TODO(pcloudy): Remove this after TensorFlow uses its own CRSOOTOOL
   # for GPU build on Windows
