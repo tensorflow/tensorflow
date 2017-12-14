@@ -1138,11 +1138,16 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
         }
       }
     } else {
-      const auto& input_array_dims =
-          *input_array.mutable_shape()->mutable_dims();
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape().dims_size());
-      for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+      if (input_array_proto.has_shape()) {
+        // If an input shape was specified on the flags ensure that it matches
+        // the actual shape in the model.
+        const auto& input_array_dims =
+            *input_array.mutable_shape()->mutable_dims();
+        CHECK_EQ(input_array_dims.size(),
+                 input_array_proto.shape().dims_size());
+        for (int i = 0; i < input_array_dims.size(); i++) {
+          CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
       }
     }
 
