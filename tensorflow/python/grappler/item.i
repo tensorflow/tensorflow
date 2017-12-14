@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include <std_shared_ptr.i>
 %typemap(in) const tensorflow::MetaGraphDef& (tensorflow::MetaGraphDef temp) {
   char* c_string;
   Py_ssize_t py_size;
@@ -30,6 +31,13 @@ limitations under the License.
   $1 = &temp;
 }
 
+// Wrap the item into an object that swig can manipulate. This ensures it will call the object
+// destructor upon garbage collection instead of leaking memory.
+struct GItem {
+  std::shared_ptr<tensorflow::grappler::GrapplerItem> item_;
+};
+
+
 %{
 #include <unordered_set>
 #include <map>
@@ -40,8 +48,26 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
-static tensorflow::grappler::GrapplerItem* TF_NewItem(
+// Provide the implementation fo the GItem struct here.
+struct GItem {
+  GItem() {}
+  GItem(tensorflow::grappler::GrapplerItem* item) : item_(item) {}
+
+  tensorflow::grappler::GrapplerItem* operator->() const {
+    return item_.get();
+  }
+  const tensorflow::grappler::GrapplerItem& operator*() const {
+    return *item_.get();
+  }
+  bool is_none() const {
+    return item_.get() == nullptr;
+  }
+  std::shared_ptr<tensorflow::grappler::GrapplerItem> item_;
+};
+
+static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status) {
   if (meta_graph.collection_def().count("train_op") == 0) {
@@ -54,6 +80,7 @@ static tensorflow::grappler::GrapplerItem* TF_NewItem(
   tensorflow::grappler::ItemConfig cfg;
   cfg.ignore_user_placement = ignore_user_placement;
   cfg.ignore_colocation = ignore_colocation;
+  cfg.inline_functions = true;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("item", meta_graph, cfg);
   if (!item) {
@@ -63,15 +90,11 @@ static tensorflow::grappler::GrapplerItem* TF_NewItem(
     return nullptr;
   }
   tensorflow::Set_TF_Status_from_Status(out_status, tensorflow::Status::OK());
-  return item.release();
+  return GItem(item.release());
 }
 
-static void TF_DeleteItem(tensorflow::grappler::GrapplerItem* item) {
-  delete item;
-}
-
-static std::vector<string> TF_IdentifyImportantOps(const tensorflow::grappler::GrapplerItem* item) {
-  if (!item) {
+static std::vector<string> TF_IdentifyImportantOps(GItem item) {
+  if (item.is_none()) {
     return {};
   }
 
@@ -93,16 +116,17 @@ static std::vector<string> TF_IdentifyImportantOps(const tensorflow::grappler::G
   return ops;
 }
 
-static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* item) {
-  if (!item) {
+static PyObject* TF_GetOpProperties(GItem item) {
+  if (item.is_none()) {
     Py_RETURN_NONE;
   }
   tensorflow::grappler::GraphProperties properties(*item);
-  tensorflow::Status status = properties.InferStatically();
+  tensorflow::Status status = properties.InferStatically(false);
   if (!status.ok()) {
     Py_RETURN_NONE;
   }
 
+  PyGILState_STATE gstate = PyGILState_Ensure();
   PyObject* props = PyDict_New();
   for (const auto& node : item->graph.node()) {
     const string& node_name = node.name();
@@ -117,8 +141,8 @@ static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* it
       PyList_SetItem(prop, i, output_prop);
     }
     CHECK_EQ(0, PyDict_SetItem(props, PyString_FromString(node_name.c_str()), prop));
-   }
-
+  }
+  PyGILState_Release(gstate);
   return props;
 }
 
@@ -126,9 +150,8 @@ static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* it
 
 
 // Wrap these functions.
-static tensorflow::grappler::GrapplerItem* TF_NewItem(
+static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status);
-static void TF_DeleteItem(tensorflow::grappler::GrapplerItem* item);
-static std::vector<string> TF_IdentifyImportantOps(const tensorflow::grappler::GrapplerItem* item);
-static PyObject* TF_GetOpProperties(const tensorflow::grappler::GrapplerItem* item);
+static std::vector<string> TF_IdentifyImportantOps(GItem item);
+static PyObject* TF_GetOpProperties(GItem item);

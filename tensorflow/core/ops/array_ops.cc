@@ -706,6 +706,26 @@ memory_region_name: Name of readonly memory region used by the tensor, see
   NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
 )doc");
 
+REGISTER_OP("GuaranteeConst")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return UnchangedShape(c);
+    })
+    // We don't want this to be optimized away.
+    .SetIsStateful()
+    .Doc(R"(
+Gives a guarantee to the TF runtime that the input tensor is a constant.
+
+The runtime is then free to make optimizations based on this.
+
+Only accepts value typed tensors as inputs and rejects resource variable handles
+as input.
+
+Returns the input tensor without modification.
+)");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
@@ -723,7 +743,9 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, float, double, int8, uint8, int16, uint16, int32, "
+        "int64, complex64, complex128, bool}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns a tensor of ones with the same shape and type as x.
@@ -736,7 +758,7 @@ y: a tensor of the same shape and type as x but filled with ones.
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(in, 1, &in));
@@ -774,7 +796,7 @@ diagonal: Rank k tensor where k is at most 1.
 REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
-    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, int32, int64, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
@@ -1057,9 +1079,8 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
-        "double, complex64, "
-        "complex128, string}")
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, "
+        "float, double, complex64, complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle dims;
@@ -1135,9 +1156,8 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
-        "double, complex64, "
-        "complex128, string}")
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, bfloat16, "
+        "float, double, complex64, complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle axis;
@@ -1702,6 +1722,20 @@ REGISTER_OP("Identity")
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
 
+REGISTER_OP("Snapshot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+      return Status::OK();
+    })
+    .Doc(R"Doc(Returns a copy of the input tensor.)Doc");
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklIdentity")
     .Input("input: T")
@@ -1832,7 +1866,7 @@ this operation.
 REGISTER_OP("CheckNumerics")
     .Input("tensor: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("message: string")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
@@ -2029,6 +2063,46 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 x: 1-D.
 y: 1-D.
 idx: 1-D.
+)doc");
+
+REGISTER_OP("UniqueV2")
+    .Input("x: T")
+    .Input("axis: int64")
+    .Output("y: T")
+    .Output("idx: out_idx")
+    .Attr("T: type")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Finds unique elements in a 1-D tensor.
+
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx = unique(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+
+
+x: A `Tensor`.
+axis: A `Tensor` of type `int64` (default: 0). The axis of the Tensor to
+  find the unique elements.
+y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
+idx: A 1-D Tensor. Has the same type as x that contains the index of each
+  value of x in the output y.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2378,6 +2452,7 @@ REGISTER_OP("Slice")
           TF_RETURN_IF_ERROR(
               c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
           std::vector<DimensionHandle> dims;
+          dims.reserve(c->Rank(sizes_value));
           for (int i = 0; i < c->Rank(sizes_value); ++i) {
             dims.emplace_back(c->Dim(sizes_value, i));
           }
@@ -4184,7 +4259,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,
@@ -4328,7 +4403,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,
@@ -4522,12 +4597,12 @@ REGISTER_OP("Bitcast")
     .Output("output: type")
     // All supported dtypes are listed here to include qint16 and quint16.
     .Attr(
-        "T: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        "T: {bfloat16, float, double, int64, int32, uint8, uint16, int8, int16,"
         " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
         " half}")
     .Attr(
-        "type: {float, double, int64, int32, uint8, uint16, int8, int16,"
-        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        "type: {bfloat16, float, double, int64, int32, uint8, uint16, int8, "
+        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
         " half}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -4739,7 +4814,7 @@ REGISTER_OP("QuantizeAndDequantize")
     .Attr("input_min: float = 0")
     .Attr("input_max: float = 0")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Deprecated(22, "Replaced by QuantizeAndDequantizeV2")
     .Doc(R"doc(
@@ -4755,7 +4830,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("num_bits: int = 8")
     .Attr("range_given: bool = false")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -4834,7 +4909,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("signed_input: bool = true")
     .Attr("range_given: bool = true")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));

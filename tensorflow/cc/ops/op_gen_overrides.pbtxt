@@ -11,7 +11,7 @@ op { name: "Reverse" skip: true }
 op { name: "ReverseV2" rename_to: "Reverse" }
 op { name: "Split" input_rename: { from: "split_dim" to: "axis" } }
 op { name: "SplitV" input_rename: { from: "split_dim" to: "axis" } }
-op { name: "Squeeze" input_rename: { from: "squeeze_dims" to: "axis" } }
+op { name: "Squeeze" attr_rename: { from: "squeeze_dims" to: "axis" } }
 op { name: "Pack" rename_to: "Stack" }
 op { name: "Unpack" rename_to: "Unstack" }
 op { name: "Select" rename_to: "Where3" input_rename: { from: "t" to: "x" } input_rename: { from: "e" to: "y" } }

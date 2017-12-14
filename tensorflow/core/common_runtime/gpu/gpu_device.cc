@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -305,6 +306,46 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
+  // Whether and how the GPU device uses its own threadpool.
+  // This option is experimental. Once we confirm the best setting, we
+  // may change the default behavior and completely remove this flag.
+  // Default values might change in future releases.
+  // Possible values:
+  //   * global: GPU uses threads shared with CPU in the main compute
+  //          thread-pool. This is currently the default.
+  //   * gpu_private: GPU uses threads dedicated to this device.
+  //   * gpu_shared: All GPUs share a dedicated thread pool.
+  string gpu_thread_mode;
+  TF_RETURN_IF_ERROR(
+      ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
+  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  if (gpu_thread_mode != "global") {
+    int64 gpu_thread_count = -1;
+    // Default to two threads. One for device compute and another for memory
+    // copies.
+    TF_RETURN_IF_ERROR(
+        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &gpu_thread_count));
+    if (gpu_thread_mode == "gpu_private") {
+      // TODO(zhengxq): since these threads only serve a single GPU device,
+      //   we should set the device context once for each thread, and avoid
+      //   setting them for each kernel.
+      // TODO(zhengxq): pin the thread to the same socket of the target GPU.
+      thread_pool_.reset(new thread::ThreadPool(
+          options.env, strings::StrCat("gpu_private_", gpu_id_),
+          static_cast<int32>(gpu_thread_count)));
+      set_tensorflow_device_thread_pool(thread_pool_.get());
+    } else if (gpu_thread_mode == "gpu_shared") {
+      static thread::ThreadPool* thread_pool = new thread::ThreadPool(
+          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+      set_tensorflow_device_thread_pool(thread_pool);
+    } else {
+      string error_message =
+          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+      LOG(WARNING) << error_message;
+      return errors::InvalidArgument(error_message);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -539,16 +580,9 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 
   if (parsed.dtype() == DT_VARIANT) {
-    if (parsed.shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      return errors::Unimplemented(
-          "GPUDevice::MakeTensorFromProto: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          parsed.shape().DebugString());
-    }
-    const Variant& from = parsed.scalar<Variant>()();
-    Tensor copy(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* copy_variant = &(copy.scalar<Variant>()());
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;
     Status copy_status;
@@ -566,11 +600,19 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                     n.Notify();
                                   });
     };
-    TF_RETURN_IF_ERROR(
-        VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from,
-                          copy_variant, std::move(copier)));
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                            from[ix], &copy_variant[ix], copier);
+      if (!s.ok()) {
+        break;
+      }
+    }
     for (auto& n : notifications) {
       n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
     }
     *tensor = std::move(copy);
     return copy_status;
@@ -651,6 +693,36 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
       options.config.gpu_options().visible_device_list(), &valid_gpu_ids));
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
+  }
+  if (!valid_gpu_ids.empty()) {
+    // Save the original device.
+    int original_device = 0;
+    cudaError_t err = cudaGetDevice(&original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaGetDevice() failed. Status: ",
+                              cudaGetErrorString(err));
+    }
+    // Force to implicitly initialize CUDA runtime on each valid GPU before
+    // CreateGPUDevice().
+    for (int gpu_id : valid_gpu_ids) {
+      err = cudaSetDevice(gpu_id);
+      if (err != cudaSuccess) {
+        return errors::Internal("cudaSetDevice() on GPU:", gpu_id,
+                                " failed. Status: ", cudaGetErrorString(err));
+      }
+      err = cudaFree(nullptr);
+      if (err != cudaSuccess) {
+        return errors::Internal(
+            "CUDA runtime implicit initialization on GPU:", gpu_id,
+            " failed. Status: ", cudaGetErrorString(err));
+      }
+    }
+    // Reset to the original device.
+    err = cudaSetDevice(original_device);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaSetDevice() on GPU:", original_device,
+                              " failed. Status: ", cudaGetErrorString(err));
+    }
   }
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;
@@ -918,7 +990,7 @@ Status EnablePeerAccess(gpu::Platform* platform,
         if (!status.ok()) {
           LOG(WARNING)
               << "Unable to enable peer access between device ordinals "
-              << i_gpu_id << " and " << j_gpu_id;
+              << i_gpu_id << " and " << j_gpu_id << ", status: " << status;
         } else {
           ++enabled_peer_count;
         }

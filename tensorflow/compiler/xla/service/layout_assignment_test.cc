@@ -131,10 +131,10 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
   std::vector<std::initializer_list<int64>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
-    auto constant_literal1 = test_utils::CreateR2LiteralWithLayout<float>(
-        {{1.0, 2.0}, {3.0, 4.0}}, minor_to_major);
-    auto constant_literal2 = test_utils::CreateR2LiteralWithLayout<float>(
-        {{5.0, 6.0}, {7.0, 8.0}}, minor_to_major);
+    auto constant_literal1 = Literal::CreateR2WithLayout<float>(
+        {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout(minor_to_major));
+    auto constant_literal2 = Literal::CreateR2WithLayout<float>(
+        {{5.0, 6.0}, {7.0, 8.0}}, LayoutUtil::MakeLayout(minor_to_major));
     Shape ashape = constant_literal1->shape();
 
     auto constant1 = builder.AddInstruction(
@@ -181,12 +181,12 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
   // Verify the layouts of a tuple are assigned properly (the element layouts
   // match their source).
   auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {0, 1})));
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {1, 0})));
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
 
@@ -218,12 +218,12 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
 TEST_F(LayoutAssignmentTest, TupleSelect) {
   // Verify layouts of a select with tuple operands is assigned properly.
   auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {0, 1})));
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {1, 0})));
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple0 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
   auto tuple1 = builder.AddInstruction(

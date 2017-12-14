@@ -318,7 +318,7 @@ class RemoteCallOp : public AsyncOpKernel {
     if (opts.source_device != target_device) {
       opts.remote_execution = true;
     }
-    opts.rendezvous = ctx->rendezvous();
+    opts.create_rendezvous = true;
     std::vector<Tensor> args;
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {

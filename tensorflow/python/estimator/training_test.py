@@ -480,7 +480,7 @@ class TrainAndEvaluteTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.Mock()
-    mock_est.config.cluster_spec = {'1': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'1': ['dummy']})
     mock_est.config.task_type = ''
 
     with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TYPE):
@@ -598,7 +598,8 @@ class _TrainingExecutorTrainingTest(object):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec(
+        {'worker': ['dummy', 'dummy1']})
     mock_est.config.master = ''
     mock_est.config.task_type = 'worker'
     mock_est.config.task_id = 2
@@ -608,13 +609,33 @@ class _TrainingExecutorTrainingTest(object):
       self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
                                                 mock_eval_spec))
 
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_single_worker_node_with_empty_tf_master(
+      self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    # Single node cluster.
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'worker': ['dummy']})
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = 2
+
+    self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
+                                              mock_eval_spec))
+    self.assertTrue(mock_est.train.called)
+    mock_server.assert_not_called()
+
   def test_fail_with_empty_task_type(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'worker': ['dummy']})
     mock_est.config.master = 'grpc://...'
     mock_est.config.task_type = ''
     mock_est.config.task_id = 2
@@ -630,7 +651,7 @@ class _TrainingExecutorTrainingTest(object):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'worker': ['dummy']})
     mock_est.config.master = 'grpc://...'
     mock_est.config.task_type = 'worker'
     mock_est.config.task_id = None
@@ -768,7 +789,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
     mock_est.config.cluster_spec = None
     mock_est.config.master = 'grpc://...'
-    mock_est.config.task_type = 'worker'
+    mock_est.config.task_type = 'master'
     mock_est.config.task_id = 2
 
     with self.assertRaisesRegexp(RuntimeError,
@@ -782,15 +803,40 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec(
+        {'master': ['dummy'], 'worker': ['dummy1']})
     mock_est.config.master = ''
-    mock_est.config.task_type = 'worker'
-    mock_est.config.task_id = 2
+    mock_est.config.task_type = 'master'
+    mock_est.config.task_id = 0
 
     with self.assertRaisesRegexp(RuntimeError,
                                  _INVALID_CONFIG_FOR_STD_SERVER_MSG):
       training._TrainingExecutor(
           mock_est, mock_train_spec, mock_eval_spec).run_master()
+
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_single_master_node_with_empty_tf_master(
+      self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
+
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec, max_steps=123)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = server_lib.ClusterSpec(
+        {'master': ['dummy']})
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'master'
+    mock_est.config.task_id = 0
+
+    executor = training._TrainingExecutor(
+        mock_est, mock_train_spec, mock_eval_spec)
+    executor.run_master()
+
+    mock_server.assert_not_called()
+    self.assertTrue(mock_est.train.called)
 
   def test_fail_with_empty_task_type(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -798,7 +844,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'master': ['dummy']})
     mock_est.config.master = 'grpc://...'
     mock_est.config.task_type = ''
     mock_est.config.task_id = 2
@@ -814,9 +860,9 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'master': ['dummy']})
     mock_est.config.master = 'grpc://...'
-    mock_est.config.task_type = 'worker'
+    mock_est.config.task_type = 'master'
     mock_est.config.task_id = None
 
     with self.assertRaisesRegexp(RuntimeError,
@@ -1016,7 +1062,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
                is_the_final_export):
       del export_path, checkpoint_path, eval_result
       estimator.times_export_was_called += 1
-      # final_export is happend at the end.
+      # final_export is happened at the end.
       self.assertEqual(0, estimator.times_final_export_was_called)
       if is_the_final_export:
         estimator.times_final_export_was_called += 1
@@ -1246,7 +1292,7 @@ class TrainingExecutorRunPsTest(test.TestCase):
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
     mock_est.config.cluster_spec = None
     mock_est.config.master = 'grpc://...'
-    mock_est.config.task_type = 'gs'
+    mock_est.config.task_type = 'ps'
     mock_est.config.task_id = 2
 
     with self.assertRaisesRegexp(RuntimeError,
@@ -1260,9 +1306,9 @@ class TrainingExecutorRunPsTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'ps': ['dummy']})
     mock_est.config.master = ''
-    mock_est.config.task_type = 'gs'
+    mock_est.config.task_type = 'ps'
     mock_est.config.task_id = 2
 
     with self.assertRaisesRegexp(RuntimeError,
@@ -1276,7 +1322,7 @@ class TrainingExecutorRunPsTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'ps': ['dummy']})
     mock_est.config.master = 'grpc://...'
     mock_est.config.task_type = ''
     mock_est.config.task_id = 2
@@ -1292,9 +1338,9 @@ class TrainingExecutorRunPsTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
-    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.cluster_spec = server_lib.ClusterSpec({'ps': ['dummy']})
     mock_est.config.master = 'grpc://...'
-    mock_est.config.task_type = 'gs'
+    mock_est.config.task_type = 'ps'
     mock_est.config.task_id = None
 
     with self.assertRaisesRegexp(RuntimeError,
@@ -1361,7 +1407,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
                is_the_final_export):
       del export_path, checkpoint_path, eval_result
       estimator.times_export_was_called += 1
-      # final_export is happend at the end.
+      # final_export is happened at the end.
       self.assertEqual(0, estimator.times_final_export_was_called)
       if is_the_final_export:
         estimator.times_final_export_was_called += 1

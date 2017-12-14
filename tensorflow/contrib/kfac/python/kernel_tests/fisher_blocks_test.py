@@ -40,13 +40,29 @@ def _make_psd(dim):
   return array_ops.constant(mat)
 
 
+class UtilsTest(test.TestCase):
+
+  def testComputePiTracenorm(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+      left_factor = array_ops.diag([1., 2., 0., 1.])
+      right_factor = array_ops.ones([2., 2.])
+
+      # pi is the sqrt of the left trace norm divided by the right trace norm
+      pi = fb._compute_pi_tracenorm(left_factor, right_factor)
+
+      pi_val = sess.run(pi)
+      self.assertEqual(1., pi_val)
+
+
 class FullFBTest(test.TestCase):
 
   def testFullFBInitSingleTensor(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -54,7 +70,8 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -62,7 +79,8 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -71,7 +89,8 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
 
@@ -88,7 +107,8 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
 
@@ -105,7 +125,8 @@ class FullFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.FullFB(lc.LayerCollection(), params, 32)
+      block = fb.FullFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = (array_ops.constant([2., 3.]), array_ops.constant(4.))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -131,7 +152,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -139,7 +161,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       self.assertAllEqual(params, block.tensors_to_compute_grads())
 
@@ -147,7 +170,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
 
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors(grads, 0.5)
@@ -156,7 +180,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       block.instantiate_factors((grads,), 0.5)
 
@@ -173,7 +198,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = array_ops.constant([[1.], [2.]])
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = params**2
       block.instantiate_factors((grads,), 0.5)
 
@@ -189,7 +215,8 @@ class NaiveDiagonalFBTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       params = (array_ops.constant([1., 2.]), array_ops.constant(3.))
-      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params, 32)
+      block = fb.NaiveDiagonalFB(lc.LayerCollection(), params)
+      block.register_additional_minibatch(32)
       grads = (params[0]**2, math_ops.sqrt(params[1]))
       damping = 0.5
       block.instantiate_factors((grads,), damping)
@@ -289,8 +316,7 @@ class FullyConnectedDiagonalFB(test.TestCase):
     multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
         self.w, [self.inputs], [self.outputs], [self.output_grads])
     multiply_result_small, multiply_inverse_result_small = (
-        self.runFisherBlockOps(self.w,
-                               np.split(self.inputs, 2),
+        self.runFisherBlockOps(self.w, np.split(self.inputs, 2),
                                np.split(self.outputs, 2),
                                np.split(self.output_grads, 2)))
 
@@ -572,8 +598,7 @@ class ConvDiagonalFBTest(test.TestCase):
     multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
         self.w, [self.inputs], [self.outputs], [self.output_grads])
     multiply_result_small, multiply_inverse_result_small = (
-        self.runFisherBlockOps(self.w,
-                               np.split(self.inputs, 2),
+        self.runFisherBlockOps(self.w, np.split(self.inputs, 2),
                                np.split(self.outputs, 2),
                                np.split(self.output_grads, 2)))
 
@@ -596,8 +621,9 @@ class ConvDiagonalFBTest(test.TestCase):
         self.kernel_size, self.kernel_size, self.input_channels + 1,
         self.output_channels
     ])
-    expected_result = (expected_result[:, :, 0:-1, :], np.reshape(
-        expected_result[:, :, -1, :], [self.output_channels]))
+    expected_result = (expected_result[:, :, 0:-1, :],
+                       np.reshape(expected_result[:, :, -1, :],
+                                  [self.output_channels]))
 
     self.assertEqual(len(result), 2)
     self.assertAllClose(expected_result[0], result[0])
@@ -680,8 +706,8 @@ class ConvKFCBasicFBTest(test.TestCase):
       sess.run(block._input_factor.make_inverse_update_ops())
       sess.run(block._output_factor.make_inverse_update_ops())
 
-      vector = (np.arange(1, 15).reshape(7, 2).astype(np.float32), np.arange(
-          2, 4).reshape(2, 1).astype(np.float32))
+      vector = (np.arange(1, 15).reshape(7, 2).astype(np.float32),
+                np.arange(2, 4).reshape(2, 1).astype(np.float32))
       output = block.multiply_inverse((array_ops.constant(vector[0]),
                                        array_ops.constant(vector[1])))
 
@@ -764,11 +790,50 @@ class ConvKFCBasicFBTest(test.TestCase):
       self.assertAllClose(output_flat, explicit)
 
 
+class FullyConnectedSeriesFBTest(test.TestCase):
+
+  def testFullyConnectedSeriesFBInit(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+      inputs = array_ops.constant([1., 2.])
+      outputs = array_ops.constant([3., 4.])
+      block = fb.FullyConnectedSeriesFB(
+          lc.LayerCollection(), inputs=[inputs], outputs=[outputs])
+      self.assertAllEqual([outputs], block.tensors_to_compute_grads())
+
+  def testInstantiateFactorsHasBias(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+      inputs = array_ops.constant([[1., 2.], [3., 4.]])
+      outputs = array_ops.constant([[3., 4.], [5., 6.]])
+      block = fb.FullyConnectedSeriesFB(
+          lc.LayerCollection(),
+          inputs=[inputs],
+          outputs=[outputs],
+          has_bias=True)
+      grads = outputs**2
+      block.instantiate_factors(((grads,),), 0.5)
+
+  def testInstantiateFactorsNoBias(self):
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+      inputs = array_ops.constant([[1., 2.], [3., 4.]])
+      outputs = array_ops.constant([[3., 4.], [5., 6.]])
+      block = fb.FullyConnectedSeriesFB(
+          lc.LayerCollection(),
+          inputs=[inputs],
+          outputs=[outputs],
+          has_bias=False)
+      grads = outputs**2
+      block.instantiate_factors(((grads,),), 0.5)
+
+
 def as_tensors(tensor_or_tuple):
   """Converts a potentially nested tuple of np.array to Tensors."""
   if isinstance(tensor_or_tuple, (tuple, list)):
     return tuple(as_tensors(t) for t in tensor_or_tuple)
   return ops.convert_to_tensor(tensor_or_tuple)
+
 
 if __name__ == '__main__':
   test.main()

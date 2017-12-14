@@ -43,13 +43,21 @@ operand
   : shape name
   ;
 
-extra_attributes
+attributes
   : /*empty*/
-  | ',' extra_attribute
-  | ',' extra_attribute extra_attributes
+  | ',' attribute
+  | ',' attribute attributes
   ;
-extra_attribute
+attribute
   : attribute_name attribute_value
+  ;
+attribute_value
+  : kInt
+  | kName
+  | [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}                /*dim_labels_pattern*/
+  | [0-9]+(x[0-9]+)+                                    /*dxd_pattern*/
+  | [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*  /*pad_pattern*/
+  | '{' sub_attributes '}'
   ;
 
 param_list
@@ -80,6 +88,27 @@ name
 
 identifier
   : [a-zA-Z_][a-zA-Z0-9_.-]*
+  ;
+
+/* literal is in the right hand side of a constant instruction. */
+literal
+  : tuple
+  | non_tuple
+  ;
+tuple
+  : shape '(' literal_list ')'
+  ;
+literal_list
+  : /*empty*/
+  : literal
+  | literal_list ',' literal
+  ;
+non_tuple
+  : rank01
+  | rank2345
+  ;
+rank2345
+  : shape nested_array
   ;
 
 ```

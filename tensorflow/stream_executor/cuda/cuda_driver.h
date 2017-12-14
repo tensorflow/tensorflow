@@ -304,7 +304,7 @@ class CUDADriver {
   // amount of time?
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g15e49dd91ec15991eb7c0a741beb7dad
-  static bool SynchronizeStream(CudaContext* context, CUstream stream);
+  static port::Status SynchronizeStream(CudaContext* context, CUstream stream);
 
   // Blocks the calling thread until the operations associated with the context
   // have been completed, via cuCtxSynchronize.

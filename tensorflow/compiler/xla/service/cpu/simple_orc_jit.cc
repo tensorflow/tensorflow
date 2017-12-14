@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
@@ -125,8 +126,10 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      object_layer_(
-          [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
+      object_layer_([] {
+        return std::make_shared<llvm::SectionMemoryManager>(
+            orc_jit_memory_mapper::GetInstance());
+      }),
       compile_layer_(
           object_layer_,
           CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
@@ -210,71 +213,75 @@ bool RegisterKnownJITSymbols() {
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 
-#define REGISTER_LIBM_SYMBOL(name)                                    \
-  do {                                                                \
-    /* Register both the F32 and F64 variants of the libm symbol.  */ \
-    registry->Register(#name "f", reinterpret_cast<void*>(name##f));  \
-    registry->Register(#name, reinterpret_cast<void*>(name));         \
+// Register both the f32 (float) and f64 (double) versions of a libm symbol.
+// Unfortunately the double versions are overloaded on some systems, e.g.
+// Mac so we need an explicit cast. This requires passing the function signature
+// for that case.
+#define REGISTER_LIBM_SYMBOL(name, double_sig)                          \
+  do {                                                                  \
+    registry->Register(#name "f", reinterpret_cast<void*>(name##f));    \
+    registry->Register(                                                 \
+        #name, reinterpret_cast<void*>(static_cast<double_sig>(name))); \
   } while (false)
 
-  REGISTER_LIBM_SYMBOL(acos);
-  REGISTER_LIBM_SYMBOL(acosh);
-  REGISTER_LIBM_SYMBOL(asin);
-  REGISTER_LIBM_SYMBOL(asinh);
-  REGISTER_LIBM_SYMBOL(atan);
-  REGISTER_LIBM_SYMBOL(atan2);
-  REGISTER_LIBM_SYMBOL(atanh);
-  REGISTER_LIBM_SYMBOL(cbrt);
-  REGISTER_LIBM_SYMBOL(ceil);
-  REGISTER_LIBM_SYMBOL(copysign);
-  REGISTER_LIBM_SYMBOL(cos);
-  REGISTER_LIBM_SYMBOL(cosh);
-  REGISTER_LIBM_SYMBOL(erf);
-  REGISTER_LIBM_SYMBOL(erfc);
-  REGISTER_LIBM_SYMBOL(exp);
-  REGISTER_LIBM_SYMBOL(exp2);
-  REGISTER_LIBM_SYMBOL(expm1);
-  REGISTER_LIBM_SYMBOL(fabs);
-  REGISTER_LIBM_SYMBOL(fdim);
-  REGISTER_LIBM_SYMBOL(floor);
-  REGISTER_LIBM_SYMBOL(fma);
-  REGISTER_LIBM_SYMBOL(fmax);
-  REGISTER_LIBM_SYMBOL(fmin);
-  REGISTER_LIBM_SYMBOL(fmod);
-  REGISTER_LIBM_SYMBOL(frexp);
-  REGISTER_LIBM_SYMBOL(hypot);
-  REGISTER_LIBM_SYMBOL(ilogb);
-  REGISTER_LIBM_SYMBOL(ldexp);
-  REGISTER_LIBM_SYMBOL(lgamma);
-  REGISTER_LIBM_SYMBOL(llrint);
-  REGISTER_LIBM_SYMBOL(llround);
-  REGISTER_LIBM_SYMBOL(log);
-  REGISTER_LIBM_SYMBOL(log10);
-  REGISTER_LIBM_SYMBOL(log1p);
-  REGISTER_LIBM_SYMBOL(log2);
-  REGISTER_LIBM_SYMBOL(logb);
-  REGISTER_LIBM_SYMBOL(lrint);
-  REGISTER_LIBM_SYMBOL(lround);
-  REGISTER_LIBM_SYMBOL(modf);
-  REGISTER_LIBM_SYMBOL(nan);
-  REGISTER_LIBM_SYMBOL(nearbyint);
-  REGISTER_LIBM_SYMBOL(nextafter);
-  REGISTER_LIBM_SYMBOL(nexttoward);
-  REGISTER_LIBM_SYMBOL(pow);
-  REGISTER_LIBM_SYMBOL(remainder);
-  REGISTER_LIBM_SYMBOL(remquo);
-  REGISTER_LIBM_SYMBOL(rint);
-  REGISTER_LIBM_SYMBOL(round);
-  REGISTER_LIBM_SYMBOL(scalbln);
-  REGISTER_LIBM_SYMBOL(scalbn);
-  REGISTER_LIBM_SYMBOL(sin);
-  REGISTER_LIBM_SYMBOL(sincos);
-  REGISTER_LIBM_SYMBOL(sinh);
-  REGISTER_LIBM_SYMBOL(sqrt);
-  REGISTER_LIBM_SYMBOL(tan);
-  REGISTER_LIBM_SYMBOL(tanh);
-  REGISTER_LIBM_SYMBOL(tgamma);
-  REGISTER_LIBM_SYMBOL(trunc);
+  REGISTER_LIBM_SYMBOL(acos, double (*)(double));
+  REGISTER_LIBM_SYMBOL(acosh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(asin, double (*)(double));
+  REGISTER_LIBM_SYMBOL(asinh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(atan, double (*)(double));
+  REGISTER_LIBM_SYMBOL(atan2, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(atanh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(cbrt, double (*)(double));
+  REGISTER_LIBM_SYMBOL(ceil, double (*)(double));
+  REGISTER_LIBM_SYMBOL(copysign, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(cos, double (*)(double));
+  REGISTER_LIBM_SYMBOL(cosh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(erf, double (*)(double));
+  REGISTER_LIBM_SYMBOL(erfc, double (*)(double));
+  REGISTER_LIBM_SYMBOL(exp, double (*)(double));
+  REGISTER_LIBM_SYMBOL(exp2, double (*)(double));
+  REGISTER_LIBM_SYMBOL(expm1, double (*)(double));
+  REGISTER_LIBM_SYMBOL(fabs, double (*)(double));
+  REGISTER_LIBM_SYMBOL(fdim, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(floor, double (*)(double));
+  REGISTER_LIBM_SYMBOL(fma, double (*)(double, double, double));
+  REGISTER_LIBM_SYMBOL(fmax, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(fmin, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(fmod, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(frexp, double (*)(double, int*));
+  REGISTER_LIBM_SYMBOL(hypot, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(ilogb, int (*)(double));
+  REGISTER_LIBM_SYMBOL(ldexp, double (*)(double, int));
+  REGISTER_LIBM_SYMBOL(lgamma, double (*)(double));
+  REGISTER_LIBM_SYMBOL(llrint, long long (*)(double));
+  REGISTER_LIBM_SYMBOL(llround, long long (*)(double));
+  REGISTER_LIBM_SYMBOL(log, double (*)(double));
+  REGISTER_LIBM_SYMBOL(log10, double (*)(double));
+  REGISTER_LIBM_SYMBOL(log1p, double (*)(double));
+  REGISTER_LIBM_SYMBOL(log2, double (*)(double));
+  REGISTER_LIBM_SYMBOL(logb, double (*)(double));
+  REGISTER_LIBM_SYMBOL(lrint, long (*)(double));
+  REGISTER_LIBM_SYMBOL(lround, long (*)(double));
+  REGISTER_LIBM_SYMBOL(modf, double (*)(double, double*));
+  REGISTER_LIBM_SYMBOL(nan, double (*)(const char*));
+  REGISTER_LIBM_SYMBOL(nearbyint, double (*)(double));
+  REGISTER_LIBM_SYMBOL(nextafter, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(nexttoward, double (*)(double, long double));
+  REGISTER_LIBM_SYMBOL(pow, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(remainder, double (*)(double, double));
+  REGISTER_LIBM_SYMBOL(remquo, double (*)(double, double, int*));
+  REGISTER_LIBM_SYMBOL(rint, double (*)(double));
+  REGISTER_LIBM_SYMBOL(round, double (*)(double));
+  REGISTER_LIBM_SYMBOL(scalbln, double (*)(double, long));
+  REGISTER_LIBM_SYMBOL(scalbn, double (*)(double, int));
+  REGISTER_LIBM_SYMBOL(sin, double (*)(double));
+  REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
+  REGISTER_LIBM_SYMBOL(sinh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(sqrt, double (*)(double));
+  REGISTER_LIBM_SYMBOL(tan, double (*)(double));
+  REGISTER_LIBM_SYMBOL(tanh, double (*)(double));
+  REGISTER_LIBM_SYMBOL(tgamma, double (*)(double));
+  REGISTER_LIBM_SYMBOL(trunc, double (*)(double));
 
 #undef REGISTER_LIBM_SYMBOL
 

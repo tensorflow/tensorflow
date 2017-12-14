@@ -288,6 +288,21 @@ class Context(object):
     self._initialize_handle_and_devices()
     return self._num_gpus
 
+  def add_function(self, fn):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunction(
+          self._handle,  # pylint: disable=protected-access
+          fn,
+          status)
+
   def add_function_def(self, fdef):
     """Add a function definition to the context.
 

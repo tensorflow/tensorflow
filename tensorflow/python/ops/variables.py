@@ -200,7 +200,7 @@ class Variable(object):
 
     @compatibility(eager)
     `tf.Variable` is not compatible with eager execution.  Use
-    `tfe.Variable` instead which is compatable with both eager execution
+    `tfe.Variable` instead which is compatible with both eager execution
     and graph construction.  See [the TensorFlow Eager Execution
     guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
     for details on how variables work in eager execution.
@@ -1063,13 +1063,13 @@ class Variable(object):
 class PartitionedVariable(object):
   """A container for partitioned `Variable` objects.
 
-  @compatiblity(eager) `tf.PartitionedVariable` is not compatible with
-  eager execution.  Use `tfe.Variable` instead which is compatable
+  @compatibility(eager) `tf.PartitionedVariable` is not compatible with
+  eager execution.  Use `tfe.Variable` instead which is compatible
   with both eager execution and graph construction.  See [the
   TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
-  @end_compatiblity
+  @end_compatibility
   """
 
   class PartitionedVariableIterator(object):
@@ -1447,6 +1447,8 @@ def local_variables_initializer():
   Returns:
     An Op that initializes all local variables in the graph.
   """
+  if context.in_eager_mode():
+    return control_flow_ops.no_op(name="local_variables_initializer")
   return variables_initializer(local_variables())
 
 

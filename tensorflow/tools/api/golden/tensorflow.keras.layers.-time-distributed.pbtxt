@@ -10,10 +10,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "constraints"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "dtype"
     mtype: "<type \'property\'>"
   }

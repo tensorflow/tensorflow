@@ -587,7 +587,7 @@ class FillTriangularTest(test.TestCase):
     x_ = np.asarray(x_)
     with self.test_session() as sess:
       static_shape = None if use_deferred_shape else x_.shape
-      x_pl = array_ops.placeholder(dtype=x_.dtype, shape=static_shape)
+      x_pl = array_ops.placeholder_with_default(x_, shape=static_shape)
       # Add `zeros_like(x)` such that x's value and gradient are identical. We
       # do this so we can ensure each gradient value is mapped to the right
       # gradient location.  (Not doing this means the gradient wrt `x` is simple

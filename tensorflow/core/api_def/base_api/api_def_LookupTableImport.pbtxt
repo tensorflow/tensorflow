@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "LookupTableImport"
+  visibility: SKIP
+  in_arg {
+    name: "table_handle"
+    description: <<END
+Handle to the table.
+END
+  }
+  in_arg {
+    name: "keys"
+    description: <<END
+Any shape.  Keys to look up.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+Values to associate with keys.
+END
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: <<END
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+END
+}

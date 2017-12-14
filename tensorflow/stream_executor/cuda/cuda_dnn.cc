@@ -232,7 +232,6 @@ CUDNN_DNN_ROUTINE_EACH_R3(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
   __macro(cudnnRNNBackwardData)                               \
   __macro(cudnnRNNBackwardWeights)                            \
   __macro(cudnnSetRNNDescriptor)                              \
-  __macro(cudnnSetRNNDescriptor_v6)                           \
   __macro(cudnnGetFilterNdDescriptor)
 
 // clang-format on
@@ -245,7 +244,8 @@ CUDNN_DNN_ROUTINE_EACH_R5(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 // clang-format off
 #if CUDNN_VERSION >= 6000
 #define CUDNN_DNN_ROUTINE_EACH_R6(__macro)                    \
-  __macro(cudnnConvolutionBiasActivationForward)
+  __macro(cudnnConvolutionBiasActivationForward)              \
+  __macro(cudnnSetRNNDescriptor_v6)
 
 // clang-format on
 CUDNN_DNN_ROUTINE_EACH_R6(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
@@ -390,8 +390,8 @@ port::Status CudnnSupport::Init() {
                  << DriverVersionStatusToString(result);
     } else {
       const auto& version = result.ValueOrDie();
-      LOG(INFO) << "possibly insufficient driver version: "
-                << DriverVersionToString(version);
+      LOG(ERROR) << "possibly insufficient driver version: "
+                 << DriverVersionToString(version);
       // OS X kernel driver does not report version accurately
 #if !defined(__APPLE__)
       if (std::get<0>(version) < 340) {
@@ -561,7 +561,7 @@ static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
     bool ret;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                               /*default=*/false, &ret));
+                                               /*default_val=*/false, &ret));
     return !ret;
   }();
   return is_enabled;
@@ -665,7 +665,6 @@ class ScopedPoolingDescriptor {
       LOG(FATAL) << "could not create cudnn pooling descriptor: "
                  << ToString(status);
     }
-
     const std::vector<int64> strides64 = pooling_descriptor.strides();
     const std::vector<int64> padding64 = pooling_descriptor.padding();
     const std::vector<int64> shape64 = pooling_descriptor.window();
@@ -680,14 +679,14 @@ class ScopedPoolingDescriptor {
                    &CheckedNarrowing<int64, int>);
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
+    bool propagate_nans = pooling_descriptor.propagate_nans();
     status = wrap::cudnnSetPoolingNdDescriptor(
         parent_, handle_,
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
              ? CUDNN_POOLING_MAX
              : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING),
 #if CUDNN_VERSION >= 5000
-        // Always propagate nans.
-        CUDNN_PROPAGATE_NAN,
+        propagate_nans ? CUDNN_PROPAGATE_NAN : CUDNN_NOT_PROPAGATE_NAN,
 #endif
         nd, shape.data(), padding.data(), strides.data());
     if (status != CUDNN_STATUS_SUCCESS) {
@@ -962,7 +961,8 @@ class CudnnDropoutDescriptor : public CudnnDescriptorCommon<void> {
       if (!allocated.ok() ||
           (state_memory = allocated.ValueOrDie()) == nullptr) {
         string error_msg =
-            port::StrCat("Fail to allocate Cudnn dropout state memory");
+            port::StrCat("Failed to allocate Cudnn dropout state memory of ",
+                         state_sizes_in_bytes, " bytes.");
         status_ = port::Status(port::error::UNKNOWN, error_msg);
         LOG(ERROR) << error_msg;
         return;
@@ -971,7 +971,10 @@ class CudnnDropoutDescriptor : public CudnnDescriptorCommon<void> {
     status = wrap::cudnnSetDropoutDescriptor(parent_, handle_, cudnn_handle,
                                              dropout, state_memory.opaque(),
                                              state_memory.size(), seed);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to set dropout descriptor");
+    CUDNN_RETURN_IF_FAIL(
+        status, port::StrCat(
+                    "Failed to set dropout descriptor with state memory size: ",
+                    state_memory.size(), " bytes."));
   }
 
   ~CudnnDropoutDescriptor() {
@@ -1476,7 +1479,8 @@ bool CreateRnnWorkspace(Stream* stream, CUDAExecutor* parent,
     auto allocated =
         workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
     if (!allocated.ok() || (*workspace = allocated.ValueOrDie()) == nullptr) {
-      LOG(ERROR) << "Failed to allocate RNN workspace";
+      LOG(ERROR) << port::StrCat("Failed to allocate RNN workspace of ",
+                                 workspace_size_in_bytes, " bytes.");
       return false;
     }
   } else {
@@ -1553,7 +1557,8 @@ bool CudnnSupport::DoRnnForwardImpl(
           stream, reserve_space_size_in_bytes);
       if (!allocated.ok() ||
           (reserve_space = allocated.ValueOrDie()) == nullptr) {
-        LOG(ERROR) << "Fail to allocate RNN reserve space";
+        LOG(ERROR) << "Failed to allocate RNN reserve space of "
+                   << reserve_space_size_in_bytes << " bytes.";
         return false;
       }
     }
@@ -1785,6 +1790,49 @@ CudnnSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
 bool CudnnSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<Eigen::half>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<Eigen::half>& input_c_data,
+    const DeviceMemory<Eigen::half>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    DeviceMemory<Eigen::half>* output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    DeviceMemory<Eigen::half>* output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    DeviceMemory<Eigen::half>* output_c_data, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+#if CUDNN_VERSION >= 5000
+  const CudnnRnnDescriptor& cudnn_rnn_desc =
+      static_cast<const CudnnRnnDescriptor&>(rnn_desc);
+  const CudnnRnnSequenceTensorDescriptor& cudnn_input_desc =
+      static_cast<const CudnnRnnSequenceTensorDescriptor&>(input_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_input_h_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(input_h_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_input_c_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(input_c_desc);
+  const CudnnRnnSequenceTensorDescriptor& cudnn_output_desc =
+      static_cast<const CudnnRnnSequenceTensorDescriptor&>(output_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_output_h_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(output_h_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_output_c_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(output_c_desc);
+
+  return DoRnnForwardImpl<Eigen::half>(
+      stream, cudnn_rnn_desc, cudnn_input_desc, input_data, cudnn_input_h_desc,
+      input_h_data, cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+      output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+      output_c_data, is_training, reserve_space_allocator, workspace_allocator);
+#else
+  return false;
+#endif  // CUDNN_VERSION
+}
+
+bool CudnnSupport::DoRnnForward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
@@ -1862,6 +1910,59 @@ bool CudnnSupport::DoRnnForward(
       input_h_data, cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
       output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
       output_c_data, is_training, reserve_space_allocator, workspace_allocator);
+#else
+  return false;
+#endif  // CUDNN_VERSION
+}
+
+bool CudnnSupport::DoRnnBackward(
+    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor& input_desc,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::RnnStateTensorDescriptor& input_h_desc,
+    const DeviceMemory<Eigen::half>& input_h_data,
+    const dnn::RnnStateTensorDescriptor& input_c_desc,
+    const DeviceMemory<Eigen::half>& input_c_data,
+    const DeviceMemory<Eigen::half>& params,
+    const dnn::RnnSequenceTensorDescriptor& output_desc,
+    const DeviceMemory<Eigen::half>& output_data,
+    const dnn::RnnStateTensorDescriptor& output_h_desc,
+    const DeviceMemory<Eigen::half>& output_h_data,
+    const dnn::RnnStateTensorDescriptor& output_c_desc,
+    const DeviceMemory<Eigen::half>& output_c_data,
+    const DeviceMemory<Eigen::half>& output_backprop_data,
+    const DeviceMemory<Eigen::half>& output_h_backprop_data,
+    const DeviceMemory<Eigen::half>& output_c_backprop_data,
+    DeviceMemory<Eigen::half>* input_backprop_data,
+    DeviceMemory<Eigen::half>* input_h_backprop_data,
+    DeviceMemory<Eigen::half>* input_c_backprop_data,
+    DeviceMemory<Eigen::half>* params_backprop_data,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+#if CUDNN_VERSION >= 5000
+  const CudnnRnnDescriptor& cudnn_rnn_desc =
+      static_cast<const CudnnRnnDescriptor&>(rnn_desc);
+  const CudnnRnnSequenceTensorDescriptor& cudnn_input_desc =
+      static_cast<const CudnnRnnSequenceTensorDescriptor&>(input_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_input_h_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(input_h_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_input_c_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(input_c_desc);
+  const CudnnRnnSequenceTensorDescriptor& cudnn_output_desc =
+      static_cast<const CudnnRnnSequenceTensorDescriptor&>(output_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_output_h_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(output_h_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_output_c_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(output_c_desc);
+
+  return DoRnnBackwardImpl<Eigen::half>(
+      stream, cudnn_rnn_desc, cudnn_input_desc, input_data, cudnn_input_h_desc,
+      input_h_data, cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
+      output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
+      output_c_data, output_backprop_data, output_h_backprop_data,
+      output_c_backprop_data, input_backprop_data, input_h_backprop_data,
+      input_c_backprop_data, params_backprop_data, reserve_space_data,
+      workspace_allocator);
 #else
   return false;
 #endif  // CUDNN_VERSION

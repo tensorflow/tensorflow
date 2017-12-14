@@ -190,7 +190,7 @@ TEST_F(DecisionTreeTest, TraverseSparseBinarySplit) {
     tree_config.add_nodes()->mutable_leaf();
 
     // Split on first column
-    split_node->set_feature_id(0);
+    split_node->set_dimension_id(0);
     split_node->set_threshold(2.0f);
 
     // Both instances have this feature value.
@@ -199,7 +199,7 @@ TEST_F(DecisionTreeTest, TraverseSparseBinarySplit) {
     EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
 
     // Split on second column
-    split_node->set_feature_id(1);
+    split_node->set_dimension_id(1);
     split_node->set_threshold(5.0f);
 
     // First instance does not have it (default right), second does have it.
@@ -208,7 +208,7 @@ TEST_F(DecisionTreeTest, TraverseSparseBinarySplit) {
     EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *++example_it));
 
     // Split on third column
-    split_node->set_feature_id(2);
+    split_node->set_dimension_id(2);
     split_node->set_threshold(3.0f);
     example_it = example_iterable.begin();
 

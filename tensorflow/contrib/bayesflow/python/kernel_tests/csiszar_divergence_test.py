@@ -759,7 +759,7 @@ class CsiszarVIMCOTest(test.TestCase):
   def _csiszar_vimco_helper_grad(self, logu, delta):
     """Finite difference approximation of `grad(csiszar_vimco_helper, logu)`."""
 
-    # This code actually estimates the sum of the Jacobiab because thats what
+    # This code actually estimates the sum of the Jacobiab because that's what
     # TF's `gradients` does.
     np_log_avg_u1, np_log_sooavg_u1 = self._csiszar_vimco_helper(
         logu[..., None] + np.diag([delta]*len(logu)))

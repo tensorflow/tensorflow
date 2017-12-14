@@ -9,7 +9,12 @@ load("//third_party/mpi:mpi.bzl", "if_mpi")
 
 py_library(
     name = "contrib_py",
-    srcs = glob(["**/*.py"]),
+    srcs = glob(
+        ["**/*.py"],
+        exclude = [
+            "**/*_test.py",
+        ],
+    ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -51,17 +56,20 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/model_pruning",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",

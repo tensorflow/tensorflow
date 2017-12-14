@@ -14,7 +14,7 @@ Add TensorFlow-Android-Inference as a dependency of your Android application
 
 ```
 include ':TensorFlow-Android-Inference'
-findProject(":TensorFlow-Android-Inference").projectDir = 
+findProject(":TensorFlow-Android-Inference").projectDir =
             new File("${/path/to/tensorflow_repo}/contrib/android/cmake")
 ```
 

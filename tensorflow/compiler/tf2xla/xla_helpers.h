@@ -72,14 +72,35 @@ class XlaHelpers {
                                gtl::ArraySlice<int64> shape,
                                xla::Literal* output);
 
+  // Sets `argmax` to the argmax of `input` along `axis`. `input_shape` and
+  // `input_dtype` are the shape and dtype of `input` respectively, and
+  // `output_type` is the dtype to use for `argmax`.
+  static Status ArgMax(xla::ComputationBuilder* builder,
+                       XlaOpKernelContext* ctx,
+                       const xla::ComputationDataHandle& input,
+                       const TensorShape& input_shape, DataType input_type,
+                       DataType output_type, int axis,
+                       xla::ComputationDataHandle* argmax);
+
+  // Sets `argmin` to the argmin of `input` along `axis`. `input_shape` and
+  // `input_dtype` are the shape and dtype of `input` respectively, and
+  // `output_type` is the dtype to use for `argmin`.
+  static Status ArgMin(xla::ComputationBuilder* builder,
+                       XlaOpKernelContext* ctx,
+                       const xla::ComputationDataHandle& input,
+                       const TensorShape& input_shape, DataType input_type,
+                       DataType output_type, int axis,
+                       xla::ComputationDataHandle* argmin);
+
   // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
   static Status Iota(xla::ComputationBuilder* builder, DataType dtype,
                      int64 size, xla::ComputationDataHandle* iota);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
-  // axis. `indices_shape` is the shape of `indices`. `on_value` and `off_value`
-  // represent the values to use for the on and off positions, respectively.
+  // axis. `indices_shape` is the shape of `indices`. `on_value` and
+  // `off_value` represent the values to use for the on and off positions,
+  // respectively.
   static Status OneHot(xla::ComputationBuilder* builder, int64 depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
                        const xla::ComputationDataHandle& indices,

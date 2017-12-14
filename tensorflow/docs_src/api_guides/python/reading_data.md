@@ -1,11 +1,11 @@
 # Reading data
 
 Note: The preferred way to feed data into a tensorflow program is using the
-@{$datasets$Datasets API}.
+@{$datasets$`tf.data` API}.
 
 There are four methods of getting data into a TensorFlow program:
 
-*   `Dataset` API: Easily construct a complex input pipeline. (preferred method)
+*   `tf.data` API: Easily construct a complex input pipeline. (preferred method)
 *   Feeding: Python code provides the data when running each step.
 *   `QueueRunner`: a queue-based input pipeline reads the data from files
     at the beginning of a TensorFlow graph.
@@ -14,25 +14,26 @@ There are four methods of getting data into a TensorFlow program:
 
 [TOC]
 
-## Dataset API
+## `tf.data` API
 
 See the @{$datasets$programmer's guide} for an in-depth explanation of
-@{tf.data.Dataset}. The `Dataset` API allows you to extract and preprocess data
-from different input/file formats, and apply transformations such as batch,
-shuffle, and map to the dataset. This is an improved version of the old input
-methods, feeding and `QueueRunner`.
+@{tf.data.Dataset}. The `tf.data` API enables you to extract and preprocess data
+from different input/file formats, and apply transformations such as batching,
+shuffling, and mapping functions over the dataset. This is an improved version
+of the old input methods---feeding and `QueueRunner`---which are described
+below for historical purposes.
 
 ## Feeding
 
+Warning: "Feeding" is the least efficient way to feed data into a TensorFlow
+program and should only be used for small experiments and debugging.
+
 TensorFlow's feed mechanism lets you inject data into any Tensor in a
-computation graph. A python computation can thus feed data directly into the
+computation graph. A Python computation can thus feed data directly into the
 graph.
 
 Supply feed data through the `feed_dict` argument to a run() or eval() call
 that initiates computation.
-
-Warning: "Feeding" is the least efficient way to feed data into a tensorflow
-program and should only be used for small experiments and debugging.
 
 ```python
 with tf.Session():
@@ -55,6 +56,10 @@ and is described in the @{$mechanics$MNIST tutorial}.
 
 ## `QueueRunner`
 
+Warning: This section discusses implementing input pipelines using the
+queue-based APIs which can be cleanly replaced by the @{$datasets$`tf.data`
+API}.
+
 A typical queue-based pipeline for reading records from files has the following stages:
 
 1.  The list of filenames
@@ -65,9 +70,6 @@ A typical queue-based pipeline for reading records from files has the following 
 6.  A decoder for a record read by the reader
 7.  *Optional* preprocessing
 8.  Example queue
-
-Warning: This section discusses implementing input pipelines using the
-queue-based APIs which can be cleanly replaced by the @{$datasets$Datasets API}.
 
 ### Filenames, shuffling, and epoch limits
 
@@ -173,14 +175,25 @@ For example,
 [`tensorflow/examples/how_tos/reading_data/convert_to_records.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/convert_to_records.py)
 converts MNIST data to this format.
 
-To read a file of TFRecords, use
-@{tf.TFRecordReader} with
-the @{tf.parse_single_example}
-decoder. The `parse_single_example` op decodes the example protocol buffers into
-tensors. An MNIST example using the data produced by `convert_to_records` can be
-found in
-[`tensorflow/examples/how_tos/reading_data/fully_connected_reader.py`](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py),
-which you can compare with the `fully_connected_feed` version.
+The recommended way to read a TFRecord file is with a @{tf.data.TFRecordDataset}, [as in this example](https://www.tensorflow.org/code/tensorflow/examples/how_tos/reading_data/fully_connected_reader.py):
+
+``` python
+    dataset = tf.data.TFRecordDataset(filename)
+    dataset = dataset.repeat(num_epochs)
+
+    # map takes a python function and applies it to every sample
+    dataset = dataset.map(decode)
+```
+
+To acomplish the same task with a queue based input pipeline requires the following code 
+(using the same `decode` function from the above example): 
+
+``` python
+  filename_queue = tf.train.string_input_producer([filename], num_epochs=num_epochs)
+  reader = tf.TFRecordReader()
+  _, serialized_example = reader.read(filename_queue)
+  image,label = decode(serialized_example)
+```
 
 ### Preprocessing
 
@@ -499,7 +512,7 @@ You can have the train and eval in the same graph in the same process, and share
 their trained variables or layers. See @{$variables$the shared variables tutorial}.
 
 To support the single-graph approach
-@{$programmers_guide/datasets$Datasets} also supplies
+@{$programmers_guide/datasets$`tf.data`} also supplies
 @{$programmers_guide/datasets#creating_an_iterator$advanced iterator types} that
 that allow the user to change the input pipeline without rebuilding the graph or
 session.

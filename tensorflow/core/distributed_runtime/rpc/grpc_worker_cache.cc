@@ -51,9 +51,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
-    // Wait until all live rpcs are done since otherwise the completion
-    // queue shutdown will interfere with rpc operation.
-    live_rpc_counter_.WaitUntilUnused();
     completion_queue_.Shutdown();
     delete polling_thread_;  // Blocks until thread exits.
     delete channel_cache_;
@@ -69,8 +66,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
     } else {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
       if (!channel) return nullptr;
-      return NewGrpcRemoteWorker(&live_rpc_counter_, channel,
-                                 &completion_queue_, &logger_);
+      return NewGrpcRemoteWorker(channel, &completion_queue_, &logger_);
     }
   }
 
@@ -94,7 +90,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
  private:
   const string local_target_;
   WorkerInterface* const local_worker_;  // Not owned.
-  GrpcCounter live_rpc_counter_;
   GrpcChannelCache* channel_cache_;  // Owned.
   ::grpc::CompletionQueue completion_queue_;
   Thread* polling_thread_;  // Owned.

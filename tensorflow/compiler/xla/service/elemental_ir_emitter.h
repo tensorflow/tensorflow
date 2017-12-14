@@ -95,6 +95,13 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x) const;
 
+  virtual llvm::Value* EmitExtractReal(llvm::Value* value) const;
+  virtual llvm::Value* EmitExtractImag(llvm::Value* value) const;
+
+  // Composes a complex struct. imag may be nullptr for simple cast operations.
+  llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
+                                  llvm::Value* imag) const;
+
   // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
   // the target array index, computes the source array index of its
   // `operand_no`-th operand.
@@ -116,11 +123,6 @@ class ElementalIrEmitter {
   // The HloModuleConfig which gathers all settings and values which affect the
   // compiled executable outside of the HLO code itself.
   const HloModuleConfig& hlo_module_config_;
-
- protected:
-  // Composes a complex struct. imag may be nullptr for simple cast operations.
-  llvm::Value* ComposeComplex(const HloInstruction* op, llvm::Value* real,
-                              llvm::Value* imag) const;
 
  private:
   // Returns a ElementGenerator for a RNG HloInstruction.

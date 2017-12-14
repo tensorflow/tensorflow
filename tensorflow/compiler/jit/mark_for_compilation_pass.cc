@@ -210,6 +210,13 @@ Status FindCompilationCandidates(
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
+    // _Retval nodes in a top-level function represent fetches.
+    // Do not compile them.
+    if (node->type_string() == "_Retval") {
+      VLOG(2) << "Compilation rejected node: return value " << node->name()
+              << ": " << node->type_string();
+      continue;
+    }
     candidates->insert(node);
   }
   return Status::OK();
@@ -290,9 +297,11 @@ Status MarkForCompilationPass::Run(
     global_jit_level =
         static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
   }
+  bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
-  auto is_compilable = [global_jit_level, fld](const Node* node,
-                                               const DeviceType& device_type) {
+
+  auto is_compilable = [global_jit_level, cpu_global_jit, fld](
+                           const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
                                              &registration)) {
@@ -315,7 +324,11 @@ Status MarkForCompilationPass::Run(
     if (status.ok()) return compile;
 
     // Otherwise use the value of global_jit_level.
-    return registration->enable_jit_by_default && global_jit_level > 0;
+    // Ignore enable_jit_by_default if global jit compilation for CPU
+    // is explicitly requested via tf_xla_cpu_global_jit flag
+    bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
+    return (ignore_registration || registration->enable_jit_by_default) &&
+           global_jit_level > 0;
   };
   return RunImpl(options, is_compilable);
 }
@@ -556,6 +569,7 @@ Status MarkForCompilationPass::RunImpl(
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
         registration->requires_compilation) {
       string& name = cluster_names[cluster];
+
       if (name.empty()) {
         name = strings::StrCat("cluster_", cluster_sequence_num++);
       }
