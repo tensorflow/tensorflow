@@ -22,6 +22,7 @@ import re
 import time
 
 import numpy as np
+import platform
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -765,8 +766,12 @@ class FunctionTest(test.TestCase):
     # We added more randomness to function names in C API.
     # TODO(iga): Remove this if statement when we switch to C API.
     if ops._USE_C_API:  # pylint: disable=protected-access
-      self.assertEqual("Foo_aCYSbwBkR5A",
-                       Foo.instantiate([dtypes.float32] * 3).name)
+      if platform.machine() == "s390x":
+        self.assertEqual("Foo_kEdkAG8SJvg",
+                         Foo.instantiate([dtypes.float32] * 3).name)
+      else:
+        self.assertEqual("Foo_aCYSbwBkR5A",
+                         Foo.instantiate([dtypes.float32] * 3).name)
     else:
       self.assertEqual("Foo_d643acf7",
                        Foo.instantiate([dtypes.float32] * 3).name)
