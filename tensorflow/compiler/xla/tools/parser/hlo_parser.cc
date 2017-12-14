@@ -279,8 +279,12 @@ bool HloParser::ParseComputation() {
 
   Shape shape;
   string root_name;
-  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'") ||
-      !ParseShape(&shape) || !ParseInstructionList(builder.get(), &root_name)) {
+  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'")) {
+    return false;
+  }
+
+  LocTy shape_ty = lexer_.GetLoc();
+  if (!ParseShape(&shape) || !ParseInstructionList(builder.get(), &root_name)) {
     return false;
   }
 
@@ -300,6 +304,21 @@ bool HloParser::ParseComputation() {
       is_entry_computation
           ? module_->AddEntryComputation(builder->Build(root))
           : module_->AddEmbeddedComputation(builder->Build(root));
+
+  if (!root) {
+    root = computation->root_instruction();
+  } else {
+    CHECK_EQ(root, computation->root_instruction());
+  }
+
+  if (!ShapeUtil::Compatible(root->shape(), shape)) {
+    return Error(
+        shape_ty,
+        StrCat("Shape of computation ", name, ", ",
+               ShapeUtil::HumanString(shape),
+               ", is not compatible with that of its root instruction ",
+               root_name, ", ", ShapeUtil::HumanString(root->shape())));
+  }
 
   // The parameters and result layouts were set to default layout. Here we set
   // the layouts to what the hlo text says.

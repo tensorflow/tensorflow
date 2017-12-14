@@ -1047,6 +1047,18 @@ ENTRY %test_comma.v4 () -> f32[] {
   TF_EXPECT_OK(Parse(original).status());
 }
 
+TEST_F(HloParserTest, ComputationShapeDoesNotMatchRootShape) {
+  const string original = R"(HloModule custom_call:
+
+ENTRY %CustomCall () -> f32[1] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %foo = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar"
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "Shape of computation CustomCall, f32[1], is not compatible "
+                  "with that of its root instruction foo, f32[1,2,3]");
+}
+
 }  // namespace
 }  // namespace tools
 }  // namespace xla
