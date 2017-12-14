@@ -1486,8 +1486,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // TODO(rmlarsen): Handle non-associative/non-commutative operators like
     // subtraction and division, as well as mixed subtraction/addition,
     // division/multiplication.
-    if (is_aggressive && (is_add || is_mul) &&
-        NumNonControlInputs(*node) == 2) {
+    if ((is_add || is_mul) && NumNonControlInputs(*node) == 2) {
       NodeDef* left_child = node_map_->GetNode(node->input(0));
       NodeDef* right_child = node_map_->GetNode(node->input(1));
       // One child must be constant, and the other the same op as the parent.
@@ -1512,7 +1511,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         continue;
       }
 
-      const int parent_const_input = left_child_is_constant ? 0 : 1;
+      // Identify the nodes to swap.
       const NodeDef* left_leaf = node_map_->GetNode(child_node->input(0));
       const NodeDef* right_leaf = node_map_->GetNode(child_node->input(1));
       const bool left_leaf_is_constant = IsReallyConstant(*left_leaf);
@@ -1521,7 +1520,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         // Child is already foldable, leave it alone.
         continue;
       }
-      int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
+      const int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
+      const int parent_const_input = left_child_is_constant ? 0 : 1;
 
       // Swap the constant child with a non-constant leaf node.
       node_map_->UpdateInput(node->name(), node->input(parent_const_input),

@@ -97,11 +97,10 @@ TEST_F(ConstantFoldingTest, AddTree) {
   item.fetch = {"add_parent", "mul_parent", "addmul_parent"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ConstantFolding fold(RewriterConfig::AGGRESSIVE, nullptr /* cpu_device */);
+  ConstantFolding fold(nullptr /* cpu_device */);
   GraphDef output;
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << "Final results =\n" << output.DebugString();
 
   EXPECT_EQ(9, output.node_size());
 
