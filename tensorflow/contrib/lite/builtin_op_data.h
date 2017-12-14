@@ -165,6 +165,10 @@ typedef struct {
   TfLiteCombinerType combiner;
 } TfLiteEmbeddingLookupSparseParams;
 
+typedef struct {
+  int axis;
+} TfLiteGatherParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

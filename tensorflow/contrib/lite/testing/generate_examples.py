@@ -94,6 +94,8 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
+    # Gather doesn't support int64 indices.
+    r"gather.*indices_dtype=int64": "XXXX",
 }
 
 
@@ -120,7 +122,7 @@ def toco_options(data_types,
   # to change
   if data_types[0] == "QUANTIZED_UINT8":
     inference_type = "QUANTIZED_UINT8"
-  s = (" --input_types=%s" % ",".join(data_types) +
+  s = (" --input_data_types=%s" % ",".join(data_types) +
        " --inference_type=%s" % inference_type +
        " --input_format=TENSORFLOW_GRAPHDEF" + " --output_format=TFLITE" +
        " --input_arrays=%s" % ",".join(input_arrays) +
@@ -704,6 +706,46 @@ def make_mul_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_gather_tests(zip_path):
+  """Make a set of tests to do gather."""
+
+  test_parameters = [{
+      # TODO(mgubin): add string tests when they are supported by Toco.
+      # TODO(mgubin): add tests for Nd indices when they are supported by
+      # TfLite.
+      # TODO(mgubin): add tests for axis != 0 when it is supported by TfLite.
+      "params_dtype": [tf.float32, tf.int32],
+      "params_shape": [[10], [1, 2, 20]],
+      "indices_dtype": [tf.int32],
+      "indices_shape": [[3], [5]],
+      "axis": [0],  # axis!=0 is GatherV2
+  }]
+
+  def build_graph(parameters):
+    """Build the gather op testing graph."""
+    params = tf.placeholder(
+        dtype=parameters["params_dtype"],
+        name="params",
+        shape=parameters["params_shape"])
+    indices = tf.placeholder(
+        dtype=parameters["indices_dtype"],
+        name="indices",
+        shape=parameters["indices_shape"])
+    out = tf.gather(params, indices, axis=parameters["axis"])
+    return [params, indices], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    params = create_tensor_data(parameters["params_dtype"],
+                                parameters["params_shape"])
+    indices = create_tensor_data(parameters["indices_dtype"],
+                                 parameters["indices_shape"], 0,
+                                 parameters["params_shape"][0] - 1)
+    return [params, indices], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [params, indices])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_global_batch_norm_tests(zip_path):
   """Make a set of tests to do batch_norm_with_global_normalization."""
 
@@ -1190,6 +1232,7 @@ def main(unused_args):
         "concat.zip": make_concatenation_tests,
         "fully_connected.zip": make_fully_connected_tests,
         "global_batch_norm.zip": make_global_batch_norm_tests,
+        "gather.zip": make_gather_tests,
         "fused_batch_norm.zip": make_fused_batch_norm_tests,
         "l2norm.zip": make_l2norm_tests,
         "local_response_norm.zip": make_local_response_norm_tests,

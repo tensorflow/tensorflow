@@ -49,6 +49,7 @@ TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
 TfLiteRegistration* Register_SKIP_GRAM();
 TfLiteRegistration* Register_SPACE_TO_DEPTH();
+TfLiteRegistration* Register_GATHER();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -84,6 +85,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
+  AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

@@ -1208,7 +1208,8 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int input_rank;
+  int axis = 0;
+  int input_rank = 0;
 };
 
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.

@@ -106,6 +106,7 @@ enum BuiltinOperator : byte {
   EMBEDDING_LOOKUP_SPARSE = 33,
   PAD = 34,
   UNIDIRECTIONAL_SEQUENCE_RNN = 35,
+  GATHER = 36,
 }
 
 // Options for the builtin operators.
@@ -132,6 +133,7 @@ union BuiltinOptions {
   EmbeddingLookupSparseOptions,
   MulOptions,
   PadOptions,
+  GatherOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -276,6 +278,10 @@ table EmbeddingLookupSparseOptions {
   combiner:CombinerType;
 }
 
+table GatherOptions {
+  axis: int;
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -351,4 +357,3 @@ table Model {
 }
 
 root_type Model;
-

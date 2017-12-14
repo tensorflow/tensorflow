@@ -101,7 +101,6 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<DequantizeOperator>("DEQUANTIZE",
                                           OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
-  CheckSimpleOperator<GatherOperator>("GATHER", OperatorType::kGather);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
@@ -165,6 +164,13 @@ TEST_F(OperatorTest, CustomFullyConnected) {
       GetOperator("FULLY_CONNECTED", OperatorType::kFullyConnected), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+}
+
+TEST_F(OperatorTest, BuiltinGather) {
+  GatherOperator op;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("GATHER", OperatorType::kGather), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
 }
 
 TEST_F(OperatorTest, BuiltinL2Pool) {

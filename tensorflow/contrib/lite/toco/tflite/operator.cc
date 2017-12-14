@@ -211,6 +211,22 @@ class FullyConnected
   }
 };
 
+class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
+                                      ::tflite::BuiltinOptions_GatherOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateGatherOptions(*builder, op.axis);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->axis = options.axis();
+  }
+};
+
 class Svdf : public BuiltinOperator<SvdfOperator, ::tflite::SVDFOptions,
                                     ::tflite::BuiltinOptions_SVDFOptions> {
  public:
@@ -565,6 +581,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new FullyConnected(::tflite::BuiltinOperator_FULLY_CONNECTED,
                                       OperatorType::kFullyConnected));
   ops.emplace_back(
+      new Gather(::tflite::BuiltinOperator_GATHER, OperatorType::kGather));
+  ops.emplace_back(
       new L2Normalization(::tflite::BuiltinOperator_L2_NORMALIZATION,
                           OperatorType::kL2Normalization));
   ops.emplace_back(
@@ -606,8 +624,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "DEQUANTIZE", OperatorType::kDequantize));
   ops.emplace_back(
       new SimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor));
-  ops.emplace_back(
-      new SimpleOperator<GatherOperator>("GATHER", OperatorType::kGather));
   ops.emplace_back(
       new SimpleOperator<ReluOperator>("RELU", OperatorType::kRelu));
   ops.emplace_back(

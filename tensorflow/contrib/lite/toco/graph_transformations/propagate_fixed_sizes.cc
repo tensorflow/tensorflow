@@ -821,6 +821,7 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
 
   // Copy the input dimensions to the output except for dimension 0,
   // where the dimension of indices_shape is used.
+  // TODO(mgubin): if axis != 0 this is not true, change when it's supported.
   auto output_dims = output_array.mutable_shape()->mutable_dims();
   output_dims->push_back(indices_shape.dims(0));
   for (int dim = 1; dim < input_shape.dimensions_count(); dim++) {

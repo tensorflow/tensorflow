@@ -83,6 +83,7 @@ cc_library(
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "fully_connected.cc",
+        "gather.cc",
         "hashtable_lookup.cc",
         "kernel_util.cc",
         "l2norm.cc",
@@ -257,6 +258,19 @@ tf_cc_test(
     srcs = ["reshape_test.cc"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "gather_test",
+    size = "small",
+    srcs = ["gather_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

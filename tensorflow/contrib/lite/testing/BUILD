@@ -25,6 +25,7 @@ gen_zipped_test_files(
         "depthwiseconv.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
+        "gather.zip",
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",
