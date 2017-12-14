@@ -906,12 +906,12 @@ class AgnosticNodeProcessor : public NodeProcessor {
            IsNodeAfterNCHWToNHWC() && IsOnGPU();
   }
 
-  bool IsNodeAfterNCHWToNHWC() const {
+  bool IsNodeAfterNCHWToNHWC(const NodeDef& node) const {
     std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     std::deque<NodeDef*> queue;
-    auto first_node_pos = DataInputPos(*node_);
-    for (const auto& pos : first_node_pos) {
-      auto input_node = node_map_->GetNode(node_->input(pos));
+    auto data_node_pos = DataInputPos(node);
+    for (const auto& pos : data_node_pos) {
+      auto input_node = node_map_->GetNode(node.input(pos));
       queue.push_back(input_node);
     }
     // The code will exit this while loop in one iteration in most cases, as the
@@ -935,6 +935,8 @@ class AgnosticNodeProcessor : public NodeProcessor {
     }
     return false;
   }
+
+  bool IsNodeAfterNCHWToNHWC() const { return IsNodeAfterNCHWToNHWC(*node_); }
 
  private:
   std::vector<int> DataInputPos(const NodeDef& node) const {
@@ -1214,7 +1216,8 @@ class ShapeProcessor : public AgnosticNodeProcessor {
     std::vector<int> input_pos;
     for (int i = 0; i < node_->input_size(); i++) {
       auto input = node_map_->GetNode(node_->input(i));
-      if (IsDimsFour(*input)) {
+      if (IsDimsFour(*input) &&
+          (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
         input_pos.push_back(i);
       }
     }

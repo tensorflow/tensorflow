@@ -983,6 +983,25 @@ TEST_F(LayoutOptimizerTest, ShapeNWithInputsVectorAnd4D) {
   EXPECT_EQ(vec_permute->op(), "DataFormatVecPermute");
 }
 
+TEST_F(LayoutOptimizerTest, ShapeNWithInputs4DAndNoNeedToTransform4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto tensor_4d = ops::Const(s.WithOpName("tensor_4d"), 3.0f, {1, 1, 1, 3});
+  auto i1 = ops::Identity(s.WithOpName("i1"), tensor_4d);
+  Output i2 = ops::Identity(s.WithOpName("i2"), i1);
+  auto shapen = ops::ShapeN(s.WithOpName("shapen"), {conv, i2});
+  auto add = ops::Add(s.WithOpName("add"), shapen[0], shapen[1]);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto shapen_node = node_map.GetNode("shapen");
+  EXPECT_EQ(shapen_node->input(0), "Conv2D");
+  EXPECT_EQ(shapen_node->input(1), "i2");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
