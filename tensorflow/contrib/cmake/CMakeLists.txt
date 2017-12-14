@@ -36,8 +36,8 @@ option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
-option(tensorflow_CUDA_VERSION "CUDA version to build against" 9.0)
-option(tensorflow_CUDNN_VERSION "cuDNN version to build against" 7)
+set(tensorflow_CUDA_VERSION "9.0" CACHE STRING "CUDA version to build against")
+set(tensorflow_CUDNN_VERSION "7" CACHE STRING "cuDNN version to build against")
 
 if(HAIKU)
 	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
