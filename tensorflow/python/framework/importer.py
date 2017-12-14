@@ -478,7 +478,17 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
         f.add_to_graph(graph)
       # pylint: enable=protected-access
 
-    # TODO(skyewm): error if unused input map key
+    # Treat input mappings that don't appear in the graph as an error, because
+    # they are likely to be due to a typo.
+    missing_unused_input_keys = (
+        c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+            results))
+    if missing_unused_input_keys:
+      missing_unused_input_keys = [compat.as_str(s)
+                                   for s in missing_unused_input_keys]
+      raise ValueError(
+          'Attempted to map inputs that were not found in graph_def: [%s]'
+          % ', '.join(missing_unused_input_keys))
 
     if return_elements is None:
       return None

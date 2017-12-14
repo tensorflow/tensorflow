@@ -31,6 +31,7 @@ gen_zipped_test_files(
         "local_response_norm.zip",
         "max_pool.zip",
         "mul.zip",
+        "pad.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",

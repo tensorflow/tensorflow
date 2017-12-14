@@ -704,7 +704,44 @@ ENTRY %ReducePrecision () -> f32[1] {
 }
 
 )"
+},
+// Conditional
+{
+"Conditional",
+R"(HloModule conditional:
+
+%Negate (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %x)
 }
+
+%Identity (y: f32[]) -> f32[] {
+  %y = f32[] parameter(0)
+  ROOT %copy = f32[] copy(f32[] %y)
+}
+
+ENTRY %Parameters1.v4 () -> f32[] {
+  %constant = pred[] constant(true)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  ROOT %conditional = f32[] conditional(pred[] %constant, f32[] %constant.1, f32[] %constant.2), true_computation=%Negate, false_computation=%Identity
+}
+
+)"
+},
+
+// CustomCall
+{
+"CustomCall",
+R"(HloModule custom_call:
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar"
+}
+
+)"
+},
   });
   // clang-format on
 }

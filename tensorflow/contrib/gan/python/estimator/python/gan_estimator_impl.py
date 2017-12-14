@@ -165,11 +165,6 @@ class GANEstimator(estimator.Estimator):
         model_fn=_model_fn, model_dir=model_dir, config=config)
 
 
-def _use_check_shapes(real_data):
-  """Determines whether TFGAN should check Tensor shapes."""
-  return isinstance(real_data, ops.Tensor)
-
-
 def _gan_model_fn(
     features,
     labels,
@@ -247,7 +242,7 @@ def _make_gan_model(generator_fn, discriminator_fn, real_data,
       real_data,
       generator_inputs,
       generator_scope=generator_scope,
-      check_shapes=_use_check_shapes(real_data))
+      check_shapes=False)
   if add_summaries:
     if not isinstance(add_summaries, (tuple, list)):
       add_summaries = [add_summaries]

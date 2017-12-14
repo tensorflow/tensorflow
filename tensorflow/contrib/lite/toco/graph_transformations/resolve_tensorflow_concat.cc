@@ -35,37 +35,36 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
 
   CHECK_GE(tf_concat_op->inputs.size(), 2);
   // TensorFlow Concat and ConcatV2 nodes only differ by the ordering
-  // of inputs: in Concat, the concat_dim is the first input, while in
+  // of inputs: in Concat,the axis is the first input, while in
   // ConcatV2, it is the last input.
-  std::size_t concat_dim_pos = 0;
+  std::size_t axis_pos = 0;
   if (tf_concat_op->type == OperatorType::kTensorFlowConcatV2) {
-    concat_dim_pos = tf_concat_op->inputs.size() - 1;
+    axis_pos = tf_concat_op->inputs.size() - 1;
   }
-  const string concat_dim_name = tf_concat_op->inputs[concat_dim_pos];
+  const string axis_name = tf_concat_op->inputs[axis_pos];
   std::vector<string> concat_input_names;
   for (std::size_t i = 0; i < tf_concat_op->inputs.size(); i++) {
-    if (i != concat_dim_pos) {
+    if (i != axis_pos) {
       concat_input_names.push_back(tf_concat_op->inputs[i]);
     }
   }
-  // If the concat_dim array hasn't been resolved to a constant yet,
+  // If the axis array hasn't been resolved to a constant yet,
   // we need to yield.
-  const auto& concat_dim_array = model->GetArray(concat_dim_name);
-  if (!concat_dim_array.buffer) {
-    AddMessageF("Waiting for the concat_dim of %s to be resolved to a constant",
+  const auto& axis_array = model->GetArray(axis_name);
+  if (!axis_array.buffer) {
+    AddMessageF("Waiting for the axis of %s to be resolved to a constant",
                 LogName(*tf_concat_op));
     return false;
   }
 
-  CHECK(concat_dim_array.data_type == ArrayDataType::kInt32);
-  const auto& concat_dim_data =
-      concat_dim_array.GetBuffer<ArrayDataType::kInt32>().data;
-  CHECK_EQ(concat_dim_data.size(), 1);
-  const int concat_dim = concat_dim_data[0];
+  CHECK(axis_array.data_type == ArrayDataType::kInt32);
+  const auto& axis_data = axis_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(axis_data.size(), 1);
+  const int axis = axis_data[0];
 
   // Create the Concatenation op replacing the TensorFlowConcat op.
   auto* concatenation_op = new ConcatenationOperator;
-  concatenation_op->concat_dim = concat_dim;
+  concatenation_op->axis = axis;
   concatenation_op->inputs = concat_input_names;
   concatenation_op->outputs = {tf_concat_op->outputs[0]};
   auto depth_concat_it = model->operators.emplace(concat_it, concatenation_op);
@@ -74,9 +73,9 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
   concat_it = depth_concat_it + 1;
   CHECK_EQ(concat_it->get(), tf_concat_op);
 
-  // Remove the concat_dim array if it is not used by anything else.
-  if (CountOpsWithInput(*model, concat_dim_name) == 1) {
-    model->arrays.erase(concat_dim_name);
+  // Remove the axis array if it is not used by anything else.
+  if (CountOpsWithInput(*model, axis_name) == 1) {
+    model->arrays.erase(axis_name);
   }
   // Remove the TensorFlowConcat op
   model->operators.erase(concat_it);

@@ -806,7 +806,7 @@ def set_tf_cuda_version(environ_cp):
       'Please specify the CUDA SDK version you want to use, '
       'e.g. 7.0. [Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
 
-  while True:
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     # Configure the Cuda SDK version to use.
     tf_cuda_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_VERSION', ask_cuda_version, _DEFAULT_CUDA_VERSION)
@@ -844,6 +844,11 @@ def set_tf_cuda_version(environ_cp):
     environ_cp['TF_CUDA_VERSION'] = ''
     environ_cp['CUDA_TOOLKIT_PATH'] = ''
 
+  else:
+    raise UserInputError('Invalid TF_CUDA_SETTING setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
   # Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION
   environ_cp['CUDA_TOOLKIT_PATH'] = cuda_toolkit_path
   write_action_env_to_bazelrc('CUDA_TOOLKIT_PATH', cuda_toolkit_path)
@@ -857,7 +862,7 @@ def set_tf_cudnn_version(environ_cp):
       'Please specify the cuDNN version you want to use. '
       '[Leave empty to default to cuDNN %s.0]: ') % _DEFAULT_CUDNN_VERSION
 
-  while True:
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_cudnn_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDNN_VERSION', ask_cudnn_version,
         _DEFAULT_CUDNN_VERSION)
@@ -916,6 +921,10 @@ def set_tf_cudnn_version(environ_cp):
       print('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version))
 
     environ_cp['TF_CUDNN_VERSION'] = ''
+  else:
+    raise UserInputError('Invalid TF_CUDNN setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
 
   # Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION
   environ_cp['CUDNN_INSTALL_PATH'] = cudnn_install_path

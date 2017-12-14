@@ -208,7 +208,7 @@ def smart_cond(pred, fn1, fn2, name=None):
     else:
       return fn2()
   else:
-    return control_flow_ops.cond(pred, fn1, fn2, name)
+    return control_flow_ops.cond(pred, true_fn=fn1, false_fn=fn2, name=name)
 
 
 def constant_value(pred):
