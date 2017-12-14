@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include <functional>
+#include <memory>
 #include <numeric>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/compiler/jit/graph_to_functiondef.h"
 #include "tensorflow/compiler/jit/legacy_flags/encapsulate_subgraphs_pass_flags.h"
@@ -72,15 +76,15 @@ bool AreAllParentsConst(const Node& n,
 
 void MarkGuaranteedConstants(
     const Graph& graph,
-    const std::vector<std::pair<Node*, Node*>>& src_arg_pairs) {
+    const std::vector<std::pair<const Node*, Node*>>& src_arg_pairs) {
   gtl::FlatSet<const Node*> guaranteed_const_nodes;
-  std::vector<Node*> srcs;
+  std::vector<const Node*> srcs;
   srcs.reserve(src_arg_pairs.size());
   for (const auto& src_arg : src_arg_pairs) {
     srcs.push_back(src_arg.first);
   }
   ReverseDFSFrom(graph, srcs, /*enter=*/nullptr,
-                 /*leave=*/[&guaranteed_const_nodes](Node* n) {
+                 /*leave=*/[&guaranteed_const_nodes](const Node* n) {
                    // TODO(vinuraja): Doesn't work in the presence of loops.
                    if (AreAllParentsConst(*n, guaranteed_const_nodes)) {
                      guaranteed_const_nodes.insert(n);
@@ -122,6 +126,11 @@ struct NodeSlot {
   };
 };
 
+// TODO(phawkins) add a canonical copy of these operator names and refactor
+// everything to use it.
+static const char* const kArgOp = "_Arg";
+static const char* const kRetValOp = "_Retval";
+
 class Encapsulator {
  public:
   Encapsulator(string group_attribute, Graph const* graph_in)
@@ -146,54 +155,167 @@ class Encapsulator {
   Status BuildOutputGraph(bool parallel_checking, Graph* graph_out);
 
  private:
-  // Returns the key attribute associated with a node. Returns the empty string
-  // if no key attribute is found.
-  string GetFunctionNameAttr(const Node* node) const;
-
   // A subgraph of the input, all marked with a common 'group_attribute'
   // value.
-  struct Subgraph {
+  class Subgraph {
+   public:
+    // Creates a graph to build the subgraph in, if it doesn't already exist,
+    // using the same op registry and versions as graph_in.
+    Node* MakeNodeImage(const Graph* graph_in, Node* node);
+
+    // Returns the graph the subgraph is being built in.
+    Graph* GetGraph() const;
+
+    // Builds a FunctionDef, and adds it to 'library'. The value of the
+    // 'group_attribute' annotations becomes the function name.  If
+    // 'reuse_existing_functions' is set, use an existing function with the same
+    // name, if any.  If 'rewrite_subgraph_fn' is set, it is applied to the
+    // subgraph before function conversion.
+    Status BuildFunctionDef(const string& name_in,
+                            const RewriteSubgraphFn& rewrite_subgraph_fn,
+                            bool reuse_existing_functions,
+                            FunctionLibraryDefinition* library);
+
+    // Adds the function call node to graph_out.
+    Status AddFunctionCallNode(
+        const std::unordered_map<const Node*, Node*>& node_images,
+        bool parallel_checking, Graph* graph_out);
+
+    // Returns the Node that inputs to the function should be wired up to.
+    Node* GetCallNodeForInputs() const;
+
+    // Returns the Node that outputs to the function should be wired up to.
+    Node* GetCallNodeForOutputs() const;
+
+    // Returns the index of the arg that the dst of edge should connect to.
+    int GetArgIndexForEdge(const Edge* edge) const;
+
+    // Returns the index of the result that the src of edge should connect to.
+    int GetResultIndexForEdge(const Edge* edge) const;
+
+    // Creates an _Arg node for the src node of edge, and add its index to
+    // args_by_src_, if none exists yet. Also adds its index to args_by_dst_,
+    // and adds the edge within the subgraph from the _Arg node to the image of
+    // the dst node.
+    Status RecordArg(const Edge* edge,
+                     const std::unordered_map<const Node*, Node*>& node_images,
+                     std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
+
+    // Creates a _Retval node for the src node of edge, and add it to results_,
+    // if none exists yet. If a new _Retval node is created, also adds the edge
+    // within the subgraph from the src to the _Retval node.
+    Status RecordResult(
+        const Edge* edge,
+        const std::unordered_map<const Node*, Node*>& node_images);
+
+   private:
+    // Builds a ParallelCheck op that compares the output of the original
+    // subgraph with the encapsulated subgraph.
+    Status BuildParallelCheckOp(
+        const std::unordered_map<const Node*, Node*>& node_images,
+        Graph* graph_out);
+
     // The subgraph extracted from the input graph, suitable for being turned
     // into a FunctionDef. Inputs are fed by _Arg nodes, and outputs are
     // returned by _Retval nodes.
-    std::unique_ptr<Graph> graph;
+    std::unique_ptr<Graph> graph_;
 
     // Which device are these nodes on? Used to assign a device to the call
     // node.
-    string device;
+    string device_;
 
     // NodeDef for the function call node.
-    NodeDef call_node_def;
+    NodeDef call_node_def_;
 
     // Function call node(s) in the output graph. Not owned.
     // If parallel_checking is enabled, 'call_node_inputs' is the function call
     // node to which inputs should be fed, and 'call_node_outputs' is the
     // parallel check op from which outputs should be read. If parallel checking
     // is disabled, both point to the function call node.
-    Node* call_node_inputs;
-    Node* call_node_outputs;
+    Node* call_node_inputs_;
+    Node* call_node_outputs_;
 
     // Maps from source (producer node/slot) and destination
     // (consumer node/slot) tensors in the input graph to _Arg numbers in
     // the subgraph. The source map is one-to-one, whereas the dest map may be
     // many-to-one.
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_src;
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_dst;
+    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_src_;
+    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_dst_;
 
     // The _Arg nodes in the subgraph, in order by argument number.
-    std::vector<Node*> args;
+    std::vector<Node*> args_;
 
     // Map from source tensor in the input graph to result #.
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> results;
+    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> results_;
   };
 
-  // Builds a ParallelCheck op that compares the output of the original subgraph
-  // with the encapsulated subgraph.
-  Status BuildParallelCheckOp(
+  // Returns the key attribute associated with a node in attr. Sets attr to the
+  // empty string if the attribute is not found.
+  Status GetFunctionNameAttr(const Node* node, string* attr) const;
+
+  // Copies edges local to a subgraph. Adds _Arg and _Retval nodes to subgraphs
+  // for data edges that cross subgraph boundaries.
+  Status CopySubgraphEdges(
       const std::unordered_map<const Node*, Node*>& node_images,
-      const Subgraph& subgraph, Graph* graph_out, Node** parallel_check_op);
+      std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
+
+  // Copies all marked nodes to a subgraph. Does nothing for unmarked nodes.
+  Status CopySubgraphNodes(std::unordered_map<const Node*, Node*>* node_images);
+
+  // Copies all nodes that aren't in a compiled subgraph to the output graph.
+  Status CopyNodesToOutputGraph(
+      bool parallel_checking, Graph* graph_out,
+      std::unordered_map<const Node*, Node*>* node_images);
+
+  // Adds function call nodes for each compiled subgraph.
+  Status AddFunctionCallNodes(
+      const std::unordered_map<const Node*, Node*>& node_images,
+      bool parallel_checking, Graph* graph_out);
+
+  // Finds the image of an edge source in the output graph. If the edge crosses
+  // a subgraph boundary it is the output of a call node, otherwise it is a node
+  // in the output graph.
+  Status FindOutputImageOfEdgeSrc(
+      const string& src_func_id, const string& dst_func_id,
+      const std::unordered_map<const Node*, Node*>& node_images,
+      const Node* original_src_node, Node** src_image);
+
+  // Finds an edge source slot in the output graph. If the edge crosses a
+  // subgraph boundary it is a slot on the output of a call node, otherwise it
+  // is a slot on a node in the output graph.
+  int FindOutputSlotOfEdgeSrc(const string& src_func_id,
+                              const string& dst_func_id, const Edge* edge);
+
+  // Finds the image of an edge destination in the output graph. If the edge
+  // crosses a subgraph boundary it is the input of a call node, otherwise it is
+  // a node in the output graph.
+  Status FindOutputImageOfEdgeDst(
+      const string& src_func_id, const string& dst_func_id,
+      const std::unordered_map<const Node*, Node*>& node_images,
+      const Node* original_dst_node, Node** dst_image);
+
+  // Finds an edge destination slot in the output graph. If the edge crosses a
+  // subgraph boundary it is a slot on the input of a call node, otherwise it is
+  // a slot on a node in the output graph.
+  int FindOutputSlotOfEdgeDst(const string& src_func_id,
+                              const string& dst_func_id, const Edge* edge);
+
+  // Copies a single edge to the output graph. The edge is either entirely
+  // within the output graph, or crosses into or out of a compiled subgraph.
+  Status CopyEdgeToOutputGraph(
+      const Edge* edge, const string& src_func_id, const string& dst_func_id,
+      const std::unordered_map<const Node*, Node*>& node_images,
+      bool parallel_checking, Graph* graph_out,
+      std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
+          edges_added);
+
+  // Adds all edges to the output graph.
+  Status AddEdgesToOutputGraph(
+      const std::unordered_map<const Node*, Node*>& node_images,
+      bool parallel_checking, Graph* graph_out);
 
   const string group_attribute_;
+  const string outside_compilation_attribute_;
   const Graph* graph_in_;
 
   std::unordered_map<string, Subgraph> subgraphs_;
@@ -201,230 +323,184 @@ class Encapsulator {
   TF_DISALLOW_COPY_AND_ASSIGN(Encapsulator);
 };
 
-// TODO(phawkins) add a canonical copy of these operator names and refactor
-// everything to use it.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetValOp = "_Retval";
-
-// Returns the function name attached to 'node', or the empty string if there is
-// none.
-string Encapsulator::GetFunctionNameAttr(Node const* node) const {
-  string attr;
-  if (!GetNodeAttr(node->attrs(), group_attribute_, &attr).ok()) {
-    attr.clear();
-  }
-  return attr;
+Node* Encapsulator::Subgraph::GetCallNodeForInputs() const {
+  return call_node_inputs_;
 }
 
-Status Encapsulator::SplitIntoSubgraphs() {
-  Status s;
-
-  // Map from input graph nodes to subgraph nodes.
-  std::unordered_map<Node*, Node*> node_images;
-
-  std::vector<std::pair<Node*, Node*>> src_arg_pairs;
-  // Copy all marked nodes to a subgraph. Do nothing for unmarked nodes.
-  for (Node* node : graph_in_->op_nodes()) {
-    string func_id = GetFunctionNameAttr(node);
-
-    if (func_id.empty()) continue;
-
-    Subgraph& subgraph = subgraphs_[func_id];
-    if (!subgraph.graph) {
-      subgraph.graph.reset(new Graph(graph_in_->op_registry()));
-      subgraph.graph->set_versions(graph_in_->versions());
-    }
-
-    Node* image = subgraph.graph->CopyNode(node);
-    image->ClearAttr(group_attribute_);
-    node_images[node] = image;
-
-    if (subgraph.device.empty()) {
-      subgraph.device = node->assigned_device_name().empty()
-                            ? node->requested_device()
-                            : node->assigned_device_name();
-    }
-  }
-
-  // Copy edges local to a subgraph. Add _Arg and _Retval nodes to subgraphs for
-  // data edges that cross subgraph boundaries.
-  for (const Edge* edge : graph_in_->edges()) {
-    string src_func_id = GetFunctionNameAttr(edge->src());
-    string dst_func_id = GetFunctionNameAttr(edge->dst());
-    Node* src_image = gtl::FindWithDefault(node_images, edge->src(), nullptr);
-    Node* dst_image = gtl::FindWithDefault(node_images, edge->dst(), nullptr);
-
-    // Copy edges that are local to a subgraph.
-    if (!src_func_id.empty() && src_func_id == dst_func_id) {
-      Graph* g = subgraphs_[src_func_id].graph.get();
-      if (edge->IsControlEdge()) {
-        g->AddControlEdge(src_image, dst_image);
-      } else {
-        g->AddEdge(src_image, edge->src_output(), dst_image, edge->dst_input());
-      }
-      continue;
-    }
-
-    // Ignore cross-boundary control edges for right now. We will lift them
-    // onto the enclosing call operators in BuildOutputGraph().
-    if (edge->IsControlEdge()) continue;
-
-    // Add 'src' as an output of its subgraph, if applicable.
-    if (!src_func_id.empty()) {
-      Subgraph& src_subgraph = subgraphs_[src_func_id];
-      int ret_index = src_subgraph.results.size();
-      if (src_subgraph.results
-              .emplace(NodeSlot(edge->src(), edge->src_output()), ret_index)
-              .second) {
-        // Create a new _Retval node
-        DataType dtype = edge->src()->output_type(edge->src_output());
-
-        if (IsRefType(dtype)) {
-          return errors::InvalidArgument(
-              "Ref Tensors (e.g., Variables) are not supported: tensor ",
-              edge->src()->name(), ":", edge->src_output());
-        }
-
-        NodeDef ret_def;
-        ret_def.set_op(kRetValOp);
-        ret_def.set_name(strings::StrCat(edge->src()->name(), "_",
-                                         edge->src_output(), "_retval"));
-        AddNodeAttr("T", dtype, &ret_def);
-        AddNodeAttr("index", ret_index, &ret_def);
-        Node* ret = src_subgraph.graph->AddNode(ret_def, &s);
-        if (!s.ok()) return s;
-
-        // Add an edge from 'src' to _Retval.
-        src_subgraph.graph->AddEdge(src_image, edge->src_output(), ret, 0);
-      }
-    }
-
-    // Add 'dst' as an input of its subgraph, if applicable.
-    if (!dst_func_id.empty()) {
-      Subgraph& dst_subgraph = subgraphs_[dst_func_id];
-
-      // Create an _Arg node for this tensor, if none exists yet.
-      std::unordered_map<NodeSlot, int, NodeSlot::Hasher>::iterator iter;
-      bool inserted;
-      std::tie(iter, inserted) = dst_subgraph.args_by_src.emplace(
-          NodeSlot(edge->src(), edge->src_output()), dst_subgraph.args.size());
-      int arg_index = iter->second;
-      if (inserted) {
-        // This is the first time we have seen this tensor. Create an _Arg node.
-        DataType dtype = edge->dst()->input_type(edge->dst_input());
-
-        if (IsRefType(dtype)) {
-          return errors::InvalidArgument(
-              "Ref Tensors (e.g., Variables) are not supported: tensor ",
-              edge->src()->name(), ":", edge->src_output());
-        }
-
-        NodeDef arg_def;
-        NodeDefBuilder builder(strings::StrCat(edge->src()->name(), "_",
-                                               edge->src_output(), "_arg"),
-                               kArgOp);
-        builder.Attr("T", dtype);
-        builder.Attr("index", arg_index);
-
-        s = builder.Finalize(&arg_def);
-        if (!s.ok()) return s;
-
-        Node* arg = dst_subgraph.graph->AddNode(arg_def, &s);
-        if (!s.ok()) return s;
-        src_arg_pairs.push_back({edge->src(), arg});
-
-        dst_subgraph.args.push_back(arg);
-      }
-      // Add an edge from the _Arg node to 'dst' in the subgraph.
-      dst_subgraph.args_by_dst[NodeSlot(edge->dst(), edge->dst_input())] =
-          arg_index;
-      dst_subgraph.graph->AddEdge(dst_subgraph.args[arg_index], 0, dst_image,
-                                  edge->dst_input());
-    }
-  }
-
-  MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
-
-  for (auto& entry : subgraphs_) {
-    FixupSourceAndSinkEdges(entry.second.graph.get());
-  }
-
-  return s;
+Node* Encapsulator::Subgraph::GetCallNodeForOutputs() const {
+  return call_node_outputs_;
 }
 
-Status Encapsulator::BuildFunctionDefs(
-    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
-    FunctionLibraryDefinition* library) {
-  // For each subgraph, build a FunctionDef.
-  for (auto& subgraph_entry : subgraphs_) {
-    string name = subgraph_entry.first;
-    Subgraph& subgraph = subgraph_entry.second;
+int Encapsulator::Subgraph::GetArgIndexForEdge(const Edge* edge) const {
+  return args_by_dst_.at(NodeSlot(edge->dst(), edge->dst_input()));
+}
 
-    subgraph.call_node_def.set_op(name);
-    subgraph.call_node_def.set_name(name);
-    subgraph.call_node_def.set_device(subgraph.device);
+int Encapsulator::Subgraph::GetResultIndexForEdge(const Edge* edge) const {
+  return results_.at(NodeSlot(edge->src(), edge->src_output()));
+}
 
-    if (rewrite_subgraph_fn) {
-      // Initialize the input and output permutations to the identity.
-      std::vector<int> input_permutation(subgraph.args_by_src.size());
-      std::iota(input_permutation.begin(), input_permutation.end(), 0);
-      std::vector<int> output_permutation(subgraph.results.size());
-      std::iota(output_permutation.begin(), output_permutation.end(), 0);
+Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
+  if (!graph_) {
+    graph_.reset(new Graph(graph_in->op_registry()));
+    graph_->set_versions(graph_in->versions());
+  }
 
-      TF_RETURN_IF_ERROR(
-          rewrite_subgraph_fn(&subgraph.graph, &input_permutation,
-                              &output_permutation, &subgraph.call_node_def));
+  if (device_.empty()) {
+    device_ = node->assigned_device_name().empty()
+                  ? node->requested_device()
+                  : node->assigned_device_name();
+  }
 
-      // Apply the input/output permutations to the 'args_by_...' and 'results'
-      // mappings in 'subgraph', so when we build edges in BuildOutputGraph() we
-      // connect them to the right input/output positions.
-      if (input_permutation.size() != subgraph.args_by_src.size()) {
-        return errors::InvalidArgument("Input permutation has incorrect size.");
-      }
-      if (output_permutation.size() != subgraph.results.size()) {
-        return errors::InvalidArgument(
-            "Output permutation has incorrect size.");
-      }
-      for (auto& arg : subgraph.args_by_src) {
-        arg.second = input_permutation[arg.second];
-      }
-      for (auto& arg : subgraph.args_by_dst) {
-        arg.second = input_permutation[arg.second];
-      }
-      for (auto& result : subgraph.results) {
-        result.second = output_permutation[result.second];
-      }
+  return graph_->CopyNode(node);
+}
 
-      name = subgraph.call_node_def.op();
+Graph* Encapsulator::Subgraph::GetGraph() const { return graph_.get(); }
+
+Status Encapsulator::Subgraph::RecordArg(
+    const Edge* edge, const std::unordered_map<const Node*, Node*>& node_images,
+    std::vector<std::pair<const Node*, Node*>>* src_arg_pairs) {
+  Node* src_node = edge->src();
+  int src_slot = edge->src_output();
+  std::unordered_map<NodeSlot, int, NodeSlot::Hasher>::iterator iter;
+  bool inserted;
+  std::tie(iter, inserted) =
+      args_by_src_.emplace(NodeSlot(src_node, src_slot), args_by_src_.size());
+  int arg_index = iter->second;
+  if (inserted) {
+    // Look at the type of the destination not the source, since Ref output
+    // Tensors can be automatically cast to non-Ref Tensors at the destination.
+    DataType dtype = edge->dst()->input_type(edge->dst_input());
+
+    if (IsRefType(dtype)) {
+      return errors::InvalidArgument(
+          "Ref Tensors (e.g., Variables) are not supported as args: tensor ",
+          src_node->name(), ":", src_slot);
     }
 
-    FunctionDef fdef;
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(*subgraph.graph, name, &fdef));
+    NodeDef arg_def;
+    NodeDefBuilder builder(
+        strings::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp);
+    builder.Attr("T", dtype);
+    builder.Attr("index", arg_index);
+    Status s = builder.Finalize(&arg_def);
+    if (!s.ok()) return s;
 
-    if (VLOG_IS_ON(1)) {
-      VLOG(2) << "Build function def " << name;
-      dump_graph::DumpGraphToFile(
-          strings::StrCat("encapsulate_fdef_graph_", name), *subgraph.graph,
-          library);
-      dump_graph::DumpFunctionDefToFile(
-          strings::StrCat("encapsulate_fdef_", name), fdef);
+    Node* arg = graph_->AddNode(arg_def, &s);
+    if (!s.ok()) return s;
+
+    src_arg_pairs->push_back({src_node, arg});
+    args_.push_back(arg);
+  }
+  Node* dst_node = edge->dst();
+  Node* dst_image = node_images.at(dst_node);
+  int dst_slot = edge->dst_input();
+  args_by_dst_[NodeSlot(dst_node, dst_slot)] = arg_index;
+  graph_->AddEdge(args_[arg_index], 0, dst_image, dst_slot);
+  return Status::OK();
+}
+
+Status Encapsulator::Subgraph::RecordResult(
+    const Edge* edge,
+    const std::unordered_map<const Node*, Node*>& node_images) {
+  Node* src_node = edge->src();
+  Node* src_image = node_images.at(src_node);
+  int src_slot = edge->src_output();
+  std::unordered_map<NodeSlot, int, NodeSlot::Hasher>::iterator iter;
+  bool inserted;
+  std::tie(iter, inserted) =
+      results_.emplace(NodeSlot(src_node, src_slot), results_.size());
+  int ret_index = iter->second;
+  if (inserted) {
+    DataType dtype = src_node->output_type(src_slot);
+
+    if (IsRefType(dtype)) {
+      return errors::InvalidArgument(
+          "Ref Tensors (e.g., Variables) are not supported as results: tensor ",
+          src_node->name(), ":", src_slot);
     }
 
-    if (!reuse_existing_functions || library->Find(name) == nullptr) {
-      TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
-    }
+    NodeDef ret_def;
+    NodeDefBuilder builder(
+        strings::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp);
+    builder.Attr("T", dtype);
+    builder.Attr("index", ret_index);
+    builder.Input(src_image->name(), src_slot, dtype);
+    Status s = builder.Finalize(&ret_def);
+    if (!s.ok()) return s;
+    Node* ret = graph_->AddNode(ret_def, &s);
+    if (!s.ok()) return s;
+
+    graph_->AddEdge(src_image, src_slot, ret, 0);
   }
   return Status::OK();
 }
 
-Status Encapsulator::BuildParallelCheckOp(
+Status Encapsulator::Subgraph::BuildFunctionDef(
+    const string& name_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
+    bool reuse_existing_functions, FunctionLibraryDefinition* library) {
+  // name_in is copied here because name may be modified below if
+  // rewrite_subgraph_fn is true.
+  string name = name_in;
+  call_node_def_.set_op(name);
+  call_node_def_.set_name(name);
+  call_node_def_.set_device(device_);
+
+  if (rewrite_subgraph_fn) {
+    // Initialize the input and output permutations to the identity.
+    std::vector<int> input_permutation(args_by_src_.size());
+    std::iota(input_permutation.begin(), input_permutation.end(), 0);
+    std::vector<int> output_permutation(results_.size());
+    std::iota(output_permutation.begin(), output_permutation.end(), 0);
+
+    TF_RETURN_IF_ERROR(rewrite_subgraph_fn(
+        &graph_, &input_permutation, &output_permutation, &call_node_def_));
+
+    // Apply the input/output permutations to the 'args_by_...' and 'results_'
+    // mappings, so when we build edges in BuildOutputGraph() we
+    // connect them to the right input/output positions.
+    if (input_permutation.size() != args_by_src_.size()) {
+      return errors::InvalidArgument("Input permutation has incorrect size.");
+    }
+    if (output_permutation.size() != results_.size()) {
+      return errors::InvalidArgument("Output permutation has incorrect size.");
+    }
+    for (auto& arg : args_by_src_) {
+      arg.second = input_permutation[arg.second];
+    }
+    for (auto& arg : args_by_dst_) {
+      arg.second = input_permutation[arg.second];
+    }
+    for (auto& result : results_) {
+      result.second = output_permutation[result.second];
+    }
+
+    name = call_node_def_.op();
+  }
+
+  FunctionDef fdef;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph_, name, &fdef));
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(2) << "Build function def " << name;
+    dump_graph::DumpGraphToFile(
+        strings::StrCat("encapsulate_fdef_graph_", name), *graph_, library);
+    dump_graph::DumpFunctionDefToFile(
+        strings::StrCat("encapsulate_fdef_", name), fdef);
+  }
+
+  if (!reuse_existing_functions || library->Find(name) == nullptr) {
+    TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  }
+  return Status::OK();
+}
+
+Status Encapsulator::Subgraph::BuildParallelCheckOp(
     const std::unordered_map<const Node*, Node*>& node_images,
-    const Encapsulator::Subgraph& subgraph, Graph* graph_out,
-    Node** parallel_check_op) {
+    Graph* graph_out) {
   // Build an index mapping output positions to node/slot pairs in the
   // original graph.
-  std::vector<NodeSlot> results_by_num(subgraph.results.size());
-  for (const auto& entry : subgraph.results) {
+  std::vector<NodeSlot> results_by_num(results_.size());
+  for (const auto& entry : results_) {
     results_by_num[entry.second] = entry.first;
   }
 
@@ -439,22 +515,22 @@ Status Encapsulator::BuildParallelCheckOp(
     expected_outputs[i] =
         NodeDefBuilder::NodeOut(node_images.at(node_slot.node)->name(),
                                 node_slot.slot, result_dtypes[i]);
-    actual_outputs[i] = NodeDefBuilder::NodeOut(subgraph.call_node_def.name(),
-                                                i, result_dtypes[i]);
+    actual_outputs[i] =
+        NodeDefBuilder::NodeOut(call_node_def_.name(), i, result_dtypes[i]);
   }
   // Assign the parallel check op to a CPU on the same task as the cluster it is
   // checking.
   string device, dummy;
   if (!DeviceNameUtils::SplitDeviceName(
-          subgraph.call_node_inputs->assigned_device_name(), &device, &dummy)) {
+          call_node_inputs_->assigned_device_name(), &device, &dummy)) {
     return errors::InvalidArgument("Could not parse device name");
   }
   strings::StrAppend(&device, "/cpu:0");
 
   NodeDef check_def;
   TF_RETURN_IF_ERROR(
-      NodeDefBuilder(graph_out->NewName(strings::StrCat(
-                         subgraph.call_node_def.name(), "_parallel_check")),
+      NodeDefBuilder(graph_out->NewName(strings::StrCat(call_node_def_.name(),
+                                                        "_parallel_check")),
                      "ParallelCheck")
           .Device(device)
           .Attr("T", result_dtypes)
@@ -474,65 +550,303 @@ Status Encapsulator::BuildParallelCheckOp(
     const NodeSlot& node_slot = results_by_num[i];
     graph_out->AddEdge(node_images.at(node_slot.node), node_slot.slot, check_op,
                        i);
-    graph_out->AddEdge(subgraph.call_node_inputs, i, check_op, num_results + i);
+    graph_out->AddEdge(call_node_inputs_, i, check_op, num_results + i);
   }
 
-  *parallel_check_op = check_op;
+  call_node_outputs_ = check_op;
   return Status::OK();
 }
 
-Status Encapsulator::BuildOutputGraph(bool parallel_checking,
-                                      Graph* graph_out) {
+Status Encapsulator::Subgraph::AddFunctionCallNode(
+    const std::unordered_map<const Node*, Node*>& node_images,
+    bool parallel_checking, Graph* graph_out) {
   Status s;
+  call_node_inputs_ = graph_out->AddNode(call_node_def_, &s);
+  if (!s.ok()) return s;
 
-  // Map from nodes in the input graph to nodes in the output graph.
-  std::unordered_map<const Node*, Node*> node_images;
+  // Copy the assigned device and the key_annotation over.
+  call_node_inputs_->set_assigned_device_name(device_);
+  call_node_outputs_ = call_node_inputs_;
 
-  // Copy all unmarked nodes to the output graph.
-  for (Node* node : graph_in_->op_nodes()) {
-    string func_id = GetFunctionNameAttr(node);
-
-    // Don't copy nodes that going to be encapsulated, unless parallel checking
-    // is enabled.
-    if (!func_id.empty() && !parallel_checking) continue;
-
-    Node* image = graph_out->CopyNode(node);
-    node_images[node] = image;
+  if (parallel_checking) {
+    TF_RETURN_IF_ERROR(BuildParallelCheckOp(node_images, graph_out));
   }
-  node_images[graph_in_->source_node()] = graph_out->source_node();
-  node_images[graph_in_->sink_node()] = graph_out->sink_node();
+  return Status::OK();
+}
 
-  // Add function call nodes for each subgraph.
-  for (auto& subgraph_entry : subgraphs_) {
-    Subgraph& subgraph = subgraph_entry.second;
+Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
+  Status s = GetNodeAttr(node->attrs(), group_attribute_, attr);
+  if (s.code() == error::Code::NOT_FOUND) {
+    // Return empty attr if there's no group_attribute.
+    attr->clear();
+    return Status::OK();
+  }
+  return s;
+}
 
-    subgraph.call_node_inputs = graph_out->AddNode(subgraph.call_node_def, &s);
-    if (!s.ok()) return s;
+bool IsInSubgraph(const string& func_id) { return !func_id.empty(); }
 
-    // Copy the assigned device and the key_annotation over.
-    subgraph.call_node_inputs->set_assigned_device_name(subgraph.device);
-    subgraph.call_node_outputs = subgraph.call_node_inputs;
+Status Encapsulator::CopySubgraphNodes(
+    std::unordered_map<const Node*, Node*>* node_images) {
+  for (Node* node : graph_in_->op_nodes()) {
+    string func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(node, &func_id));
+    if (!IsInSubgraph(func_id)) continue;
 
-    if (parallel_checking) {
-      TF_RETURN_IF_ERROR(BuildParallelCheckOp(node_images, subgraph, graph_out,
-                                              &subgraph.call_node_outputs));
+    Subgraph& subgraph = subgraphs_[func_id];
+    Node* image = subgraph.MakeNodeImage(graph_in_, node);
+    image->ClearAttr(group_attribute_);
+    (*node_images)[node] = image;
+  }
+  return Status::OK();
+}
+
+Status Encapsulator::CopySubgraphEdges(
+    const std::unordered_map<const Node*, Node*>& node_images,
+    std::vector<std::pair<const Node*, Node*>>* src_arg_pairs) {
+  for (const Edge* edge : graph_in_->edges()) {
+    string src_func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(edge->src(), &src_func_id));
+    string dst_func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(edge->dst(), &dst_func_id));
+    Node* src_image = gtl::FindWithDefault(node_images, edge->src(), nullptr);
+    Node* dst_image = gtl::FindWithDefault(node_images, edge->dst(), nullptr);
+
+    // Copy edges that are local to a subgraph.
+    if (IsInSubgraph(src_func_id) && IsInSubgraph(dst_func_id) &&
+        src_func_id == dst_func_id) {
+      Graph* g = subgraphs_[src_func_id].GetGraph();
+      if (edge->IsControlEdge()) {
+        g->AddControlEdge(src_image, dst_image);
+      } else {
+        g->AddEdge(src_image, edge->src_output(), dst_image, edge->dst_input());
+      }
+      continue;
+    }
+
+    // Record 'src' as an output of its subgraph, if applicable.
+    if (IsInSubgraph(src_func_id)) {
+      Subgraph& src_subgraph = subgraphs_[src_func_id];
+      // Ignore control edges leaving the subgraph. We will lift them onto the
+      // enclosing call operators in BuildOutputGraph().
+      if (!edge->IsControlEdge()) {
+        TF_RETURN_IF_ERROR(src_subgraph.RecordResult(edge, node_images));
+      }
+    }
+
+    // Record 'dst' as an input of its subgraph, if applicable.
+    if (IsInSubgraph(dst_func_id)) {
+      Subgraph& dst_subgraph = subgraphs_[dst_func_id];
+      // Ignore control edges entering the subgraph. We will lift them onto
+      // the enclosing call operators in BuildOutputGraph().
+      if (!edge->IsControlEdge()) {
+        TF_RETURN_IF_ERROR(
+            dst_subgraph.RecordArg(edge, node_images, src_arg_pairs));
+      }
     }
   }
+  return Status::OK();
+}
 
+Status Encapsulator::SplitIntoSubgraphs() {
+  Status s;
+
+  // Map from input graph nodes to subgraph nodes.
+  std::unordered_map<const Node*, Node*> node_images;
+
+  // Each entry of src_arg_pairs is a pair whose first element is a node in the
+  // original graph that has an output edge in the subgraph, and whose second
+  // element is the arg node in the subgraph that it sends to. The vector will
+  // be filled in below in AddArgs.
+  std::vector<std::pair<const Node*, Node*>> src_arg_pairs;
+
+  TF_RETURN_IF_ERROR(CopySubgraphNodes(&node_images));
+  TF_RETURN_IF_ERROR(CopySubgraphEdges(node_images, &src_arg_pairs));
+
+  MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
+
+  for (auto& entry : subgraphs_) {
+    Subgraph& subgraph = entry.second;
+    FixupSourceAndSinkEdges(subgraph.GetGraph());
+  }
+
+  return s;
+}
+
+Status Encapsulator::BuildFunctionDefs(
+    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
+    FunctionLibraryDefinition* library) {
+  for (auto& subgraph_entry : subgraphs_) {
+    string name = subgraph_entry.first;
+    Subgraph& subgraph = subgraph_entry.second;
+    TF_RETURN_IF_ERROR(subgraph.BuildFunctionDef(
+        name, rewrite_subgraph_fn, reuse_existing_functions, library));
+  }
+  return Status::OK();
+}
+
+Status Encapsulator::CopyNodesToOutputGraph(
+    bool parallel_checking, Graph* graph_out,
+    std::unordered_map<const Node*, Node*>* node_images) {
+  for (Node* node : graph_in_->op_nodes()) {
+    string func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(node, &func_id));
+
+    // Don't copy nodes that are going to be encapsulated, unless parallel
+    // checking is enabled.
+    if (IsInSubgraph(func_id) && !parallel_checking) continue;
+
+    Node* image = graph_out->CopyNode(node);
+    (*node_images)[node] = image;
+  }
+  (*node_images)[graph_in_->source_node()] = graph_out->source_node();
+  (*node_images)[graph_in_->sink_node()] = graph_out->sink_node();
+  return Status::OK();
+}
+
+Status Encapsulator::AddFunctionCallNodes(
+    const std::unordered_map<const Node*, Node*>& node_images,
+    bool parallel_checking, Graph* graph_out) {
+  for (auto& subgraph_entry : subgraphs_) {
+    TF_RETURN_IF_ERROR(subgraph_entry.second.AddFunctionCallNode(
+        node_images, parallel_checking, graph_out));
+  }
+  return Status::OK();
+}
+
+Status Encapsulator::FindOutputImageOfEdgeSrc(
+    const string& src_func_id, const string& dst_func_id,
+    const std::unordered_map<const Node*, Node*>& node_images,
+    const Node* original_src_node, Node** src_image) {
+  if (IsInSubgraph(src_func_id)) {
+    // The edge is from a subgraph to a regular node in the output graph so
+    // use the subgraph's call node output.
+    *src_image = subgraphs_.at(src_func_id).GetCallNodeForOutputs();
+  } else {
+    // The source of the edge is in the output graph so use the node image in
+    // the output graph.
+    *src_image = node_images.at(original_src_node);
+  }
+  return Status::OK();
+}
+
+int Encapsulator::FindOutputSlotOfEdgeSrc(const string& src_func_id,
+                                          const string& dst_func_id,
+                                          const Edge* edge) {
+  if (IsInSubgraph(src_func_id)) {
+    const Subgraph& src_subgraph = subgraphs_.at(src_func_id);
+    // 'src' is in a subgraph and 'dst' is a regular node in the output
+    // graph. Use the corresponding call output instead.
+    return src_subgraph.GetResultIndexForEdge(edge);
+  } else {
+    // The source of the edge is in the output graph so use the regular edge
+    // slot.
+    return edge->src_output();
+  }
+}
+
+Status Encapsulator::FindOutputImageOfEdgeDst(
+    const string& src_func_id, const string& dst_func_id,
+    const std::unordered_map<const Node*, Node*>& node_images,
+    const Node* original_dst_node, Node** dst_image) {
+  if (IsInSubgraph(dst_func_id)) {
+    // The edge is to a subgraph from a regular node in the output graph so
+    // use the subgraph's call node input.
+    *dst_image = subgraphs_.at(dst_func_id).GetCallNodeForInputs();
+  } else {
+    // The destination of the edge is in the output graph so use the node image
+    // in the output graph.
+    *dst_image = node_images.at(original_dst_node);
+  }
+  return Status::OK();
+}
+
+int Encapsulator::FindOutputSlotOfEdgeDst(const string& src_func_id,
+                                          const string& dst_func_id,
+                                          const Edge* edge) {
+  if (IsInSubgraph(dst_func_id)) {
+    const Subgraph& dst_subgraph = subgraphs_.at(dst_func_id);
+    // 'dst' is in a subgraph and 'src' is a regular node in the output
+    // graph. Use the corresponding call input instead.
+    return dst_subgraph.GetArgIndexForEdge(edge);
+  } else {
+    // The destination of the edge is in the output graph so use the regular
+    // edge slot.
+    return edge->dst_input();
+  }
+}
+
+Status Encapsulator::CopyEdgeToOutputGraph(
+    const Edge* edge, const string& src_func_id, const string& dst_func_id,
+    const std::unordered_map<const Node*, Node*>& node_images,
+    bool parallel_checking, Graph* graph_out,
+    std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
+        edges_added) {
+  Node* src_image;
+  TF_RETURN_IF_ERROR(FindOutputImageOfEdgeSrc(
+      src_func_id, dst_func_id, node_images, edge->src(), &src_image));
+  Node* dst_image;
+  TF_RETURN_IF_ERROR(FindOutputImageOfEdgeDst(
+      src_func_id, dst_func_id, node_images, edge->dst(), &dst_image));
+
+  // If this is a control edge then copy it and return. Lift control edges onto
+  // the enclosing call operator.
+  if (edge->IsControlEdge()) {
+    // Add the control edge, if we have not already added it, using the images
+    // determined above (potentially call operators or RecvAtHost/SendFromHost).
+    if (edges_added->emplace(NodeSlot(src_image, -1), NodeSlot(dst_image, -1))
+            .second) {
+      graph_out->AddControlEdge(src_image, dst_image);
+    }
+
+    // If parallel checking is enabled, also add a control edge to the
+    // corresponding parallel check op.
+    if (parallel_checking) {
+      graph_out->AddControlEdge(src_image, node_images.at(edge->dst()));
+    }
+    return Status::OK();
+  }
+
+  int src_output = FindOutputSlotOfEdgeSrc(src_func_id, dst_func_id, edge);
+
+  int dst_input = FindOutputSlotOfEdgeDst(src_func_id, dst_func_id, edge);
+
+  if (IsInSubgraph(dst_func_id) && parallel_checking) {
+    // If we are parallel checking, also feed the tensor as an input to the
+    // corresponding parallel check subgraph.
+    graph_out->AddEdge(src_image, src_output, node_images.at(edge->dst()),
+                       edge->dst_input());
+  }
+
+  // Add the edge, if we have not already added it.
+  if (edges_added
+          ->emplace(NodeSlot(src_image, src_output),
+                    NodeSlot(dst_image, dst_input))
+          .second) {
+    graph_out->AddEdge(src_image, src_output, dst_image, dst_input);
+  }
+  return Status::OK();
+}
+
+Status Encapsulator::AddEdgesToOutputGraph(
+    const std::unordered_map<const Node*, Node*>& node_images,
+    bool parallel_checking, Graph* graph_out) {
   // Set of edges already added to the output graph, represented as (src, dst)
   // pairs. We use the set to deduplicate edges; multiple edges in the input
   // graph may map to one edge in the output graph.
   std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>
       edges_added;
 
-  // Add edges to the graph_out graph.
   for (const Edge* edge : graph_in_->edges()) {
-    string src_func_id = GetFunctionNameAttr(edge->src());
-    string dst_func_id = GetFunctionNameAttr(edge->dst());
+    string src_func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(edge->src(), &src_func_id));
+    string dst_func_id;
+    TF_RETURN_IF_ERROR(GetFunctionNameAttr(edge->dst(), &dst_func_id));
 
     // Ignore edges that are strictly contained within one subgraph, unless
     // we are constructing parallel check graphs.
-    if (!src_func_id.empty() && src_func_id == dst_func_id) {
+    if (IsInSubgraph(src_func_id) && IsInSubgraph(dst_func_id) &&
+        src_func_id == dst_func_id) {
       if (parallel_checking) {
         Node* src_image = node_images.at(edge->src());
         Node* dst_image = node_images.at(edge->dst());
@@ -546,63 +860,29 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
       continue;
     }
 
-    // We have an edge that crosses a cluster boundary.
-    Node* src_image = src_func_id.empty()
-                          ? node_images.at(edge->src())
-                          : subgraphs_.at(src_func_id).call_node_outputs;
-    Node* dst_image = dst_func_id.empty()
-                          ? node_images.at(edge->dst())
-                          : subgraphs_.at(dst_func_id).call_node_inputs;
-
-    // Copy control edges. Lift control edges onto the enclosing call operator.
-    if (edge->IsControlEdge()) {
-      // Add the control edge, if we have not already added it.
-      if (edges_added.emplace(NodeSlot(src_image, -1), NodeSlot(dst_image, -1))
-              .second) {
-        graph_out->AddControlEdge(src_image, dst_image);
-      }
-
-      // If parallel checking is enabled, also add a control edge to the
-      // corresponding parallel check op.
-      if (parallel_checking) {
-        graph_out->AddControlEdge(src_image, node_images.at(edge->dst()));
-      }
-      continue;
-    }
-
-    int src_output = edge->src_output();
-    if (!src_func_id.empty()) {
-      // 'src' is in a subgraph. Use the corresponding call output instead.
-      const Subgraph& src_subgraph = subgraphs_.at(src_func_id);
-      src_output =
-          src_subgraph.results.at(NodeSlot(edge->src(), edge->src_output()));
-    }
-
-    int dst_input = edge->dst_input();
-
-    if (!dst_func_id.empty()) {
-      // 'dst' is in a subgraph. Use the corresponding call input instead.
-      const Subgraph& dst_subgraph = subgraphs_.at(dst_func_id);
-      dst_input =
-          dst_subgraph.args_by_dst.at(NodeSlot(edge->dst(), edge->dst_input()));
-
-      // If we are parallel checking, also feed the tensor as an input to the
-      // corresponding parallel check subgraph.
-      if (parallel_checking) {
-        graph_out->AddEdge(src_image, src_output, node_images.at(edge->dst()),
-                           edge->dst_input());
-      }
-    }
-    // Add the edge, if we have not already added it.
-    if (edges_added
-            .emplace(NodeSlot(src_image, src_output),
-                     NodeSlot(dst_image, dst_input))
-            .second) {
-      graph_out->AddEdge(src_image, src_output, dst_image, dst_input);
-    }
+    // We have an edge that crosses a cluster boundary or is entirely within the
+    // unclustered graph.
+    TF_RETURN_IF_ERROR(CopyEdgeToOutputGraph(edge, src_func_id, dst_func_id,
+                                             node_images, parallel_checking,
+                                             graph_out, &edges_added));
   }
 
-  return s;
+  return Status::OK();
+}
+
+Status Encapsulator::BuildOutputGraph(bool parallel_checking,
+                                      Graph* graph_out) {
+  // Map from nodes in the input graph to nodes in the output graph.
+  std::unordered_map<const Node*, Node*> node_images;
+
+  TF_RETURN_IF_ERROR(
+      CopyNodesToOutputGraph(parallel_checking, graph_out, &node_images));
+  TF_RETURN_IF_ERROR(
+      AddFunctionCallNodes(node_images, parallel_checking, graph_out));
+  TF_RETURN_IF_ERROR(
+      AddEdgesToOutputGraph(node_images, parallel_checking, graph_out));
+
+  return Status::OK();
 }
 
 }  // anonymous namespace
@@ -615,20 +895,18 @@ Status EncapsulateSubgraphsInFunctions(
   Status s;
 
   Encapsulator encapsulator(std::move(group_attribute), &graph_in);
-  s = encapsulator.SplitIntoSubgraphs();
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(encapsulator.SplitIntoSubgraphs());
 
-  s = encapsulator.BuildFunctionDefs(rewrite_subgraph_fn,
-                                     reuse_existing_functions, library);
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(encapsulator.BuildFunctionDefs(
+      rewrite_subgraph_fn, reuse_existing_functions, library));
 
   std::unique_ptr<Graph> out(new Graph(library));
   out->set_versions(graph_in.versions());
-  s = encapsulator.BuildOutputGraph(parallel_checking, out.get());
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(
+      encapsulator.BuildOutputGraph(parallel_checking, out.get()));
 
   *graph_out = std::move(out);
-  return s;
+  return Status::OK();
 }
 
 // Finds the types of the _Arg nodes, indexed by position.
@@ -744,8 +1022,8 @@ Status EncapsulateSubgraphsPass::Run(
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, **options.graph, rewrite_subgraph,
-      flags->tf_xla_parallel_checking, /*reuse_existing_functions=*/false,
-      &graph_out, library));
+      flags->tf_xla_parallel_checking,
+      /*reuse_existing_functions=*/false, &graph_out, library));
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("after_encapsulate_subgraphs", *graph_out,
