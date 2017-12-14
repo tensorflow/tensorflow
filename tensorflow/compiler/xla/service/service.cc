@@ -566,8 +566,10 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Wait for all executions to complete.
   for (int64 i = 0; i < streams.size(); ++i) {
-    if (!streams[i]->BlockHostUntilDone()) {
-      return InternalError("failed to complete execution for stream %lld", i);
+    Status block_status = streams[i]->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError("failed to complete execution for stream %lld: %s",
+                           i, block_status.error_message().c_str());
     }
   }
 

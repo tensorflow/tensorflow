@@ -1919,12 +1919,12 @@ void TF_ImportGraphDefResultsReturnOperations(TF_ImportGraphDefResults* results,
   *opers = results->return_nodes.data();
 }
 
-void TF_ImportGraphDefResultsUnusedInputMappings(
-    TF_ImportGraphDefResults* results, int* num_unused_input_mappings,
+void TF_ImportGraphDefResultsMissingUnusedInputMappings(
+    TF_ImportGraphDefResults* results, int* num_missing_unused_input_mappings,
     const char*** src_names, int** src_indexes) {
-  *num_unused_input_mappings = results->unused_key_names.size();
-  *src_names = results->unused_key_names.data();
-  *src_indexes = results->unused_key_indexes.data();
+  *num_missing_unused_input_mappings = results->missing_unused_key_names.size();
+  *src_names = results->missing_unused_key_names.data();
+  *src_indexes = results->missing_unused_key_indexes.data();
 }
 
 void TF_DeleteImportGraphDefResults(TF_ImportGraphDefResults* results) {
@@ -1964,18 +1964,21 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
     tf_results->return_nodes[i] = ToOperation(results.return_nodes[i]);
   }
 
-  // Populate unused map keys
-  DCHECK(tf_results->unused_key_names.empty());
-  DCHECK(tf_results->unused_key_indexes.empty());
-  DCHECK(tf_results->unused_key_names_data.empty());
-  tf_results->unused_key_names.resize(results.unused_input_map_keys.size());
-  tf_results->unused_key_indexes.resize(results.unused_input_map_keys.size());
-  for (int i = 0; i < results.unused_input_map_keys.size(); ++i) {
-    TensorId id = results.unused_input_map_keys[i];
-    tf_results->unused_key_names_data.push_back(id.first.ToString());
-    tf_results->unused_key_names[i] =
-        tf_results->unused_key_names_data.back().c_str();
-    tf_results->unused_key_indexes[i] = id.second;
+  // Populate missing unused map keys
+  DCHECK(tf_results->missing_unused_key_names.empty());
+  DCHECK(tf_results->missing_unused_key_indexes.empty());
+  DCHECK(tf_results->missing_unused_key_names_data.empty());
+
+  size_t size = results.missing_unused_input_map_keys.size();
+  tf_results->missing_unused_key_names.resize(size);
+  tf_results->missing_unused_key_indexes.resize(size);
+
+  for (int i = 0; i < size; ++i) {
+    TensorId id = results.missing_unused_input_map_keys[i];
+    tf_results->missing_unused_key_names_data.push_back(id.first.ToString());
+    tf_results->missing_unused_key_names[i] =
+        tf_results->missing_unused_key_names_data.back().c_str();
+    tf_results->missing_unused_key_indexes[i] = id.second;
   }
 }
 

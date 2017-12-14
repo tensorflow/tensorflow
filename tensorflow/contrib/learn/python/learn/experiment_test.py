@@ -492,6 +492,33 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(3, est.eval_count)
       self.assertEqual([noop_hook], est.eval_hooks)
 
+  def test_continuous_eval_predicate_fn_with_checkpoint(self):
+    for est in self._estimators_for_tests():
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
+      est.fake_checkpoint()
+      noop_hook = _NoopHook()
+
+      def _predicate_fn(eval_result, checkpoint_path):
+        self.assertEqual(not eval_result,
+                         checkpoint_path is None)
+        return est.eval_count < 3  # pylint: disable=cell-var-from-loop
+
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input',
+          eval_metrics=eval_metrics,
+          eval_hooks=[noop_hook],
+          eval_delay_secs=0,
+          continuous_eval_throttle_secs=0)
+      ex.continuous_eval(
+          evaluate_checkpoint_only_once=False,
+          continuous_eval_predicate_fn=_predicate_fn)
+      self.assertEqual(0, est.fit_count)
+      self.assertEqual(3, est.eval_count)
+      self.assertEqual([noop_hook], est.eval_hooks)
+
   def test_run_local(self):
     for est in self._estimators_for_tests():
       eval_metrics = 'eval_metrics' if not isinstance(
