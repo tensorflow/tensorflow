@@ -500,7 +500,7 @@ class _WithSpaceToBatch(object):
     result_converted = array_ops.batch_to_space_nd(
         input=result, block_shape=dilation_rate, crops=crops)
 
-    # Github issue, 13861
+    # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
       if not result_converted.shape[1].value:
         output_shape = result_converted.shape.as_list()
