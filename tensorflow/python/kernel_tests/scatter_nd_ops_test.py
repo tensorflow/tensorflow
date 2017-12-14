@@ -364,6 +364,16 @@ class ScatterNdTest(test.TestCase):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
 
+  def testString(self):
+    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(["four", "three", "one", "seven"], dtype=dtypes.string)
+    expected = np.array(["", "one", "", "three", "four", "", "", "seven"])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+
+    with self.test_session() as sess:
+      result = sess.run(scatter)
+      self.assertTrue(np.array_equal(result, expected))
+
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
