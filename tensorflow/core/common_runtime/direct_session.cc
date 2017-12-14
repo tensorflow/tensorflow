@@ -588,7 +588,6 @@ Status DirectSession::Run(const RunOptions& run_options,
   };
   for (const auto& item : executors_and_keys->items) {
     // TODO(zhengxq): support partial run.
-    // TODO(zhengxq): support other session types.
     // TODO(zhengxq): if the device picks its own threadpool, we need to assign
     //     less threads to the main compute pool by default.
     thread::ThreadPool* device_thread_pool =
