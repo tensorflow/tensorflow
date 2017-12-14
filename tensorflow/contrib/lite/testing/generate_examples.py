@@ -999,6 +999,37 @@ def make_local_response_norm_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_pad_tests(zip_path):
+  """Make a set of tests to do pad."""
+
+  test_parameters = [{
+      "dtype": [tf.int32, tf.float32],
+      "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
+      "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0], [0, 0],
+                                                      [2, 3]]],
+  }, {
+      "dtype": [tf.int32, tf.float32],
+      "input_shape": [[1, 2], [0, 1, 2]],
+      "paddings": [[[0, 1], [2, 3]]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.pad(input_tensor, paddings=parameters["paddings"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_reshape_tests(zip_path):
   """Make a set of tests to do reshape."""
 
@@ -1169,6 +1200,7 @@ def main(unused_args):
         "l2_pool.zip": make_pool_tests(make_l2_pool),
         "avg_pool.zip": make_pool_tests(tf.nn.avg_pool),
         "max_pool.zip": make_pool_tests(tf.nn.max_pool),
+        "pad.zip": make_pad_tests,
         "reshape.zip": make_reshape_tests,
         "resize_bilinear.zip": make_resize_bilinear_tests,
         "sigmoid.zip": make_sigmoid_tests,

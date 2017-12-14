@@ -436,7 +436,7 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
     quantized_feature = quantile_ops.quantiles([float_column], [],
                                                [quantile_buckets], [], [])
     quantized_feature = math_ops.cast(quantized_feature[0], dtypes.int64)
-    quantized_feature = array_ops.squeeze(quantized_feature)
+    quantized_feature = array_ops.squeeze(quantized_feature, axis=0)
     return (example_partition_ids, quantized_feature, gradients, hessians)
 
   def not_ready_inputs_fn():
@@ -468,7 +468,7 @@ def sparse_make_stats_update(
                                                [sparse_column_indices])
 
     quantized_feature = math_ops.cast(quantized_feature[1], dtypes.int64)
-    quantized_feature = array_ops.squeeze(quantized_feature)
+    quantized_feature = array_ops.squeeze(quantized_feature, axis=0)
 
     example_indices, _ = array_ops.split(
         sparse_column_indices, num_or_size_splits=2, axis=1)

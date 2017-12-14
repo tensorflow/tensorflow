@@ -158,25 +158,8 @@ class LIFOManager : public ReadyNodeManager {
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() override {
-    CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
-    if (curr_pos_ == nodes_.end()) {
-      curr_pos_ = --(nodes_.rbegin().base());  // Last one in the list.
-    }
-    // Once curr_pos_ is set to a valid entry in the list, we keep using the
-    // cached curr_pos_ until RemoveCurrNode() is called. AddNode() will not
-    // change the GetCurrNode() return value.
-    return *curr_pos_;
-  }
-  void RemoveCurrNode() override {
-    // Make sure we have curr_pos_ ready to be removed.
-    GetCurrNode();
-    // Note curr_pos_ may not be pointing the last element if some nodes are
-    // added.
-    nodes_.erase(curr_pos_);
-
-    curr_pos_ = nodes_.end();  // Reset curr_pos_.
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
   bool Empty() const override { return nodes_.empty(); }
 
  private:
@@ -194,54 +177,16 @@ class LIFOManager : public ReadyNodeManager {
 class FirstReadyManager : public ReadyNodeManager {
  public:
   FirstReadyManager(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      : ReadyNodeManager(), node_state_(node_state) {
-    std::make_heap(nodes_.begin(), nodes_.end());
-    greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-      // Note: we need a node with minimum time_ready, not
-      // maximum; hence, using a > b for comparison function.
-      return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
-    };
-  }
+      const std::unordered_map<const NodeDef*, NodeState>* node_state);
   ~FirstReadyManager() override {}
-
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
-
-  const NodeDef* GetCurrNode() override {
-    if (nodes_.empty()) {
-      // Nothing in the node_; probably, the very first call. Move
-      // waiting_queue_ to node_.
-      _DrainWaitingQueue();
-      CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
-    }
-    return nodes_.front();
-  }
-
-  void RemoveCurrNode() override {
-    if (nodes_.empty()) {
-      // Make sure that there is a node to be removed at the front of nodes_.
-      GetCurrNode();
-    }
-    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-    nodes_.pop_back();
-    _DrainWaitingQueue();
-  }
-
-  bool Empty() const override {
-    return nodes_.empty() && waiting_queue_.empty();
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
 
  private:
   // Move all the nodes in the waiting_queue_ to nodes_.
-  void _DrainWaitingQueue() {
-    for (const auto* node : waiting_queue_) {
-      // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-      // the first element is the node with minimum time_ready.
-      nodes_.push_back(node);
-      std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-    }
-    waiting_queue_.clear();
-  }
+  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
@@ -257,6 +202,41 @@ class FirstReadyManager : public ReadyNodeManager {
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
   const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+};
+
+// CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
+// ops (neither _Send nor _Recv) and FirstyReadyManagers for _Send ops and _Recv
+// ops, and then it chooses FirstReady among the ops chosen from each
+// internal NodeManagers. The objective is to maximize producer-consumer
+// locality within device, while processing nodes across devices, including
+// _Send and _Recv, fairly, in terms of their time_ready.
+class CompositeNodeManager : public ReadyNodeManager {
+ public:
+  CompositeNodeManager(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state);
+  ~CompositeNodeManager() override {}
+
+  void AddNode(const NodeDef* node) override;
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
+
+ private:
+  // Internal ready node managers:
+  // LIFO for normal ops to maximize producer consumer locality.
+  // One LIFO per device.
+  std::unordered_map<string, LIFOManager> ops_lifo_map_;
+  // FirstReady for send and recv. Handle send and recv separately ensures that
+  // send and recv do not block previously read ops with LIFO schedule.
+  FirstReadyManager send_manager_;
+  FirstReadyManager recv_manager_;
+
+  // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
+  // Not owned by FirstReadyManager.
+  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
 };
 
 // The virtual scheduler emulates execution of nodes in a graph, considering

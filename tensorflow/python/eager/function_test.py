@@ -310,6 +310,19 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(3, add_one(constant_op.constant(2)))
 
+  def testVariableCaptureInNestedFunctions(self):
+    v = resource_variable_ops.ResourceVariable(1)
+
+    @function.defun
+    def read():
+      return v.read_value()
+
+    @function.defun
+    def outer():
+      return read()
+
+    self.assertEqual(1, int(outer()))
+
   def testSequenceInputs(self):
     clip_by_global_norm = function.defun(clip_ops.clip_by_global_norm)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]

@@ -570,20 +570,17 @@ class ImportGraphDefTest(test.TestCase):
             return_elements=["A:B:0"])
 
   def testMissingInputMap(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Attempted to map inputs that were not found in graph_def: \[B:0\]"):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'None' }
             """),
             input_map={"B:0": constant_op.constant(5.0)})
-      self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
   def testInputMapUnusedAsInput(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       # Mapping an unused node output should succeed.
       importer.import_graph_def(
@@ -593,13 +590,14 @@ class ImportGraphDefTest(test.TestCase):
           input_map={"A:0": constant_op.constant(5.0)})
 
       # Mapping a non-existent output of an existing node should fail.
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Attempted to map inputs that were not found in graph_def: \[A:2\]"):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             """),
             input_map={"A:2": constant_op.constant(5.0)})
-      self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
 
   def testInputMapTypeMismatch(self):
     if ops._USE_C_API:

@@ -5055,7 +5055,7 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-port::Status Stream::BlockHostUntilDoneWithStatus() {
+port::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
   if (!ok()) {
@@ -5072,7 +5072,7 @@ port::Status Stream::BlockHostUntilDoneWithStatus() {
     mutex_lock lock{mu_};
     for (auto &stream : sub_streams_) {
       if (!stream.second) {
-        first_error.Update(stream.first->BlockHostUntilDoneWithStatus());
+        first_error.Update(stream.first->BlockHostUntilDone());
         // Set this sub-stream as available.
         stream.second = true;
       }
@@ -5081,13 +5081,13 @@ port::Status Stream::BlockHostUntilDoneWithStatus() {
 
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  first_error.Update(parent_->BlockHostUntilDoneWithStatus(this));
+  first_error.Update(parent_->BlockHostUntilDone(this));
   CheckError(first_error.ok());
   return first_error;
 }
 
-bool Stream::BlockHostUntilDone() {
-  return BlockHostUntilDoneWithStatus().ok();
+port::Status Stream::BlockHostUntilDoneWithStatus() {
+  return BlockHostUntilDone();
 }
 
 }  // namespace gputools

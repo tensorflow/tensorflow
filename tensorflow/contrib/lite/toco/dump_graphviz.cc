@@ -106,6 +106,51 @@ Color GetColorForArray(const Model& model, const string& array_name) {
   return Color(0xF5, 0xF5, 0xF5);
 }
 
+bool ArrayIsScalarFloat(Model const* model, const std::string& name,
+                        float* val) {
+  const auto& op_array = model->GetArray(name);
+  if (!op_array.buffer || op_array.buffer->type != ArrayDataType::kFloat ||
+      RequiredBufferSizeForShape(op_array.shape()) != 1) {
+    return false;
+  }
+  const auto& data = op_array.GetBuffer<ArrayDataType::kFloat>().data;
+  if (data.empty()) {
+    return false;
+  }
+  *val = data[0];
+  return true;
+}
+
+bool ArrayIsScalarInt(Model const* model, const std::string& name, int* val) {
+  const auto& op_array = model->GetArray(name);
+  if (!op_array.buffer || RequiredBufferSizeForShape(op_array.shape()) != 1) {
+    return false;
+  }
+
+  if (op_array.buffer->type == ArrayDataType::kUint8) {
+    const auto& data = op_array.GetBuffer<ArrayDataType::kUint8>().data;
+    if (data.empty()) {
+      return false;
+    }
+    *val = data[0];
+  } else if (op_array.buffer->type == ArrayDataType::kInt32) {
+    const auto& data = op_array.GetBuffer<ArrayDataType::kInt32>().data;
+    if (data.empty()) {
+      return false;
+    }
+    *val = data[0];
+  } else if (op_array.buffer->type == ArrayDataType::kInt64) {
+    const auto& data = op_array.GetBuffer<ArrayDataType::kInt64>().data;
+    if (data.empty()) {
+      return false;
+    }
+    *val = data[0];
+  } else {
+    return false;
+  }
+  return true;
+}
+
 NodeProperties GetPropertiesForArray(const Model& model,
                                      const string& array_name) {
   NodeProperties node_properties;
@@ -130,12 +175,20 @@ NodeProperties GetPropertiesForArray(const Model& model,
       if (id == 0) {
         AppendF(&node_properties.label, "%d", array_shape.dims(id));
       } else {
-        AppendF(&node_properties.label, "x%d", array_shape.dims(id));
+        // 00D7 is multiplication symbol in unicode
+        AppendF(&node_properties.label, "\u00D7%d", array_shape.dims(id));
       }
     }
     node_properties.label += "]";
+    float flt_val;
+    if (ArrayIsScalarFloat(&model, array_name, &flt_val)) {
+      AppendF(&node_properties.label, " = %.3f", flt_val);
+    }
+    int int_val;
+    if (ArrayIsScalarInt(&model, array_name, &int_val)) {
+      AppendF(&node_properties.label, " = %d", int_val);
+    }
   }
-
   if (array.minmax) {
     AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
             array.minmax->min, array.minmax->max);
@@ -274,6 +327,10 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
             op_properties.color.TextColorString().c_str());
     // Add nodes and edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
+      if (model.arrays.count(input) == 0) {
+        // Arrays should _always_ exist. Except, perhaps, during development.
+        continue;
+      }
       auto array_properties = GetPropertiesForArray(model, input);
       if (!already_added_arrays.count(input)) {
         AppendF(output_file_contents, kNodeFormat, input,
@@ -286,6 +343,10 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     }
     // Add nodes and edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
+      if (model.arrays.count(output) == 0) {
+        // Arrays should _always_ exist. Except, perhaps, during development.
+        continue;
+      }
       auto array_properties = GetPropertiesForArray(model, output);
       if (!already_added_arrays.count(output)) {
         AppendF(output_file_contents, kNodeFormat, output,
