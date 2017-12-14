@@ -797,10 +797,10 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
       def true_fn():
         if ops._USE_C_API:
-          c_op = ops._create_c_op(ops.get_default_graph(),
-                                  ops._NodeDef("IntInput", "cond/myop"), [x],
-                                  [])
-          ops.get_default_graph()._create_op_from_tf_operation(c_op)
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "cond/myop"), [x], [])
+          new_ops = g._add_new_tf_operations()
+          self.assertEqual(len(new_ops), 1)
         else:
           # Test pure-Python version to make sure C API has same behavior.
           test_ops.int_input(x, name="myop")
@@ -830,10 +830,10 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
       def body(i):
         if ops._USE_C_API:
-          c_op = ops._create_c_op(ops.get_default_graph(),
-                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
-                                  [])
-          ops.get_default_graph()._create_op_from_tf_operation(c_op)
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
+          new_ops = g._add_new_tf_operations()
+          self.assertEqual(len(new_ops), 1)
         else:
           # Test pure-Python version to make sure C API has same behavior.
           test_ops.int_input(x, name="myop")
@@ -864,11 +864,11 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
       def body(i):
         c = constant_op.constant(1.0, name="c")
         if ops._USE_C_API:
-          c_op = ops._create_c_op(ops.get_default_graph(),
-                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
-                                  [])
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
           with ops.control_dependencies([c]):
-            ops.get_default_graph()._create_op_from_tf_operation(c_op)
+            new_ops = g._add_new_tf_operations()
+            self.assertEqual(len(new_ops), 1)
         else:
           with ops.control_dependencies([c]):
             test_ops.int_input(x, name="myop")
@@ -884,10 +884,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.control_inputs, [c])
 
   def testWhileLoopWithExternalControlDep(self):
-    # TODO(skyewm): enable once ControlFlowContext._RemoveExternalControlEdges
-    # works with C API enabled
-    if ops._USE_C_API: self.skipTest("Not yet implemented with C API enabled")
-
     g = ops.Graph()
     with g.as_default():
       x = test_ops.int_output()
@@ -895,11 +891,11 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
       def body(i):
         if ops._USE_C_API:
-          c_op = ops._create_c_op(ops.get_default_graph(),
-                                  ops._NodeDef("IntInput", "myloop/myop"), [x],
-                                  [])
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
           with ops.control_dependencies([c]):
-            ops.get_default_graph()._create_op_from_tf_operation(c_op)
+            new_ops = g._add_new_tf_operations()
+            self.assertEqual(len(new_ops), 1)
         else:
           with ops.control_dependencies([c]):
             test_ops.int_input(x, name="myop")

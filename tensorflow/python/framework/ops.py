@@ -1561,7 +1561,7 @@ class Operation(object):
     # an Operation for that op. This is useful for creating Operations for ops
     # indirectly created by C API methods, e.g. the ops created by
     # TF_ImportGraphDef. When `node_def` is a TF_Operation, all optional fields
-    # except `control_inputs` should be None.
+    # should be None.
 
     if isinstance(node_def, node_def_pb2.NodeDef):
       if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
@@ -1574,6 +1574,7 @@ class Operation(object):
     elif type(node_def).__name__ == "SwigPyObject":
       assert inputs is None
       assert output_types is None
+      assert control_inputs is None
       assert input_types is None
       assert original_op is None
       assert op_def is None
@@ -1623,13 +1624,13 @@ class Operation(object):
     self._original_op = original_op
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
+    self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
     # Initialize self._c_op.
     if c_op:
       # TODO(skyewm): remove this assert when we remove USE_C_API
       assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
-      self._add_control_inputs(self._control_inputs)
     elif self._graph._c_graph:  # pylint: disable=protected-access
       if self._op_def:
         # TODO(skyewm): op_def_library.apply_op() flattens the incoming
@@ -1648,7 +1649,7 @@ class Operation(object):
     # Mark that we consume the inputs. This is unnecessary and unsupported with
     # the C API enabled, since the C API tracks the tensor consumers instead.
     if not self._c_op:
-      for input_tensor in self.inputs:
+      for input_tensor in self._inputs:
         input_tensor._add_consumer(self)  # pylint: disable=protected-access
 
     # Initialize self._outputs.
@@ -1666,8 +1667,15 @@ class Operation(object):
         for i, output_type in enumerate(output_types)
     ]
 
-    # Add this op to the current control flow context.
-    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
+    if not c_op:
+      self._control_flow_post_processing()
+
+  def _control_flow_post_processing(self):
+    """Add this op to its control flow context.
+
+    This may add new ops and change this op's inputs. self.inputs must be
+    available before calling this method.
+    """
     for input_tensor in self.inputs:
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
@@ -3170,6 +3178,10 @@ class Graph(object):
     field. This is used to create Operation objects around TF_Operations created
     indirectly by the C API (e.g. by TF_ImportGraphDef, TF_FinishWhile).
 
+    This function does not call Operation._control_flow_post_processing or
+    Graph._control_dependencies_for_inputs (since the inputs may not be
+    available yet). The caller is responsible for calling these methods.
+
     Args:
       c_op: a wrapped TF_Operation
       compute_device: (Optional.) If True, device functions will be executed
@@ -3179,19 +3191,9 @@ class Graph(object):
       An `Operation` object.
     """
     self._check_not_finalized()
-    tf_outputs = c_api.GetOperationInputs(c_op)
-    input_ops = set(self._get_operation_by_tf_operation(output.oper)
-                    for output in tf_outputs)
-    control_inputs = self._control_dependencies_for_inputs(input_ops)
-
-    # Update _names_in_use before calling the Operation constructor since the
-    # control flow code may create more Operations, and we don't want the names
-    # to conflict.
-    op_name = c_api.TF_OperationName(c_op)
-    assert op_name not in self._names_in_use
-    self._names_in_use[op_name] = 1
-
-    ret = Operation(c_op, self, control_inputs=control_inputs)
+    ret = Operation(c_op, self)
+    assert ret.name not in self._names_in_use
+    self._names_in_use[ret.name] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
@@ -3286,6 +3288,37 @@ class Graph(object):
         if not container_attr:
           op._set_attr("container", attr_value_pb2.AttrValue(  # pylint: disable=protected-access
               s=compat.as_bytes(self._container)))
+
+  def _add_new_tf_operations(self, compute_devices=True):
+    """Creates `Operations` in this graph for any new TF_Operations.
+
+    This is useful for when TF_Operations are indirectly created by the C API
+    outside of the Operation constructor (e.g. by TF_ImportGraphDef,
+    TF_FinishWhile). This ensures there are corresponding Operations for all
+    TF_Operations in the underlying TF_Graph.
+
+    Args:
+      compute_devices: (Optional.) If True, device functions will be executed
+        to compute the device properties of each new Operation.
+
+    Returns:
+      A list of the new `Operation` objects.
+    """
+    # Create all Operation objects before accessing their inputs since an op may
+    # be created before its inputs.
+    new_ops = [
+        self._create_op_from_tf_operation(c_op, compute_device=compute_devices)
+        for c_op in c_api_util.new_tf_operations(self)
+    ]
+
+    for op in new_ops:
+      new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
+      # pylint: disable=protected-access
+      op._add_control_inputs(new_control_inputs)
+      op._control_flow_post_processing()
+      # pylint: enable=protected-access
+
+    return new_ops
 
   def as_graph_element(self, obj, allow_tensor=True, allow_operation=True):
     """Returns the object referred to by `obj`, as an `Operation` or `Tensor`.
