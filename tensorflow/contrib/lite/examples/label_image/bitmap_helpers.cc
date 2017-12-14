@@ -116,33 +116,5 @@ uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
                     *channels, top_down);
 }
 
-template <class T>
-void downsize(T* out, uint8_t* in, int image_height, int image_width,
-              int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels, Settings* s) {
-  for (int y = 0; y < wanted_height; ++y) {
-    const int in_y = (y * image_height) / wanted_height;
-    uint8_t* in_row = in + (in_y * image_width * image_channels);
-    T* out_row = out + (y * wanted_width * wanted_channels);
-    for (int x = 0; x < wanted_width; ++x) {
-      const int in_x = (x * image_width) / wanted_width;
-      uint8_t* in_pixel = in_row + (in_x * image_channels);
-      T* out_pixel = out_row + (x * wanted_channels);
-      for (int c = 0; c < wanted_channels; ++c) {
-        if (s->input_floating)
-          out_pixel[c] = (in_pixel[c] - s->input_mean) / s->input_std;
-        else
-          out_pixel[c] = in_pixel[c];
-      }
-    }
-  }
-}
-
-// explicit instantiation
-template void downsize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
-                                int, int, Settings*);
-template void downsize<float>(float*, unsigned char*, int, int, int, int, int,
-                              int, Settings*);
-
 }  // label_image
 }  // tflite

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_IMPL_H
+#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_IMPL_H
+
 #include <algorithm>
 #include <queue>
 
@@ -61,11 +64,7 @@ void get_top_n(T* prediction, int prediction_size, size_t num_results,
   std::reverse(top_results->begin(), top_results->end());
 }
 
-// explicit instantiation so that we can use them otherwhere
-template void get_top_n<uint8_t>(uint8_t*, int, size_t, float,
-                                 std::vector<std::pair<float, int>>*, bool);
-template void get_top_n<float>(float*, int, size_t, float,
-                               std::vector<std::pair<float, int>>*, bool);
-
 }  // namespace label_image
 }  // namespace tflite
+
+#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_IMPL_H

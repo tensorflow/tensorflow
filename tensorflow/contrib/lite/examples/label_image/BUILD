@@ -14,6 +14,8 @@ exports_files(glob([
 tf_cc_binary(
     name = "label_image",
     srcs = [
+        "get_top_n.h",
+        "get_top_n_impl.h",
         "label_image.cc",
     ],
     linkopts = tflite_linkopts() + select({
@@ -25,7 +27,6 @@ tf_cc_binary(
     }),
     deps = [
         ":bitmap_helpers",
-        ":get_top_n",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
@@ -35,25 +36,23 @@ cc_library(
     srcs = ["bitmap_helpers.cc"],
     hdrs = [
         "bitmap_helpers.h",
+        "bitmap_helpers_impl.h",
         "label_image.h",
     ],
 )
 
-cc_library(
-    name = "get_top_n",
-    srcs = ["get_top_n.cc"],
-    hdrs = ["get_top_n.h"],
-)
-
 cc_test(
     name = "label_image_test",
-    srcs = ["label_image_test.cc"],
+    srcs = [
+        "get_top_n.h",
+        "get_top_n_impl.h",
+        "label_image_test.cc",
+    ],
     data = [
         "testdata/grace_hopper.bmp",
     ],
     deps = [
         ":bitmap_helpers",
-        ":get_top_n",
         "@com_google_googletest//:gtest",
     ],
 )
