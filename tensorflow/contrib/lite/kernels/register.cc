@@ -31,6 +31,7 @@ TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_RNN();
+TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_RNN();
 TfLiteRegistration* Register_EMBEDDING_LOOKUP();
 TfLiteRegistration* Register_EMBEDDING_LOOKUP_SPARSE();
 TfLiteRegistration* Register_FULLY_CONNECTED();
@@ -62,6 +63,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF());
   AddBuiltin(BuiltinOperator_RNN, Register_RNN());
+  AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+             Register_UNIDIRECTIONAL_SEQUENCE_RNN());
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP, Register_EMBEDDING_LOOKUP());
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
              Register_EMBEDDING_LOOKUP_SPARSE());

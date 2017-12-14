@@ -171,11 +171,12 @@ enum BuiltinOperator {
   BuiltinOperator_CUSTOM = 32,
   BuiltinOperator_EMBEDDING_LOOKUP_SPARSE = 33,
   BuiltinOperator_PAD = 34,
+  BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN = 35,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_PAD
+  BuiltinOperator_MAX = BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[32] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[33] {
   static BuiltinOperator values[] = {
       BuiltinOperator_ADD,
       BuiltinOperator_AVERAGE_POOL_2D,
@@ -208,7 +209,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[32] {
       BuiltinOperator_CALL,
       BuiltinOperator_CUSTOM,
       BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
-      BuiltinOperator_PAD};
+      BuiltinOperator_PAD,
+      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN};
   return values;
 }
 
@@ -248,6 +250,7 @@ inline const char **EnumNamesBuiltinOperator() {
                                 "CUSTOM",
                                 "EMBEDDING_LOOKUP_SPARSE",
                                 "PAD",
+                                "UNIDIRECTIONAL_SEQUENCE_RNN",
                                 nullptr};
   return names;
 }

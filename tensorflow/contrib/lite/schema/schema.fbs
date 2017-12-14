@@ -105,6 +105,7 @@ enum BuiltinOperator : byte {
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
   PAD = 34,
+  UNIDIRECTIONAL_SEQUENCE_RNN = 35,
 }
 
 // Options for the builtin operators.
