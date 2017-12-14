@@ -95,7 +95,7 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-  if (!s->accel) interpreter->UseNNAPI(s->accel);
+  interpreter->UseNNAPI(s->accel);
 
   if (s->verbose) {
     LOG(INFO) << "tensors size: " << interpreter->tensors_size() << "\n";
@@ -244,7 +244,7 @@ int Main(int argc, char** argv) {
 
     switch (c) {
       case 'a':
-        s.accel = optarg;
+        s.accel = strtol(optarg, (char**)NULL, 10);
         break;
       case 'b':
         s.input_mean = strtod(optarg, NULL);
