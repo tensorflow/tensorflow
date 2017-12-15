@@ -1535,12 +1535,14 @@ def leaky_relu(features, alpha=0.2, name=None):
   http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
-    features: A `Tensor` representing preactivation values.
-    alpha: Slope of the activation function at x < 0.
+    features: A `Tensor` representing preactivation values. Must be one
+      of the following types: `float16`, `float32`, `float64`.
+    alpha: Slope of the activation function at x < 0. Must have the same
+      type as `features`.
     name: A name for the operation (optional).
 
   Returns:
-    The activation value.
+    The activation value. Has the same type as `features`.
   """
   with ops.name_scope(name, "LeakyRelu", [features, alpha]):
     features = ops.convert_to_tensor(features, name="features")
