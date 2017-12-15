@@ -329,11 +329,11 @@ class SRUCell(_LayerRNNCell):
     num_units: int, The number of units in the SRU cell.
     activation: Nonlinearity to use.  Default: `tanh`.
     reuse: (optional) Python boolean describing whether to reuse variables
-     in an existing scope.  If not `True`, and the existing scope already has
-     the given variables, an error is raised.
-    kernel_initializer: (optional) The initializer to use for the weight and
-    projection matrices.
-    bias_initializer: (optional) The initializer to use for the bias.
+      in an existing scope.  If not `True`, and the existing scope already has
+      the given variables, an error is raised.
+    name: (optional) String, the name of the layer. Layers with the same name
+      will share weights, but to avoid mistakes we require reuse=True in such
+      cases.
   """
   def __init__(self, num_units,
                activation=None, reuse=None, name=None):
@@ -358,7 +358,22 @@ class SRUCell(_LayerRNNCell):
                        % inputs_shape)
 
     input_depth = inputs_shape[1].value
-    assert input_depth == self._num_units, "SRU requires unit_num == input_size"
+
+    # Here the contributor believes that the following constraints
+    # are implied. The reasoning is explained here with reference to
+    # the paper https://arxiv.org/pdf/1709.02755.pdf upon which this
+    # implementation is based.
+    # In section 2.1 Equation 5, specifically:
+    # h_t = r_t \odot g(c_t) + (1 − r_t) \odot x_t
+    # the pointwise operation between r_t and x_t means they have
+    # the same shape (since we are implementing an RNN cell, braodcasting
+    # does not happen to input of a single timestep); by the same
+    # reasons, x_t has the same shape as h_t, essentially mandating that
+    # input_depth = unit_num.
+    if input_depth != self._num_units:
+      raise ValueError("SRU requires input_depth == num_units, got "
+                       "input_depth = %s, num_units = %s" % (input_depth,
+                       self._num_units))
 
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
@@ -380,7 +395,7 @@ class SRUCell(_LayerRNNCell):
                                                             axis=1)
 
     f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat(
-      [f_intermediate, r_intermediate], 1), self._bias))
+        [f_intermediate, r_intermediate], 1), self._bias))
     f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
     c = f * state + (1.0 - f) * x_bar
