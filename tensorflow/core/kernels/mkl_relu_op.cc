@@ -411,8 +411,7 @@ class MklReluOpBase : public OpKernel {
       }
       src.SetUsrMem(src_md, &src_tensor);
 
-      T alpha = (alg_kind == eltwise_relu) ? 0 : 1;
-      T beta = 0;
+      T alpha = 0, beta = 0;
       std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
       auto relu_fwd_desc = relu_forward::desc(prop_kind::forward_training,
           // Operator memory descriptor is same as user memory descriptor.
@@ -518,8 +517,7 @@ class MklReluGradOpBase : public OpKernel {
       src.SetUsrMem(src_md, &src_tensor);
       diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
 
-      T alpha = (alg_kind == eltwise_relu) ? 0 : 1;
-      T beta = 0;
+      T alpha = 0, beta = 0;
       std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
       auto relu_fwd_desc = relu_forward::desc(prop_kind::forward_training,
                                               alg_kind, src_md, alpha, beta);
@@ -666,7 +664,7 @@ class MklEluOp : public MklReluOpBase<Device, T, eltwise_elu> {
     // return exp(feature) - 1 if feature > 0; feature otherwise
     T feature = (static_cast<T*>(user_i))[0];
     if (feature < 0)
-      (static_cast<T*>(out_o))[0] = std::exp(feature) - 1.0;
+      (static_cast<T*>(out_o))[0] = std::exp(feature);
     else
       (static_cast<T*>(out_o))[0] = feature;
     return;
@@ -702,13 +700,13 @@ class MklEluGradOp : public MklReluGradOpBase<Device, T, eltwise_elu> {
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
     void* user_g =
           static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
-    // gradient of diff_elu(x) = 1 if x > 0;
-    // otherwise, diff_elu = exp(x) = 1 + feature
+    // gradient of elu(x) = 1 if x > 0; elu(x) + 1 otherwise
     T feature = (static_cast<T*>(user_i))[0];
     if (feature > 0) {
       (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0];
     } else {
-      (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] * (1 + feature);
+      T elu = std::exp(feature) - 1;
+      (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] * (elu + 1);
     }
   }
 };
@@ -738,8 +736,9 @@ class MklTanhOp : public MklReluOpBase<Device, T, eltwise_tanh> {
     void* out_o = static_cast<void*>(dst_tensor->flat<T>().data());
     // tanh(x) = (e^x - e^(-x))/ (e^x + e^(-x))
     T feature = (static_cast<T*>(user_i))[0];
-    T e2 = std::exp(2*feature);
-    (static_cast<T*>(out_o))[0] = (e2 - 1)/(e2 + 1);
+    T e1 = std::exp(feature);
+    T e2 = std::exp(-feature);
+    (static_cast<T*>(out_o))[0] = (e1 - e2)/(e1 + e2);
     return;
   }
 };
@@ -773,8 +772,9 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
     // gradient of tanh(x) = 1 - tanh(x)^2
     T feature = (static_cast<T*>(user_i))[0];
-    T e2 = std::exp(2*feature);
-    T tanh = (e2 - 1)/(e2 + 1);
+    T e1 = std::exp(feature);
+    T e2 = std::exp(-feature);
+    T tanh = (e1 - e2)/(e1 + e2);
     void* user_g =
           static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
     (static_cast<T*>(out_o))[0] = (static_cast<T*>(user_g))[0] *
