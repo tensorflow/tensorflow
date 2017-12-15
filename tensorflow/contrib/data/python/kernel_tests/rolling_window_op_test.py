@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 from tensorflow.contrib.data.python.ops import rolling_ops
 
@@ -30,12 +29,11 @@ class RollingWindowTest(test.TestCase):
 
     def test_rolling_window(self):
         input_data = dataset_ops.Dataset.from_tensor_slices([
-            [[0], [1], [2], [3], [4], [5], [6],
-            [7], [8]]])
+            [[0], [1], [2], [3], [4], [5], [6], [7], [8]]])
         rolled_data = input_data.apply(rolling_ops.rolling_window(window_size=3,
                                                                   stride=2))
-        self.assertEqual(rolled_data.output_shapes.as_list(), [None,1])
 
+        self.assertEqual(rolled_data.output_shapes.as_list(), [None, 1])
         iterator = rolled_data.make_initializable_iterator()
         init_op = iterator.initializer
         get_next = iterator.get_next()
@@ -44,10 +42,9 @@ class RollingWindowTest(test.TestCase):
             sess.run(init_op)
             for i in range(4):
                 result = sess.run(get_next)
-                self.assertAllEqual(np.array([[x] for x in range(i*2,i*2+3)]),
-                                    result)
-        with self.assertRaises(errors.OutOfRangeError):
-            sess.run(get_next)
+                self.assertAllEqual(np.array([[x] for x in range(i*2, i*2+3)]), result)
+            with self.assertRaises(errors.OutOfRangeError):
+                sess.run(get_next)
 
     def test_rolling_window_empty(self):
         input_data = dataset_ops.Dataset.from_tensor_slices([[]])
@@ -56,4 +53,4 @@ class RollingWindowTest(test.TestCase):
         self.assertEqual(rolled_data.output_shapes.as_list(), [None,])
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

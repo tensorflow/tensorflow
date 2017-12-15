@@ -46,11 +46,11 @@ def rolling_window(window_size=1, stride=1):
      @{tf.data.Dataset.apply}.
    """
 
-   def get_slices(x):
-       num_slices = shape(x, out_type=dtypes.int64)[0] - window_size + 1
-       return dataset_ops.Dataset.range(0, num_slices,stride).map(lambda i: x[i:i + window_size])
+    def get_slices(x):
+        num_slices = shape(x, out_type=dtypes.int64)[0] - window_size + 1
+        return dataset_ops.Dataset.range(0, num_slices,stride).map(lambda i: x[i:i + window_size])
 
-   def _apply_fn(dataset):
-       return dataset.flat_map(get_slices)
+    def _apply_fn(dataset):
+        return dataset.flat_map(get_slices)
 
-   return _apply_fn
+    return _apply_fn
