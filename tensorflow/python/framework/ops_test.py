@@ -2182,7 +2182,6 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
       b = compat.as_text(x.get_attr("_B"))
     except ValueError:
       b = None
-    print(a, b)
     return (a, b)
 
   def testNoLabel(self):

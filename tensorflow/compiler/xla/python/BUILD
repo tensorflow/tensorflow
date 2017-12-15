@@ -11,7 +11,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//tensorflow/compiler/xla:xla_data_proto_py_pb2",
     ],
 )
 
@@ -23,6 +23,7 @@ py_test(
     deps = [
         ":xla_client",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -51,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/host:host_platform",
     ],
 )
 

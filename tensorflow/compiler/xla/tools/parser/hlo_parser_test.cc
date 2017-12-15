@@ -608,6 +608,19 @@ ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
 
 )"
 },
+// Negative padding
+{
+"PadHasNegativePadding",
+R"(HloModule PadHasNegativePadding_module
+
+ENTRY %PadHasNegativePadding (input: f32[1,25,7,7,10]) -> f32[1,15,6,3,29] {
+  %input = f32[1,25,7,7,10]{4,3,2,1,0} parameter(0)
+  %constant = f32[] constant(-5.123)
+  ROOT %pad = f32[1,15,6,3,29]{4,3,2,1,0} pad(f32[1,25,7,7,10]{4,3,2,1,0} %input, f32[] %constant), padding=0_0_0x0_-10_0x0_-1_0x-2_-2_0x-1_-1_3
+}
+
+)"
+},
 // fusion
 {
 "Fusion",
