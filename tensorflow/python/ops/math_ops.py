@@ -252,7 +252,7 @@ def abs(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
-    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+    Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
