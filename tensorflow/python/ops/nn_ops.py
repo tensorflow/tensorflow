@@ -1544,7 +1544,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   """
   with ops.name_scope(name, "LeakyRelu", [features, alpha]):
     features = ops.convert_to_tensor(features, name="features")
-    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features)
 
 
