@@ -537,6 +537,17 @@ void ConvertFakeQuantWithMinMaxVars(
   model->operators.emplace_back(op);
 }
 
+void ConvertNegOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Neg");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  auto* op = new NegOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertRsqrtOperator(const NodeDef& node,
                           const TensorFlowImportFlags& tf_import_flags,
                           Model* model) {
@@ -1738,6 +1749,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertFakeQuantWithMinMaxVars(node, tf_import_flags, model);
     } else if (node.op() == "FakeQuantWithMinMaxArgs") {
       ConvertFakeQuantWithMinMaxArgs(node, tf_import_flags, model);
+    } else if (node.op() == "Neg") {
+      ConvertNegOperator(node, tf_import_flags, model);
     } else if (node.op() == "Rsqrt") {
       ConvertRsqrtOperator(node, tf_import_flags, model);
     } else if (node.op() == "Squeeze") {

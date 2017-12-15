@@ -97,6 +97,7 @@ enum class OperatorType {
   kTensorFlowMinimum,
   kTensorFlowMatMul,
   kTensorFlowMerge,
+  kNeg,
   kTensorFlowReshape,
   kTensorFlowRsqrt,
   kTensorFlowShape,
@@ -861,6 +862,16 @@ struct RangeOperator : Operator {
 // and not int64.  The output type could be stored herein.
 struct RankOperator : Operator {
   RankOperator() : Operator(OperatorType::kRank) {}
+};
+
+// Element-wise negation (-x) operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Neg
+struct NegOperator : Operator {
+  NegOperator() : Operator(OperatorType::kNeg) {}
 };
 
 // Element-wise reciprocal-square-root (x^-0.5) operator.

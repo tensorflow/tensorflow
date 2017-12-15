@@ -965,6 +965,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLocalResponseNormalization:
     case OperatorType::kTensorFlowIdentity:
     case OperatorType::kFakeQuant:
+    case OperatorType::kNeg:
     case OperatorType::kTensorFlowRsqrt:
     case OperatorType::kTensorFlowSqrt:
     case OperatorType::kTensorFlowSquare:
