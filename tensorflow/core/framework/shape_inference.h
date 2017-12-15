@@ -62,7 +62,7 @@ class DimensionHandle {
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
-  const Dimension* operator->() { return ptr_; }
+  const Dimension* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Dimension* ptr_ = nullptr;
@@ -104,7 +104,7 @@ class ShapeHandle {
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
-  const Shape* operator->() { return ptr_; }
+  const Shape* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Shape* ptr_ = nullptr;
@@ -237,24 +237,19 @@ class InferenceContext {
   // - For any one dimension, if the values for that dimension in both shapes
   //   are known, then the values must match.
   // - If one shape has equal or more information than the other shape in every
-  //   dimension, the shape with more information will be returned. Otherwise a
-  //   new shape holding the combined information of the input shapes will be
-  //   returned.
+  //   dimension, the new shape will become the shape with more information.
   // - Example: merging [2,?] and [?,2] results in [2,2]
   // - Example: [2,2] cannot be merged with [1,2]
   //
   // This requires idx to be in the [0, num_inputs) range. If the merge is
-  // successful and the new shape differs from the old one, store the new shape
-  // and return true. Return false otherwise.
+  // successful, return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
     ShapeHandle new_shape;
-    if (!Merge(inputs_[idx], shape, &new_shape).ok() ||
-        inputs_[idx].SameHandle(new_shape)) {
-      return false;
-    }
+    if (!Merge(inputs_[idx], shape, &new_shape).ok()) return false;
     inputs_[idx] = new_shape;
     return true;
   }
+
   // Relax the stored shape of the input in position idx with <shape> according
   // to the following rules:
   //
@@ -683,14 +678,17 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
-  // Relaxes <d0> and <d1> and returns the relaxed dimension in <*out>. If <d0>
-  // and <d1> have incompatible values, returns an error.
+  // Relaxes an existing value <d_old> with a new value <d_new> and returns the
+  // relaxed dimension in <*out>. If <d_old> and <d_new> have incompatible
+  // values, returns an error.
   //
-  // Note that <*out> may be set to <d0> or <d1>.
-  void Relax(DimensionHandle d0, DimensionHandle d1, DimensionHandle* out);
-  // Relaxes <s0> and <s1> and returns the relaxed shape in <*out>. See
-  // 'RelaxInput' function for full details and examples.
-  void Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
+  // Note that <*out> may be set to <d_old> or <d_new>.
+  void Relax(DimensionHandle d_old, DimensionHandle d_new,
+             DimensionHandle* out);
+  // Relaxes an existing shape <s_old> with a new shape <s_new> and returns the
+  // relaxed shape in <*out>. See 'RelaxInput' function for full details and
+  // examples.
+  void Relax(ShapeHandle s_old, ShapeHandle s_new, ShapeHandle* out);
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
@@ -702,6 +700,12 @@ class InferenceContext {
   bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
       std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+
+  // Forget all the previous merged shapes and dims.
+  void ForgetMerges() {
+    merged_shapes_.clear();
+    merged_dims_.clear();
+  }
 
   ShapeManager shape_manager_;
 

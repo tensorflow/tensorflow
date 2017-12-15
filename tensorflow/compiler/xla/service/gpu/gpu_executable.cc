@@ -69,7 +69,7 @@ class HloExecutionProfiler {
   ~HloExecutionProfiler() {
     if (do_profile_) {
       stream_->ThenStopTimer(execution_timer_.get());
-      stream_->BlockHostUntilDone();
+      stream_->BlockHostUntilDone().IgnoreError();
       profile_->set_total_cycles_executed(
           *computation_, execution_timer_->Nanoseconds() * clock_rate_ghz_);
     }
@@ -87,7 +87,7 @@ class HloExecutionProfiler {
   void FinishOperation(const HloInstruction* hlo_instruction) {
     if (do_profile_) {
       stream_->ThenStopTimer(per_op_timer_.get());
-      stream_->BlockHostUntilDone();
+      stream_->BlockHostUntilDone().IgnoreError();
       profile_->SetCyclesTakenBy(
           hlo_instruction, per_op_timer_->Nanoseconds() * clock_rate_ghz_);
     }
@@ -113,14 +113,15 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    HloCostAnalysis::ShapeSizeFunction shape_size_function)
-    : Executable(std::move(hlo_module)),
+    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+                 std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
       compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)),
-      shape_size_function_(std::move(shape_size_function)) {}
+      assignment_(std::move(assignment)) {}
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
@@ -166,9 +167,16 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
+    // If this thunk requests it, wait for all currently-executing thunks to
+    // finish.  This is useful e.g. if the thunk is about to perform autotuning.
+    if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
+      TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
+    }
+
     profiler.StartOperation();
     VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString();
+            << thunk->hlo_instruction()->ToString() << " on stream "
+            << stream_no;
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());
@@ -183,9 +191,13 @@ Status GpuExecutable::ExecuteThunks(
   // Make sure kernels are completed before deallocating temporary buffers.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (block_host_until_done && !main_stream->BlockHostUntilDone()) {
-    return InternalError("Failed to complete all kernels launched on stream %p",
-                         main_stream);
+  if (block_host_until_done) {
+    Status block_status = main_stream->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError(
+          "Failed to complete all kernels launched on stream %p: %s",
+          main_stream, block_status.error_message().c_str());
+    }
   }
 
   return Status::OK();
@@ -356,10 +368,6 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& GpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
-}
-
-std::unique_ptr<HloCostAnalysis> GpuExecutable::CreateCostAnalysis() const {
-  return MakeUnique<HloCostAnalysis>(shape_size_function_);
 }
 
 }  // namespace gpu

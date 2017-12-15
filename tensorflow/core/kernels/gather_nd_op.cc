@@ -176,10 +176,12 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
       PARAMS_CASE(3);
       PARAMS_CASE(4);
       PARAMS_CASE(5);
+      PARAMS_CASE(6);
+      PARAMS_CASE(7);
 #undef PARAMS_CASE
       default:
         return errors::InvalidArgument(
-            "Only indices.shape[-1] values between 1 and 5 "
+            "Only indices.shape[-1] values between 1 and 7 "
             "are currently supported.  Requested rank: ",
             indices_nd);
     }
@@ -218,7 +220,9 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 2); \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 3); \
   DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 4); \
-  DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 5);
+  DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 5); \
+  DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 6); \
+  DECLARE_GPU_SPECS_INDEX_NDIM(T, Index, 7);
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \

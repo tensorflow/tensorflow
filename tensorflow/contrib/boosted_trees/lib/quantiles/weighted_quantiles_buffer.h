@@ -33,9 +33,9 @@ template <typename ValueType, typename WeightType,
 class WeightedQuantilesBuffer {
  public:
   struct BufferEntry {
-    BufferEntry(const ValueType& v, const WeightType& w)
-        : value(v), weight(w) {}
-    BufferEntry() : value(0), weight(0) {}
+    BufferEntry(ValueType v, WeightType w)
+        : value(std::move(v)), weight(std::move(w)) {}
+    BufferEntry() : value(), weight(0) {}
 
     bool operator<(const BufferEntry& other) const {
       return kCompFn(value, other.value);
@@ -67,7 +67,7 @@ class WeightedQuantilesBuffer {
 
   // Push entry to buffer and maintain a compact representation within
   // pre-defined size limit.
-  void PushEntry(const ValueType& value, const WeightType& weight) {
+  void PushEntry(ValueType value, WeightType weight) {
     // Callers are expected to act on a full compacted buffer after the
     // PushEntry call returns.
     QCHECK(!IsFull()) << "Buffer already full: " << max_size_;
@@ -78,7 +78,7 @@ class WeightedQuantilesBuffer {
     }
 
     // Push back the entry to the buffer.
-    vec_.push_back(BufferEntry(value, weight));
+    vec_.push_back(BufferEntry(std::move(value), std::move(weight)));
   }
 
   // Returns a sorted vector view of the base buffer and clears the buffer.

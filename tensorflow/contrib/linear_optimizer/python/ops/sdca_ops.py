@@ -251,8 +251,9 @@ class SdcaModel(object):
 
       result_dense = 0.0
       for i in range(len(dense_variables)):
-        result_dense += math_ops.matmul(
-            dense_features[i], array_ops.expand_dims(dense_variables[i], -1))
+        result_dense += math_ops.matmul(dense_features[i],
+                                        array_ops.expand_dims(
+                                            dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
     return array_ops.reshape(result_dense, [-1]) + result_sparse

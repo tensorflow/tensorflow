@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -305,6 +306,46 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
+  // Whether and how the GPU device uses its own threadpool.
+  // This option is experimental. Once we confirm the best setting, we
+  // may change the default behavior and completely remove this flag.
+  // Default values might change in future releases.
+  // Possible values:
+  //   * global: GPU uses threads shared with CPU in the main compute
+  //          thread-pool. This is currently the default.
+  //   * gpu_private: GPU uses threads dedicated to this device.
+  //   * gpu_shared: All GPUs share a dedicated thread pool.
+  string gpu_thread_mode;
+  TF_RETURN_IF_ERROR(
+      ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
+  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  if (gpu_thread_mode != "global") {
+    int64 gpu_thread_count = -1;
+    // Default to two threads. One for device compute and another for memory
+    // copies.
+    TF_RETURN_IF_ERROR(
+        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &gpu_thread_count));
+    if (gpu_thread_mode == "gpu_private") {
+      // TODO(zhengxq): since these threads only serve a single GPU device,
+      //   we should set the device context once for each thread, and avoid
+      //   setting them for each kernel.
+      // TODO(zhengxq): pin the thread to the same socket of the target GPU.
+      thread_pool_.reset(new thread::ThreadPool(
+          options.env, strings::StrCat("gpu_private_", gpu_id_),
+          static_cast<int32>(gpu_thread_count)));
+      set_tensorflow_device_thread_pool(thread_pool_.get());
+    } else if (gpu_thread_mode == "gpu_shared") {
+      static thread::ThreadPool* thread_pool = new thread::ThreadPool(
+          options.env, "gpu_shared", static_cast<int32>(gpu_thread_count));
+      set_tensorflow_device_thread_pool(thread_pool);
+    } else {
+      string error_message =
+          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+      LOG(WARNING) << error_message;
+      return errors::InvalidArgument(error_message);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -539,16 +580,9 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
 
   if (parsed.dtype() == DT_VARIANT) {
-    if (parsed.shape().dims() != 0) {
-      // TODO(b/67311047): Expand support to non-singleton variants?
-      return errors::Unimplemented(
-          "GPUDevice::MakeTensorFromProto: Only singleton Variants are "
-          "supported. Tensor has shape: ",
-          parsed.shape().DebugString());
-    }
-    const Variant& from = parsed.scalar<Variant>()();
-    Tensor copy(cpu_allocator(), DT_VARIANT, TensorShape({}));
-    Variant* copy_variant = &(copy.scalar<Variant>()());
+    const Variant* from = parsed.flat<Variant>().data();
+    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;
     Status copy_status;
@@ -566,11 +600,19 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                     n.Notify();
                                   });
     };
-    TF_RETURN_IF_ERROR(
-        VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from,
-                          copy_variant, std::move(copier)));
+    Status s;
+    for (int64 ix = 0; ix < parsed.NumElements(); ++ix) {
+      s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                            from[ix], &copy_variant[ix], copier);
+      if (!s.ok()) {
+        break;
+      }
+    }
     for (auto& n : notifications) {
       n.WaitForNotification();
+    }
+    if (!s.ok()) {
+      return s;
     }
     *tensor = std::move(copy);
     return copy_status;
@@ -604,6 +646,79 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   EigenCudaStreamDevice stream_device_;
   Eigen::GpuDevice device_;
 };
+
+Status ParseVisibleDeviceList(const string& visible_device_list,
+                              std::vector<int>* visible_gpu_order) {
+  visible_gpu_order->clear();
+  gpu::Platform* gpu_manager = GPUMachineManager();
+
+  // If the user wants to remap the visible to virtual GPU mapping,
+  // check for that here.
+  if (visible_device_list.empty()) {
+    visible_gpu_order->resize(gpu_manager->VisibleDeviceCount());
+    // By default, visible to virtual mapping is unchanged.
+    int deviceNo = 0;
+    std::generate(visible_gpu_order->begin(), visible_gpu_order->end(),
+                  [&deviceNo] { return deviceNo++; });
+  } else {
+    const std::vector<string> order_str =
+        str_util::Split(visible_device_list, ',');
+    for (const string& cuda_gpu_id_str : order_str) {
+      int32 cuda_gpu_id;
+      if (!strings::safe_strto32(cuda_gpu_id_str, &cuda_gpu_id)) {
+        return errors::InvalidArgument(
+            "Could not parse entry in 'visible_device_list': '",
+            cuda_gpu_id_str, "'. visible_device_list = ", visible_device_list);
+      }
+      if (cuda_gpu_id < 0 || cuda_gpu_id >= gpu_manager->VisibleDeviceCount()) {
+        return errors::InvalidArgument(
+            "'visible_device_list' listed an invalid GPU id '", cuda_gpu_id,
+            "' but visible device count is ",
+            gpu_manager->VisibleDeviceCount());
+      }
+      visible_gpu_order->push_back(cuda_gpu_id);
+    }
+  }
+
+  // Validate no repeats.
+  std::set<int> visible_device_set(visible_gpu_order->begin(),
+                                   visible_gpu_order->end());
+  if (visible_device_set.size() != visible_gpu_order->size()) {
+    return errors::InvalidArgument(
+        "visible_device_list contained a duplicate entry: ",
+        visible_device_list);
+  }
+  return Status::OK();
+}
+
+int64 MinSystemMemory(int64 available_memory) {
+  // We use the following heuristic for now:
+  //
+  // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
+  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
+  //
+  // In the future we could be more sophisticated by using a table of devices.
+  int64 min_system_memory;
+  if (available_memory < (1LL << 31)) {
+    // 225MiB
+    min_system_memory = 225 * 1024 * 1024;
+  } else {
+    // max(300 MiB, 0.05 * available_memory)
+    min_system_memory =
+        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
+  }
+#if defined(__GNUC__) && defined(__OPTIMIZE__)
+// Do nothing
+#elif !defined(__GNUC__) && defined(NDEBUG)
+// Do nothing
+#else
+  // Double the amount of available GPU memory in non-opt builds (debug
+  // builds in windows); because in non-opt builds more system memory
+  // is necessary.
+  min_system_memory *= 2;
+#endif
+  return min_system_memory;
+}
 }  // namespace
 
 void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
@@ -641,14 +756,27 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
 Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                                            const string& name_prefix,
                                            std::vector<Device*>* devices) {
+  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
+  gpu::Platform* gpu_manager = GPUMachineManager();
+  if (gpu_manager == nullptr) {
+    return Status::OK();
+  }
+  // If there are no GPUs visible, do nothing.
+  if (gpu_manager->VisibleDeviceCount() <= 0) {
+    return Status::OK();
+  }
+
   size_t n = INT_MAX;
   auto iter = options.config.device_count().find("GPU");
   if (iter != options.config.device_count().end()) {
     n = iter->second;
   }
+  const auto& gpu_options = options.config.gpu_options();
+  std::vector<int> visible_gpu_order;
+  TF_RETURN_IF_ERROR(ParseVisibleDeviceList(gpu_options.visible_device_list(),
+                                            &visible_gpu_order));
   std::vector<int> valid_gpu_ids;
-  TF_RETURN_IF_ERROR(GetValidDeviceIds(
-      options.config.gpu_options().visible_device_list(), &valid_gpu_ids));
+  TF_RETURN_IF_ERROR(GetValidDeviceIds(visible_gpu_order, &valid_gpu_ids));
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
   }
@@ -693,38 +821,6 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
 
   return Status::OK();
 }
-
-namespace {
-int64 MinSystemMemory(int64 available_memory) {
-  // We use the following heuristic for now:
-  //
-  // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
-  //
-  // In the future we could be more sophisticated by using a table of devices.
-  int64 min_system_memory;
-  if (available_memory < (1LL << 31)) {
-    // 225MiB
-    min_system_memory = 225 * 1024 * 1024;
-  } else {
-    // max(300 MiB, 0.05 * available_memory)
-    min_system_memory =
-        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
-  }
-#if defined(__GNUC__) && defined(__OPTIMIZE__)
-// Do nothing
-#elif !defined(__GNUC__) && defined(NDEBUG)
-// Do nothing
-#else
-  // Double the amount of available GPU memory in non-opt builds (debug
-  // builds in windows); because in non-opt builds more system memory
-  // is necessary.
-  min_system_memory *= 2;
-#endif
-  return min_system_memory;
-}
-
-}  // namespace
 
 static string GetShortDeviceDescription(int device_id,
                                         const gpu::DeviceDescription& desc) {
@@ -948,7 +1044,7 @@ Status EnablePeerAccess(gpu::Platform* platform,
         if (!status.ok()) {
           LOG(WARNING)
               << "Unable to enable peer access between device ordinals "
-              << i_gpu_id << " and " << j_gpu_id;
+              << i_gpu_id << " and " << j_gpu_id << ", status: " << status;
         } else {
           ++enabled_peer_count;
         }
@@ -971,60 +1067,8 @@ Status EnablePeerAccess(gpu::Platform* platform,
 }  // namespace
 
 Status BaseGPUDeviceFactory::GetValidDeviceIds(
-    const string& visible_device_list, std::vector<int>* ids) {
-  TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
-
+    const std::vector<int>& visible_gpu_order, std::vector<int>* ids) {
   gpu::Platform* gpu_manager = GPUMachineManager();
-  if (gpu_manager == nullptr) {
-    return Status::OK();
-  }
-
-  // If there are no GPUs visible, do nothing.
-  if (gpu_manager->VisibleDeviceCount() <= 0) {
-    return Status::OK();
-  }
-
-  // If the user wants to remap the visible to virtual GPU mapping,
-  // check for that here.
-  std::vector<int> visible_gpu_order;
-  if (visible_device_list.empty()) {
-    visible_gpu_order.resize(gpu_manager->VisibleDeviceCount());
-    // By default, visible to virtual mapping is unchanged.
-    int deviceNo = 0;
-    std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
-                  [&deviceNo] { return deviceNo++; });
-  } else {
-    std::vector<string> order_str = str_util::Split(visible_device_list, ',');
-    for (int i = 0; i < order_str.size(); ++i) {
-      const string& gpu_id_str = order_str[i];
-      int32 gpu_id;
-      if (!strings::safe_strto32(gpu_id_str, &gpu_id)) {
-        return errors::InvalidArgument(
-            "Could not parse entry in 'visible_device_list': '", gpu_id_str,
-            "'.  visible_device_list = ", visible_device_list);
-      }
-
-      if (gpu_id < 0 || gpu_id >= gpu_manager->VisibleDeviceCount()) {
-        return errors::InvalidArgument(
-            "'visible_device_list' listed an invalid GPU id '", gpu_id,
-            "' but visible device count is ",
-            gpu_manager->VisibleDeviceCount());
-      }
-
-      visible_gpu_order.push_back(gpu_id);
-    }
-  }
-
-  // Validate no repeats.
-  std::set<int> visible_device_set(visible_gpu_order.begin(),
-                                   visible_gpu_order.end());
-  if (visible_device_set.size() != visible_gpu_order.size()) {
-    return errors::InvalidArgument(
-        "visible_device_list contained "
-        "a duplicate entry: ",
-        visible_device_list);
-  }
-
   bool new_gpu_found = false;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     int gpu_id = visible_gpu_order[i];

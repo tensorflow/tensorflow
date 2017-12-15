@@ -257,6 +257,7 @@ class DenseSplitHandler(InequalitySplitHandler):
         # Put quantile and stats accumulator flushing in the dependency path.
         are_splits_ready = control_flow_ops.with_dependencies(
             [flush_quantiles, partition_ids], are_splits_ready)
+
         partition_ids, gains, split_infos = (
             split_handler_ops.build_dense_inequality_splits(
                 num_minibatches=num_minibatches,
@@ -433,14 +434,15 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
   def ready_inputs_fn():
     """Branch to execute when quantiles are ready."""
     quantized_feature = quantile_ops.quantiles([float_column], [],
-                                               [quantile_buckets], [])
+                                               [quantile_buckets], [], [])
     quantized_feature = math_ops.cast(quantized_feature[0], dtypes.int64)
-    quantized_feature = array_ops.reshape(quantized_feature, [-1])
+    quantized_feature = array_ops.squeeze(quantized_feature, axis=0)
     return (example_partition_ids, quantized_feature, gradients, hessians)
 
   def not_ready_inputs_fn():
-    return (constant_op.constant([], dtype=dtypes.int32), constant_op.constant(
-        [], dtype=dtypes.int64), empty_gradients, empty_hessians)
+    return (constant_op.constant([], dtype=dtypes.int32),
+            constant_op.constant([[]], dtype=dtypes.int64, shape=[1, 2]),
+            empty_gradients, empty_hessians)
 
   example_partition_ids, feature_ids, gradients, hessians = (
       control_flow_ops.cond(
@@ -461,10 +463,13 @@ def sparse_make_stats_update(
 
   def quantiles_ready():
     """The subgraph for when the quantiles are ready."""
-    quantized_feature = quantile_ops.quantiles([sparse_column_values], [],
-                                               [quantile_buckets], [])
-    quantized_feature = math_ops.cast(quantized_feature[0], dtypes.int64)
-    quantized_feature = array_ops.reshape(quantized_feature, [-1])
+    quantized_feature = quantile_ops.quantiles([], [sparse_column_values], [],
+                                               [quantile_buckets],
+                                               [sparse_column_indices])
+
+    quantized_feature = math_ops.cast(quantized_feature[1], dtypes.int64)
+    quantized_feature = array_ops.squeeze(quantized_feature, axis=0)
+
     example_indices, _ = array_ops.split(
         sparse_column_indices, num_or_size_splits=2, axis=1)
     example_indices = array_ops.squeeze(example_indices, [1])
@@ -486,19 +491,25 @@ def sparse_make_stats_update(
     bias_feature_ids = array_ops.fill(
         array_ops.shape(unique_partitions), _BIAS_FEATURE_ID)
     bias_feature_ids = math_ops.cast(bias_feature_ids, dtypes.int64)
+    zeros = array_ops.zeros_like(bias_feature_ids)
+    bias_feature_ids = array_ops.stack([bias_feature_ids, zeros], axis=1)
+
     partition_ids = array_ops.concat(
         [unique_partitions, filtered_partition_ids], 0)
     filtered_gradients = array_ops.concat(
         [per_partition_gradients, filtered_gradients], 0)
     filtered_hessians = array_ops.concat(
         [per_partition_hessians, filtered_hessians], 0)
+
     bucket_ids = array_ops.concat([bias_feature_ids, quantized_feature], 0)
+
     return partition_ids, bucket_ids, filtered_gradients, filtered_hessians
 
   def quantiles_not_ready():
     """The subgraph for when the quantiles are not ready."""
-    return (constant_op.constant([], dtype=dtypes.int32), constant_op.constant(
-        [], dtype=dtypes.int64), empty_gradients, empty_hessians)
+    return (constant_op.constant([], dtype=dtypes.int32),
+            constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+            empty_gradients, empty_hessians)
 
   empty_float = constant_op.constant([], dtype=dtypes.float32)
   handler_not_active = (constant_op.constant(

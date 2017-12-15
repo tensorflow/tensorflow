@@ -1303,7 +1303,7 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
     TF_RET_CHECK(LayoutUtil::HasLayout(instruction->shape()));
   }
 
-  // Copy the root instrucion's result if the it does not match the result
+  // Copy the root instruction's result if the it does not match the result
   // layout constraint
   if (constraints.ResultLayout() != nullptr &&
       !constraints.ResultLayout()->MatchesLayoutInShape(
@@ -1327,6 +1327,20 @@ Status LayoutAssignment::RunOnComputation(
   VLOG(2) << "LayoutAssignment::RunOnComputation(" << computation->name()
           << ")";
   VLOG(2) << "  ComputationLayout = " << computation_layout.ToString();
+
+  // Clear existing layouts of the instructions. All layouts must be assigned by
+  // the LayoutAssignment pass, except for Infeed, Outfeed, Parameters and the
+  // computation result. The latter two are specified in computation_layout, so
+  // we only need to keep the existing layouts for Infeed and Outfeed. Clearing
+  // the layouts here avoids hiding potential bugs in the layout assignment pass
+  // that may accidently use the existing layout.
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() == HloOpcode::kInfeed ||
+        instruction->opcode() == HloOpcode::kOutfeed) {
+      continue;
+    }
+    LayoutUtil::ClearLayout(instruction->mutable_shape());
+  }
 
   // Construct LayoutConstraints with all layout constraints of the computation.
   LayoutConstraints constraints(points_to_analysis, computation);

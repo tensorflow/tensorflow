@@ -70,15 +70,17 @@ class TensorDatasetOp : public DatasetOpKernel {
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      std::vector<NodeBuilder::NodeOut> components;
+      std::vector<Node*> components;
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
         components.emplace_back(node);
       }
-      TF_RETURN_IF_ERROR(
-          b->AddDatasetWithInputAsList(this, components, output));
+      AttrValue dtypes;
+      b->BuildAttrValue(dtypes_, &dtypes);
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, components}},
+                                       {{"Toutput_types", dtypes}}, output));
       return Status::OK();
     }
 

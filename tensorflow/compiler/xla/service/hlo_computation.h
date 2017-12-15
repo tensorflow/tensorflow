@@ -152,12 +152,16 @@ class HloComputation {
   //   computation_map: a map from computation name to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
-  //  fusion_instruction: if non-null then the newly created computation will be
-  //     constructed as a fused computation with this instruction as its fusion
-  //     parent.
+  //   add_fused_computation: A function to call to add a fused
+  //     computation. Used only when the instruction is a fusion instruction.
+  //   fusion_instruction: if non-null then the newly created computation will
+  //     be constructed as a fused computation with this instruction as its
+  //     fusion parent.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       HloModule* module, const HloComputationProto& proto,
-      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map,
+      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+      const std::function<void(std::unique_ptr<HloComputation>)>&
+          add_fused_computation,
       HloInstruction* fusion_instruction = nullptr);
 
   // Gets the instructions in this computation.
@@ -309,11 +313,17 @@ class HloComputation {
           replacements,
       HloModule* module = nullptr, const string& suffix = "clone");
 
-  // Returns true if the given instruction can be removed from the
-  // computation. Instructions such as parameters and send/receive instructions
-  // cannot be removed without violating invariants of the HLO computation or
-  // module with the exception of fusion computation.  A parameter instruction
-  // is removable for a fusion computation.
+  // Returns true if the given instruction can be removed from the computation.
+  // Parameter instructions cannot be removed without violating invariants of
+  // the HLO computation with the exception of fusion computation. A parameter
+  // instruction is removable for a fusion computation.
+  //
+  // Note that IsRemovable() is a necessariy condition to remove an instruction
+  // rather than a sufficient condition. For example, instructions with
+  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
+  // transformation must guarantee the invariants relevant to the instructions
+  // still hold (e.g., Send and Recv must be removed together to make each
+  // channel complete).
   bool IsRemovable(const HloInstruction* instruction);
 
   // Returns true if this computation has a side effect. A computation has a
@@ -326,6 +336,9 @@ class HloComputation {
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
+  void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    fusion_instruction_ = fusion_instruction;
+  }
 
  private:
   explicit HloComputation(

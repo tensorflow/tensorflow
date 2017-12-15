@@ -19,9 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -330,52 +328,12 @@ def shapes_from_loc_and_scale(loc, scale, name="shapes_from_loc_and_scale"):
       else:
         loc_batch_shape = ops.convert_to_tensor(loc_batch_shape,
                                                 name="loc_batch_shape")
+      # This is defined in the core util module.
+      # pylint: disable=undefined-variable
       batch_shape = prefer_static_broadcast_shape(batch_shape, loc_batch_shape)
+      # pylint: enable=undefined-variable
 
   return batch_shape, event_shape
-
-
-def prefer_static_broadcast_shape(
-    shape1, shape2, name="prefer_static_broadcast_shape"):
-  """Convenience function which statically broadcasts shape when possible.
-
-  Args:
-    shape1:  `1-D` integer `Tensor`.  Already converted to tensor!
-    shape2:  `1-D` integer `Tensor`.  Already converted to tensor!
-    name:  A string name to prepend to created ops.
-
-  Returns:
-    The broadcast shape, either as `TensorShape` (if broadcast can be done
-      statically), or as a `Tensor`.
-  """
-  with ops.name_scope(name, values=[shape1, shape2]):
-    def make_shape_tensor(x):
-      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
-
-    def get_tensor_shape(s):
-      if isinstance(s, tensor_shape.TensorShape):
-        return s
-      s_ = tensor_util.constant_value(make_shape_tensor(s))
-      if s_ is not None:
-        return tensor_shape.TensorShape(s_)
-      return None
-
-    def get_shape_tensor(s):
-      if not isinstance(s, tensor_shape.TensorShape):
-        return make_shape_tensor(s)
-      if s.is_fully_defined():
-        return make_shape_tensor(s.as_list())
-      raise ValueError("Cannot broadcast from partially "
-                       "defined `TensorShape`.")
-
-    shape1_ = get_tensor_shape(shape1)
-    shape2_ = get_tensor_shape(shape2)
-    if shape1_ is not None and shape2_ is not None:
-      return array_ops.broadcast_static_shape(shape1_, shape2_)
-
-    shape1_ = get_shape_tensor(shape1)
-    shape2_ = get_shape_tensor(shape2)
-    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
 
 
 def get_broadcast_shape(*tensors):

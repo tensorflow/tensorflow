@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helper routines for Tla JIT compilation.
+// This file defines helper routines for XLA compilation.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -120,6 +121,8 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
 xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
                                                DataType data_type) {
   switch (data_type) {
+    case DT_BFLOAT16:
+      return b->ConstantR0<bfloat16>(bfloat16::epsilon());
     case DT_FLOAT:
       return b->ConstantR0<float>(std::numeric_limits<float>::epsilon());
     case DT_DOUBLE:
@@ -168,6 +171,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::S16:
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
+    case xla::BF16:
+      literal = *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value));
+      break;
     case xla::F16:
       literal =
           *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value));
@@ -185,25 +191,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
 xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
                                                     DataType data_type,
                                                     double value) {
-  xla::Literal literal;
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  switch (type) {
-    case xla::F16:
-      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
-      break;
-    case xla::F32:
-      return b->ConstantR0<float>(static_cast<float>(value));
-      break;
-    case xla::F64:
-      return b->ConstantR0<double>(value);
-      break;
-    case xla::C64:
-      return b->ConstantR0<complex64>(value);
-      break;
-    default:
-      LOG(FATAL) << "unhandled element type " << type;
-  }
+  return ::tensorflow::FloatLiteral(b, type, value);
 }
 
 /* static */ Status XlaHelpers::ReshapeLiteral(

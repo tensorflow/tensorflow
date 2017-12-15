@@ -157,6 +157,9 @@ class AttrSlice {
   const AttrValueMap* attrs_;
 };
 
+// Return true if the attr with the name attr_name is defined in node_def.
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
+
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a non-ok status will be returned.

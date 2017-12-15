@@ -53,6 +53,8 @@ class DotOperationTest : public ClientLibraryTestBase {
                               bool rhs_row_major = false);
   void TestMatrixDot(int M, int K, int N, bool lhs_row_major = false,
                      bool rhs_row_major = false);
+  void TestMatrixDotWithAdd(int M, int K, int N, bool dot_lhs_row_major,
+                            bool dot_rhs_row_major, bool addend_row_major);
 };
 
 XLA_TEST_F(DotOperationTest, ZeroElementVectorDotF32) {
@@ -177,15 +179,15 @@ void DotOperationTest::TestSquareMatrixDot(bool lhs_row_major,
                                            bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 2.0}, {3.0, -4.0}},
-              MinorToMajorForIsRowMajor(lhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 6.0}, {7.0, -4.0}},
-              MinorToMajorForIsRowMajor(rhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -227,6 +229,54 @@ void DotOperationTest::TestMatrixDot(int M, int K, int N, bool lhs_row_major,
   ComputeAndCompareR2<float>(&builder, *expected,
                              {lhs_handle.get(), rhs_handle.get()},
                              ErrorSpec(0.3, 3e-3));
+}
+
+void DotOperationTest::TestMatrixDotWithAdd(int M, int K, int N,
+                                            bool dot_lhs_row_major,
+                                            bool dot_rhs_row_major,
+                                            bool addend_row_major) {
+  std::unique_ptr<Array2D<float>> dot_lhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, M, K);
+  std::unique_ptr<Literal> dot_lhs_lit = Literal::CreateR2FromArray2DWithLayout(
+      *dot_lhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(dot_lhs_row_major)));
+  auto dot_lhs_handle =
+      client_->TransferToServer(*dot_lhs_lit).ConsumeValueOrDie();
+
+  std::unique_ptr<Array2D<float>> dot_rhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, K, N);
+  std::unique_ptr<Literal> dot_rhs_lit = Literal::CreateR2FromArray2DWithLayout(
+      *dot_rhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(dot_rhs_row_major)));
+  auto dot_rhs_handle =
+      client_->TransferToServer(*dot_rhs_lit).ConsumeValueOrDie();
+
+  std::unique_ptr<Array2D<float>> addend_data =
+      MakeLinspaceArray2D(0.0, 1.0, M, N);
+  std::unique_ptr<Literal> addend_lit = Literal::CreateR2FromArray2DWithLayout(
+      *addend_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(addend_row_major)));
+  auto addend_handle =
+      client_->TransferToServer(*addend_lit).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+  auto result = builder.Add(
+      builder.Dot(builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {M, K}),
+                                    "dot_lhs"),
+                  builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {K, N}),
+                                    "dot_rhs")),
+      builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {M, N}), "addend"));
+
+  std::unique_ptr<Array2D<float>> expected = ReferenceUtil::ApplyElementwise2D(
+      std::plus<float>(),
+      *ReferenceUtil::MatmulArray2D(*dot_lhs_data, *dot_rhs_data),
+      *addend_data);
+
+  ComputeAndCompareR2<float>(
+      &builder, *expected,
+      {dot_lhs_handle.get(), dot_rhs_handle.get(), addend_handle.get()},
+      ErrorSpec(0.3, 3e-3));
 }
 
 XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorTF) {
@@ -277,10 +327,154 @@ XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorFF) {
   TestMatrixDot(260, 3, 520, false, false);
 }
 
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x8) {
+  TestMatrixDot(1, 8, 8, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x130x8) {
+  TestMatrixDot(1, 130, 8, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x130) {
+  TestMatrixDot(1, 8, 130, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x290x130) {
+  TestMatrixDot(1, 290, 130, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_2x1x1) {
+  TestMatrixDot(2, 1, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_8x8x1) {
+  TestMatrixDot(8, 8, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_16x1x1) {
+  TestMatrixDot(16, 1, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_16x3x1) {
+  TestMatrixDot(16, 3, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_3x3x1) {
+  TestMatrixDot(3, 3, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_29x29x1) {
+  TestMatrixDot(29, 29, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x8x2) {
+  TestMatrixDot(1, 8, 2, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_1x2x8) {
+  TestMatrixDot(1, 2, 8, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1) {
+  TestMatrixDot(259, 258, 1, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotF32_259x258x1_FT) {
+  TestMatrixDot(259, 258, 1, false, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x8) {
+  TestMatrixDotWithAdd(1, 8, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x130x8) {
+  TestMatrixDotWithAdd(1, 130, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x130) {
+  TestMatrixDotWithAdd(1, 8, 130, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x290x130) {
+  TestMatrixDotWithAdd(1, 290, 130, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_2x1x1) {
+  TestMatrixDotWithAdd(2, 1, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_8x8x1) {
+  TestMatrixDotWithAdd(8, 8, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_16x1x1) {
+  TestMatrixDotWithAdd(16, 1, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_16x3x1) {
+  TestMatrixDotWithAdd(16, 3, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_3x3x1) {
+  TestMatrixDotWithAdd(3, 3, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_29x29x1) {
+  TestMatrixDotWithAdd(29, 29, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x8x2) {
+  TestMatrixDotWithAdd(1, 8, 2, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_1x2x8) {
+  TestMatrixDotWithAdd(1, 2, 8, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FTT) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FFT) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_FFF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/false,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_TFF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/false, /*addend_row_major=*/false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorDotWithAddF32_259x258x1_TTF) {
+  TestMatrixDotWithAdd(259, 258, 1, /*dot_lhs_row_major=*/true,
+                       /*dot_rhs_row_major=*/true, /*addend_row_major=*/false);
+}
+
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = false;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestSquareMatrixDot<float>(false, false);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFT) {
@@ -291,10 +485,24 @@ XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTF) {
   TestSquareMatrixDot<float>(true, false);
 }
 
-TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = true;
-  TestSquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorTT) {
+  TestSquareMatrixDot<float>(true, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFF) {
+  TestSquareMatrixDot<complex64>(false, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorFT) {
+  TestSquareMatrixDot<complex64>(false, true);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTF) {
+  TestSquareMatrixDot<complex64>(true, false);
+}
+
+XLA_TEST_F(DotOperationTest, SquareMatrixDotC64MinorToMajorTT) {
+  TestSquareMatrixDot<complex64>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF64) {
@@ -306,15 +514,15 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
                                               bool rhs_row_major) {
   auto lhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 2.0, 3.0}, {3.0, -4.0, -1.0}},
-              MinorToMajorForIsRowMajor(lhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major))))
           .ConsumeValueOrDie();
   auto rhs_handle =
       client_
-          ->TransferToServer(*test_utils::CreateR2LiteralWithLayout<Element>(
+          ->TransferToServer(*Literal::CreateR2WithLayout<Element>(
               {{1.0, 6.0}, {2.0, 3.0}, {7.0, -4.0}},
-              MinorToMajorForIsRowMajor(rhs_row_major)))
+              LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major))))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -330,35 +538,64 @@ void DotOperationTest::TestNonsquareMatrixDot(bool lhs_row_major,
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFF) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = false;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(false, false);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorFT) {
-  constexpr bool kLhsRowMajor = false;
-  constexpr bool kRhsRowMajor = true;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(false, true);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTF) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = false;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(true, false);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF32MajorToMinorTT) {
-  constexpr bool kLhsRowMajor = true;
-  constexpr bool kRhsRowMajor = true;
-  TestNonsquareMatrixDot<float>(kLhsRowMajor, kRhsRowMajor);
+  TestNonsquareMatrixDot<float>(true, true);
 }
 
 XLA_TEST_F(DotOperationTest, NonsquareMatrixDotF64) {
   TestNonsquareMatrixDot<double>();
 }
 
-XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64) {
-  TestNonsquareMatrixDot<complex64>();
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFF) {
+  TestNonsquareMatrixDot<complex64>(false, false);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorFT) {
+  TestNonsquareMatrixDot<complex64>(false, true);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTF) {
+  TestNonsquareMatrixDot<complex64>(true, false);
+}
+
+XLA_TEST_F(DotOperationTest, NonsquareMatrixDotC64MajorToMinorTT) {
+  TestNonsquareMatrixDot<complex64>(true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
+  auto lhs_handle =
+      client_
+          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
+              {{1.0, 2.0, 3.0, -4.0}}, LayoutUtil::MakeLayout({1, 0})))
+          .ConsumeValueOrDie();
+  auto rhs_handle =
+      client_
+          ->TransferToServer(*Literal::CreateR2WithLayout<complex64>(
+              {{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {-4.0, 4.0}},
+              LayoutUtil::MakeLayout({1, 0})))
+          .ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
+  auto result = builder.Dot(
+      builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
+      builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {4, 2}), "rhs"));
+
+  Array2D<complex64> expected({{30.0, -2.0}});
+
+  ComputeAndCompareR2<complex64>(
+      &builder, expected, {lhs_handle.get(), rhs_handle.get()}, error_spec_);
 }
 
 XLA_TEST_F(DotOperationTest, ConcurrentMatMul) {
@@ -476,5 +713,95 @@ TEST_F(DotOperationTest, TransposeFolding) {
   }
 }
 
+TEST_F(DotOperationTest, DotOfConcatOptimizationWithConstLHS) {
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+
+  std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
+      {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
+  auto rhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
+                                     "rhs_arg_0");
+  auto rhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {3, 2}),
+                                     "rhs_arg_1");
+  auto rhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {1, 2}),
+                                     "rhs_arg_2");
+  auto result = builder.Dot(
+      lhs_constant, builder.ConcatInDim({rhs_arg_0, rhs_arg_1, rhs_arg_2}, 0));
+
+  std::unique_ptr<Array2D<float>> arg_0_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}}));
+  std::unique_ptr<Array2D<float>> arg_1_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}));
+  std::unique_ptr<Array2D<float>> arg_2_value_array(
+      new Array2D<float>({{1.0, 2.0}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_0_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_0_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_1_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_1_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_2_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_2_value_array)));
+
+  Array2D<float> expected({{53.0, 74.0}, {45.0, 66.0}});
+  ComputeAndCompareR2<float>(
+      &builder, expected,
+      {arg_0_value.get(), arg_1_value.get(), arg_2_value.get()}, error_spec_);
+}
+
+TEST_F(DotOperationTest, DotOfConcatOptimizationWithConstRHS) {
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+
+  std::unique_ptr<Array2D<float>> constant_rhs_array(
+      new Array2D<float>({{1.0, 2.0},
+                          {3.0, 4.0},
+                          {5.0, 6.0},
+                          {6.0, 5.0},
+                          {4.0, 3.0},
+                          {2.0, 1.0}}));
+
+  ComputationBuilder builder(client_, TestName());
+  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
+  auto lhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
+                                     "lhs_arg_0");
+  auto lhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {2, 3}),
+                                     "lhs_arg_1");
+  auto lhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {2, 1}),
+                                     "lhs_arg_2");
+  auto result = builder.Dot(
+      builder.ConcatInDim({lhs_arg_0, lhs_arg_1, lhs_arg_2}, 1), rhs_constant);
+
+  std::unique_ptr<Array2D<float>> arg_0_value_array(
+      new Array2D<float>({{1.0, 2.0}, {3.0, 4.0}}));
+  std::unique_ptr<Array2D<float>> arg_1_value_array(
+      new Array2D<float>({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
+  std::unique_ptr<Array2D<float>> arg_2_value_array(
+      new Array2D<float>({{1.0}, {2.0}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_0_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_0_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_1_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_1_value_array)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arg_2_value,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2D<float>(*arg_2_value_array)));
+
+  Array2D<float> expected({{38.0, 36.0}, {93.0, 91.0}});
+  ComputeAndCompareR2<float>(
+      &builder, expected,
+      {arg_0_value.get(), arg_1_value.get(), arg_2_value.get()}, error_spec_);
+}
 }  // namespace
 }  // namespace xla

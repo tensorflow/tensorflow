@@ -25,13 +25,11 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     "SequenceDict",
-    "setdefault",
     "tensors_to_column",
     "column_to_tensors",
     "kronecker_product",
     "layer_params_to_mat2d",
     "mat2d_to_layer_params",
-    "compute_pi",
     "posdef_inv",
     "posdef_inv_matrix_inverse",
     "posdef_inv_cholesky",

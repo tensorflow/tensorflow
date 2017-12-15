@@ -1,8 +1,11 @@
-### TensorFlow for Mobile
 index.md
+### TensorFlow Lite
+tflite/index.md
+>>>
+### TensorFlow Mobile
+mobile_intro.md
 android_build.md
 ios_build.md
-#raspi_build.md  until this section gets rewritten, or TFLite takes over
 linking_libs.md
 prepare_models.md
 optimizing.md

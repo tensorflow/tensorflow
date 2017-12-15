@@ -186,7 +186,7 @@ class Session {
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
 
-  // NOTE(ashankar): As of July 2017, this method was added to faciliate some
+  // NOTE(ashankar): As of July 2017, this method was added to facilitate some
   // experimentation. Reconsider/re-evaluate after September 2017.
   //
   // Sets `*output` to the `DeviceMgr` that owns accessible devices in the

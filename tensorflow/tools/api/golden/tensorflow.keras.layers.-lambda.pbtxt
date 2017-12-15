@@ -90,7 +90,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'function\', \'mask\', \'arguments\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'function\', \'output_shape\', \'mask\', \'arguments\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

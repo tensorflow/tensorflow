@@ -27,6 +27,7 @@ See the @{$python/contrib.metrics} guide.
 @@streaming_false_negative_rate
 @@streaming_false_negative_rate_at_thresholds
 @@streaming_auc
+@@streaming_dynamic_auc
 @@streaming_curve_points
 @@streaming_recall_at_k
 @@streaming_mean_absolute_error
@@ -66,6 +67,7 @@ See the @{$python/contrib.metrics} guide.
 @@set_size
 @@set_union
 @@count
+@@precision_recall_at_equal_thresholds
 @@recall_at_precision
 
 """
@@ -81,6 +83,7 @@ from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histog
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
 from tensorflow.contrib.metrics.python.ops.metric_ops import count
+from tensorflow.contrib.metrics.python.ops.metric_ops import precision_recall_at_equal_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import recall_at_precision
 from tensorflow.contrib.metrics.python.ops.metric_ops import sparse_recall_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
@@ -88,6 +91,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_concat
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_covariance
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_curve_points
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_dynamic_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negative_rate
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negative_rate_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_false_negatives

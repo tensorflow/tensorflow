@@ -33,10 +33,13 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
@@ -114,21 +117,21 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     arr = np.random.rand(*arr_shape)
     mask = make_mask(arr_shape[:ndims_mask])
     if axis is not None:
-      mask = make_mask(arr_shape[axis:ndims_mask+axis])
+      mask = make_mask(arr_shape[axis:ndims_mask + axis])
     if axis is None or axis == 0:
       masked_arr = arr[mask]
     elif axis == 1:
-      masked_arr = arr[:,mask]
+      masked_arr = arr[:, mask]
     elif axis == 2:
-      masked_arr = arr[:,:,mask]
-    with self.test_session() as sess:
+      masked_arr = arr[:, :, mask]
+    with self.test_session():
       masked_tensor = array_ops.boolean_mask(arr, mask, axis=axis)
 
       # Leading dimension size of masked_tensor is always unknown until runtime
       # since we don't how many elements will be kept.
       leading = 1 if axis is None else axis + 1
       self.assertAllEqual(masked_tensor.get_shape()[leading:],
-          masked_arr.shape[leading:])
+                          masked_arr.shape[leading:])
 
       self.assertAllClose(masked_arr, masked_tensor.eval())
 
@@ -1077,6 +1080,59 @@ class PadTest(test_util.TensorFlowTestCase):
                            [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0],
                            [0, 0, 0, 0, 0, 0, 0]])
+
+
+class InvertPermutationTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
+        y = array_ops.invert_permutation(x)
+        self.assertAllEqual(y.get_shape(), [5])
+        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+
+
+class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
+
+  def testSimple(self):
+    with self.test_session():
+      a = array_ops.constant(10)
+      guarantee_a = array_ops.guarantee_const(a)
+      self.assertEqual(10, guarantee_a.eval())
+
+  def testVariables(self):
+    with self.test_session() as sess:
+      for use_resource in [False, True]:
+        a = variable_scope.get_variable(
+            "var_{}".format(use_resource), [],
+            initializer=init_ops.constant_initializer(10.0),
+            use_resource=use_resource)
+        guarantee_a = array_ops.guarantee_const(a)
+        sess.run(variables.global_variables_initializer())
+        self.assertEqual(10.0, guarantee_a.eval())
+
+  def testResourceRejection(self):
+    with self.test_session() as sess:
+      a = variable_scope.get_variable(
+          "resource_var", [],
+          initializer=init_ops.constant_initializer(10.0),
+          use_resource=True)
+      guarantee_a = array_ops.guarantee_const(a.handle)
+      sess.run(variables.global_variables_initializer())
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "cannot be a resource variable"):
+        guarantee_a.eval()
+
+
+class SnapshotOpTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
+        y = gen_array_ops._snapshot(x)
+        self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 
 if __name__ == "__main__":

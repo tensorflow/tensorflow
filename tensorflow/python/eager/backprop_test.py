@@ -24,7 +24,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import custom_gradient
-from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -41,7 +40,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
-from tensorflow.python.util import compat
 
 
 class BackpropTest(test.TestCase):
@@ -102,6 +100,18 @@ class BackpropTest(test.TestCase):
 
     grad_fn = backprop.gradients_function(f)
     self.assertAllEqual(2., grad_fn(1., dy=2.)[0])
+
+  def testErrors(self):
+
+    @custom_gradient.custom_gradient
+    def f(x):
+      def grad(_):
+        raise RuntimeError('x')
+      return x, grad
+
+    # TODO(apassos) raise the right error here
+    with self.assertRaises(RuntimeError):
+      backprop.gradients_function(f)(constant_op.constant(1.0))
 
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
@@ -204,6 +214,19 @@ class BackpropTest(test.TestCase):
 
     self.assertAllEqual(gradgrad(constant_op.constant(0.0))[0], 1.0)
 
+  def testStopGradient(self):
+    grad = backprop.gradients_function(
+        lambda x: array_ops.stop_gradient(math_ops.argmax(x)))
+    self.assertAllEqual(grad([0.0])[0], None)
+
+  def testArgmax(self):
+    def argmax(x):
+      i = math_ops.argmax(x)
+      return array_ops.stop_gradient(i)
+
+    grad = backprop.gradients_function(argmax)
+    self.assertAllEqual(grad([0.0])[0], None)
+
   def testGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -292,6 +315,48 @@ class BackpropTest(test.TestCase):
       y += inner_grad
     grad = g.gradient(y, [x])[0]
     self.assertEqual(grad.numpy(), 6.0)
+
+  def testGradientTapeGradientCalledMultipleTimes(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+    g.gradient(z, [x])
+    with self.assertRaisesRegexp(
+        RuntimeError, 'GradientTape.gradient can only be called once'):
+      g.gradient(y, [x])
+
+  def testPersistentTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+    dz_dx = g.gradient(z, [x])[0]
+    self.assertEqual(dz_dx.numpy(), 4*3*3*3)
+    dy_dx = g.gradient(y, [x])[0]
+    self.assertEqual(dy_dx.numpy(), 2*3)
+    del g
+
+  def testPersistentNestedTape(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      with backprop.GradientTape(persistent=True) as gg:
+        gg.watch(y)
+        z = 2 * y
+      for _ in range(2):
+        inner_grad = gg.gradient(z, [y])[0]
+        self.assertEqual(inner_grad.numpy(), 2.0)
+      y += inner_grad
+      del gg
+    grad = g.gradient(y, [x])[0]
+    self.assertEqual(grad.numpy(), 6.0)
+    grad = g.gradient(z, [x])[0]
+    self.assertEqual(grad.numpy(), 12.0)
+    del g
 
   def testGradientTapeVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
@@ -482,48 +547,6 @@ class BackpropTest(test.TestCase):
     v = resource_variable_ops.ResourceVariable(
         initial_value=1., name='testSameObjectForMultipleArguments.Variable')
     self.assertAllEqual([1., 1.], np_g(v, v))
-
-  def testEarlyGradAggregation(self):
-    # Needs to be a list so mutations by the callback affect this function.
-    add_n = []
-    def callback(op_type, unused_1, unused_2, unused_3, unused_4):
-      if compat.as_bytes(op_type) == compat.as_bytes('AddN'):
-        add_n.append(1)
-    context.context().add_post_execution_callback(callback)
-
-    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0),
-                                               name='v')
-    def fn():
-      outputs = []
-      for _ in range(20):
-        outputs.append(v * constant_op.constant(2.0))
-      return math_ops.add_n(outputs)
-
-    # By default the aggregation count is 2.
-    _ = backprop.implicit_grad(fn)()[0][1]
-    self.assertEqual(len(add_n), 2)
-    del add_n[:]
-
-    # Reduce the aggregation limit, cause the backprop to do some
-    # early aggregation.
-    # pylint: disable=protected-access
-    old_cnt = imperative_grad._MIN_AGGREGATE_COUNT
-    old_bytes = imperative_grad._MIN_AGGREGATE_BYTES
-    imperative_grad._MIN_AGGREGATE_COUNT = 10
-    imperative_grad._MIN_AGGREGATE_BYTES = 1
-    _ = backprop.implicit_grad(fn)()
-    self.assertEqual(len(add_n), 6)
-    del add_n[:]
-
-    # Aggregation is also limited by the memory.
-    imperative_grad._MIN_AGGREGATE_BYTES = 10000
-    _ = backprop.implicit_grad(fn)()
-    self.assertEqual(len(add_n), 2)
-
-    imperative_grad._MIN_AGGREGATE_COUNT = old_cnt
-    imperative_grad._MIN_AGGREGATE_BYTES = old_bytes
-    # pylint: enable=protected-access
-    context.context().clear_post_execution_callbacks()
 
   def testImplicitGradientsCustomGradientAndCachedVariableValue(self):
 

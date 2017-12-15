@@ -2460,6 +2460,36 @@ TEST_F(OpTest, Reshape) {
   });
 }
 
+TEST_F(OpTest, ResizeBilinear) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinear")
+            .RandomInput(DT_FLOAT, in_dims)
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(out_dims.begin(), out_dims.end())))
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
+  });
+}
+
+TEST_F(OpTest, ResizeBilinearGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinearGrad")
+            .RandomInput(DT_FLOAT, in_dims)
+            .RandomInput(DT_FLOAT,
+                         {in_dims[0], out_dims[0], out_dims[1], in_dims[3]})
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
+  });
+}
+
 TEST_F(OpTest, Reverse) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1);

@@ -60,17 +60,38 @@ class CapturedFunction {
                        std::vector<Tensor> captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);
 
-  Status Run(FunctionLibraryRuntime::Options f_opts,
-             gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets);
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. This method takes ownership of the tensors in
+  // `args`, in order to be able to deallocate them as early as possible.
+  // Use `RunWithBorrowedArgs()` if the caller needs to retain ownership of
+  // the `args`.
+  Status Run(FunctionLibraryRuntime::Options f_opts, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets);
 
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible.
+  Status RunWithBorrowedArgs(FunctionLibraryRuntime::Options f_opts,
+                             const std::vector<Tensor>& args,
+                             std::vector<Tensor>* rets);
+
+  // Asynchronously runs the captured function on the given `args`, stores
+  // the results in `*rets`, and calls the given `done` callback when the
+  // function returns. This method takes ownership of the tensors in `args`,
+  // in order to be able to deallocate them as early as possible.
   void RunAsync(FunctionLibraryRuntime::Options f_opts,
-                gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                std::vector<Tensor>&& args, std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done);
 
-  const Device* device() const { return device_; }
-
+  // Returns a borrowed pointer to the `ResourceManager` used when this
+  // function is run.
   ResourceMgr* resource_manager() const { return device_->resource_manager(); }
 
+  // Returns that additional captured inputs that will be passed to the function
+  // when `Run*()` is called.
+  const std::vector<Tensor>& captured_inputs() { return captured_inputs_; }
+
+  // Returns a step ID for use when running a `CapturedFunction`.
   static int64 generate_step_id() {
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
@@ -86,11 +107,8 @@ class CapturedFunction {
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                    FunctionLibraryRuntime* lib,
                    FunctionLibraryRuntime::Handle f_handle,
-                   std::vector<Tensor> captured_inputs);
-
-  void RunHelper(FunctionLibraryRuntime::Options f_opts,
-                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-                 FunctionLibraryRuntime::DoneCallback done);
+                   std::vector<Tensor> captured_inputs,
+                   DataTypeSlice ret_types);
 
   Device* const device_;  // owned by device_mgr_.
   const std::unique_ptr<DeviceMgr> device_mgr_;
@@ -99,6 +117,7 @@ class CapturedFunction {
   FunctionLibraryRuntime* const lib_;  // owned by pflr_.
   const FunctionLibraryRuntime::Handle f_handle_;
   const std::vector<Tensor> captured_inputs_;
+  DataTypeSlice ret_types_;  // owned by pflr_.
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

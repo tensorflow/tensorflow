@@ -89,8 +89,8 @@ def Quantize(graph,
           op.name[:-len('/depthwise')])
       if separable_conv and separable_conv.type == 'Conv2D':
         continue
-    if op.type == 'Conv2D':
-      # Quantize add ops that come after Conv2D
+    # Quantize add ops that come after Conv2D or DepthwiseConv2dNative.
+    if op.type in ['Conv2D', 'DepthwiseConv2dNative']:
       add_context_re = re.search(r'^(.*)/[^/]+/', op.name)
       if add_context_re is not None:
         context.add_contexts.add(add_context_re.group(1))
@@ -164,7 +164,10 @@ class _QuantizeContext(object):
 
   def QuantizeAddContexts(self):
     """Quantizes all add ops in self.add_contexts."""
-    for add_context in self.add_contexts:
+    # Loop through sorted self.add_contexts so that op creation is
+    # deterministic. This is needed when using multiple worker replicas so that
+    # the ops can be initialized consistently.
+    for add_context in sorted(self.add_contexts):
       add_op = self.GetOperationByNamesDontThrow([
           add_context + '/Add', add_context + '/add'])
       if add_op is not None:
@@ -387,7 +390,7 @@ class _QuantizeContext(object):
 
     if delay_requested and self.quant_delay and self.quant_delay > 0:
       activate_quant = math_ops.greater_equal(
-          training_util.get_global_step(),
+          training_util.get_or_create_global_step(),
           self.quant_delay,
           name=scope + '/activate_quant')
       quant = control_flow_ops.cond(

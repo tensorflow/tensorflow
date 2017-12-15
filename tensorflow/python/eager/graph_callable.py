@@ -165,32 +165,6 @@ class _VariableCapturingScope(object):
       yield
 
 
-class _FunctionObject(function._GraphModeFunction):  # pylint: disable=protected-access
-  """Captured graph-mode function with read-only variables.
-
-  Calling this function object will read the current values of the variables and
-  pass them to the graph mode function, which will use them as constants.
-  """
-
-  def __init__(self, variables, placeholder_inputs, extra_inputs, fdef,
-               graph, operations, outputs, func_outputs_to_fdef_outputs,
-               output_shapes):
-    self._variables = variables
-    super(_FunctionObject, self).__init__(
-        placeholder_inputs,
-        extra_inputs,
-        fdef,
-        graph,
-        operations,
-        outputs,
-        func_outputs_to_fdef_outputs,
-        output_shapes)
-
-  @property
-  def variables(self):
-    return [x.variable for x in self._variables]
-
-
 class _InitializingFunctionObject(object):
   """Responsible for deciding which version of func-to-object to call.
 
@@ -247,7 +221,9 @@ def _get_graph_callable_inputs(shape_and_dtypes):
       ret.append(_get_graph_callable_inputs(x))
     else:
       raise errors.InvalidArgumentError(
-          None, None, "shape_and_dtypes not ShapeAndDtype, type: %s " % type(x))
+          None, None, "Expected the argument to @graph_callable to be a "
+          "(possibly nested) list or tuple of ShapeAndDtype objects, "
+          "but got an object of type: %s" % type(x))
 
   return tuple(ret) if isinstance(shape_and_dtypes, tuple) else ret
 
@@ -267,7 +243,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   Args:
     func: The tfe Python function to compile.
-    shape_and_dtypes: A list of type ShapeAndDtype.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects.
 
   Raises:
     ValueError: If any one of func's outputs is not a Tensor.
@@ -320,6 +296,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # Call the function again, now replacing usages of variables with
       # placeholders. This assumes the variable capturing scope created above
       # knows about all variables.
+      tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
           captures):
         captured_outputs = func(*func_inputs)
@@ -341,47 +318,35 @@ def _graph_callable_internal(func, shape_and_dtypes):
   placeholder_inputs = flat_inputs+ list(extra_placeholders)
 
   func_def_outputs = [x for x in outputs_list if isinstance(x, tf_ops.Tensor)]
-  initializer_function_def = function.make_function_def(
-      tmp_graph,
-      initializing_operations,
-      placeholder_inputs,
-      func_def_outputs)
+  initialization_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    function._register_with_name(f.name, f.definition)  # pylint: disable=protected-access
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               initializer_function_def)
-  initializer_function = function._GraphModeFunction(  # pylint: disable=protected-access
+    function._register(f._c_func)  # pylint: disable=protected-access
+  initializer_function = function.GraphModeFunction(
+      initialization_name,
       placeholder_inputs,
       extra_inputs,
-      initializer_function_def,
       tmp_graph,
       initializing_operations,
+      func_def_outputs,
       func_outputs,
-      function._map_sequence_obj_to_idx(func_def_outputs),  # pylint: disable=protected-access
       output_shapes)
 
   capture_func_def_outputs = [
       x for x in captured_outlist if isinstance(x, tf_ops.Tensor)]
-  captured_function_def = function.make_function_def(
-      tmp_graph,
-      capturing_operations,
-      placeholder_inputs,
-      capture_func_def_outputs)
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               captured_function_def)
-  captured_function = _FunctionObject(
-      sorted_variables,
+  captured_function_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
+  captured_function = function.GraphModeFunction(
+      captured_function_name,
       placeholder_inputs,
       extra_inputs,
-      captured_function_def,
       tmp_graph,
       capturing_operations,
+      capture_func_def_outputs,
       captured_outputs,
-      function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
-      output_shapes)
+      output_shapes,
+      variables=[x.variable for x in sorted_variables])
 
   return _InitializingFunctionObject(captured_function, initializer_function,
                                      shape_and_dtypes)
@@ -430,9 +395,10 @@ def graph_callable(shape_and_dtypes):
   ret = foo(tfe.Tensor(2.0))  # `ret` here now is a Tensor with value 9.0.
   ```
   Args:
-    shape_and_dtypes: A list of type ShapeAndDtype that specifies shape and type
-      information for each of the callable's arguments. The length of this list
-      must be equal to the number of arguments accepted by the wrapped function.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects
+      that specifies shape and type information for each of the callable's
+      arguments. The length of this list must be equal to the number of
+      arguments accepted by the wrapped function.
 
   Returns:
     A callable graph object.

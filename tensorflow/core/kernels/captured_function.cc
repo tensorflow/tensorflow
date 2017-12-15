@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.pb_text.h"
 #include "tensorflow/core/kernels/dataset.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -113,70 +114,220 @@ Status CapturedFunction::Create(
   FunctionLibraryRuntime::Handle f_handle;
   TF_RETURN_IF_ERROR(
       lib->Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
+  const FunctionBody* fbody = lib->GetFunctionBody(f_handle);
+  if (fbody == nullptr) {
+    return errors::Internal("Failed to instantiate function body.");
+  }
 
   out_function->reset(new CapturedFunction(
       device, std::move(device_mgr), std::move(flib_def), std::move(pflr), lib,
-      f_handle, std::move(captured_inputs)));
+      f_handle, std::move(captured_inputs), fbody->ret_types));
   return Status::OK();
 }
 
+namespace {
+class CallFrameBase : public CallFrameInterface {
+ public:
+  explicit CallFrameBase(DataTypeSlice ret_types)
+      : ret_types_(ret_types), retvals_(ret_types.size()) {}
+
+  // Caller methods.
+  Status ConsumeRetvals(std::vector<Tensor>* retvals) {
+    retvals->reserve(retvals_.size());
+    int i = 0;
+    for (auto&& val : retvals_) {
+      if (!val) {
+        return errors::Internal("No return value for index ", i, ".");
+      }
+      retvals->emplace_back(std::move(val.value()));
+      ++i;
+    }
+    return Status::OK();
+  }
+
+  size_t num_retvals() const override { return retvals_.size(); }
+
+  // Callee methods.
+  Status SetRetval(int index, const Tensor& val) override {
+    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+        !retvals_[index]) {
+      retvals_[index] = val;
+      return Status::OK();
+    } else if (index >= retvals_.size()) {
+      return errors::InvalidArgument("Return value ", index,
+                                     " is out of range.");
+    } else if (val.dtype() != ret_types_[index]) {
+      return errors::InvalidArgument("Expected type ",
+                                     DataTypeString(ret_types_[index]),
+                                     " for return value ", index, " but got ",
+                                     DataTypeString(val.dtype()), ".");
+    } else {
+      return errors::Internal("Attempted to set return value ", index,
+                              " more than once.");
+    }
+  }
+
+ private:
+  DataTypeSlice ret_types_;
+  std::vector<gtl::optional<Tensor>> retvals_;
+  TF_DISALLOW_COPY_AND_ASSIGN(CallFrameBase);
+};
+
+class OwnedArgsCallFrame : public CallFrameBase {
+ public:
+  OwnedArgsCallFrame(std::vector<Tensor>&& args,
+                     const std::vector<Tensor>* captured_inputs,
+                     DataTypeSlice ret_types)
+      : CallFrameBase(ret_types),
+        args_(std::move(args)),
+        captured_inputs_(captured_inputs) {}
+
+  size_t num_args() const override {
+    return args_.size() + captured_inputs_->size();
+  }
+
+  // Callee methods.
+  Status GetArg(int index, Tensor* val) const override {
+    if (index < args_.size() && args_[index].IsInitialized()) {
+      // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
+      // order to be able to `std::move(args_[index])` into `*val`.
+      *val = args_[index];
+      return Status::OK();
+    } else if (index < args_.size() + captured_inputs_->size()) {
+      *val = (*captured_inputs_)[index - args_.size()];
+      return Status::OK();
+    } else if (index >= args_.size() + captured_inputs_->size()) {
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
+    } else {
+      return errors::Internal("Attempted to get argument ", index,
+                              " more than once.");
+    }
+  }
+
+ private:
+  std::vector<Tensor> args_;
+  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
+};
+
+class BorrowedArgsCallFrame : public CallFrameBase {
+ public:
+  BorrowedArgsCallFrame(const std::vector<Tensor>& args,
+                        const std::vector<Tensor>* captured_inputs,
+                        DataTypeSlice ret_types)
+      : CallFrameBase(ret_types),
+        args_(args),
+        captured_inputs_(captured_inputs) {}
+
+  size_t num_args() const override {
+    return args_.size() + captured_inputs_->size();
+  }
+
+  // Callee methods.
+  Status GetArg(int index, Tensor* val) const override {
+    if (index < args_.size() && args_[index].IsInitialized()) {
+      *val = args_[index];
+      return Status::OK();
+    } else if (index < args_.size() + captured_inputs_->size()) {
+      *val = (*captured_inputs_)[index - args_.size()];
+      return Status::OK();
+    } else if (index >= args_.size() + captured_inputs_->size()) {
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
+    } else {
+      return errors::Internal("Attempted to get argument ", index,
+                              " more than once.");
+    }
+  }
+
+ private:
+  const std::vector<Tensor>& args_;                   // Not owned.
+  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
+};
+
+}  // namespace
+
 Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
-                             gtl::ArraySlice<Tensor> args,
+                             std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
-  Notification n;
-  Status s;
-  auto done_callback = [&n, &s](Status func_status) {
-    s.Update(func_status);
-    n.Notify();
-  };
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness
+  // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
-  RunHelper(std::move(f_opts), args, rets, std::move(done_callback));
+  auto c_mgr = new CancellationManager;
+  auto frame =
+      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
+  f_opts.cancellation_manager = c_mgr;
+  Notification n;
+  Status s;
+  lib_->Run(f_opts, f_handle_, frame,
+            [rets, c_mgr, frame, &n, &s](Status func_status) {
+              delete c_mgr;
+              s.Update(func_status);
+              if (s.ok()) {
+                s = frame->ConsumeRetvals(rets);
+              }
+              delete frame;
+              n.Notify();
+            });
+  n.WaitForNotification();
+  return s;
+}
+
+Status CapturedFunction::RunWithBorrowedArgs(
+    FunctionLibraryRuntime::Options f_opts, const std::vector<Tensor>& args,
+    std::vector<Tensor>* rets) {
+  // TODO(mrry): Add cancellation manager support to IteratorContext
+  // so that we can cancel running map functions. The local
+  // cancellation manager here is created so that we can run kernels
+  // (such as queue kernels) that depend on the non-nullness of
+  // `OpKernelContext::cancellation_manager()`, but additional effort
+  // will be required to plumb it through the `IteratorContext`.
+  auto c_mgr = new CancellationManager;
+  BorrowedArgsCallFrame frame(args, &captured_inputs_, ret_types_);
+  f_opts.cancellation_manager = c_mgr;
+  Notification n;
+  Status s;
+  lib_->Run(f_opts, f_handle_, &frame,
+            [rets, c_mgr, &frame, &n, &s](Status func_status) {
+              delete c_mgr;
+              s.Update(func_status);
+              if (s.ok()) {
+                s = frame.ConsumeRetvals(rets);
+              }
+              n.Notify();
+            });
   n.WaitForNotification();
   return s;
 }
 
 void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
-                                gtl::ArraySlice<Tensor> args,
+                                std::vector<Tensor>&& args,
                                 std::vector<Tensor>* rets,
                                 FunctionLibraryRuntime::DoneCallback done) {
+  // TODO(mrry): Add cancellation manager support to IteratorContext
+  // so that we can cancel running map functions. The local
+  // cancellation manager here is created so that we can run kernels
+  // (such as queue kernels) that depend on the non-nullness of
+  // `OpKernelContext::cancellation_manager()`, but additional effort
+  // will be required to plumb it through the `IteratorContext`.
   auto c_mgr = new CancellationManager;
+  auto frame =
+      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
   f_opts.cancellation_manager = c_mgr;
-  FunctionLibraryRuntime::DoneCallback wrapped_done = std::bind(
-      [c_mgr](FunctionLibraryRuntime::DoneCallback done,
-              // Begin unbound arguments.
-              Status s) {
-        delete c_mgr;
-        done(s);
-      },
-      std::move(done), std::placeholders::_1);
-  RunHelper(std::move(f_opts), args, rets, std::move(wrapped_done));
-}
-
-void CapturedFunction::RunHelper(FunctionLibraryRuntime::Options f_opts,
-                                 gtl::ArraySlice<Tensor> args,
-                                 std::vector<Tensor>* rets,
-                                 FunctionLibraryRuntime::DoneCallback done) {
-  // TODO(mrry): Implement a synchronous version of
-  // FunctionLibraryRuntime::Run() that avoids a context switch for small
-  // functions.
-  if (captured_inputs_.empty()) {
-    lib_->Run(f_opts, f_handle_, args, rets, std::move(done));
-  } else {
-    std::vector<Tensor> args_with_captured;
-    args_with_captured.reserve(args.size() + captured_inputs_.size());
-    args_with_captured.insert(args_with_captured.end(), args.begin(),
-                              args.end());
-    args_with_captured.insert(args_with_captured.end(),
-                              captured_inputs_.begin(), captured_inputs_.end());
-    lib_->Run(f_opts, f_handle_, args_with_captured, rets, std::move(done));
-  }
+  lib_->Run(f_opts, f_handle_, frame,
+            std::bind(
+                [rets, c_mgr, frame](FunctionLibraryRuntime::DoneCallback done,
+                                     // Begin unbound arguments.
+                                     Status s) {
+                  delete c_mgr;
+                  if (s.ok()) {
+                    s = frame->ConsumeRetvals(rets);
+                  }
+                  delete frame;
+                  done(s);
+                },
+                std::move(done), std::placeholders::_1));
 }
 
 CapturedFunction::CapturedFunction(
@@ -184,13 +335,14 @@ CapturedFunction::CapturedFunction(
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-    std::vector<Tensor> captured_inputs)
+    std::vector<Tensor> captured_inputs, DataTypeSlice ret_types)
     : device_(device),
       device_mgr_(std::move(device_mgr)),
       flib_def_(std::move(flib_def)),
       pflr_(std::move(pflr)),
       lib_(lib),
       f_handle_(f_handle),
-      captured_inputs_(std::move(captured_inputs)) {}
+      captured_inputs_(std::move(captured_inputs)),
+      ret_types_(ret_types) {}
 
 }  // namespace tensorflow
