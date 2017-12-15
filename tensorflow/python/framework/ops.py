@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import linecache
+import os
 import re
 import sys
 import threading
@@ -55,22 +56,12 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import tf_contextlib
 
+
 # Temporary global switch determining if we should enable the work-in-progress
 # calls to the C API. Currently disabled by default but can be manually enabled
-# e.g. in tests. This will be removed once all functionality is supported and
-# there's no performance penalty with it enabled.
-#
-# TODO(skyewm) before we can remove this:
-# - functions
-# - import_graph_def() incrementally adds inputs to ops (i.e. creates an
-#   Operation and then calls _add_input()). The current code requires that all
-#   inputs be specified when creating the Operation (since we call
-#   TF_FinishOperation()).
-# - ops_test.py (and others?) create unregistered op types
-# - while loop
-# - performance (e.g. delete/refactor redundant Python functionality, switch to
-#   new session API)
-_USE_C_API = False
+# in code or via the environment variable. This will be removed once all
+# functionality is supported and there's no performance penalty with it enabled.
+_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "0") is not "0"
 
 
 def tensor_id(tensor):
