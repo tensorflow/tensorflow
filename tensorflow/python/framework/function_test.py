@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import re
 import time
+import platform
 
 import numpy as np
-import platform
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
