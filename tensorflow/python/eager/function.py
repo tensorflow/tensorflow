@@ -246,7 +246,8 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    _register(fn)
+    if context.in_eager_mode():
+      _register(fn)
     self.definition = function_def
     self.name = function_def.signature.name
     self.signature = function_def.signature
@@ -517,9 +518,10 @@ def _defun_internal(name, func, args, kwds):
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
-  for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    # TODO(ashankar): What about the gradient registry?
-    _register(f._c_func)  # pylint: disable=protected-access
+  if context.in_eager_mode():
+    for f in tmp_graph._functions.values():  # pylint: disable=protected-access
+      # TODO(ashankar): What about the gradient registry?
+      _register(f._c_func)  # pylint: disable=protected-access
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables)
