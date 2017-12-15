@@ -58,3 +58,76 @@ func TestAddOperationFailure(t *testing.T) {
 	_ = resize.Shape()
 	t.Errorf("resize.Shape() should have paniced since the underlying Operation was not created")
 }
+
+func TestShapeAttribute(t *testing.T) {
+	s := NewScope()
+	x := Placeholder(s.SubScope("x"), tf.Int32, PlaceholderShape(tf.MakeShape(1)))
+	y := Placeholder(s.SubScope("y"), tf.Int32, PlaceholderShape(tf.Shape{}))
+	z := Add(s, x, y)
+	graph, err := s.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := tf.NewSession(graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	value, err := tf.NewTensor([]int32{7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	feeds := map[tf.Output]*tf.Tensor{
+		x: value,
+		y: value,
+	}
+	fetched, err := sess.Run(feeds, []tf.Output{z}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(fetched), 1; got != want {
+		t.Fatalf("Fetched %d tensors, expected %d", got, want)
+	}
+	if got, want := fetched[0].Value().([]int32), []int32{14}; len(got) != len(want) || len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("Got %v, want %v", got, want)
+	}
+}
+
+func TestDataset(t *testing.T) {
+	var (
+		s = NewScope()
+
+		// The use of a non-scalar here is inspired by
+		// https://github.com/tensorflow/tensorflow/issues/14891
+		c       = Const(s, []int32{21718, 31415})
+		types   = []tf.DataType{c.DataType()}
+		shapes  = []tf.Shape{c.Shape()}
+		dataset = TensorDataset(s, []tf.Output{c}, shapes)
+
+		iterator = Iterator(s, "", "", types, shapes)
+		next     = IteratorGetNext(s, iterator, types, shapes)
+		init     = MakeIterator(s, dataset, iterator)
+	)
+	graph, err := s.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := tf.NewSession(graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sess.Run(nil, nil, []*tf.Operation{init}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := sess.Run(nil, next, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := results[0].Value().([]int32)
+	if len(got) != 2 || got[0] != 21718 || got[1] != 31415 {
+		t.Errorf("Got %v, want {21718, 31415}", got)
+	}
+	if _, err := sess.Run(nil, next, nil); err == nil {
+		t.Errorf("Expected sess.Run() to fail since the iterator should have reached the end of the dataset")
+	}
+}

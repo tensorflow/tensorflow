@@ -493,6 +493,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       {{conv_input_rows, conv_input_cols}},
       output_depth,
       {{filter_rows, filter_cols}},
+      // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
+      {{1, 1}},  // dilation_rows, dilation_cols
       {{row_stride, col_stride}},
       {{padding_rows, padding_cols}},
       conv_input->dtype(),

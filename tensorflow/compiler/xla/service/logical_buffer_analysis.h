@@ -60,6 +60,8 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
+  Status HandleSend(HloInstruction* send) override;
   Status HandleSelect(HloInstruction* select) override;
 
   // A map from the buffer ID to the logical buffer

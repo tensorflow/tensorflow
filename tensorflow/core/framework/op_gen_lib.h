@@ -106,6 +106,12 @@ class ApiDefMap {
   // passed to the constructor.
   Status LoadApiDef(const string& api_def_file_contents);
 
+  // Updates ApiDef docs. For example, if ApiDef renames an argument
+  // or attribute, applies these renames to descriptions as well.
+  // UpdateDocs should only be called once after all ApiDefs are loaded
+  // since it replaces original op names.
+  void UpdateDocs();
+
   // Look up ApiDef proto based on the given graph op name.
   // If graph op name is not in this ApiDefMap, returns nullptr.
   //

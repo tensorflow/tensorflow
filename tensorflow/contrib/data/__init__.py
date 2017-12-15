@@ -17,12 +17,14 @@
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Dataset
+@@Counter
 @@Iterator
 @@TFRecordDataset
 @@FixedLengthRecordDataset
 @@TextLineDataset
 
 @@batch_and_drop_remainder
+@@padded_batch_and_drop_remainder
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
@@ -32,6 +34,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@unbatch
 @@parallel_interleave
 @@rejection_resample
+@@scan
 @@sloppy_interleave
 
 @@get_single_element
@@ -41,11 +44,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 # pylint: disable=unused-import
+
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
+from tensorflow.contrib.data.python.ops.batching import padded_batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import unbatch
+from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
 from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
@@ -60,6 +65,8 @@ from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.readers import TextLineDataset
 from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
+from tensorflow.contrib.data.python.ops.scan_ops import scan
+from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 

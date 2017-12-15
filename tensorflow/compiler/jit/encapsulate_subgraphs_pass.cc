@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -47,6 +48,52 @@ const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 
 namespace {
+
+bool AreAllParentsConst(const Node& n,
+                        const gtl::FlatSet<const Node*>& runtime_const_nodes) {
+  if (n.type_string() == "GuaranteeConst" || n.type_string() == "Const") {
+    // If the current node is itself a cast-to-const, no need
+    // to look at the incoming edges.
+    return true;
+  }
+
+  bool all_parents_const = true;
+  bool atleast_one_non_control_edge = false;
+  for (const Edge* in : n.in_edges()) {
+    atleast_one_non_control_edge =
+        atleast_one_non_control_edge || !in->IsControlEdge();
+    if (!in->IsControlEdge() && runtime_const_nodes.count(in->src()) == 0) {
+      all_parents_const = false;
+      break;
+    }
+  }
+  return all_parents_const && atleast_one_non_control_edge;
+}
+
+void MarkGuaranteedConstants(
+    const Graph& graph,
+    const std::vector<std::pair<Node*, Node*>>& src_arg_pairs) {
+  gtl::FlatSet<const Node*> guaranteed_const_nodes;
+  std::vector<Node*> srcs;
+  srcs.reserve(src_arg_pairs.size());
+  for (const auto& src_arg : src_arg_pairs) {
+    srcs.push_back(src_arg.first);
+  }
+  ReverseDFSFrom(graph, srcs, /*enter=*/nullptr,
+                 /*leave=*/[&guaranteed_const_nodes](Node* n) {
+                   // TODO(vinuraja): Doesn't work in the presence of loops.
+                   if (AreAllParentsConst(*n, guaranteed_const_nodes)) {
+                     guaranteed_const_nodes.insert(n);
+                   }
+                 });
+
+  for (auto& src_arg : src_arg_pairs) {
+    if (guaranteed_const_nodes.count(src_arg.first) != 0) {
+      VLOG(1) << "Guaranteed const found: " << src_arg.first->DebugString();
+      src_arg.second->AddAttr("_is_guaranteed_constant", true);
+    }
+  }
+}
 
 // A node/slot pair.
 // TODO(phawkins): is there a common definition of this?
@@ -175,9 +222,11 @@ Status Encapsulator::SplitIntoSubgraphs() {
   // Map from input graph nodes to subgraph nodes.
   std::unordered_map<Node*, Node*> node_images;
 
+  std::vector<std::pair<Node*, Node*>> src_arg_pairs;
   // Copy all marked nodes to a subgraph. Do nothing for unmarked nodes.
   for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
+
     if (func_id.empty()) continue;
 
     Subgraph& subgraph = subgraphs_[func_id];
@@ -276,11 +325,13 @@ Status Encapsulator::SplitIntoSubgraphs() {
                                kArgOp);
         builder.Attr("T", dtype);
         builder.Attr("index", arg_index);
+
         s = builder.Finalize(&arg_def);
         if (!s.ok()) return s;
 
         Node* arg = dst_subgraph.graph->AddNode(arg_def, &s);
         if (!s.ok()) return s;
+        src_arg_pairs.push_back({edge->src(), arg});
 
         dst_subgraph.args.push_back(arg);
       }
@@ -291,6 +342,8 @@ Status Encapsulator::SplitIntoSubgraphs() {
                                   edge->dst_input());
     }
   }
+
+  MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
 
   for (auto& entry : subgraphs_) {
     FixupSourceAndSinkEdges(entry.second.graph.get());

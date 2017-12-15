@@ -47,14 +47,14 @@ message OpMetricsResult {
       14;
   // Total number of FLOPs incurred by this OP.
   optional double total_flops = 15;
-  // Total time in microseconds that the MXU is occupied by this OP.
+  // Total number of bytes accessed by this OP.
   optional double total_bytes_accessed = 16;
-  // Total time in microseconds that the MXU is occupied by this OP.
-  optional double mxu_occupancy_in_us = 17;
-  // Total time in microseconds that the XU is occupied by this OP.
-  optional double xu_occupancy_in_us = 18;
-  // Total DMA access stall time in microseconds.
-  optional double total_dma_stall_in_us = 19;
+  // Total time in microseconds that special hw unit 1 is occupied by this OP.
+  optional double unit1_occupancy_in_us = 17;
+  // Total time in microseconds that special hw unit 2 is occupied by this OP.
+  optional double unit2_occupancy_in_us = 18;
+  // Total memory stall time in microseconds.
+  optional double total_memory_stall_in_us = 19;
 }
 
 // Result proto for OpMetricsDb.
@@ -86,8 +86,8 @@ message StepDatabaseResult {
   map<uint32, StepSequenceResult> step_sequence_per_core = 1;
 }
 
-// Result proto for Dashboard data.
-message DashboardResult {
+// Result proto for looping-related metrics.
+message LoopingResult {
   // The total iteration time in nanoseconds.
   optional double iteration_time_ns = 1;
   // The total number of iterations.
@@ -104,12 +104,50 @@ message HloExtraInfoResult {
   optional string category = 1;
   // The long name of the HLO that includes the dimensions.
   optional string long_name = 2;
+  // The per-TPU-core batch size inferred from this HLO.
+  optional int64 per_core_batch_size = 3;
 }
 
 // Result proto for HloExtraInfoMap.
 message HloExtraInfoMapResult {
   // A map from HLO name to HloExtraInfo.
   map<string, HloExtraInfoResult> hlo_extrainfo_map = 1;
+}
+
+// Result proto for host-independent job information.
+message HostIndependentJobInfoResult {
+  // The change-list number of this build.
+  optional int64 change_list = 1;
+  // The time of this build.
+  optional int64 build_time = 2;
+  // The target of this build.
+  optional string build_target = 3;
+}
+
+// Result proto for host-dependent job information.
+message HostDependentJobInfoResult {
+  // This ID of the host where the job was run on.
+  optional string host_id = 1;
+  // The command line used to run the job.
+  optional string command_line = 2;
+  // The start time of the job on this host.
+  optional int64 start_time = 3;
+}
+
+// Result proto for RunEnvironment (the run environment of a profiling session).
+message RunEnvironmentResult {
+  // Number of hosts used.
+  optional int32 host_count = 1;
+  // The type of TPU used.
+  optional string tpu_type = 2;
+  // The number of TPU cores used.
+  optional int32 tpu_core_count = 3;
+  // The per-TPU-core batch size.
+  optional int32 per_core_batch_size = 4;
+  // Host-independent job information.
+  optional HostIndependentJobInfoResult host_independent_job_info = 5;
+  // Host-dependent job information.
+  repeated HostDependentJobInfoResult host_dependent_job_info = 6;
 }
 
 // Result proto for TfStatsHelper.
@@ -120,8 +158,12 @@ message TfOpStats {
   optional OpMetricsDbResult hlo_metrics_db = 2;
   // The result for the step database.
   optional StepDatabaseResult step_db = 3;
-  // The result for the TPU dashboard.
-  optional DashboardResult dashboard = 4;
+  // The result for the looping-related metrics.
+  optional LoopingResult looping = 4;
   // The result for the HloExtraInfoMap.
   optional HloExtraInfoMapResult hlo_extrainfo_map = 5;
+  // Overall matrix unit utilization in percentage.
+  optional double matrix_unit_utilization_percent = 6;
+  // The run environment of this profiling session.
+  optional RunEnvironmentResult run_environment = 7;
 }

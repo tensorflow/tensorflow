@@ -20,15 +20,18 @@ from collections import namedtuple
 
 import os
 import threading
-from collections import namedtuple
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import error_ops
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -37,6 +40,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
@@ -615,6 +619,182 @@ class MapDatasetTest(test.TestCase):
         self.assertEqual((i, 37.0), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparse(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, _sparse(i))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testSparseChain(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    def _check(i):
+      self.assertTrue(sparse_tensor.is_sparse(i))
+      return sparse_ops.sparse_concat(0, [i, i])
+
+    iterator = (
+        dataset_ops.Dataset.range(10).map(_sparse).map(_check)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        actual = sess.run(get_next)
+        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testCaptureResourceInMapFn(self):
+
+    def _build_ds(iterator):
+
+      def _map_fn(x):
+        get_next = iterator.get_next()
+        return x * get_next
+
+      return dataset_ops.Dataset.range(10).map(_map_fn)
+
+    def _build_graph():
+      captured_iterator = dataset_ops.Dataset.range(
+          10).make_initializable_iterator()
+      ds = _build_ds(captured_iterator)
+      iterator = ds.make_initializable_iterator()
+      init_op = iterator.initializer
+      return captured_iterator.initializer, init_op
+
+    with ops.Graph().as_default() as g:
+      captured_init_op, init_op = _build_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(captured_init_op)
+        with self.assertRaises(errors.UnimplementedError):
+          # CapturedFunction does not support capturing IteratorResource.
+          sess.run(init_op)
+
+
+class MapDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def setUp(self):
+    self._tensor_slice_len = 7
+    self._num_epochs = 14
+    self._num_outputs = self._tensor_slice_len * self._num_epochs
+
+  def _build_ds(self, multiplier=37.0):
+    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(self._tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+            .repeat(self._num_epochs))
+
+  def testSaveRestoreCore(self):
+    self.run_core_tests(
+        self._build_ds,
+        lambda: self._build_ds(multiplier=15.0),
+        self._num_outputs)
+
+  def testSaveStatefulFunction(self):
+
+    def _build_ds():
+
+      def _map_fn(x):
+        return random_ops.random_uniform(
+            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+
+      return dataset_ops.Dataset.range(100).map(_map_fn)
+
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureVariableInMapFn(self):
+
+    def _build_ds():
+      counter_var = variable_scope.get_variable(
+          "counter", (), dtypes.int32, use_resource=True)
+      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda _: counter_var.assign_add(1)))
+
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+        return constant_op.constant(1000) + math_ops.to_int32(x)
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, None, num_outputs)
+
+  def testBuildDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+
+        @function.Defun(dtypes.int32)
+        def defun_fn_deep(x):
+          return constant_op.constant(1000) + math_ops.to_int32(x)
+
+        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, None, num_outputs)
+
+
+class IgnoreErrorsSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_ds(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.check_numerics(x, "message")).apply(
+            error_ops.ignore_errors())
+
+  def testIgnoreErrorsCore(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
+    num_outputs = 4
+    self.run_core_tests(lambda: self._build_ds(components),
+                        lambda: self._build_ds(diff_components), num_outputs)
 
 
 if __name__ == "__main__":

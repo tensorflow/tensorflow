@@ -25,10 +25,6 @@ from tensorflow.python.platform import flags
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-def _benchmark_tests_can_log_memory():
-  return True
-
-
 def _usage(shorthelp):
   """Writes __main__'s docstring to stdout with some help text.
 
@@ -118,13 +114,8 @@ def run(main=None, argv=None):
   # Define help flags.
   _define_help_flags()
 
-  # Parse flags.
-  try:
-    argv = flags.FLAGS(_sys.argv if argv is None else argv)
-  except flags.Error as error:
-    _sys.stderr.write('FATAL Flags parsing error: %s\n' % error)
-    _sys.stderr.write('Pass --helpshort or --helpfull to see help on flags.\n')
-    _sys.exit(1)
+  # Parse known flags.
+  argv = flags.FLAGS(_sys.argv if argv is None else argv, known_only=True)
 
   main = main or _sys.modules['__main__'].main
 

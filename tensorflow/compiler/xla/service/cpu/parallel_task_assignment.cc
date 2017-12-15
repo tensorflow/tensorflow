@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 
+#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

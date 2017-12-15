@@ -176,10 +176,6 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
     return false;
   }
 
-  if (instruction->HasSideEffect()) {
-    return false;
-  }
-
   return true;
 }
 
@@ -207,7 +203,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.count(item) != 0 || item->user_count() != 0 ||
-        item == root_instruction() || !IsRemovable(item)) {
+        item == root_instruction() || !IsRemovable(item) ||
+        item->HasSideEffect()) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
@@ -385,11 +382,6 @@ string HloComputation::ToString(int nested_level,
              /*include_metadata=*/true,
              /*include_large_constants=*/include_large_constants)
       << "\n";
-    if (instruction->opcode() == HloOpcode::kFusion) {
-      s << instruction->fused_instructions_computation()->ToString(
-               nested_level + 1, include_large_constants)
-        << "\n";
-    }
   }
   for (int i = 0; i < nested_level; i++) {
     s << "    ";
@@ -412,16 +404,18 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     HloModule* module, const HloComputationProto& proto,
-    tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map,
+    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+    const std::function<void(std::unique_ptr<HloComputation>)>&
+        add_fused_computation,
     HloInstruction* fusion_instruction) {
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   tensorflow::gtl::FlatMap<string, HloInstruction*> instruction_map;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloInstruction> instruction,
-        HloInstruction::CreateFromProto(module, instruction_proto,
-                                        instruction_map, computation_map));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
+                        HloInstruction::CreateFromProto(
+                            module, instruction_proto, instruction_map,
+                            computation_map, add_fused_computation));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }

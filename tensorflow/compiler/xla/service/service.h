@@ -272,8 +272,6 @@ class Service : public ServiceInterface {
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
-  // has_hybrid_result is used to initialize the same-named field in
-  // HloModuleConfig -- see that class for documentation.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,

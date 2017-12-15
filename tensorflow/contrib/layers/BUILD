@@ -61,6 +61,7 @@ tf_custom_op_py_library(
         "python/layers/normalization.py",
         "python/layers/optimizers.py",
         "python/layers/regularizers.py",
+        "python/layers/rev_block_lib.py",
         "python/layers/summaries.py",
         "python/layers/target_column.py",
         "python/layers/utils.py",
@@ -366,6 +367,20 @@ py_test(
     name = "encoders_test",
     size = "small",
     srcs = ["python/layers/encoders_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "rev_block_lib_test",
+    size = "small",
+    srcs = ["python/layers/rev_block_lib_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",

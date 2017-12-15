@@ -109,7 +109,6 @@ class ExecStep {
       const {
     return cpu_execs_;
   }
-
   int64 all_start_micros() const { return exec_.all_start_micros(); }
   int64 latest_end_micros() const { return exec_.latest_end_micros(); }
   int64 lastest_schedule_end_micros() const {
@@ -121,27 +120,73 @@ class ExecStep {
     }
     return ret;
   }
-
-  int64 requested_bytes() const { return exec_.requested_bytes(); }
-  int64 peak_bytes() const { return exec_.peak_bytes(); }
-  int64 residual_bytes() const { return exec_.residual_bytes(); }
-  int64 output_bytes() const { return exec_.output_bytes(); }
+  int64 requested_bytes() const {
+    int64 requested_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      requested_bytes += exec.requested_bytes();
+    }
+    return requested_bytes;
+  }
+  int64 peak_bytes() const {
+    int64 peak_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      peak_bytes += exec.peak_bytes();
+    }
+    return peak_bytes;
+  }
+  int64 residual_bytes() const {
+    int64 residual_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      residual_bytes += exec.residual_bytes();
+    }
+    return residual_bytes;
+  }
+  int64 output_bytes() const {
+    int64 output_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      output_bytes += exec.output_bytes();
+    }
+    return output_bytes;
+  }
   int64 accelerator_temp_bytes() const {
-    return exec_.accelerator_temp_bytes();
+    int64 accelerator_temp_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      accelerator_temp_bytes += exec.accelerator_temp_bytes();
+    }
+    return accelerator_temp_bytes;
   }
-  int64 host_temp_bytes() const { return exec_.host_temp_bytes(); }
+  int64 host_temp_bytes() const {
+    int64 host_temp_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      host_temp_bytes += exec.host_temp_bytes();
+    }
+    return host_temp_bytes;
+  }
   int64 accelerator_persistent_bytes() const {
-    return exec_.accelerator_persistent_bytes();
+    int64 accelerator_persistent_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      accelerator_persistent_bytes += exec.accelerator_persistent_bytes();
+    }
+    return accelerator_persistent_bytes;
   }
-  int64 host_persistent_bytes() const { return exec_.host_persistent_bytes(); }
-  const std::map<int32, std::pair<int64, uint64>>& output_memory() const {
-    return output_memory_;
+  int64 host_persistent_bytes() const {
+    int64 host_persistent_bytes = 0;
+    for (const ExecMemory& exec : memory_execs_) {
+      host_persistent_bytes += exec.host_persistent_bytes();
+    }
+    return host_persistent_bytes;
   }
-  int64 allocator_bytes_in_use() const {
-    return exec_.allocator_bytes_in_use();
+  std::map<int64, int64> allocator_bytes_in_use() const {
+    std::map<int64, int64> bytes_in_use;
+    for (const ExecMemory& exec : memory_execs_) {
+      bytes_in_use[exec.memory_micros()] = exec.allocator_bytes_in_use();
+    }
+    return bytes_in_use;
   }
 
-  const std::vector<Allocation>& allocations() const { return allocations_; }
+  const std::vector<AllocationRecord>& allocations() const {
+    return allocations_;
+  }
 
   const ExecProfile& ToProto() {
     exec_.mutable_accelerator_execs()->clear();
@@ -169,19 +214,15 @@ class ExecStep {
     for (const string& d : devices_) {
       exec_.add_devices(d);
     }
-
-    exec_.mutable_output_memory()->clear();
-    for (const auto& mem : output_memory_) {
-      auto& mem_pb = (*exec_.mutable_output_memory())[mem.first];
-      mem_pb.set_bytes(mem.second.first);
-      mem_pb.set_ptr(mem.second.second);
-    }
-
     exec_.mutable_allocations()->Clear();
     for (const auto& r : allocations_) {
       exec_.add_allocations()->MergeFrom(r);
     }
 
+    exec_.mutable_memory_execs()->Clear();
+    for (const auto& m : memory_execs_) {
+      exec_.add_memory_execs()->MergeFrom(m);
+    }
     return exec_;
   }
 
@@ -197,6 +238,7 @@ class ExecStep {
     op_execs_.clear();
 
     allocations_.clear();
+    memory_execs_.clear();
 
     for (const auto& exec_time : exec_.accelerator_execs()) {
       auto& exec = accelerator_execs_[exec_time.first];
@@ -214,14 +256,11 @@ class ExecStep {
         op_exec.push_back(std::make_pair(p.int64_values(0), p.int64_values(1)));
       }
     }
-    for (const auto& output_mem : exec_.output_memory()) {
-      auto& mem = output_memory_[output_mem.first];
-      mem.first = output_mem.second.bytes();
-      mem.second = output_mem.second.ptr();
-    }
-
     for (const auto& r : exec_.allocations()) {
       allocations_.push_back(r);
+    }
+    for (const auto& m : exec_.memory_execs()) {
+      memory_execs_.push_back(m);
     }
   }
 
@@ -237,14 +276,15 @@ class ExecStep {
   std::map<string, std::vector<std::pair<int64, int64>>> cpu_execs_;
   // combines accelerator_execs_ and cpu_execs_.
   std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
+  // Each ExecMemory corresponds to one scheduling of the op. Normally,
+  // there are multiple schedulings in while_loop.
+  std::vector<ExecMemory> memory_execs_;
   // All devices the op is associated with (e.g. gpu:0 (scheduling),
   // gpu:0:stream:xx (kernel exec), cpu:0 host)
   std::set<string> devices_;
-  // output_idx -> {output_bytes, memory_ptr}
-  std::map<int32, std::pair<int64, uint64>> output_memory_;
 
   // The history of accelerator allocations and deallocations of this step.
-  std::vector<Allocation> allocations_;
+  std::vector<AllocationRecord> allocations_;
 };
 
 #define GRAPH_NODE_BYTES(type)             \
@@ -593,34 +633,20 @@ class TFGraphNode {
   int64 accelerator_persistent_bytes() const {
     int64 persistent_bytes = 0;
     for (const auto& exec : execs_) {
-      persistent_bytes += exec.second.accelerator_persistent_bytes();
+      persistent_bytes = std::max(persistent_bytes,
+                                  exec.second.accelerator_persistent_bytes());
     }
     return persistent_bytes;
   }
-  int64 host_persistent_bytes(int64 step) const {
+  const std::map<int64, int64> allocator_bytes_in_use(int64 step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
-      return 0;
-    }
-    return exec->second.host_persistent_bytes();
-  }
-  const std::map<int32, std::pair<int64, uint64>>& output_memory(
-      int64 step) const {
-    auto exec = execs_.find(step);
-    if (exec == execs_.end()) {
-      return empty_output_memory_;
-    }
-    return exec->second.output_memory();
-  }
-  int64 allocator_bytes_in_use(int64 step) const {
-    auto exec = execs_.find(step);
-    if (exec == execs_.end()) {
-      return 0;
+      return empty_bytes_in_use_;
     }
     return exec->second.allocator_bytes_in_use();
   }
 
-  const std::vector<Allocation>& allocations(int64 step) const {
+  const std::vector<AllocationRecord>& allocations(int64 step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_allocations_;
@@ -725,9 +751,9 @@ class TFGraphNode {
   std::map<int64, ExecStep> execs_;
 
   // Placeholder for empty cases.
-  std::map<int32, std::pair<int64, uint64>> empty_output_memory_;
+  std::map<int64, int64> empty_bytes_in_use_;
   std::map<string, std::vector<std::pair<int64, int64>>> empty_execs_;
-  std::vector<Allocation> empty_allocations_;
+  std::vector<AllocationRecord> empty_allocations_;
 };
 
 class TFMultiGraphNode {
@@ -880,6 +906,7 @@ class TFMultiGraphNode {
   std::map<string, const TFGraphNode*> nodes_;
 };
 
+bool IsPlacedOnCPU(const string& device);
 bool IsPlacedOnAccelerator(const string& device);
 bool CountAsAcceleratorTime(const string& device);
 bool CountAsCPUTime(const string& device);

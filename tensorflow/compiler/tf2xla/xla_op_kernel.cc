@@ -345,6 +345,16 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   expression->set_constant_value(constant);
 }
 
+void XlaOpKernelContext::SetInvalidOutput(int index) {
+  Tensor* output = nullptr;
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, TensorShape({}), &output));
+  XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
+  xla::ComputationDataHandle handle;
+  handle.set_handle(0);
+  expression->set_handle(handle);
+}
+
 void XlaOpKernelContext::SetResourceOutput(int index, XlaResource* resource) {
   Tensor* output = nullptr;
   // The shape of the output tensor is the shape of the resource itself
@@ -405,6 +415,11 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateMin(
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateAdd(type);
+}
+
+const xla::Computation* XlaOpKernelContext::GetOrCreateMul(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMul(type);
 }
 
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}

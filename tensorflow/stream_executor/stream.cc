@@ -5055,22 +5055,24 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-bool Stream::BlockHostUntilDone() {
+port::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
   if (!ok()) {
-    LOG(INFO)
-        << "stream " << this
-        << " did not block host until done; was already in an error state";
-    return false;
+    port::Status status = port::Status(
+        port::error::INTERNAL,
+        "stream did not block host until done; was already in an error state");
+    LOG(INFO) << status << " " << this;
+    return status;
   }
 
+  port::Status first_error;
   {
     // Wait until all active sub-streams have done their tasks.
     mutex_lock lock{mu_};
     for (auto &stream : sub_streams_) {
       if (!stream.second) {
-        CheckError(stream.first->BlockHostUntilDone());
+        first_error.Update(stream.first->BlockHostUntilDone());
         // Set this sub-stream as available.
         stream.second = true;
       }
@@ -5079,8 +5081,13 @@ bool Stream::BlockHostUntilDone() {
 
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  CheckError(parent_->BlockHostUntilDone(this));
-  return ok();
+  first_error.Update(parent_->BlockHostUntilDone(this));
+  CheckError(first_error.ok());
+  return first_error;
+}
+
+port::Status Stream::BlockHostUntilDoneWithStatus() {
+  return BlockHostUntilDone();
 }
 
 }  // namespace gputools

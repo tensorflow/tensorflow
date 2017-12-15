@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
@@ -425,18 +426,22 @@ def gradients(ys,
   other things, this allows computation of partial derivatives as opposed to
   total derivatives. For example:
 
-    a = tf.constant(0.)
-    b = 2 * a
-    g = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
+  ```python
+  a = tf.constant(0.)
+  b = 2 * a
+  g = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
+  ```
 
   Here the partial derivatives `g` evaluate to `[1.0, 1.0]`, compared to the
   total derivatives `tf.gradients(a + b, [a, b])`, which take into account the
   influence of `a` on `b` and evaluate to `[3.0, 1.0]`.  Note that the above is
   equivalent to:
 
-    a = tf.stop_gradient(tf.constant(0.))
-    b = tf.stop_gradient(2 * a)
-    g = tf.gradients(a + b, [a, b])
+  ```python
+  a = tf.stop_gradient(tf.constant(0.))
+  b = tf.stop_gradient(2 * a)
+  g = tf.gradients(a + b, [a, b])
+  ```
 
   `stop_gradients` provides a way of stopping gradient after the graph has
   already been constructed, as compared to `tf.stop_gradient` which is used
@@ -664,10 +669,10 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
     ready = (pending_count[x.op._id] == 0)
     if loop_state and not ready:
       ready = (pending_count[x.op._id] > 0 and
-               control_flow_ops.IsLoopSwitch(x.op))
+               control_flow_util.IsLoopSwitch(x.op))
     # pylint: enable=protected-access
     if ready:
-      if control_flow_ops.IsLoopExit(x.op):
+      if control_flow_util.IsLoopExit(x.op):
         # if x is an exit without real gradient, defer processing them.
         grad_state = loop_state.GetGradState(x.op, before=False)
         grad_state.deferred_exits.append(x)
@@ -707,7 +712,7 @@ def _SetGrad(grads, t, grad):
   if isinstance(t_grads, list):
     t_grads.append(grad)
   else:
-    assert control_flow_ops.IsLoopSwitch(op)
+    assert control_flow_util.IsLoopSwitch(op)
     op_grads[t.value_index] = grad
 
 
@@ -847,7 +852,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
   for i, out_grad in enumerate(out_grads):
     if loop_state:
       if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
-        assert control_flow_ops.IsLoopSwitch(op)
+        assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections.Sequence) and not all([

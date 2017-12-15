@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN evaluation module.
+
+This module supports techniques such as Inception Score, Frechet Inception
+distance, and Sliced Wasserstein distance.
+"""
 # pylint: disable=,wildcard-import,unused-import
 
 from __future__ import absolute_import
@@ -22,10 +26,12 @@ from __future__ import print_function
 # Collapse eval into a single namespace.
 from tensorflow.contrib.gan.python.eval.python import classifier_metrics
 from tensorflow.contrib.gan.python.eval.python import eval_utils
+from tensorflow.contrib.gan.python.eval.python import sliced_wasserstein
 from tensorflow.contrib.gan.python.eval.python import summaries
 
 from tensorflow.contrib.gan.python.eval.python.classifier_metrics import *
 from tensorflow.contrib.gan.python.eval.python.eval_utils import *
+from tensorflow.contrib.gan.python.eval.python.sliced_wasserstein import *
 from tensorflow.contrib.gan.python.eval.python.summaries import *
 # pylint: enable=wildcard-import,unused-import
 
@@ -33,7 +39,10 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'classifier_metrics',
+    'sliced_wasserstein_distance',
     'summaries',
     'eval_utils',
-] + classifier_metrics.__all__ + summaries.__all__ + eval_utils.__all__
+] + (
+    classifier_metrics.__all__ + sliced_wasserstein.__all__ +
+    summaries.__all__ + eval_utils.__all__)
 remove_undocumented(__name__, _allowed_symbols)

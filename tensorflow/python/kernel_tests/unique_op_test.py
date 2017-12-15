@@ -87,6 +87,7 @@ class UniqueTest(test.TestCase):
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
 
+
 class UniqueWithCountsTest(test.TestCase):
 
   def testInt32(self):

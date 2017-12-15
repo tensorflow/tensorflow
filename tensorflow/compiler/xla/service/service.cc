@@ -431,8 +431,11 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           true));
 
   TF_ASSIGN_OR_RETURN(
+      module, backend->compiler()->RunHloPasses(std::move(module), executor));
+
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), executor));
+      backend->compiler()->RunBackend(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -563,8 +566,10 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Wait for all executions to complete.
   for (int64 i = 0; i < streams.size(); ++i) {
-    if (!streams[i]->BlockHostUntilDone()) {
-      return InternalError("failed to complete execution for stream %lld", i);
+    Status block_status = streams[i]->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError("failed to complete execution for stream %lld: %s",
+                           i, block_status.error_message().c_str());
     }
   }
 
@@ -573,29 +578,15 @@ Service::ExecuteParallelAndRegisterResult(
   for (auto& index_to_profiled_stream : index_to_profiled_streams) {
     int64 device = index_to_profiled_stream.first;
     se::Stream* stream = index_to_profiled_stream.second;
-    HloExecutionProfile hlo_profile;
-    TF_RETURN_IF_ERROR(executables[device]->PopulateExecutionProfile(
-        &hlo_profile, stream->parent()));
-
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        hlo_profile.profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    auto& module = executables[device]->module();
-    std::list<xla::HloComputation*> all_computations =
-        module.MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = hlo_profile.ToString(
-            *computation, streams[0]->parent()->GetDeviceDescription(),
-            executables[device]->CreateCostAnalysis().get());
-        if (!profile_string.empty()) {
-          LOG(INFO) << "HLO profile for execution on device " << device
-                    << ":\n";
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
+    Executable* executable = executables[device];
+    const HloModule& module = executable->module();
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer(),
+                                    &executable->hlo_profile_index_map());
+    TF_RETURN_IF_ERROR(
+        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
     hlo_graph_dumper::MaybeDumpHloModule(module, "Service::Execute",
                                          &hlo_profile);
   }
@@ -677,6 +668,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         result, executable->ExecuteOnStreamWrapper<se::DeviceMemoryBase>(
                     &run_options[0], profile, arguments));
   } else {
+    // TODO(b/69985541): Support profiling also on this path.
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
         repeated_arguments(options_.number_of_replicas(), arguments);
@@ -1053,17 +1045,28 @@ tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
   return tensorflow::Status::OK();
 }
 
+namespace {
+
+// Creates a clone of the given shaped buffer with the given device ordinal. The
+// shape and DeviceMemoryBase values of the clone are identical to the original.
+std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
+    const ShapedBuffer& shaped_buffer, int device_ordinal) {
+  auto clone = MakeUnique<ShapedBuffer>(
+      shaped_buffer.shape(), shaped_buffer.platform(), device_ordinal);
+  ShapeUtil::ForEachSubshape(
+      shaped_buffer.shape(), [&clone, &shaped_buffer](const Shape& /*subshape*/,
+                                                      const ShapeIndex& index) {
+        clone->AddBufferAtIndex(shaped_buffer.buffer(index), index);
+      });
+  return clone;
+}
+
+}  // namespace
+
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
                                              TransferToServerResponse* result) {
   Literal literal = Literal(arg->literal());
   const Shape& shape = literal.shape();
-
-  if (ShapeUtil::IsTuple(shape) && options_.number_of_replicas() > 1) {
-    // TODO(b/32990684): Tuple transfers to host end up allocating further
-    // buffers - implement that correctly.
-    return Unimplemented(
-        "Tuple transfers to the device not supported with replication.");
-  }
 
   std::vector<se::StreamExecutor*> replicas;
   if (arg->has_device_handle()) {
@@ -1074,24 +1077,45 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
         replicas, Replicas(*execute_backend_, SingleComputationDeviceHandle()));
   }
 
-  // Allocate memory on the device, using the stream executor. The size of the
-  // allocation is obtained by examining the shape of the literal passed from
-  // the client. An allocation handle is returned in the response.
-  int64 allocation_size =
-      execute_backend_->transfer_manager()->GetByteSizeRequirement(shape);
+  // All memory allocation is done on the first replica. The allocations in all
+  // other replicas mirror the firsts'.
+  int master_device_ordinal = replicas[0]->device_ordinal();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ShapedBuffer> shaped_buffer,
+      ShapedBuffer::Allocate(
+          execute_backend_->transfer_manager()->HostShapeToDeviceShape(shape),
+          execute_backend_->memory_allocator(), master_device_ordinal,
+          [this](const Shape& shape) {
+            return execute_backend_->transfer_manager()->GetByteSizeRequirement(
+                shape);
+          }));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          replicas[0]->device_ordinal(), allocation_size));
-
+  // The allocation tracker only keeps track of the top-level buffer of the
+  // shape so pass in the buffer at shape index {}.
+  // TODO(b/37515654): Allocation tracker should hold a ShapedBuffer.
   *result->mutable_data() = allocation_tracker_.Register(
-      execute_backend_.get(), replicas[0]->device_ordinal(), allocation, shape,
-      StrCat("TransferToServer literal of size ", allocation_size));
+      execute_backend_.get(), master_device_ordinal,
+      shaped_buffer->buffer(/*index=*/{}), shape,
+      StrCat("TransferToServer literal of shape ",
+             ShapeUtil::HumanString(shape)));
 
+  // Transfer the data to the replicas.
   for (se::StreamExecutor* executor : replicas) {
-    TF_RETURN_IF_ERROR(
-        execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            executor, literal, &allocation));
+    if (executor->device_ordinal() == master_device_ordinal) {
+      TF_RETURN_IF_ERROR(
+          execute_backend_->transfer_manager()->TransferLiteralToDevice(
+              executor, literal, *shaped_buffer));
+    } else {
+      // The replica is not the master. Create an cloned shaped buffer with
+      // the replica's device ordinal. This is required because
+      // TransferLiteralToDevice verifies that the device ordinal of the shaped
+      // buffer matches that of the executor.
+      std::unique_ptr<ShapedBuffer> clone =
+          CloneShapedBufferOnDevice(*shaped_buffer, executor->device_ordinal());
+      TF_RETURN_IF_ERROR(
+          execute_backend_->transfer_manager()->TransferLiteralToDevice(
+              executor, literal, *clone));
+    }
   }
   return tensorflow::Status::OK();
 }
@@ -1368,6 +1392,17 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddConcatenateInstruction(arg->concatenate_request());
       break;
+    case OpRequest::kConditionalRequest: {
+      TF_ASSIGN_OR_RETURN(UserComputation * true_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().true_computation()));
+      TF_ASSIGN_OR_RETURN(UserComputation * false_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().false_computation()));
+      handle_status = computation->AddConditionalInstruction(
+          arg->conditional_request(), *true_computation, *false_computation);
+      break;
+    }
     case OpRequest::kConstantRequest:
       handle_status =
           computation->AddConstantInstruction(arg->constant_request());
@@ -1375,6 +1410,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kConvertRequest:
       handle_status =
           computation->AddConvertInstruction(arg->convert_request());
+      break;
+    case OpRequest::kBitcastConvertRequest:
+      handle_status = computation->AddBitcastConvertInstruction(
+          arg->bitcast_convert_request());
       break;
     case OpRequest::kConvolveRequest:
       handle_status =
@@ -1387,6 +1426,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kCustomCallRequest:
       handle_status =
           computation->AddCustomCallInstruction(arg->custom_call_request());
+      break;
+    case OpRequest::kDotRequest:
+      handle_status = computation->AddDotInstruction(arg->dot_request());
       break;
     case OpRequest::kDynamicSliceRequest:
       handle_status =
@@ -1508,8 +1550,12 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddRecvInstruction(arg->recv_request());
       break;
     }
+    case OpRequest::kFftRequest:
+      return Unimplemented("FftRequest not implemented in XLA service.");
+    case OpRequest::OP_NOT_SET:
+      return InvalidArgument("XLA service received OpRequest with OP_NOT_SET");
     default:
-      return InvalidArgument("Unsupported operation");
+      return InvalidArgument("Unsupported operation in XLA service");
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_output(), handle_status);
 

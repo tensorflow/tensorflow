@@ -79,13 +79,13 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
     string DebugString() override { return "ConcatenateDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(input_, &input_graph));
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph));
       Node* to_concatenate_graph = nullptr;
       TF_RETURN_IF_ERROR(
-          b->AddParentDataset(to_concatenate_, &to_concatenate_graph));
+          b->AddParentDataset(ctx, to_concatenate_, &to_concatenate_graph));
       TF_RETURN_IF_ERROR(
           b->AddDataset(this, {input_graph, to_concatenate_graph}, output));
       return Status::OK();
@@ -104,6 +104,10 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         while (i_ < 2) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -140,7 +144,9 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
         } else if (i_ == 2) {
           input_impl_.reset();
         }
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        }
         return Status::OK();
       }
 

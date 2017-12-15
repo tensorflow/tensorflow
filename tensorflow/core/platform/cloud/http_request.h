@@ -64,6 +64,14 @@ class HttpRequest {
   /// Sets a request header.
   virtual Status AddHeader(const string& name, const string& value) = 0;
 
+  /// Sets a DNS resolve mapping (to skip DNS resolution).
+  ///
+  /// Note: because GCS is available over HTTPS, we cannot replace the hostname
+  /// in the URI with an IP address, as that will cause the certificate check
+  /// to fail.
+  virtual Status AddResolveOverride(const string& hostname, int64 port,
+                                    const string& ip_addr) = 0;
+
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
   virtual Status AddAuthBearerHeader(const string& auth_token) = 0;
 
@@ -109,6 +117,16 @@ class HttpRequest {
 
   // Url encodes str and returns a new string.
   virtual string EscapeString(const string& str) = 0;
+
+  /// \brief Set timeouts for this request.
+  ///
+  /// The connection parameter controls how long we should wait for the
+  /// connection to be established. The inactivity parameter controls how long
+  /// we should wait between additional responses from the server. Finally the
+  /// total parameter controls the maximum total connection time to prevent
+  /// hanging indefinitely.
+  virtual Status SetTimeouts(uint32 connection, uint32 inactivity,
+                             uint32 total) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HttpRequest);
 };
