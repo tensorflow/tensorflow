@@ -180,7 +180,7 @@ If bazel is not installed on your system, install it now by following
 
 ### Install python dependencies
 
-To install TensorFlow, you must install the following packages:
+To build TensorFlow, you must install the following packages:
 
   * six
   * numpy, which is a numerical processing package that TensorFlow requires.
@@ -196,7 +196,11 @@ After installing pip, invoke the following commands:
 
 <pre> $ <b>sudo pip install six numpy wheel</b> </pre>
 
-
+Note: These are just the minimum requirements to _build_ tensorflow. Installing
+the pip package will download additional packages required to _run_ it. If you
+plan on executing tasks directly with `bazel` , without the pip installation,
+you may need to install additional python packages. For example, you should
+`pip install mock enum34` before running TensorFlow's tests with bazel.
 
 ### Optional: install TensorFlow for GPU prerequisites
 
