@@ -411,6 +411,7 @@ filegroup(
         "//tensorflow/compiler/xla/client:all_files",
         "//tensorflow/compiler/xla/client/lib:all_files",
         "//tensorflow/compiler/xla/legacy_flags:all_files",
+        "//tensorflow/compiler/xla/python:all_files",
         "//tensorflow/compiler/xla/service:all_files",
         "//tensorflow/compiler/xla/service/cpu:all_files",
         "//tensorflow/compiler/xla/service/gpu:all_files",
