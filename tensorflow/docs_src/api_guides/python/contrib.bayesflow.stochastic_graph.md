@@ -1,2 +1,0 @@
-# BayesFlow Stochastic Graph (contrib)
-

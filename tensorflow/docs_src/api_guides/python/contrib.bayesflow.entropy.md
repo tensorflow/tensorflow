@@ -1,2 +1,0 @@
-# BayesFlow Entropy (contrib)
-
