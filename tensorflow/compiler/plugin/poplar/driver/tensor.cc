@@ -210,12 +210,12 @@ AddRightMatMul(poplar::Graph& graph,
 
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
-          const HloInstruction* inst,
+          const TensorSource& src,
           const xla::Shape& shape,
           CompilerResources& resources) {
   poplar::Tensor out;
 
-  auto target = resources.tensor_allocation_map.find(inst);
+  auto target = resources.tensor_allocation_map.find(src);
   if (target != resources.tensor_allocation_map.end()) {
     switch (target->second.first->opcode()) {
       case HloOpcode::kConvolution:
@@ -223,14 +223,14 @@ AddTensor(poplar::Graph& graph,
         switch (target->second.second) {
           case 0:
           {
-            TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, inst,
+            TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first,
                                                          target->second.first,
                                                          resources));
             break;
           }
           case 1:
           {
-            TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, inst,
+            TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, src.first,
                                                            target->second.first,
                                                            resources));
             break;
@@ -238,7 +238,7 @@ AddTensor(poplar::Graph& graph,
           default:
             return tensorflow::errors::FailedPrecondition(
                     port::StrCat("invalid operand for tensor allocation on ",
-                                 inst->name()));
+                                 src.first->name()));
         }
         break;
       }
@@ -247,14 +247,14 @@ AddTensor(poplar::Graph& graph,
         switch (target->second.second) {
           case 0:
           {
-            TF_ASSIGN_OR_RETURN(out, AddLeftMatMul(graph, inst,
+            TF_ASSIGN_OR_RETURN(out, AddLeftMatMul(graph, src.first,
                                                    target->second.first,
                                                    resources));
             break;
           }
           case 1:
           {
-            TF_ASSIGN_OR_RETURN(out, AddRightMatMul(graph, inst,
+            TF_ASSIGN_OR_RETURN(out, AddRightMatMul(graph, src.first,
                                                     target->second.first,
                                                     resources));
             break;
@@ -262,17 +262,17 @@ AddTensor(poplar::Graph& graph,
           default:
             return tensorflow::errors::FailedPrecondition(
                     port::StrCat("invalid operand for tensor allocation on ",
-                                 inst->name()));
+                                 src.first->name()));
         }
         break;
       }
       default:
         return tensorflow::errors::FailedPrecondition(
                 port::StrCat("unknown special tensor target on ",
-                             inst->name()));
+                             src.first->name()));
     }
   } else {
-    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, shape));
+    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
   }
   return out;
 }
@@ -489,36 +489,6 @@ PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
   }
 
   return true;
-}
-
-port::StatusOr<std::vector<int64>>
-LiteralVectorToInt64Vector(const xla::Literal& lit) {
-  if (lit.shape().dimensions_size() != 1) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Literal rank != 1");
-  }
-
-  std::unique_ptr<Literal> s64_lit;
-  TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
-
-  const int64* start = static_cast<const int64*>(s64_lit->InternalData());
-  return std::vector<int64>(start, start + s64_lit->shape().dimensions(0));
-}
-
-
-std::vector<xla::Shape>
-FlattenedXlaShape(const xla::Shape& shape) {
-  std::vector<xla::Shape> out;
-  if (ShapeUtil::IsTuple(shape)) {
-    for (int i=0; i<ShapeUtil::TupleElementCount(shape); i++) {
-      std::vector<xla::Shape> shapes = FlattenedXlaShape(ShapeUtil::GetTupleElementShape(shape, i));
-      out.insert(out.end(), shapes.begin(), shapes.end());
-    }
-  } else {
-    out.push_back(shape);
-  }
-
-  return out;
 }
 
 }

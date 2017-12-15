@@ -312,7 +312,8 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     }
 
     // Allocate the output tensor
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst,0),
+                                       output_shape, res));
     poplar::Tensor out_flat = out.flatten();
 
     auto cs = graph.addComputeSet(inst->name());

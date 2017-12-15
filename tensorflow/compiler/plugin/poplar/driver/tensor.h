@@ -32,9 +32,6 @@ xla::Shape
 XlaShapeFromPoplarShape(PrimitiveType element_type,
                         const std::vector<size_t> &poplar_shape);
 
-std::vector<xla::Shape>
-FlattenedXlaShape(const xla::Shape& shape);
-
 poplar::Tensor
 ConvertToDeviceLayout(const Shape& shape, const poplar::Tensor& tensor);
 
@@ -45,9 +42,6 @@ bool
 PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                            const xla::Shape& shape);
 
-port::StatusOr<std::vector<int64>>
-LiteralVectorToInt64Vector(const xla::Literal& lit);
-
 port::StatusOr<poplar::Tensor>
 AddPlainTensor(poplar::Graph& graph,
                const HloInstruction* inst,
@@ -55,7 +49,7 @@ AddPlainTensor(poplar::Graph& graph,
 
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
-          const HloInstruction* inst,
+          const TensorSource& src,
           const xla::Shape& shape,
           CompilerResources& resources);
 

@@ -68,26 +68,29 @@ public:
   }
 
   Status HandleConstant(HloInstruction* inst) override {
-    allocating_instructions.push_back(inst);
+    allocating_instructions.push_back(std::make_pair(inst, 0));
     return Status::OK();
   }
 
   Status HandleRng(HloInstruction* inst) override {
-    allocating_instructions.push_back(inst);
+    allocating_instructions.push_back(std::make_pair(inst, 0));
     return Status::OK();
   }
 
   Status HandleParameter(HloInstruction* inst) override {
-    allocating_instructions.push_back(inst);
+    auto shapes = FlattenedXlaShape(inst->shape());
+    for (int i = 0; i < shapes.size(); i++) {
+      allocating_instructions.push_back(std::make_pair(inst, i));
+    }
     return Status::OK();
   }
 
   Status HandleReduceWindow(HloInstruction* inst) override {
-    allocating_instructions.push_back(inst);
+    allocating_instructions.push_back(std::make_pair(inst, 0));
     return Status::OK();
   }
 
-  std::vector<HloInstruction*> allocating_instructions;
+  std::vector<TensorSource> allocating_instructions;
 };
 
 }
@@ -105,7 +108,8 @@ AllocationFinder::CompareDotTargets(const TensorTarget& a,
 }
 
 void
-AllocationFinder::FindConsumers(HloInstruction* src, HloInstruction* tgt,
+AllocationFinder::FindConsumers(const TensorSource& src,
+                                const HloInstruction* tgt,
                                 int64 index) {
   for (auto user : tgt->users()) {
     if (visited.count(user) == 0) {
@@ -164,10 +168,13 @@ AllocationFinder::FindConsumers(HloInstruction* src, HloInstruction* tgt,
           break;
         }
         default:
-          if (ShapeUtil::Equal(src->shape(), user->shape())) {
+        {
+          auto shapes = FlattenedXlaShape(src.first->shape());
+          if (ShapeUtil::Equal(shapes[src.second], user->shape())) {
             FindConsumers(src, user, index);
           }
           break;
+        }
       }
     }
   }
@@ -183,7 +190,7 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
 
   for (auto inst : finder.allocating_instructions) {
     visited.clear();
-    FindConsumers(inst, inst, 0);
+    FindConsumers(inst, inst.first, inst.second);
   }
 
   return Status::OK();

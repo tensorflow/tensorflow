@@ -18,6 +18,7 @@ namespace port = ::perftools::gputools::port;
 namespace xla {
 
 class Shape;
+class Literal;
 
 namespace poplarplugin {
 
@@ -30,7 +31,14 @@ To convert_array(const From& from) {
   return out;
 };
 
-int64 CountShapes(const Shape& shape);
+int64
+CountShapes(const Shape& shape);
+
+std::vector<xla::Shape>
+FlattenedXlaShape(const xla::Shape& shape);
+
+port::StatusOr<std::vector<int64>>
+LiteralVectorToInt64Vector(const xla::Literal& lit);
 
 }
 }

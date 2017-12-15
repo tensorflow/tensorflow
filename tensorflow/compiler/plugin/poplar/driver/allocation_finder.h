@@ -25,8 +25,9 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+using TensorSource = std::pair<const HloInstruction*,int64>;
 using TensorTarget = std::pair<const HloInstruction*,int64>;
-using TensorAllocationMap = std::map<const HloInstruction*, TensorTarget>;
+using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
 
 /**
  * This class finds all instructions that explicitly add tensors to the
@@ -45,7 +46,7 @@ public:
   TensorAllocationMap tensor_allocation_map;
 
 private:
-  void FindConsumers(HloInstruction* src, HloInstruction* tgt, int64);
+  void FindConsumers(const TensorSource&, const HloInstruction* tgt, int64);
 
   // Should return true when target 'a' should be used over 'b'
   bool CompareConvolutionTargets(const TensorTarget& a, const TensorTarget& b);

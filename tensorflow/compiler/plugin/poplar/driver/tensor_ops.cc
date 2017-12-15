@@ -51,7 +51,7 @@ CreateSliceUpdateOp(poplar::Graph &graph,
     poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(copy,
                         AddTensor(graph,
-                                  inst,
+                                  std::make_pair(inst,0),
                                   XlaShapeFromPoplarShape(
                                           output_shape.element_type(),
                                           input.shape()),
@@ -138,7 +138,7 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
     poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(copy,
                         AddTensor(graph,
-                                  inst,
+                                  std::make_pair(inst,0),
                                   XlaShapeFromPoplarShape(
                                           output_shape.element_type(),
                                           input.shape()),

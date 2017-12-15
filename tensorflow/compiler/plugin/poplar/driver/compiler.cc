@@ -24,16 +24,17 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
-#include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
-#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
@@ -126,7 +127,8 @@ public:
     for (unsigned i=0; i<shapes.size(); i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out,
-                          AddTensor(*graph_, inst, shapes[i], resources_));
+                          AddTensor(*graph_, std::make_pair(inst,i), shapes[i],
+                                    resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
       // Host tensor needs to be host layout
