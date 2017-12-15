@@ -192,7 +192,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
       raise TypeError("probability_fn must be callable, saw type: %s" %
                       type(probability_fn).__name__)
     if score_mask_value is None:
-      score_mask_value = dtypes.as_dtype(self._memory_layer.dtype).as_numpy_dtype(-np.inf)
+      score_mask_value = dtypes.as_dtype(
+          self._memory_layer.dtype).as_numpy_dtype(-np.inf)
     self._probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
         probability_fn(
             _maybe_mask_score(score, memory_sequence_length, score_mask_value),
@@ -691,7 +692,11 @@ def _monotonic_probability_fn(score, previous_alignments, sigmoid_noise, mode,
                                      seed=seed)
     score += sigmoid_noise*noise
   # Compute "choosing" probabilities from the attention scores
-  p_choose_i = math_ops.sigmoid(score)
+  if mode == "hard":
+    # When mode is hard, use a hard sigmoid
+    p_choose_i = math_ops.cast(score > 0, score.dtype)
+  else:
+    p_choose_i = math_ops.sigmoid(score)
   # Convert from choosing probabilities to attention distribution
   return monotonic_attention(p_choose_i, previous_alignments, mode)
 
@@ -1141,7 +1146,9 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
             % (len(attention_layer_sizes), len(attention_mechanisms)))
       self._attention_layers = tuple(
           layers_core.Dense(
-              attention_layer_size, name="attention_layer", use_bias=False,
+              attention_layer_size,
+              name="attention_layer",
+              use_bias=False,
               dtype=attention_mechanisms[i].dtype)
           for i, attention_layer_size in enumerate(attention_layer_sizes))
       self._attention_layer_size = sum(attention_layer_sizes)

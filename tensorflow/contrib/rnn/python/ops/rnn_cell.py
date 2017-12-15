@@ -115,7 +115,6 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The class uses optional peep-hole connections, and an optional projection
   layer.
-  
   Layer normalization implementation is based on:
 
     https://arxiv.org/abs/1607.06450.
@@ -124,15 +123,24 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
   Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
 
   and is applied before the internal nonlinearities.
-  
+
   """
 
-  def __init__(self, num_units, use_peepholes=False,
-               initializer=None, num_proj=None, proj_clip=None,
-               num_unit_shards=1, num_proj_shards=1,
-               forget_bias=1.0, state_is_tuple=True,
-               activation=math_ops.tanh, reuse=None,
-               layer_norm=False, norm_gain=1.0, norm_shift=0.0):
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
+               initializer=None,
+               num_proj=None,
+               proj_clip=None,
+               num_unit_shards=1,
+               num_proj_shards=1,
+               forget_bias=1.0,
+               state_is_tuple=True,
+               activation=math_ops.tanh,
+               reuse=None,
+               layer_norm=False,
+               norm_gain=1.0,
+               norm_shift=0.0):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -164,8 +172,6 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
         `layer_norm` has been set to `False`, this argument will be ignored.
       norm_shift: float, The layer normalization shift initial value. If
         `layer_norm` has been set to `False`, this argument will be ignored.
-        
-        
     """
     super(CoupledInputForgetGateLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -1816,7 +1822,7 @@ class CompiledWrapper(rnn_cell_impl.RNNCell):
         return not _REGISTERED_OPS[node_def.op].is_stateful
 
     with jit.experimental_jit_scope(compile_ops=compile_ops):
-      return self._cell(inputs, state, scope)
+      return self._cell(inputs, state, scope=scope)
 
 
 def _random_exp_initializer(minval,
@@ -2049,8 +2055,8 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
     if self._skip_connection:
       self._total_output_channels += self._input_shape[-1]
 
-    state_size = tensor_shape.TensorShape(self._input_shape[:-1] 
-                                          + [self._output_channels])
+    state_size = tensor_shape.TensorShape(
+        self._input_shape[:-1] + [self._output_channels])
     self._state_size = rnn_cell_impl.LSTMStateTuple(state_size, state_size)
     self._output_size = tensor_shape.TensorShape(self._input_shape[:-1]
                                                  + [self._total_output_channels])
@@ -2110,14 +2116,11 @@ class Conv3DLSTMCell(ConvLSTMCell):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
 
-def _conv(args, 
-          filter_size,
-          num_features,
-          bias,
-          bias_start=0.0):
+
+def _conv(args, filter_size, num_features, bias, bias_start=0.0):
   """convolution:
   Args:
-    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, 
+    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D,
     batch x n, Tensors.
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
@@ -2211,7 +2214,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         has the given variables, an error is raised.
 
     Raises:
-      ValueError: If `num_units` or `num_proj` is not divisible by 
+      ValueError: If `num_units` or `num_proj` is not divisible by
         `number_of_groups`.
     """
     super(GLSTMCell, self).__init__(_reuse=reuse)
@@ -2391,12 +2394,19 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
   """
 
-  def __init__(self, num_units,
-               use_peepholes=False, cell_clip=None,
-               initializer=None, num_proj=None, proj_clip=None,
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
+               cell_clip=None,
+               initializer=None,
+               num_proj=None,
+               proj_clip=None,
                forget_bias=1.0,
-               activation=None, layer_norm=False,
-               norm_gain=1.0, norm_shift=0.0, reuse=None):
+               activation=None,
+               layer_norm=False,
+               norm_gain=1.0,
+               norm_shift=0.0,
+               reuse=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -2457,7 +2467,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
   def output_size(self):
     return self._output_size
 
-
   def _linear(self,
               args,
               output_size,
@@ -2507,9 +2516,9 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope) as outer_scope:
       weights = vs.get_variable(
-        "kernel", [total_arg_size, output_size],
-        dtype=dtype,
-        initializer=kernel_initializer)
+          "kernel", [total_arg_size, output_size],
+          dtype=dtype,
+          initializer=kernel_initializer)
       if len(args) == 1:
         res = math_ops.matmul(args[0], weights)
       else:
@@ -2521,9 +2530,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         if bias_initializer is None:
           bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
         biases = vs.get_variable(
-          "bias", [output_size],
-          dtype=dtype,
-          initializer=bias_initializer)
+            "bias", [output_size], dtype=dtype, initializer=bias_initializer)
 
     if not layer_norm:
       res = nn_ops.bias_add(res, biases)
@@ -2554,7 +2561,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       ValueError: If input size cannot be inferred from inputs via
         static shape inference.
     """
-    num_proj = self._num_units if self._num_proj is None else self._num_proj
     sigmoid = math_ops.sigmoid
 
     (c_prev, m_prev) = state
@@ -2567,10 +2573,14 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     with vs.variable_scope(scope, initializer=self._initializer) as unit_scope:
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      lstm_matrix = self._linear([inputs, m_prev], 4 * self._num_units, bias=True,
-                            bias_initializer=None, layer_norm=self._layer_norm)
+      lstm_matrix = self._linear(
+          [inputs, m_prev],
+          4 * self._num_units,
+          bias=True,
+          bias_initializer=None,
+          layer_norm=self._layer_norm)
       i, j, f, o = array_ops.split(
-        value=lstm_matrix, num_or_size_splits=4, axis=1)
+          value=lstm_matrix, num_or_size_splits=4, axis=1)
 
       if self._layer_norm:
         i = _norm(self._norm_gain, self._norm_shift, i, "input")
@@ -2580,20 +2590,22 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
       # Diagonal connections
       if self._use_peepholes:
-        with vs.variable_scope(unit_scope) as projection_scope:
+        with vs.variable_scope(unit_scope):
           w_f_diag = vs.get_variable(
-            "w_f_diag", shape=[self._num_units], dtype=dtype)
+              "w_f_diag", shape=[self._num_units], dtype=dtype)
           w_i_diag = vs.get_variable(
-            "w_i_diag", shape=[self._num_units], dtype=dtype)
+              "w_i_diag", shape=[self._num_units], dtype=dtype)
           w_o_diag = vs.get_variable(
-            "w_o_diag", shape=[self._num_units], dtype=dtype)
+              "w_o_diag", shape=[self._num_units], dtype=dtype)
 
       if self._use_peepholes:
-        c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
-             sigmoid(i + w_i_diag * c_prev) * self._activation(j))
+        c = (
+            sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
+            sigmoid(i + w_i_diag * c_prev) * self._activation(j))
       else:
-        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) *
-             self._activation(j))
+        c = (
+            sigmoid(f + self._forget_bias) * c_prev +
+            sigmoid(i) * self._activation(j))
 
       if self._layer_norm:
         c = _norm(self._norm_gain, self._norm_shift, c, "state")
@@ -2608,7 +2620,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         m = sigmoid(o) * self._activation(c)
 
       if self._num_proj is not None:
-        with vs.variable_scope("projection") as proj_scope:
+        with vs.variable_scope("projection"):
           m = self._linear(m, self._num_proj, bias=False)
 
         if self._proj_clip is not None:

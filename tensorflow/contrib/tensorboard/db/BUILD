@@ -22,10 +22,8 @@ tf_cc_test(
     srcs = ["schema_test.cc"],
     deps = [
         ":schema",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/db:sqlite",
     ],
 )
 
@@ -45,10 +43,12 @@ cc_library(
 
 tf_cc_test(
     name = "summary_db_writer_test",
+    size = "small",
     srcs = ["summary_db_writer_test.cc"],
     deps = [
         ":summary_db_writer",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/db:sqlite",

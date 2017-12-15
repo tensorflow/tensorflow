@@ -55,10 +55,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/sparse_column_iterable.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/utils/tensor_utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/common/partitioners/example_partitioner.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/bias-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/categorical-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/dense-quantized-feature-column-handler.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/models/multiple_additive_trees.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/trees/decision_tree.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc"
@@ -70,7 +66,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/kernels/cudnn_rnn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/prefetching_kernels.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/ops/prefetching_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
@@ -155,9 +150,6 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 if(WIN32)
   file(GLOB_RECURSE tf_core_kernels_windows_exclude_srcs
       # not working on windows yet
-      "${tensorflow_source_dir}/tensorflow/core/kernels/meta_support.*"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.h"
-      "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/neon/*"
       # not in core - those are loaded dynamically as dll
       "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"

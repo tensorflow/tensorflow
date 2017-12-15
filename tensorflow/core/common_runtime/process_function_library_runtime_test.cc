@@ -82,6 +82,22 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
     EXPECT_GE(call_count, 1);  // Test runner is used.
 
+    // Release the handle and then try running the function. It shouldn't
+    // succeed.
+    status = proc_flr_->ReleaseHandle(handle);
+    if (!status.ok()) {
+      return status;
+    }
+    Notification done2;
+    proc_flr_->Run(opts, handle, args, &out,
+                   [&status, &done2](const Status& s) {
+                     status = s;
+                     done2.Notify();
+                   });
+    done2.WaitForNotification();
+    EXPECT_TRUE(errors::IsNotFound(status));
+    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+
     return Status::OK();
   }
 

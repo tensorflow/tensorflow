@@ -106,7 +106,8 @@ class MultiHeadTest(test.TestCase):
     multi_head = multi_head_lib.multi_head([head1, head2])
     self.assertEqual('head1_head2', multi_head.name)
 
-  def test_predict_two_heads(self):
+  def test_predict_two_heads_logits_dict(self):
+    """Tests predict with logits as dict."""
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head([head1, head2])
@@ -158,6 +159,111 @@ class MultiHeadTest(test.TestCase):
           expected_probabilities['head2'],
           sess.run(spec.export_outputs['head2'].scores))
 
+  def test_predict_two_heads_logits_tensor(self):
+    """Tests predict with logits as Tensor."""
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
+    multi_head = multi_head_lib.multi_head([head1, head2])
+
+    logits = np.array(
+        [[-1., 1., 2., -2., 2.], [-1.5, 1., -3., 2., -2.]], dtype=np.float32)
+    expected_logits1 = np.array([[-1., 1.], [-1.5, 1.]], dtype=np.float32)
+    expected_logits2 = np.array([[2., -2., 2.], [-3., 2., -2.]],
+                                dtype=np.float32)
+    expected_probabilities = {
+        'head1': _sigmoid(expected_logits1),
+        'head2': _sigmoid(expected_logits2),
+    }
+
+    spec = multi_head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    self.assertItemsEqual(
+        (_DEFAULT_SERVING_KEY, 'head1', 'classification/head1', 'predict/head1',
+         'head2', 'classification/head2', 'predict/head2'),
+        spec.export_outputs.keys())
+
+    # Assert predictions and export_outputs.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(
+          expected_logits1,
+          predictions[('head1', prediction_keys.PredictionKeys.LOGITS)])
+      self.assertAllClose(
+          expected_logits2,
+          predictions[('head2', prediction_keys.PredictionKeys.LOGITS)])
+      self.assertAllClose(
+          expected_probabilities['head1'],
+          predictions[('head1', prediction_keys.PredictionKeys.PROBABILITIES)])
+      self.assertAllClose(
+          expected_probabilities['head2'],
+          predictions[('head2', prediction_keys.PredictionKeys.PROBABILITIES)])
+
+      self.assertAllClose(
+          expected_probabilities['head1'],
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllClose(
+          expected_probabilities['head1'],
+          sess.run(spec.export_outputs['head1'].scores))
+      self.assertAllClose(
+          expected_probabilities['head2'],
+          sess.run(spec.export_outputs['head2'].scores))
+
+  def test_predict_two_heads_logits_tensor_multi_dim(self):
+    """Tests predict with multi-dimensional logits of shape [2, 2, 5]."""
+    head1 = head_lib.regression_head(label_dimension=2, name='head1')
+    head2 = head_lib.regression_head(label_dimension=3, name='head2')
+    multi_head = multi_head_lib.multi_head([head1, head2])
+
+    logits = np.array(
+        [[[-1., 1., 2., -2., 2.], [-1., 1., 2., -2., 2.]],
+         [[-1.5, 1., -3., 2., -2.], [-1.5, 1., -3., 2., -2.]]],
+        dtype=np.float32)
+    expected_logits1 = np.array(
+        [[[-1., 1.], [-1., 1.]],
+         [[-1.5, 1.], [-1.5, 1.]]],
+        dtype=np.float32)
+    expected_logits2 = np.array(
+        [[[2., -2., 2.], [2., -2., 2.]],
+         [[-3., 2., -2.], [-3., 2., -2.]]],
+        dtype=np.float32)
+
+    spec = multi_head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    self.assertItemsEqual(
+        (_DEFAULT_SERVING_KEY, 'head1', 'regression/head1', 'predict/head1',
+         'head2', 'regression/head2', 'predict/head2'),
+        spec.export_outputs.keys())
+
+    # Assert predictions and export_outputs.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(
+          expected_logits1,
+          predictions[('head1', prediction_keys.PredictionKeys.PREDICTIONS)])
+      self.assertAllClose(
+          expected_logits2,
+          predictions[('head2', prediction_keys.PredictionKeys.PREDICTIONS)])
+
+      self.assertAllClose(
+          expected_logits1,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].value))
+      self.assertAllClose(
+          expected_logits1,
+          sess.run(spec.export_outputs['head1'].value))
+      self.assertAllClose(
+          expected_logits2,
+          sess.run(spec.export_outputs['head2'].value))
+
   def test_eval_two_heads_with_weights(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3, name='head2')
@@ -191,6 +297,8 @@ class MultiHeadTest(test.TestCase):
 
     keys = metric_keys.MetricKeys
     expected_metrics = {
+        keys.LOSS + '/head1': expected_loss_head1,
+        keys.LOSS + '/head2': expected_loss_head2,
         # Average loss over examples.
         keys.LOSS_MEAN + '/head1': expected_loss_head1 / 2,
         keys.LOSS_MEAN + '/head2': expected_loss_head2 / 2,
@@ -284,6 +392,84 @@ class MultiHeadTest(test.TestCase):
       # example_weight_sum = 1 * (1 + 2) + 2 * (2 + 3) = 13
       self.assertAllClose(13., example_weight_sum.eval(), rtol=tol, atol=tol)
 
+  def test_train_create_loss_logits_tensor(self):
+    """Tests create_loss with logits Tensor."""
+    weights1 = np.array([[1.], [2.]], dtype=np.float32)
+    weights2 = np.array([[2.], [3.]])
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1',
+                                      weight_column='weights1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2',
+                                      weight_column='weights2')
+    multi_head = multi_head_lib.multi_head(
+        [head1, head2], head_weights=[1., 2.])
+
+    logits = np.array([[-10., 10., 20., -20., 20.],
+                       [-15., 10., -30., 20., -20.]], dtype=np.float32)
+    labels = {
+        'head1': np.array([[1, 0], [1, 1]], dtype=np.int64),
+        'head2': np.array([[0, 1, 0], [1, 1, 0]], dtype=np.int64),
+    }
+    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+        features={
+            'x': np.array(((42,),), dtype=np.int32),
+            'weights1': weights1,
+            'weights2': weights2
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    tol = 1e-3
+    with self.test_session():
+      # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
+      # = [10, 7.5]
+      # weighted_sum_loss = 1 * 10 + 2 * 7.5 = 25
+      # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
+      # = [20, 10]
+      # weighted_sum_loss = 2 * 20 + 3 * 10 = 70
+      # head-weighted merge = 1 * 25 + 2 * 70 = 165
+      self.assertAllClose(165, weighted_sum_loss.eval(), rtol=tol, atol=tol)
+      # example_weight_sum = 1 * (1 + 2) + 2 * (2 + 3) = 13
+      self.assertAllClose(13., example_weight_sum.eval(), rtol=tol, atol=tol)
+
+  def test_train_create_loss_logits_tensor_multi_dim(self):
+    """Tests create_loss with multi-dimensional logits of shape [2, 2, 5]."""
+    head1 = head_lib.regression_head(label_dimension=2, name='head1')
+    head2 = head_lib.regression_head(label_dimension=3, name='head2')
+    multi_head = multi_head_lib.multi_head([head1, head2])
+
+    logits = np.array(
+        [[[-1., 1., 2., -2., 2.], [-1., 1., 2., -2., 2.]],
+         [[-1.5, 1.5, -2., 2., -2.], [-1.5, 1.5, -2., 2., -2.]]],
+        dtype=np.float32)
+    labels = {
+        'head1': np.array([[[1., 0.], [1., 0.]],
+                           [[1.5, 1.5], [1.5, 1.5]]], dtype=np.float32),
+        'head2': np.array([[[0., 1., 0.], [0., 1., 0.]],
+                           [[2., 2., 0.], [2., 2., 0.]]], dtype=np.float32),
+    }
+    # Loss for the first head:
+    # loss1 = (1+1)^2 + (0-1)^2 + (1+1)^2 + (0-1)^2 +
+    #         (1.5+1.5)^2 + (1.5-1.5)^2 + (1.5+1.5)^2 + (1.5-1.5)^2
+    #       = 28
+    # Loss for the second head:
+    # loss2 = (0-2)^2 + (1+2)^2 + (0-2)^2 + (0-2)^2 + (1+2)^2 + (0-2)^2 +
+    #         (2+2)^2 + (2-2)^2 + (0+2)^2 + (2+2)^2 + (2-2)^2 + (0+2)^2
+    #       = 74
+    expected_weighted_sum_loss = 28. + 74.
+
+    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+        features={},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    tol = 1e-3
+    with self.test_session():
+      self.assertAllClose(
+          expected_weighted_sum_loss, weighted_sum_loss.eval(),
+          rtol=tol, atol=tol)
+      self.assertAllClose(
+          2. * 2. * 5., example_weight_sum.eval(), rtol=tol, atol=tol)
+
   def test_train_one_head(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     multi_head = multi_head_lib.multi_head([head1])
@@ -327,6 +513,7 @@ class MultiHeadTest(test.TestCase):
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
       _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS + '/head1': expected_loss,
           # Average loss over examples.
           metric_keys.MetricKeys.LOSS_MEAN + '/head1': expected_loss / 2,
@@ -387,6 +574,7 @@ class MultiHeadTest(test.TestCase):
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
       _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS + '/head1': expected_loss_head1,
           metric_keys.MetricKeys.LOSS + '/head2': expected_loss_head2,
           # Average loss over examples.

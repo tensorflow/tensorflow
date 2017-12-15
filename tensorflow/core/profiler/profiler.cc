@@ -266,7 +266,18 @@ int Run(int argc, char** argv) {
   linenoiseSetCompletionCallback(completion);
   linenoiseHistoryLoad(".tfprof_history.txt");
 
-  for (char* line = nullptr; (line = linenoise("tfprof> ")) != nullptr;) {
+  bool looped = false;
+  while (true) {
+    char* line = linenoise("tfprof> ");
+    if (line == nullptr) {
+      if (!looped) {
+        fprintf(stderr,
+                "Cannot start interative shell, "
+                "use 'bazel-bin' instead of 'bazel run'.\n");
+      }
+      break;
+    }
+    looped = true;
     string line_s = line;
     free(line);
 

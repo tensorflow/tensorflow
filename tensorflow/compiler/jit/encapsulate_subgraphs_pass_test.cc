@@ -398,5 +398,109 @@ TEST(EncapsulateSubgraphsTest, ParallelChecking) {
   EXPECT_EQ(expected_edges, GraphEdges(*graph));
 }
 
+const Node* FindNodeByName(const Graph& graph, const string& name) {
+  for (const Node* node : graph.nodes()) {
+    if (node->name() == name) return node;
+  }
+  return nullptr;
+}
+
+bool HasGuaranteeConstAttr(const Node& n) {
+  bool is_guaranteed_constant = false;
+  if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant",
+                   &is_guaranteed_constant)
+           .ok()) {
+    return false;
+  }
+  return is_guaranteed_constant;
+}
+
+TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
+  Scope root = Scope::NewRootScope().ExitOnError().WithDevice(
+      "/job:localhost/replica:0/task:0/cpu:0");
+  auto x1 = ops::Placeholder(root.WithOpName("x1"), DT_FLOAT);
+  auto const_x2 = ops::Const(root.WithOpName("const_x2"), 10.0f);
+  auto const_guarantee_x1 =
+      ops::GuaranteeConst(root.WithOpName("const_guarantee_x1"), x1);
+  auto add1 = ops::Add(root.WithOpName("add1"), const_guarantee_x1, const_x2);
+  add1.node()->AddAttr("_encapsulate", "encapsulate1");
+
+  Graph graph_before(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(&graph_before));
+
+  std::unique_ptr<Graph> graph_after;
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  int guaranteed_consts = 0;
+  TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
+      "_encapsulate", graph_before,
+      /*rewrite_subgraph_fn=*/
+      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+                           std::vector<int>* input_permutation,
+                           std::vector<int>* output_permutation,
+                           NodeDef* call_def) {
+        Graph* graph = graph_ptr->get();
+        for (const Node* n : graph->nodes()) {
+          if (n->type_string() == "_Arg" &&
+              StringPiece(n->name()).starts_with("const")) {
+            ++guaranteed_consts;
+            EXPECT_TRUE(HasGuaranteeConstAttr(*n));
+          } else {
+            EXPECT_FALSE(HasGuaranteeConstAttr(*n));
+          }
+        }
+        return Status::OK();
+      },
+      /*parallel_checking=*/false,
+      /*reuse_existing_functions=*/false, &graph_after, &library));
+  EXPECT_EQ(2, guaranteed_consts);
+}
+
+TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
+  Scope root = Scope::NewRootScope().ExitOnError().WithDevice(
+      "/job:localhost/replica:0/task:0/cpu:0");
+  auto x1 = ops::Placeholder(root.WithOpName("x1"), DT_FLOAT);
+  auto x2 = ops::Placeholder(root.WithOpName("x2"), DT_FLOAT);
+  auto const_guarantee_x1 =
+      ops::GuaranteeConst(root.WithOpName("const_guarantee_x1"), x1);
+  auto const_guarantee_x2 =
+      ops::GuaranteeConst(root.WithOpName("const_guarantee_x2"), x2);
+  auto const_guarantee_add1 = ops::Add(root.WithOpName("const_guarantee_add1"),
+                                       const_guarantee_x1, const_guarantee_x2);
+  auto add2 = ops::Add(root.WithOpName("add2"), const_guarantee_x1, x2);
+  auto mul1 = ops::Mul(root.WithOpName("mul1"), const_guarantee_add1, add2);
+  mul1.node()->AddAttr("_encapsulate", "encapsulate1");
+
+  Graph graph_before(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(&graph_before));
+
+  std::unique_ptr<Graph> graph_after;
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  int guaranteed_consts = 0;
+  TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
+      "_encapsulate", graph_before,
+      /*rewrite_subgraph_fn=*/
+      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+                           std::vector<int>* input_permutation,
+                           std::vector<int>* output_permutation,
+                           NodeDef* call_def) {
+        Graph* graph = graph_ptr->get();
+        for (const Node* n : graph->nodes()) {
+          if (n->type_string() == "_Arg" &&
+              StringPiece(n->name()).starts_with("const")) {
+            ++guaranteed_consts;
+            EXPECT_TRUE(HasGuaranteeConstAttr(*n));
+          } else {
+            EXPECT_FALSE(HasGuaranteeConstAttr(*n));
+          }
+        }
+        return Status::OK();
+      },
+      /*parallel_checking=*/false,
+      /*reuse_existing_functions=*/false, &graph_after, &library));
+  // Only 1 runtime const, which is const_guarantee_add1. Add2 has one const
+  // and another non-const, so overall non-const.
+  EXPECT_EQ(1, guaranteed_consts);
+}
+
 }  // namespace
 }  // namespace tensorflow

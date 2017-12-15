@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import optimizers
 
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
@@ -79,7 +79,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
     train_op = optimizers.optimize_loss(
         model_outputs.loss,
-        global_step=variables.get_global_step(),
+        global_step=training_util.get_global_step(),
         optimizer=self.optimizer,
         # Learning rate is set in the Optimizer object
         learning_rate=None)

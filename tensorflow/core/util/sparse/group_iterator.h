@@ -83,6 +83,11 @@ class GroupIterable {
   class IteratorStep;
 
   IteratorStep begin() { return IteratorStep(this, 0); }
+  IteratorStep at(int64 loc) {
+    CHECK(loc >= 0 && loc <= ix_.dim_size(0))
+        << "loc provided must lie between 0 and " << ix_.dim_size(0);
+    return IteratorStep(this, loc);
+  }
   IteratorStep end() { return IteratorStep(this, ix_.dim_size(0)); }
 
   template <typename TIX>
@@ -109,6 +114,7 @@ class GroupIterable {
     IteratorStep& operator++();    // prefix ++
     IteratorStep operator++(int);  // postfix ++
     Group operator*() const { return Group(iter_, loc_, next_loc_); }
+    int64 loc() const { return loc_; }
 
    private:
     GroupIterable* iter_;

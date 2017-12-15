@@ -20,19 +20,12 @@ from __future__ import print_function
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import enumerate_ops
 from tensorflow.contrib.data.python.ops import error_ops
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import grouping
-
-from tensorflow.contrib.util import loader
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.util import deprecation
-
-
-_dataset_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("../../_dataset_ops.so"))
 
 
 class Dataset(dataset_ops.Dataset):
@@ -53,6 +46,10 @@ class Dataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+  @property
+  def output_classes(self):
+    return self._dataset.output_classes
 
   @property
   def output_shapes(self):
