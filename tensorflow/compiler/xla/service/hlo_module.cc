@@ -230,8 +230,8 @@ StatusOr<ProgramShape> ProgramShapeFromProto(const HloModuleProto& module) {
           << "Entry computation has more than one parameter instruction "
              "with parameter number "
           << instruction.parameter_number();
-      parameters[instruction.parameter_number()] = {
-          instruction.parameter_name(), &instruction.shape()};
+      parameters[instruction.parameter_number()] = {instruction.name(),
+                                                    &instruction.shape()};
     }
   }
   TF_RET_CHECK(root != nullptr)

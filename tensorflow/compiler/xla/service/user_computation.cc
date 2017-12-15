@@ -1552,8 +1552,8 @@ UserComputation::ComputeProgramShape(
             request.request().parameter_request();
         int64 param_no = parameter_request.parameter();
         // Parameters may be out of order so expand ProgramShape parameters
-        // until
-        // it is at least large enough to hold the current parameter number.
+        // until it is at least large enough to hold the current parameter
+        // number.
         while (program_shape->parameters_size() <= param_no) {
           program_shape->add_parameters();
           program_shape->add_parameter_names();

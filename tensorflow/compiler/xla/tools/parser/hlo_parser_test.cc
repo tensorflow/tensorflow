@@ -742,6 +742,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// Variables with non-default names
+{
+"NonDefaultNames",
+R"(HloModule add_constants_module:
+
+ENTRY %add_constants () -> f32[] {
+  %foo = f32[] constant(3.14)
+  ROOT %bar = f32[] add(f32[] %foo, f32[] %foo)
+}
+
+)"
+},
   });
   // clang-format on
 }

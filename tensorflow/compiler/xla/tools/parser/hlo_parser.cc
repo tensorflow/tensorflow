@@ -936,6 +936,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                HloOpcodeString(opcode)));
   }
 
+  instruction->set_name(name);
+
   // Add common attrs (sharding, control predecessors) to the instruction, if
   // they were seen.
   if (sharding) {

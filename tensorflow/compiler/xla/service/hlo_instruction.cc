@@ -104,7 +104,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->literal_ = MakeUnique<Literal>(proto.literal());
   }
   instruction->parameter_number_ = proto.parameter_number();
-  instruction->parameter_name_ = proto.parameter_name();
 
   instruction->tuple_index_ = proto.tuple_index();
   for (int64 dimension : proto.dimensions()) {
@@ -154,7 +153,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
-  instruction->parameter_name_ = name;
   instruction->name_ = name;
   return instruction;
 }
@@ -1245,7 +1243,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CloneFusionWithNewOperands(shape, new_operands, module);
       break;
     case HloOpcode::kParameter:
-      clone = CreateParameter(parameter_number_, shape, parameter_name_);
+      clone = CreateParameter(parameter_number_, shape, name_);
       break;
     case HloOpcode::kBatchNormTraining:
       CHECK_EQ(new_operands.size(), 3);
@@ -2113,7 +2111,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     *proto.mutable_literal() = literal_->ToProto();
   }
   proto.set_parameter_number(parameter_number_);
-  proto.set_parameter_name(parameter_name_);
   if (opcode() == HloOpcode::kFusion) {
     proto.set_fusion_kind(xla::ToString(fusion_kind()));
     *proto.mutable_fused_instructions_computation() =

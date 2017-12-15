@@ -601,16 +601,6 @@ class HloInstruction {
     return parameter_number_;
   }
 
-  const string& parameter_name() const {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    return parameter_name_;
-  }
-
-  void set_parameter_name(const string& str) {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    parameter_name_ = str;
-  }
-
   // Returns the dimension sizes or numbers associated with this instruction.
   //
   // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
@@ -1073,10 +1063,9 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns a string identifier for this instruction. If no string identifier
-  // has been explicitly set, then the identifier is the serialized pointer to
-  // this instruction.
+  // Gets/sets the string identifier for this instruction.
   const string& name() const { return name_; }
+  void set_name(tensorflow::StringPiece name) { name_ = name.ToString(); }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1268,7 +1257,6 @@ class HloInstruction {
 
   // For parameter instructions this field holds the parameter number.
   int64 parameter_number_ = 0;
-  string parameter_name_;
 
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;

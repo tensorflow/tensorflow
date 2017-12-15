@@ -131,9 +131,9 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    string param_name = param_instruction->parameter_name();
+    string param_name = param_instruction->name();
     // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
-    // renumbering the parameters so replace the final number in the name with
+    // renumbering the parameters, so replace the final number in the name with
     // the updated value.
     const string param_underscore = ".param_";
     size_t index = param_name.rfind(param_underscore);
@@ -535,7 +535,7 @@ ProgramShape HloComputation::ComputeProgramShape() const {
 
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() = param_instruction->parameter_name();
+    *program_shape.add_parameter_names() = param_instruction->name();
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
