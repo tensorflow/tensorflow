@@ -251,8 +251,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
-  # TODO(b/70675592): Fix leaked Tensors in this test.
-  # @test_util.assert_no_new_tensors
+  @test_util.assert_no_new_tensors
   def testGPUImplicitGrad(self):
     if not context.context().num_gpus():
       self.skipTest('No GPU found')
@@ -377,8 +376,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(grad.numpy(), 12.0)
     del g
 
-  # TODO(b/70675592): Fix leaked Tensors in this test.
-  # @test_util.assert_no_new_tensors
+  @test_util.assert_no_new_tensors
   def testGradientTapeVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
     with backprop.GradientTape() as g:
@@ -513,8 +511,7 @@ class BackpropTest(test.TestCase):
 
     self.assertAllEqual(backprop.gradients_function(real_f)(1.0)[0], 2.0)
 
-  # TODO(b/70675592): Fix leaked Tensors in this test.
-  # @test_util.assert_no_new_tensors
+  @test_util.assert_no_new_tensors
   def testMultiValueConvertToTensor(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=array_ops.constant([1.0]), name='x')
