@@ -31,6 +31,8 @@ namespace tensorflow {
 
 enum LinkerInitialized { LINKER_INITIALIZED };
 
+class condition_variable;
+
 // Mimic std::mutex + C++17's shared_mutex, adding a LinkerInitialized
 // constructor interface.  This type is as fast as mutex, but is also a shared
 // lock.
