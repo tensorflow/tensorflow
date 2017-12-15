@@ -1130,7 +1130,7 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
 }
 
 TEST_F(HloInstructionTest, Stringification) {
-  // Tests stringification of a simple op, fusion, and while.
+  // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
   const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
@@ -1168,6 +1168,16 @@ TEST_F(HloInstructionTest, Stringification) {
   EXPECT_EQ(loop->ToString(false, false),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
             "condition=%TransposeDot, body=%TransposeDot");
+
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+  HloInstruction* conditional =
+      builder.AddInstruction(HloInstruction::CreateConditional(
+          sout, pred, x, computation, x, computation));
+  EXPECT_EQ(conditional->ToString(false, false),
+            "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
+            "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
+            "true_computation=%TransposeDot, false_computation=%TransposeDot");
 }
 
 }  // namespace

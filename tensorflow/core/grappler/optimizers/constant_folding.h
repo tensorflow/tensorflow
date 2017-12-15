@@ -51,6 +51,10 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
+  string OptimizedNodeName(const NodeDef& node) const;
+  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+
   bool IsReallyConstant(const NodeDef& node) const;
 
   Status MaterializeShapes(const GraphProperties& properties);

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -437,6 +438,20 @@ std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
   std::vector<int64_t> dims(num_dims);
   TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
   return dims;
+}
+
+std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+    TF_ImportGraphDefResults* results) {
+  int num_missing_unused_input_mappings;
+  const char** src_names;
+  int* src_indexes;
+  TF_ImportGraphDefResultsMissingUnusedInputMappings(
+      results, &num_missing_unused_input_mappings, &src_names, &src_indexes);
+  std::vector<string> input_strs(num_missing_unused_input_mappings);
+  for (int i = 0; i < num_missing_unused_input_mappings; ++i) {
+    input_strs[i] = TensorId(src_names[i], src_indexes[i]).ToString();
+  }
+  return input_strs;
 }
 
 }  // namespace tensorflow

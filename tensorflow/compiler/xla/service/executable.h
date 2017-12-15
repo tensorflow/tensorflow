@@ -223,14 +223,19 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
-    stream->ThenStopTimer(timer.get()).BlockHostUntilDone();
+    stream->ThenStopTimer(timer.get());
+    SE_CHECK_OK(stream->BlockHostUntilDone());
     VLOG(1) << "done with block-host-until-done";
 
     // Merge in run-time profile information from execution_profile.
     profile->MergeFrom(execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    if (stream->ok()) {
+      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
+      // illegal.
+      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    }
 
     // TODO(b/28123297): On GPU we end up including transfer time in
     // the compute time this way. Instead, we should get the correct
