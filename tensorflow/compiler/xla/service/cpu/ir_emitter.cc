@@ -1509,13 +1509,9 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
 IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
     PrimitiveType element_type, unsigned element_count) {
-  // Here we assume that the largest register is a vector register.
-  int max_vector_register_size_in_bytes =
-      target_machine_features_.largest_register_size_in_bytes(
-          compute_function_->function());
-
   int vector_register_size_in_elements =
-      max_vector_register_size_in_bytes /
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
       ShapeUtil::ByteSizeOfPrimitiveType(element_type);
 
   ShardedVectorType sharded_vector_type;
@@ -3042,36 +3038,26 @@ StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
                                  argument_addrs, name);
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes(
-    llvm::Function* function) {
-  auto itr = largest_register_size_in_bytes_.find(function);
-  if (itr != largest_register_size_in_bytes_.end()) {
-    return itr->second;
+llvm::TargetTransformInfo* TargetMachineFeatures::GetTargetTransformInfoFor(
+    const llvm::Function& function) {
+  auto it = target_transform_infos_.find(&function);
+  if (it == target_transform_infos_.end()) {
+    // Using a dummy function analysis manager is kind of hacky, but LLVM's
+    // TargetTransformInfoWrapperPass::getTTI does the same thing.
+    //
+    // TODO(sanjoy): Fix this within LLVM by directly exposing
+    // TargetTransformInfo factories from TargetMachine.
+    llvm::FunctionAnalysisManager DummyFAM;
+    llvm::TargetTransformInfo target_transform_info =
+        target_machine_->getTargetIRAnalysis().run(function, DummyFAM);
+    auto emplace_result = target_transform_infos_.emplace(
+        &function, std::move(target_transform_info));
+    CHECK(emplace_result.second);
+    it = emplace_result.first;
   }
 
-  int result = largest_register_size_in_bytes_impl(function);
-
-  InsertOrDie(&largest_register_size_in_bytes_, function, result);
-  DCHECK_EQ(result, largest_register_size_in_bytes_.begin()->second);
-  return result;
+  return &it->second;
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes_impl(
-    llvm::Function* function) const {
-  auto register_info =
-      target_machine_->getSubtargetImpl(*function)->getRegisterInfo();
-
-  unsigned largest_register_size = 0;
-  for (const llvm::TargetRegisterClass* register_class :
-       register_info->regclasses()) {
-    if (register_class->isAllocatable()) {
-      largest_register_size =
-          std::max(largest_register_size,
-                   register_info->getRegSizeInBits(*register_class));
-    }
-  }
-
-  return largest_register_size / 8;
-}
 }  // namespace cpu
 }  // namespace xla
