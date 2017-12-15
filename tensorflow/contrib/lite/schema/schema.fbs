@@ -107,6 +107,7 @@ enum BuiltinOperator : byte {
   PAD = 34,
   UNIDIRECTIONAL_SEQUENCE_RNN = 35,
   GATHER = 36,
+  BATCH_TO_SPACE_ND = 37,
 }
 
 // Options for the builtin operators.
@@ -134,6 +135,7 @@ union BuiltinOptions {
   MulOptions,
   PadOptions,
   GatherOptions,
+  BatchToSpaceNDOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -256,6 +258,12 @@ table PadOptions {
 
 table ReshapeOptions {
   new_shape:[int];
+}
+
+table BatchToSpaceNDOptions {
+  block_shape:[int];
+  before_crops:[int];
+  after_crops:[int];
 }
 
 table SkipGramOptions {

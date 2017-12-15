@@ -1261,6 +1261,10 @@ struct SpaceToBatchNDOperator : Operator {
 // TensorFlow equivalent: BatchToSpaceND
 struct BatchToSpaceNDOperator : Operator {
   BatchToSpaceNDOperator() : Operator(OperatorType::kBatchToSpaceND) {}
+
+  std::vector<int> block_shape;
+  std::vector<int> before_crops;
+  std::vector<int> after_crops;
 };
 
 // Mean operator.

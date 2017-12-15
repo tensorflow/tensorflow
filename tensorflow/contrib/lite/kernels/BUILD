@@ -77,6 +77,7 @@ cc_library(
         "activations.cc",
         "add.cc",
         "basic_rnn.cc",
+        "batch_to_space_nd.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
@@ -148,6 +149,18 @@ tf_cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_to_space_nd_test",
+    size = "small",
+    srcs = ["batch_to_space_nd_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

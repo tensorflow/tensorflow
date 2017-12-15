@@ -241,6 +241,7 @@ TEST_P(OpsTest, RunStuff) {
 
 INSTANTIATE_TESTS(add)
 INSTANTIATE_TESTS(avg_pool)
+INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
 INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)

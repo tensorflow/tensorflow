@@ -119,6 +119,19 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, BuiltinBatchToSpaceND) {
+  BatchToSpaceNDOperator op;
+  op.block_shape = {2, 2};
+  op.before_crops = {1, 2};
+  op.after_crops = {3, 4};
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("BATCH_TO_SPACE_ND", OperatorType::kBatchToSpaceND), op);
+  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
+  EXPECT_EQ(op.before_crops, output_toco_op->before_crops);
+  EXPECT_EQ(op.after_crops, output_toco_op->after_crops);
+}
+
 TEST_F(OperatorTest, CustomCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;

@@ -96,6 +96,10 @@ KNOWN_BUGS = {
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
     # Gather doesn't support int64 indices.
     r"gather.*indices_dtype=int64": "XXXX",
+    # BatchToSpaceND doesn't support cropping.
+    r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
+    # BatchToSpaceND only supports 4D tensors.
+    r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
 }
 
 
@@ -1198,6 +1202,43 @@ def make_space_to_depth_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_batch_to_space_nd_tests(zip_path):
+  """Make a set of tests to do batch_to_space_nd."""
+
+  test_parameters = [
+      {
+          "dtype": [tf.float32, tf.int64, tf.int32],
+          "input_shape": [[12, 2, 2, 1]],
+          "block_shape": [[1, 4], [2, 2], [3, 4]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+      },
+      # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[8, 2, 2, 2, 1, 1]],
+          "block_shape": [[2, 2, 2]],
+          "crops": [[[0, 0], [0, 0], [0, 0]]],
+      },
+  ]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.batch_to_space_nd(input_tensor, parameters["block_shape"],
+                               parameters["crops"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
   """Given an input perform a sequence of TensorFlow ops to produce l2pool."""
   return tf.sqrt(tf.nn.avg_pool(
@@ -1226,6 +1267,7 @@ def main(unused_args):
     dispatch = {
         "control_dep.zip": make_control_dep_tests,
         "add.zip": make_add_tests,
+        "batch_to_space_nd.zip": make_batch_to_space_nd_tests,
         "conv.zip": make_conv_tests,
         "constant.zip": make_constant_tests,
         "depthwiseconv.zip": make_depthwiseconv_tests,

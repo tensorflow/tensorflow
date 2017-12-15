@@ -40,6 +40,7 @@ TfLiteRegistration* Register_HASHTABLE_LOOKUP();
 TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_ADD();
+TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_LOCAL_RESPONSE_NORMALIZATION();
@@ -75,6 +76,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX());
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+  AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND());
   AddBuiltin(BuiltinOperator_MUL, Register_MUL());
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
