@@ -155,5 +155,6 @@ class UtilTest(test.TestCase):
     names = ge.util.get_predefined_collection_names()
     self.assertEqual(1, names.count('variables'))
 
+
 if __name__ == "__main__":
   test.main()
