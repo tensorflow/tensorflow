@@ -54,6 +54,23 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
   $1 = &temp;
 }
 
+%typemap(in) const tensorflow::NamedDevice& (tensorflow::NamedDevice temp) {
+  char* c_string;
+  Py_ssize_t py_size;
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+
+  if (!temp.ParseFromString(string(c_string, py_size))) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "The NamedDevice could not be parsed as a valid protocol buffer");
+    SWIG_fail;
+  }
+  $1 = &temp;
+}
+
 %typemap(in) const tensorflow::RunMetadata& (tensorflow::RunMetadata temp) {
   char* c_string;
   Py_ssize_t py_size;
@@ -197,6 +214,13 @@ static std::vector<string> TF_ListAvailableOps() {
   return op_names;
 }
 
+static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
+  tensorflow::grappler::OpLevelCostEstimator estimator;
+  tensorflow::grappler::OpLevelCostEstimator::DeviceInfo info =
+      estimator.GetDeviceInfo(device.properties());
+  return info.gigaops;
+}
+
 static PyObject* TF_MeasureCosts(
     GItem item,
     GCluster cluster,
@@ -324,6 +348,7 @@ static GCluster TF_NewVirtualCluster(
 static void TF_ShutdownCluster(GCluster cluster);
 static PyObject* TF_ListDevices(GCluster cluster);
 static std::vector<string> TF_ListAvailableOps();
+static float TF_EstimatePerformance(const tensorflow::NamedDevice& device);
 static PyObject* TF_MeasureCosts(
     GItem item, GCluster cluster,
     bool generate_timeline, TF_Status* out_status);

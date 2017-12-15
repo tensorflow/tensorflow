@@ -106,6 +106,9 @@ class ClusterTest(test.TestCase):
       self.assertGreater(run_time, 0)
       self.assertEqual(len(op_perfs), 15)
 
+      estimated_perf = grappler_cluster.EstimatePerformance(named_device)
+      self.assertEqual(7680.0, estimated_perf)
+
   def testContext(self):
     with ops.Graph().as_default() as g:
       a = random_ops.random_uniform(shape=())
