@@ -2897,6 +2897,29 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       if maximum_iterations.shape.ndims != 0:
         raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
                          maximum_iterations.shape)
+
+      # If/when we generated the gradient for this while loop, the
+      # maximum_iterations tensor will be used as the input to any generated
+      # stack ops. It's likely the stacks will be outside any control flow
+      # context (i.e. if gradients() is called outside any control flow
+      # context), which will result in the maximum_iterations tensor being an
+      # illegal input (see control_flow_util.CheckInputFromValidContext).
+      #
+      # NOTE(skyewm): we could technically allow tensors from CondContexts, but
+      # that will be error-prone and hard to reason about for users.
+      #
+      # TODO(skyewm): make this work (it's tricky).
+      # pylint: disable=protected-access
+      if (context.in_graph_mode() and
+          maximum_iterations.op._get_control_flow_context() is not None):
+        raise ValueError(
+            "maximum_iterations tensor cannot be declared in tf.cond or "
+            "tf.while_loop. Please file an issue at "
+            "https://github.com/tensorflow/tensorflow/issues if you require "
+            "this functionality. (Control flow context: %s)" %
+            maximum_iterations.op._get_control_flow_context().name)
+      # pylint: enable=protected-access
+
       counter = constant_op.constant(
           0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
