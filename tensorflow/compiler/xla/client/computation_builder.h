@@ -823,7 +823,7 @@ class ComputationBuilder {
   // The operand must represent a constant value, which in this case
   // means that it must not statically depend on any parameter of the
   // computation that is being built other then the ones specified on the
-  // paramtere list. The parameters in the list will be indexed by their
+  // parameter list. The parameters in the list will be indexed by their
   // parameter id property so the number of parameters specified should be at
   // least as many as the largest used parameter index.
   //
