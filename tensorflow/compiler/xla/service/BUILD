@@ -1721,6 +1721,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "hlo_verifier_test",
+    srcs = ["hlo_verifier_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_verifier",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],

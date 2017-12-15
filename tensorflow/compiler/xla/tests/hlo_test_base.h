@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -209,6 +210,9 @@ class HloTestBase : public ::testing::Test {
         ->Clear();
   }
 
+  // Return an HLO verifier constructed for the test backend.
+  HloVerifier& verifier() const { return *hlo_verifier_; }
+
   static string TestName();
 
   // Returns the backend owned by the test runner.
@@ -216,6 +220,8 @@ class HloTestBase : public ::testing::Test {
 
   HloRunner test_runner_;
   HloRunner reference_runner_;
+
+  std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
 

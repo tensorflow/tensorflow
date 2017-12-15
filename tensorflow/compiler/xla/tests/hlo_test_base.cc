@@ -90,7 +90,11 @@ HloTestBase::HloTestBase()
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform)
-    : test_runner_(test_platform), reference_runner_(reference_platform) {}
+    : test_runner_(test_platform), reference_runner_(reference_platform) {
+  hlo_verifier_ = MakeUnique<HloVerifier>([this](const Shape& shape) {
+    return backend().transfer_manager()->GetByteSizeRequirement(shape);
+  });
+}
 
 /* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
