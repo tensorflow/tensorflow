@@ -80,6 +80,10 @@ class Cluster(object):
         devices.append(device_properties_pb2.NamedDevice.FromString(raw_dev))
     return devices
 
+  def ListAvailableOps(self):
+    """Returns a list of all the available operations (sorted alphatically)."""
+    return tf_cluster.TF_ListAvailableOps()
+
   def MeasureCosts(self, item):
     """Returns the cost of running the specified item.
 

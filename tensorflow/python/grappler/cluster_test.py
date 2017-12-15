@@ -123,6 +123,13 @@ class ClusterTest(test.TestCase):
       self.assertEqual(len(op_perfs), 9)
       self.assertTrue(step_stats.dev_stats)
 
+  def testAvailableOps(self):
+    with cluster.Provision() as gcluster:
+      op_names = gcluster.ListAvailableOps()
+      self.assertTrue(b'Add' in op_names)
+      self.assertTrue(b'MatMul' in op_names)
+      self.assertEqual(op_names, sorted(op_names))
+
 
 if __name__ == '__main__':
   test.main()

@@ -185,6 +185,18 @@ static PyObject* TF_ListDevices(GCluster cluster) {
   return result;
 }
 
+static std::vector<string> TF_ListAvailableOps() {
+  tensorflow::OpRegistry* registry = tensorflow::OpRegistry::Global();
+  std::vector<tensorflow::OpDef> ops;
+  registry->GetRegisteredOps(&ops);
+  std::vector<string> op_names;
+  for (const tensorflow::OpDef& op : ops) {
+    op_names.push_back(op.name());
+  }
+  std::sort(op_names.begin(), op_names.end());
+  return op_names;
+}
+
 static PyObject* TF_MeasureCosts(
     GItem item,
     GCluster cluster,
@@ -311,10 +323,10 @@ static GCluster TF_NewVirtualCluster(
     TF_Status* out_status);
 static void TF_ShutdownCluster(GCluster cluster);
 static PyObject* TF_ListDevices(GCluster cluster);
+static std::vector<string> TF_ListAvailableOps();
 static PyObject* TF_MeasureCosts(
     GItem item, GCluster cluster,
     bool generate_timeline, TF_Status* out_status);
 static PyObject* TF_DeterminePeakMemoryUsage(
     GItem item, GCluster cluster,
     TF_Status* out_status);
-
