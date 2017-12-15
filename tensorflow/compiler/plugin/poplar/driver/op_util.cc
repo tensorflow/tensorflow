@@ -2,24 +2,12 @@
 #include <limits>
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
 namespace xla {
 namespace poplarplugin {
-
-static int64
-CountShapes(const Shape& shape) {
-  int64 n = 0;
-  if (ShapeUtil::IsTuple(shape)) {
-    for (int64 i=0; i<ShapeUtil::TupleElementCount(shape); i++) {
-      n += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
-    }
-    return n;
-  } else {
-    return 1;
-  }
-};
 
 ArgVector
 FindTupleInInstructionInput(const TensorMap& map,

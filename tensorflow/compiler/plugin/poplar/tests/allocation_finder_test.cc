@@ -112,7 +112,7 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
 
   const HloInstruction* c_conv = conv;
 
-  EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
   EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
   EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
 }
@@ -169,7 +169,7 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
 
   const HloInstruction* c_conv = conv;
 
-  EXPECT_EQ(finder.tensor_allocation_map.size(), 4);
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 4);
   EXPECT_EQ(finder.tensor_allocation_map.at(op1),
         std::make_pair(c_conv,0ll));
   EXPECT_EQ(finder.tensor_allocation_map.at(op2),
@@ -268,7 +268,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   const HloInstruction* c_conv1 = conv1;
   const HloInstruction* c_conv2 = conv2;
 
-  EXPECT_EQ(finder.tensor_allocation_map.size(), 6);
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 6);
   EXPECT_EQ(finder.tensor_allocation_map.at(op1),
         std::make_pair(c_conv1,0ll));
   EXPECT_EQ(finder.tensor_allocation_map.at(op2),
@@ -371,7 +371,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   const HloInstruction* c_conv1 = conv1;
   const HloInstruction* c_conv2 = conv2;
 
-  EXPECT_EQ(finder.tensor_allocation_map.size(), 6);
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 6);
   EXPECT_EQ(finder.tensor_allocation_map.at(op1),
           std::make_pair(c_conv2,0ll));
   EXPECT_EQ(finder.tensor_allocation_map.at(op2),
@@ -425,10 +425,139 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
 
   const HloInstruction* c_conv = conv;
 
-  EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
   EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
   EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
 }
+
+// Check it goes through Tuple/Detuple pairs
+TEST_F(AllocationFinderTest, CanTraverseTuples) {
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape,rhs_shape});
+
+  auto b = HloComputation::Builder(TestName());
+  auto in = b.AddInstruction(
+          HloInstruction::CreateParameter(0, lhs_shape, "in"));
+  auto w = b.AddInstruction(
+          HloInstruction::CreateParameter(1, rhs_shape, "weight"));
+
+  auto tuple = b.AddInstruction(
+          HloInstruction::CreateTuple({in, w}));
+
+  auto in1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
+        lhs_shape, tuple, 0));
+  auto w1 = b.AddInstruction(HloInstruction::CreateGetTupleElement(
+        rhs_shape, tuple, 1));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot_inst = b.AddInstruction(
+          HloInstruction::CreateDot(lhs_shape, in1, w1, dot_dnums));
+
+  hlo_module->AddEntryComputation(b.Build());
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  const HloInstruction* dot = dot_inst;
+
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(finder.tensor_allocation_map.at(in), std::make_pair(dot,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(w), std::make_pair(dot,1ll));
+
+}
+
+// Check it goes through while instructions
+//TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
+//  auto hlo_module = MakeUnique<HloModule>("test_module");
+//
+//  Shape counter_shape = ShapeUtil::MakeShape(S32, {});
+//  Shape input_shape = ShapeUtil::MakeShape(F32, {2});
+//  Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
+//  Shape tuple_shape = ShapeUtil::MakeTupleShape(
+//          {counter_shape,input_shape,weight_shape});
+//
+//  const HloInstruction* dot_inst;
+//
+//  /* Create while condition */
+//  HloComputation* comp_cond;
+//  {
+//  auto builder_cond = HloComputation::Builder(TestName());
+//  auto tuple = builder_cond.AddInstruction(
+//          HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
+//  auto limit = builder_cond.AddInstruction(
+//          HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
+//  auto c = builder_cond.AddInstruction(
+//          HloInstruction::CreateGetTupleElement(ShapeUtil::MakeShape(S32, {}),
+//                                                tuple, 0));
+//  builder_cond.AddInstruction(HloInstruction::CreateBinary(
+//        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+//
+//  comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
+//  }
+//
+//  /* Create while body */
+//  HloComputation* comp_body;
+//  {
+//  auto builder_body = HloComputation::Builder(TestName());
+//  auto tuple = builder_body.AddInstruction(
+//          HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
+//  auto c = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+//          counter_shape, tuple, 0));
+//  auto in = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+//          input_shape, tuple, 1));
+//  auto w = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+//          weight_shape, tuple, 2));
+//  auto one = builder_body.AddInstruction(
+//          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+//  auto new_c = builder_body.AddInstruction(HloInstruction::CreateBinary(
+//          c->shape(), HloOpcode::kAdd, c, one));
+//
+//  DotDimensionNumbers dot_dnums;
+//  dot_dnums.add_lhs_contracting_dimensions(1);
+//  dot_dnums.add_rhs_contracting_dimensions(0);
+//  auto new_in = builder_body.AddInstruction(
+//          HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
+//
+//  dot_inst = new_in;
+//
+//  builder_body.AddInstruction(
+//          HloInstruction::CreateTuple({new_c, new_in, w}));
+//
+//  comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
+//  }
+//
+//
+//  /* Create main computation */
+//  auto builder_main = HloComputation::Builder(TestName());
+//  auto c = builder_main.AddInstruction(
+//          HloInstruction::CreateParameter(0, counter_shape, "counter"));
+//  auto in = builder_main.AddInstruction(
+//          HloInstruction::CreateParameter(1, input_shape, "in"));
+//  auto w = builder_main.AddInstruction(
+//          HloInstruction::CreateParameter(2, weight_shape, "weight"));
+//
+//  auto init = builder_main.AddInstruction(
+//          HloInstruction::CreateTuple({c, in, w}));
+//
+//  auto main = builder_main.AddInstruction(
+//          HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
+//
+//  builder_main.AddInstruction(
+//          HloInstruction::CreateTuple({main}));
+//
+//  hlo_module->AddEntryComputation(builder_main.Build());
+//
+//  AllocationFinder finder;
+//  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+//
+//  ASSERT_EQ(finder.tensor_allocation_map.size(), 1);
+//  EXPECT_EQ(finder.tensor_allocation_map.at(w), std::make_pair(dot_inst,1ll));
+//}
 
 }
 }

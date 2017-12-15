@@ -1,6 +1,11 @@
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OPS_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OPS_H_
 
+/*
+ * These functions are related to poplar, and cannot be used within the
+ * optimizers target in the BUILD file.
+ */
+
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
@@ -56,15 +61,6 @@ port::StatusOr<popstd_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
 port::Status SetVertexField(poplar::Graph &graph,
                             const poplar::FieldRef &field,
                             const Literal &literal);
-
-template<typename To, typename From>
-To convert_array(const From& from) {
-  To out;
-  for (const auto& e : from) {
-    out.push_back(e);
-  }
-  return out;
-};
 
 port::StatusOr<popconv::ConvParams>
 GetConvolutionParameters(const HloInstruction* inst);

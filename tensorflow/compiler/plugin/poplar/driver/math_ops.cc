@@ -4,6 +4,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
