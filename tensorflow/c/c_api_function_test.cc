@@ -1462,11 +1462,11 @@ TEST_F(CApiFunctionTest, AppendHash) {
                  /*append_hash=*/true);
   tensorflow::FunctionDef fdef;
   ASSERT_TRUE(GetFunctionDef(func_, &fdef));
-  #if ((__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) && defined(__s390x__))
+#if ((__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__) && defined(__s390x__))
   ASSERT_EQ(string("func_name_base_ZpgUD4x8oqk"), fdef.signature().name());
-  #else
+#else
   ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
-  #endif
+#endif
 }
 
 TEST_F(CApiFunctionTest, GetOpDef) {
