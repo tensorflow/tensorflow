@@ -660,6 +660,15 @@ class OperationTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         y * x  # pylint: disable=pointless-statement
 
+  def testInputsAreImmutable(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      op = test_ops.int_input_int_output(x, name="myop").op
+    with self.assertRaisesRegexp(
+        AttributeError, "'_InputList' object has no attribute 'append'"):
+      op.inputs.append(None)
+
 
 @test_util.with_c_api
 class CreateOpTest(test_util.TensorFlowTestCase):

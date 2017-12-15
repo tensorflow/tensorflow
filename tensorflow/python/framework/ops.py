@@ -1975,23 +1975,23 @@ class Operation(object):
   class _InputList(object):
     """Immutable input list wrapper."""
 
-    def __init__(self, op):
-      self._op = op
+    def __init__(self, inputs):
+      self._inputs = inputs
 
     def __iter__(self):
-      return iter(self._op._inputs)
+      return iter(self._inputs)
 
     def __len__(self):
-      return len(self._op._inputs)
+      return len(self._inputs)
 
     def __bool__(self):
-      return bool(self._op._inputs)
+      return bool(self._inputs)
 
     # Python 3 wants __bool__, Python 2.7 wants __nonzero__
     __nonzero__ = __bool__
 
     def __getitem__(self, i):
-      return self._op._inputs[i]
+      return self._inputs[i]
 
 # pylint: enable=protected-access
 
@@ -2000,13 +2000,14 @@ class Operation(object):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
       tf_outputs = c_api.GetOperationInputs(self._c_op)
-      # TODO(skyewm): return Operation._InputList
       # pylint: disable=protected-access
-      return [self.graph._get_tensor_by_tf_output(tf_output)
-              for tf_output in tf_outputs]
+      retval = [
+          self.graph._get_tensor_by_tf_output(tf_output)
+          for tf_output in tf_outputs
+      ]
       # pylint: enable=protected-access
-    else:
-      return Operation._InputList(self)
+      return Operation._InputList(retval)
+    return Operation._InputList(self._inputs)
 
   @property
   def _input_dtypes(self):
@@ -4882,7 +4883,7 @@ def init_scope():
 
     (3) The gradient tape is paused while the scope is active.
   """
-# pylint: enable=g-doc-return-or-yield,line-too-long
+  # pylint: enable=g-doc-return-or-yield,line-too-long
 
   outer_context = None
   if not context.context_stack.stack:
