@@ -4971,6 +4971,13 @@ def enable_eager_execution(config=None, device_policy=None):
   if context._context is None:
     context._context = context.Context(config=config,
                                        device_policy=device_policy)
+    if context.context_stack.stack:
+      raise AssertionError("Invariant violated: The context stack must "
+                           "be empty when eager execution is enabled.")
+    # Log that eager execution has been enabled by pushing an entry onto the
+    # context stack; this entry won't ever be popped, as it's impossible to
+    # disable eager execution
+    context.context_stack.push(False, context.eager_mode)
   elif ((config is not None and config is not context._context._config)
         or (device_policy is not None
             and device_policy is not context._context._device_policy)):
