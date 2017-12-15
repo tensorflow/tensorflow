@@ -268,6 +268,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMax)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     default:
       LOG(FATAL) << "Unhandled op type";
@@ -1250,6 +1251,8 @@ int ElementSize(ArrayDataType data_type) {
       return 4;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt64:
+      return 8;
     default:
       LOG(FATAL) << "Should not get here.";
       return 0;

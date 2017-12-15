@@ -940,6 +940,31 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   auto& output_array = model->GetArray(op->outputs[1]);
   output_array.mutable_shape()->ReplaceDims({batch_size, num_units});
 }
+
+void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  const auto& input_array = *model->arrays[op->inputs[0]];
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  const std::vector<int>& input_dims = input_array.shape().dims();
+  std::vector<int> output_dims;
+
+  output_dims.reserve(input_dims.size() - 1);
+  for (int i = 0; i < input_dims.size() - 1; ++i) {
+    output_dims.push_back(input_dims[i]);
+  }
+  output_dims.push_back(1);
+  const string& output_name = op->outputs[0];
+  auto& output_array = *model->arrays[output_name];
+  if (output_array.has_shape()) {
+    return;
+  }
+  *output_array.mutable_shape()->mutable_dims() = output_dims;
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1116,6 +1141,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kStridedSlice:
       ProcessStridedSliceOperator(model,
                                   static_cast<StridedSliceOperator*>(op));
+      break;
+    case OperatorType::kArgMax:
+      ProcessArgMaxOperator(model, static_cast<ArgMaxOperator*>(op));
       break;
     case OperatorType::kTensorFlowUnsupported:
       break;
