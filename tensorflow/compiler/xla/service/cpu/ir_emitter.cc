@@ -1111,8 +1111,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
         llvm_ir::IrArray::Index kernel_index(num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
-          kernel_index[dnums.kernel_spatial_dimensions(i)] = kernel_spatial[i];
+          kernel_index[dnums.kernel_spatial_dimensions(i)] =
+              window.dimensions(i).window_reversal()
+                  ? ir_builder_.CreateNSWSub(
+                        ir_builder_.getInt64(window.dimensions(i).size() - 1),
+                        kernel_spatial[i])
+                  : kernel_spatial[i];
         }
+
         kernel_index[dnums.kernel_input_feature_dimension()] = input_feature;
         kernel_index[dnums.kernel_output_feature_dimension()] = output_feature;
 
