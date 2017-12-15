@@ -275,7 +275,7 @@ string Env::GetExecutablePath() {
   size_t exe_path_size = PATH_MAX;
 
   if (sysctl(mib, 4, exe_path, &exe_path_size, NULL, 0) != 0) {
-    // Not sure what to do if it fails?
+    return "Resolving ", exe_path, " failed";
   }
 #elif defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandleW(NULL);
@@ -305,6 +305,9 @@ bool Env::LocalTempFilename(string* filename) {
     int32 tid = static_cast<int32>(tid64);
     int32 pid = static_cast<int32>(getpid());
 #elif defined(__FreeBSD__)
+    // Has to be casted to long first, else this error appears:
+    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+    // is not allowed
     int32 tid = static_cast<int32>((long) pthread_self());
     int32 pid = static_cast<int32>(getpid());
 #elif defined(PLATFORM_WINDOWS)
