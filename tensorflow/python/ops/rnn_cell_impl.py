@@ -364,7 +364,7 @@ class SRUCell(_LayerRNNCell):
     # the paper https://arxiv.org/pdf/1709.02755.pdf upon which this
     # implementation is based.
     # In section 2.1 Equation 5, specifically:
-    # h_t = r_t \odot g(c_t) + (1 − r_t) \odot x_t
+    # h_t = r_t \odot g(c_t) + (1 - r_t) \odot x_t
     # the pointwise operation between r_t and x_t means they have
     # the same shape (since we are implementing an RNN cell, braodcasting
     # does not happen to input of a single timestep); by the same
@@ -373,7 +373,7 @@ class SRUCell(_LayerRNNCell):
     if input_depth != self._num_units:
       raise ValueError("SRU requires input_depth == num_units, got "
                        "input_depth = %s, num_units = %s" % (input_depth,
-                       self._num_units))
+                                                             self._num_units))
 
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
