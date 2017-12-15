@@ -167,11 +167,20 @@ class DfsHloVisitorWithDefaultBase
   Status HandleWhile(HloInstructionPtr xla_while) override {
     return DefaultAction(xla_while);
   }
-  Status HandleSend(HloInstructionPtr send) override {
-    return DefaultAction(send);
+  Status HandleConditional(HloInstructionPtr conditional) override {
+    return DefaultAction(conditional);
   }
   Status HandleRecv(HloInstructionPtr recv) override {
     return DefaultAction(recv);
+  }
+  Status HandleRecvDone(HloInstructionPtr recv_done) override {
+    return DefaultAction(recv_done);
+  }
+  Status HandleSend(HloInstructionPtr send) override {
+    return DefaultAction(send);
+  }
+  Status HandleSendDone(HloInstructionPtr send_done) override {
+    return DefaultAction(send_done);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

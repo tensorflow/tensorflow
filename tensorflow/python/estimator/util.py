@@ -52,7 +52,7 @@ def fn_args(fn):
   else:
     if _is_callable_object(fn):
       fn = fn.__call__
-    args = tf_inspect.getargspec(fn).args
+    args = tf_inspect.getfullargspec(fn).args
     if _is_bounded_method(fn):
       args.remove('self')
   return tuple(args)

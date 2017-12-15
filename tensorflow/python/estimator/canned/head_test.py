@@ -987,12 +987,14 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         spec.loss.eval()
 
   def test_multi_dim_train_weights_wrong_outer_dim(self):
-    """Logits of shape [2, 2, 2], labels [2, 2, 1], weights [2, 2, 2]."""
+    """Logits of shape [2, 2, 2], labels [2, 2, 1], weights [2, 2, 3]."""
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
         n_classes=3, weight_column='weights')
     logits = np.array([[[10, 0, 0], [12, 0, 0]],
                        [[0, 10, 0], [0, 15, 0]]], dtype=np.float32)
     labels = np.array([[[0], [1]], [[1], [2]]], dtype=np.int64)
+    weights = np.array([[[1., 1.1, 1.2], [1.5, 1.6, 1.7]],
+                        [[2., 2.1, 2.2], [2.5, 2.6, 2.7]]])
     weights_placeholder = array_ops.placeholder(dtype=dtypes.float32)
     def _no_op_train_fn(loss):
       del loss
@@ -1008,10 +1010,8 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'\[logits_shape: \]\s\[2 2 3\]\s\[weights_shape: \]\s\[2 2 2\]'):
-        spec.loss.eval({
-            weights_placeholder: np.array([[[1., 1.1], [1.5, 1.6]],
-                                           [[2., 2.1], [2.5, 2.6]]])})
+          r'\[logits_shape: \]\s\[2 2 3\]\s\[weights_shape: \]\s\[2 2 3\]'):
+        spec.loss.eval({weights_placeholder: weights})
 
   def test_multi_dim_weighted_eval(self):
     """Logits of shape [2, 2, 2], labels [2, 2, 1], weights [2, 2]."""
@@ -2324,6 +2324,24 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       # Check results of both update (in `loss_mean`) and value ops.
       self.assertAllClose(expected_loss_mean, loss_mean)
       self.assertAllClose(expected_loss_mean, loss_mean_value_op.eval())
+
+  def test_eval_metric_ops_with_head_name_for_regression(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        name='some_regression_head')
+    logits = np.array(((1,), (9,)), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)
+
+    expected_metric_keys = [
+        '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+    ]
+    self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
 
   def test_train_create_loss(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()

@@ -37,29 +37,6 @@ namespace {
 // https://www.ffmpeg.org/ffmpeg-formats.html
 const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
 
-// Writes binary data to a file.
-Status WriteFile(const string& filename, tensorflow::StringPiece contents) {
-  Env& env = *Env::Default();
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));
-  TF_RETURN_IF_ERROR(file->Append(contents));
-  TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
-}
-
-// Cleans up a file on destruction.
-class FileDeleter {
- public:
-  explicit FileDeleter(const string& filename) : filename_(filename) {}
-  ~FileDeleter() {
-    Env& env = *Env::Default();
-    env.DeleteFile(filename_).IgnoreError();
-  }
-
- private:
-  const string filename_;
-};
-
 /*
  * Decoding implementation, shared across V1 and V2 ops. Creates a new
  * output in the context.
@@ -69,7 +46,7 @@ void Decode(OpKernelContext* context,
             const string& file_format, const int32 samples_per_second,
             const int32 channel_count) {
   // Write the input data to a temp file.
-  const string temp_filename = GetTempFilename(file_format);
+  const string temp_filename = io::GetTempFilename(file_format);
   OP_REQUIRES_OK(context, WriteFile(temp_filename, file_contents));
   FileDeleter deleter(temp_filename);
 

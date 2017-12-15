@@ -230,6 +230,66 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexBinaryOp(
+    const HloInstruction* op, llvm::Value* lhs_value,
+    llvm::Value* rhs_value) const {
+  PrimitiveType input_type = op->operand(0)->shape().element_type();
+  TF_RET_CHECK(primitive_util::IsComplexType(input_type));
+  PrimitiveType component_type =
+      primitive_util::ComplexComponentType(input_type);
+  switch (op->opcode()) {
+    case HloOpcode::kPower: {
+      // (a+bi)^(c+di) =
+      //    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
+      //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
+      auto a = EmitExtractReal(lhs_value);
+      auto b = EmitExtractImag(lhs_value);
+      auto c = EmitExtractReal(rhs_value);
+      auto d = EmitExtractImag(rhs_value);
+      auto aa_p_bb = ir_builder_->CreateFAdd(ir_builder_->CreateFMul(a, a),
+                                             ir_builder_->CreateFMul(b, b));
+      auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
+      auto half_c = ir_builder_->CreateFMul(one_half, c);
+
+      TF_ASSIGN_OR_RETURN(
+          auto aa_p_bb_to_half_c,
+          EmitLibdeviceMathCall("__nv_pow", {aa_p_bb, half_c},
+                                {component_type, component_type},
+                                component_type));
+      auto neg_d = ir_builder_->CreateFNeg(d);
+      TF_ASSIGN_OR_RETURN(
+          auto arg_lhs, EmitLibdeviceMathCall("__nv_atan2", {b, a},
+                                              {component_type, component_type},
+                                              component_type));
+      auto neg_d_arg_lhs = ir_builder_->CreateFMul(neg_d, arg_lhs);
+      TF_ASSIGN_OR_RETURN(
+          auto e_to_neg_d_arg_lhs,
+          EmitLibdeviceMathCall("__nv_exp", {neg_d_arg_lhs}, {component_type},
+                                component_type));
+      auto coeff =
+          ir_builder_->CreateFMul(aa_p_bb_to_half_c, e_to_neg_d_arg_lhs);
+      TF_ASSIGN_OR_RETURN(
+          auto ln_aa_p_bb,
+          EmitLibdeviceMathCall("__nv_log", {aa_p_bb}, {component_type},
+                                component_type));
+      auto half_d = ir_builder_->CreateFMul(one_half, d);
+      auto q =
+          ir_builder_->CreateFAdd(ir_builder_->CreateFMul(c, arg_lhs),
+                                  ir_builder_->CreateFMul(half_d, ln_aa_p_bb));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_q, EmitLibdeviceMathCall("__nv_cos", {q}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_q, EmitLibdeviceMathCall("__nv_sin", {q}, {component_type},
+                                            component_type));
+      return EmitComposeComplex(op, ir_builder_->CreateFMul(coeff, cos_q),
+                                ir_builder_->CreateFMul(coeff, sin_q));
+    }
+    default:
+      return ElementalIrEmitter::EmitComplexBinaryOp(op, lhs_value, rhs_value);
+  }
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
   PrimitiveType input_type = op->operand(0)->shape().element_type();
@@ -237,18 +297,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
       primitive_util::IsComplexType(input_type)
           ? primitive_util::ComplexComponentType(input_type)
           : input_type;
-  auto real = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {0});
-  };
-  auto imag = [&](llvm::Value* x) {
-    return ir_builder_->CreateExtractValue(x, {1});
-  };
 
   switch (op->opcode()) {
     case HloOpcode::kLog: {
       // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
-      auto a = real(operand_value);
-      auto b = imag(operand_value);
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
       llvm::Type* llvm_ty = a->getType();
       auto sum_sq = ir_builder_->CreateFAdd(ir_builder_->CreateFMul(a, a),
                                             ir_builder_->CreateFMul(b, b));
@@ -261,34 +315,33 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
                                             {component_type, component_type},
                                             component_type));
       auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
-      return ComposeComplex(op, ir_builder_->CreateFMul(one_half, log_sum_sq),
-                            angle);
+      return EmitComposeComplex(
+          op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
     }
-    // TODO(b/65408531): Implement kPower on GPU, where atan2 is available.
-    // case HloOpcode::kPower:
-    // // (a+bi)^(c+di) = exp(i(c+di)*arg(a+bi)) * (a*a+b*b)^(0.5(c+di))
     case HloOpcode::kExp: {
       // e^(a+bi) = e^a*(cos(b)+sin(b)i)
-      auto b = imag(operand_value);
+      auto b = EmitExtractImag(operand_value);
       TF_ASSIGN_OR_RETURN(
-          auto exp_a, EmitLibdeviceMathCall("__nv_exp", {real(operand_value)},
-                                            {component_type}, component_type));
+          auto exp_a,
+          EmitLibdeviceMathCall("__nv_exp", {EmitExtractReal(operand_value)},
+                                {component_type}, component_type));
       TF_ASSIGN_OR_RETURN(
           auto cos_b, EmitLibdeviceMathCall("__nv_cos", {b}, {component_type},
                                             component_type));
       TF_ASSIGN_OR_RETURN(
           auto sin_b, EmitLibdeviceMathCall("__nv_sin", {b}, {component_type},
                                             component_type));
-      return ComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
-                            ir_builder_->CreateFMul(exp_a, sin_b));
+      return EmitComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
+                                ir_builder_->CreateFMul(exp_a, sin_b));
     }
     case HloOpcode::kCos: {
       // cos(a+bi) = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
-      auto a = real(operand_value);
+      auto a = EmitExtractReal(operand_value);
       auto llvm_ty = a->getType();
       TF_ASSIGN_OR_RETURN(
-          auto exp_b, EmitLibdeviceMathCall("__nv_exp", {imag(operand_value)},
-                                            {component_type}, component_type));
+          auto exp_b,
+          EmitLibdeviceMathCall("__nv_exp", {EmitExtractImag(operand_value)},
+                                {component_type}, component_type));
       TF_ASSIGN_OR_RETURN(
           auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
                                             component_type));
@@ -299,7 +352,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
           ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
       auto half_exp_neg_b =
           ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
           ir_builder_->CreateFMul(
               cos_a, ir_builder_->CreateFAdd(half_exp_neg_b, half_exp_b)),
@@ -309,11 +362,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
 
     case HloOpcode::kSin: {
       // sin(a+bi) = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
-      auto a = real(operand_value);
+      auto a = EmitExtractReal(operand_value);
       auto llvm_ty = a->getType();
       TF_ASSIGN_OR_RETURN(
-          auto exp_b, EmitLibdeviceMathCall("__nv_exp", {imag(operand_value)},
-                                            {component_type}, component_type));
+          auto exp_b,
+          EmitLibdeviceMathCall("__nv_exp", {EmitExtractImag(operand_value)},
+                                {component_type}, component_type));
       TF_ASSIGN_OR_RETURN(
           auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
                                             component_type));
@@ -324,12 +378,70 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
           ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
       auto half_exp_neg_b =
           ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      return ComposeComplex(
+      return EmitComposeComplex(
           op,
           ir_builder_->CreateFMul(
               sin_a, ir_builder_->CreateFAdd(half_exp_b, half_exp_neg_b)),
           ir_builder_->CreateFMul(
               cos_a, ir_builder_->CreateFSub(half_exp_b, half_exp_neg_b)));
+    }
+    case HloOpcode::kTanh: {
+      /*
+      tanh=(exp(x)-exp(-x)) / (exp(x)+exp(-x))
+      e^(a+bi) = e^a*(cos(b)+sin(b)i)
+      so tanh=(((cos(b)+sin(b)i)e^a - (cos(-b)+sin(-b)i)e^-a)) /
+              (((cos(b)+sin(b)i)e^a + (cos(-b)+sin(-b)i)e^-a))
+      cos(b)=cos(-b), sin(-b)=-sin(b)
+      so tanh=(((cos(b)+sin(b)i)e^a - (cos(b)-sin(b)i)e^-a)) /
+              (((cos(b)+sin(b)i)e^a + (cos(b)-sin(b)i)e^-a))
+             =(cos(b)e^a+i*sin(b)e^a + cos(b)(-e^-a)+i*sin(b)e^-a) /
+              (cos(b)e^a+i*sin(b)e^a + cos(b)e^-a+i*sin(b)(-e^-a))
+             =(cos(b)(e^a-e^-a) + i*sin(b)(e^a+e^-a)) /
+              (cos(b)(e^a+e^-a) + i*sin(b)(e^a-e^-a))
+      This is a complex division, so we can multiply by denom_conj/denom_conj
+             =(cos(b)(e^a-e^-a) + i*sin(b)(e^a+e^-a)) *
+              (cos(b)(e^a+e^-a) - i*sin(b)(e^a-e^-a)) /
+              ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
+             =(cos(b)^2(e^(2a)-e^(-2a)) + sin(b)^2(e^(2a)-e^(-2a)) +
+               i*(cos(b)sin(b)(e^a+e^-a)^2 - cos(b)sin(b)(e^a-e^-a)^2)) /
+              ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
+      */
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      TF_ASSIGN_OR_RETURN(
+          auto exp_a, EmitLibdeviceMathCall("__nv_exp", {a}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_b, EmitLibdeviceMathCall("__nv_cos", {b}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_b, EmitLibdeviceMathCall("__nv_sin", {b}, {component_type},
+                                            component_type));
+      auto exp_neg_a = ir_builder_->CreateFDiv(
+          llvm::ConstantFP::get(exp_a->getType(), 1), exp_a);
+      auto exp_2a_minus_exp_neg_2a = ir_builder_->CreateFSub(
+          ir_builder_->CreateFMul(exp_a, exp_a),
+          ir_builder_->CreateFMul(exp_neg_a, exp_neg_a));
+      auto cos_b_sq = ir_builder_->CreateFMul(cos_b, cos_b);
+      auto sin_b_sq = ir_builder_->CreateFMul(sin_b, sin_b);
+      auto real_num = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(cos_b_sq, exp_2a_minus_exp_neg_2a),
+          ir_builder_->CreateFMul(sin_b_sq, exp_2a_minus_exp_neg_2a));
+      auto cos_b_sin_b = ir_builder_->CreateFMul(cos_b, sin_b);
+      auto exp_a_plus_exp_neg_a = ir_builder_->CreateFAdd(exp_a, exp_neg_a);
+      auto exp_a_plus_exp_neg_a_sq =
+          ir_builder_->CreateFMul(exp_a_plus_exp_neg_a, exp_a_plus_exp_neg_a);
+      auto exp_a_minus_exp_neg_a = ir_builder_->CreateFSub(exp_a, exp_neg_a);
+      auto exp_a_minus_exp_neg_a_sq =
+          ir_builder_->CreateFMul(exp_a_minus_exp_neg_a, exp_a_minus_exp_neg_a);
+      auto imag_num = ir_builder_->CreateFMul(
+          cos_b_sin_b, ir_builder_->CreateFSub(exp_a_plus_exp_neg_a_sq,
+                                               exp_a_minus_exp_neg_a_sq));
+      auto denom = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(cos_b_sq, exp_a_plus_exp_neg_a_sq),
+          ir_builder_->CreateFMul(sin_b_sq, exp_a_minus_exp_neg_a_sq));
+      return EmitComposeComplex(op, ir_builder_->CreateFDiv(real_num, denom),
+                                ir_builder_->CreateFDiv(imag_num, denom));
     }
     default:
       return ElementalIrEmitter::EmitComplexUnaryOp(op, operand_value);

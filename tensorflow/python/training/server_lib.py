@@ -307,6 +307,12 @@ class ClusterSpec(object):
   def __ne__(self, other):
     return self._cluster_spec != other
 
+  def __str__(self):
+    key_values = self.as_dict()
+    string_items = [
+        repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)]
+    return "ClusterSpec({" + ", ".join(string_items) + "})"
+
   def as_dict(self):
     """Returns a dictionary from job names to their tasks.
 

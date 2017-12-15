@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#ifndef _WIN32
 #include <pwd.h>
-#include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"

@@ -460,7 +460,11 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
-  ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+  if indices.shape.ndims == 2 and indices.shape[-1].value == 1:
+    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
+                                 ref_shape)
+  else:
+    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
 
 
@@ -518,6 +522,16 @@ def _TransposeGrad(op, grad):
   """Returns unshuffle(grad)."""
   p = op.inputs[1]
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
+
+
+@ops.RegisterGradient("ConjugateTranspose")
+def _ConjugateTransposeGrad(op, grad):
+  """Returns conj(unshuffle(grad))."""
+  p = op.inputs[1]
+  return [
+      array_ops.transpose(
+          grad, array_ops.invert_permutation(p), conjugate=True), None
+  ]
 
 
 ops.NotDifferentiable("Shape")

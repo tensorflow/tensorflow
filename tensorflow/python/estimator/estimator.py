@@ -30,6 +30,7 @@ from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
@@ -416,7 +417,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       self._create_and_assert_global_step(g)
-      features = self._get_features_from_input_fn(
+      features, input_hooks = self._get_features_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.PREDICT)
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
@@ -426,7 +427,7 @@ class Estimator(object):
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=hooks) as mon_sess:
+          hooks=input_hooks + hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
           if not isinstance(predictions, dict):
@@ -461,7 +462,11 @@ class Estimator(object):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
+
+    For a detailed guide, see
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
 
     This method builds a new graph by first calling the
     serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
@@ -506,6 +511,7 @@ class Estimator(object):
       ValueError: if no serving_input_receiver_fn is provided, no export_outputs
           are provided, or no checkpoint can be found.
     """
+    # pylint: enable=line-too-long
     if serving_input_receiver_fn is None:
       raise ValueError('serving_input_receiver_fn must be defined.')
 
@@ -537,7 +543,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session() as session:
+      with tf_session.Session(config=self._session_config) as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
@@ -577,6 +583,11 @@ class Estimator(object):
   def _get_features_from_input_fn(self, input_fn, mode):
     """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       # Unconditionally drop the label (the second element of result).
       result = result[0]
@@ -585,16 +596,22 @@ class Estimator(object):
       logging.warning('Input graph does not use tf.data.Dataset or contain a '
                       'QueueRunner. That means predict yields forever. '
                       'This is probably a mistake.')
-    return result
+    return result, input_hooks
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` and labels from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
             'input_fn should return (feautures, labels) as a len 2 tuple.')
-      return result
-    return result, None
+      return result[0], result[1], input_hooks
+    return result, None, input_hooks
 
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
@@ -718,8 +735,10 @@ class Estimator(object):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
       training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.TRAIN)
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.TRAIN))
+      worker_hooks.extend(input_hooks)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
       # Check if the user created a loss summary, and add one if they didn't.
@@ -817,8 +836,9 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.EVAL)
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.EVAL))
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
 
@@ -839,7 +859,8 @@ class Estimator(object):
             'already defines a default metric with the same name.')
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
-      all_hooks = list(hooks or [])
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
       all_hooks.extend(list(estimator_spec.evaluation_hooks or []))
 
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
@@ -1034,3 +1055,16 @@ def _has_dataset_or_queue_runner(maybe_tensor):
 
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
+
+
+class _DatasetInitializerHook(training.SessionRunHook):
+
+  def __init__(self, iterator):
+    self._iterator = iterator
+
+  def begin(self):
+    self._initializer = self._iterator.initializer
+
+  def after_create_session(self, session, coord):
+    del coord
+    session.run(self._initializer)

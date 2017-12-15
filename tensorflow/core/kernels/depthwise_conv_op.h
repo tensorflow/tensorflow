@@ -158,7 +158,8 @@ struct DepthwiseFilterPadOp {
       }
       // Pad the remainder of output to vector-register boundary.
       for (int64 j = 0; j < pad_size; ++j) {
-        padded_filter[output_base + vectorized_size + scalar_size + j] = static_cast<T>(0);
+        padded_filter[output_base + vectorized_size + scalar_size + j] =
+            static_cast<T>(0);
       }
     }
   }

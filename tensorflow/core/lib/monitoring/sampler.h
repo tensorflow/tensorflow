@@ -159,9 +159,10 @@ class Sampler {
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  // We use a std::map here because we give out pointers to the SamplerCells,
-  // which need to remain valid even after more cells.
   using LabelArray = std::array<string, NumLabels>;
+  // we need a container here that guarantees pointer stability of the value,
+  // namely, the pointer of the value should remain valid even after more cells
+  // are inserted.
   std::map<LabelArray, SamplerCell> cells_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sampler);

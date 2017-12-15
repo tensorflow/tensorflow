@@ -18,18 +18,24 @@ limitations under the License.
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
+%rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;
 %rename("%s") TFE_Py_UID;
-%rename("%s") TFE_Py_NewTape;
-%rename("%s") TFE_Py_TapeShouldRecord;
-%rename("%s") TFE_Py_TapeWatch;
-%rename("%s") TFE_Py_TapeDeleteTrace;
-%rename("%s") TFE_Py_TapeRecordOperation;
-%rename("%s") TFE_Py_TapeExport;
+%rename("%s") TFE_Py_TapeStackPushNew;
+%rename("%s") TFE_Py_TapeStackPush;
+%rename("%s") TFE_Py_TapeStackPop;
+%rename("%s") TFE_Py_TapeStackIsEmpty;
+%rename("%s") TFE_Py_TapeStackShouldRecord;
+%rename("%s") TFE_Py_TapeStackWatch;
+%rename("%s") TFE_Py_TapeStackDeleteTrace;
+%rename("%s") TFE_Py_TapeStackRecordOperation;
+%rename("%s") TFE_Py_TapeStackWatchVariable;
+%rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -125,7 +131,7 @@ limitations under the License.
         SWIG_fail;
       }
       if (EagerTensor_CheckExact(elem)) {
-        (*$1)[i] = EagerTensorHandle(elem);
+        (*$1)[i] = EagerTensor_Handle(elem);
       } else {
         SWIG_exception_fail(SWIG_TypeError,
                             "provided list of inputs contains objects other "
@@ -144,7 +150,7 @@ limitations under the License.
   }
   $1 = &temp;
   $1->resize(PyInt_AsLong($input), nullptr);
-}
+} 
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {

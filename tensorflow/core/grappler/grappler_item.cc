@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -71,9 +72,11 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
 std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   std::unordered_set<string> result;
   for (const string& f : fetch) {
+    VLOG(1) << "Add fetch " << f;
     result.insert(NodeName(f));
   }
   for (const auto& f : feed) {
+    VLOG(1) << "Add feed " << f.first;
     result.insert(NodeName(f.first));
   }
   for (const auto& node : init_ops) {
@@ -117,8 +120,13 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     bool* ill_formed) {
   *ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
+  std::unordered_map<string, const NodeDef*> name_to_send;
   for (const auto& node : graph.node()) {
     name_to_node[node.name()] = &node;
+    if (node.op() == "_Send") {
+      const auto& attr = node.attr();
+      name_to_send[attr.at("tensor_name").s()] = &node;
+    }
   }
 
   std::vector<const NodeDef*> queue;
@@ -149,6 +157,15 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
         return {};
       }
       queue.push_back(in);
+    }
+    if (node->op() == "_Recv") {
+      const auto& attr = node->attr();
+      const NodeDef* send = name_to_send[attr.at("tensor_name").s()];
+      if (send) {
+        queue.push_back(send);
+      }
+      // Subgraph after partitioning may have either _Send or _Recv, not both.
+      // So, we do not set ill_formed for missing _Send.
     }
   }
   return result;

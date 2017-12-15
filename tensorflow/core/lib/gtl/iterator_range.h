@@ -37,6 +37,10 @@ namespace gtl {
 template <typename IteratorT>
 class iterator_range {
  public:
+  using value_type = decltype(*std::declval<IteratorT>());
+  using iterator = IteratorT;
+  using const_iterator = IteratorT;
+
   iterator_range() : begin_iterator_(), end_iterator_() {}
   iterator_range(IteratorT begin_iterator, IteratorT end_iterator)
       : begin_iterator_(std::move(begin_iterator)),

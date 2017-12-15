@@ -82,7 +82,7 @@ gemmlowp::WorkersPool* GetWorkersPool() {
 }
 
 mutex& GetMutex() {
-  static mutex mu;
+  static mutex mu(LINKER_INITIALIZED);
   return mu;
 }
 

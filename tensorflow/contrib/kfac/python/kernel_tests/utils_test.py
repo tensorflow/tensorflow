@@ -222,18 +222,6 @@ class UtilsTest(test.TestCase):
       self.assertAllClose(b, np.array([4., 5.]))
       self.assertAllClose(c, np.array([[6.], [7.], [8.], [9.]]))
 
-  def testComputePi(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
-      random_seed.set_random_seed(200)
-      left_factor = array_ops.diag([1., 2., 0., 1.])
-      right_factor = array_ops.ones([2., 2.])
-
-      # pi is the sqrt of the left trace norm divided by the right trace norm
-      pi = utils.compute_pi(left_factor, right_factor)
-
-      pi_val = sess.run(pi)
-      self.assertEqual(1., pi_val)
-
   def testPosDefInvCholesky(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)

@@ -48,6 +48,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:template",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python:util",

@@ -90,10 +90,6 @@ message ProfileNode {
   map<int64, ExecProfile> execs = 12;
 }
 
-message Allocation {
-  repeated AllocationRecord allocation_records = 1;
-}
-
 message ExecProfile {
   // Can be larger than 1 if run multiple times in loop.
   int64 run_count = 1;
@@ -110,34 +106,42 @@ message ExecProfile {
   // For cpu, vector size can be larger than 1 if in tf.while_loop.
   map<string, ExecTime> cpu_execs = 5;
 
-  map<int32, Memory> output_memory = 17;
-
-  repeated Allocation allocations = 18;
-
+  // Each entry to memory information of a scheduling of the node.
+  // Normally, there will be multiple entries in while_loop.
+  repeated ExecMemory memory_execs = 7;
+  // The allocation and deallocation times and sizes throughout execution.
+  repeated AllocationRecord allocations = 11;
+  // The devices related to this execution.
   repeated string devices = 6;
-
-  // Total bytes requested by the op.
-  int64 requested_bytes = 7;
-  // Total bytes requested by the op and released before op end.
-  int64 peak_bytes = 8;
-  // Total bytes requested by the op and not released after op end.
-  int64 residual_bytes = 9;
-  // Total bytes output by the op (not necessarily requested by the op).
-  int64 output_bytes = 10;
-  // Total temporary bytes allocated and released by the op.
-  int64 host_temp_bytes = 11;
-  // Total persistent bytes (e.g. variable) allocated by the op.
-  int64 host_persistent_bytes = 12;
-  int64 accelerator_temp_bytes = 13;
-  int64 accelerator_persistent_bytes = 14;
-  // The total number of bytes currently allocated by the allocator if >0.
-  int64 allocator_bytes_in_use = 15;
-
-  bool memory_intialized = 16;
 }
 
 message ExecTime {
   repeated Tuple times = 1;
+}
+
+message ExecMemory {
+  // This is the timestamp when the memory information was tracked.
+  int64 memory_micros = 1;
+  // NOTE: Please don't depend on the following 4 fields yet. Due to
+  // TensorFlow internal tracing issues, the numbers can be quite wrong.
+  // TODO(xpan): Fix the TensorFlow internal tracing.
+  int64 host_temp_bytes = 2;
+  int64 host_persistent_bytes = 3;
+  int64 accelerator_temp_bytes = 4;
+  int64 accelerator_persistent_bytes = 5;
+
+  // Total bytes requested by the op.
+  int64 requested_bytes = 6;
+  // Total bytes requested by the op and released before op end.
+  int64 peak_bytes = 7;
+  // Total bytes requested by the op and not released after op end.
+  int64 residual_bytes = 8;
+  // Total bytes output by the op (not necessarily requested by the op).
+  int64 output_bytes = 9;
+  // The total number of bytes currently allocated by the allocator if >0.
+  int64 allocator_bytes_in_use = 10;
+  // The memory of each output of the operation.
+  map<int32, Memory> output_memory = 11;
 }
 
 message Tuple {

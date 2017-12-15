@@ -34,14 +34,15 @@ from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients as gradients_lib
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import training_util
 
 
@@ -109,7 +110,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     - For all other fields of `EstimatorSpec` the values of the first tower
       are taken.
 
-  On replication of variables:
+  On distribution of variables:
   Variables are not duplicated between towers.  Instead, they are placed on a
   single device as defined above and shared across towers.
 
@@ -133,20 +134,65 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
       conforms to the requirements of `Estimator`'s `model_fn` and can be used
       instead of the supplied `model_fn`.
   """
+  return _replicate_model_fn_with_mode(
+      model_fn,
+      optimizer_fn,
+      devices,
+      # TODO(isaprykin): Query system configuration to choose modes other than
+      # `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often appropriate.
+      mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER)
+
+
+class _VariableDistributionMode(object):
+  """Modes for variable distribution used for forcing a particular one.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
+
+  SHARED_LOCAL_PARAMETER_SERVER = 1
+  """Variables are placed on a single device and shared across all devices.
+
+  Two ways to achieve this distribution over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
+  """
+
+  SHARED_ROUND_ROBIN = 2
+  """Variables are placed on all devices in a round-robin fashion.
+
+  Every subsequent variable is placed on the next device.  There is only one
+  copy of each variable that is shared across all devices.
+  """
+
+
+def _replicate_model_fn_with_mode(
+    model_fn,
+    optimizer_fn,
+    devices=None,
+    mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
+  """A version of `replicate_model_fn` that allows to specify a `mode`."""
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
   is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
-  local_ps_device = '/{}:0'.format('GPU' if is_a_single_gpu_case else 'CPU')
+  consolidation_device = '/{}:0'.format('GPU'
+                                        if is_a_single_gpu_case else 'CPU')
 
-  tf_logging.info('Replicating the `model_fn` across {}.  Local parameter '
-                  'server device is going to be {}.'.format(
-                      devices, local_ps_device))
+  ps_devices = [consolidation_device]
+  if mode == _VariableDistributionMode.SHARED_ROUND_ROBIN:
+    ps_devices = devices
 
-  def replicated_model_fn(mode, features, labels, params=None, config=None):
+  tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '
+                  'to be placed on {}.  Consolidation device is going to be {}.'
+                  .format(devices, ps_devices, consolidation_device))
+
+  def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
-        features, labels, len(devices), device=local_ps_device)
+        features, labels, len(devices), device=consolidation_device)
     tower_specs = _get_loss_towers(
         model_fn=model_fn,
         mode=mode,
@@ -155,17 +201,17 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
         params=params,
         config=config,
         devices=devices,
-        local_ps_device=local_ps_device)
+        local_ps_devices=ps_devices)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       train_op = _minimize_towers(tower_specs,
                                   _call_optimizer_fn(optimizer_fn, params))
       return _train_spec(
-          tower_specs, train_op, aggregation_device=local_ps_device)
+          tower_specs, train_op, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.EVAL:
-      return _eval_spec(tower_specs, aggregation_device=local_ps_device)
+      return _eval_spec(tower_specs, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.PREDICT:
-      return _predict_spec(tower_specs, aggregation_device=local_ps_device)
+      return _predict_spec(tower_specs, aggregation_device=consolidation_device)
 
   return replicated_model_fn
 
@@ -183,10 +229,17 @@ def _split_batch(features, labels, number_of_shards, device):
   """Split input features and labes into batches."""
 
   def split_dictionary(dictionary):
+    """Split a dictionary into shards."""
     shards = [{} for _ in range(number_of_shards)]
     for name, tensor in six.iteritems(dictionary):
-      for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
-        shards[i][name] = shard
+      if isinstance(tensor, sparse_tensor.SparseTensor):
+        for i, shard in enumerate(
+            sparse_ops.sparse_split(
+                sp_input=tensor, num_split=number_of_shards, axis=0)):
+          shards[i][name] = shard
+      else:
+        for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
+          shards[i][name] = shard
     return shards
 
   with ops_lib.name_scope('split_inputs'):
@@ -215,7 +268,7 @@ def _get_loss_towers(model_fn,
                      params,
                      config,
                      devices,
-                     local_ps_device,
+                     local_ps_devices,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -227,15 +280,22 @@ def _get_loss_towers(model_fn,
   if 'config' in model_fn_args:
     optional_params['config'] = copy.deepcopy(config)
 
+  # pylint: disable=protected-access
+  round_robin_strategy = device_setter_lib._RoundRobinStrategy(
+      num_tasks=len(local_ps_devices))
+  # pylint: enable=protected-access
+
   for i, device in enumerate(devices):
     is_the_first_tower = (i == 0)
 
     device_setter = _local_device_setter(
-        worker_device=device, ps_device=local_ps_device)
+        worker_device=device,
+        ps_devices=local_ps_devices,
+        ps_strategy=round_robin_strategy)
 
-    # We would like to preserve the names of the variables and ops that a user
-    # might be relying on. Names with prefix are going to resolve to variables
-    # and ops of the first tower.
+    # We would like to preserve the names of the variables and ops that the user
+    # might be relying on. Names without a prefix are going to resolve to
+    # variables and ops of the first tower.
     name_scope = name_scope_pattern
     if is_the_first_tower:
       name_scope = ''
@@ -256,7 +316,7 @@ def _get_loss_towers(model_fn,
   return tower_specs
 
 
-def _local_device_setter(ps_device, worker_device):
+def _local_device_setter(worker_device, ps_devices, ps_strategy):
   """A device setter that puts distributes Var/Ops to PS/workers."""
   ps_ops = ['Variable', 'VariableV2', 'VarHandleOp']
 
@@ -266,7 +326,7 @@ def _local_device_setter(ps_device, worker_device):
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
     if node_def.op in ps_ops:
       ps_device_spec = framework_device.DeviceSpec.from_string(
-          '{}'.format(ps_device))
+          '{}'.format(ps_devices[ps_strategy(op)]))
 
       ps_device_spec.merge_from(current_device)
       return ps_device_spec.to_string()
@@ -284,10 +344,7 @@ def _minimize_towers(tower_specs, optimizer):
   grad_lists = {}
   for tower_spec in tower_specs:
     with ops_lib.device(tower_spec.loss.device):
-      variables = variables_lib.trainable_variables()
-      gradients = gradients_lib.gradients(tower_spec.loss, variables)
-
-      for var, grad in zip(variables, gradients):
+      for grad, var in optimizer.compute_gradients(tower_spec.loss):
         if grad is not None:
           grad_lists.setdefault(var, []).append(grad)
 
@@ -313,7 +370,17 @@ def _call_optimizer_fn(optimizer_fn, params):
 
 def _compute_sum_on_device(values, device, name=None):
   with ops_lib.device(device):
-    return math_ops.add_n(values, name=name)
+    if isinstance(values[0], ops_lib.IndexedSlices):
+      if name:
+        raise ValueError('The name {} is not expected to be given to '
+                         'IndexedSlices {}'.format(name, values))
+
+      values_concat = array_ops.concat([v.values for v in values], axis=0)
+      indices_concat = array_ops.concat([v.indices for v in values], axis=0)
+      return ops_lib.IndexedSlices(values_concat, indices_concat,
+                                   values[0].dense_shape)
+    else:
+      return math_ops.add_n(values, name=name)
 
 
 def _train_spec(tower_specs,
@@ -338,25 +405,17 @@ def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
       [spec.loss for spec in tower_specs], aggregation_device,
       aggregated_loss_name)
 
-  eval_metric_ops_lists = {}
+  update_ops = []
   for tower_spec in tower_specs:
-    metrics = tower_spec.eval_metric_ops or {}
-    for name, (_, update_op) in six.iteritems(metrics):
-      update_ops = eval_metric_ops_lists.setdefault(name, ([]))
+    for name, (_, update_op) in six.iteritems(tower_spec.eval_metric_ops):
       update_ops.append(update_op)
+
+  with ops_lib.control_dependencies(update_ops):
+    reduced_update_op = _reduce_metric_variables(len(tower_specs))
 
   eval_metric_ops = {}
   for name, (metric_tensor, _) in six.iteritems(tower_specs[0].eval_metric_ops):
-    with ops_lib.control_dependencies(eval_metric_ops_lists[name]):
-      # This operation reduces local variables across all metrics, yet is
-      # called for every metric.  This is redundant and it's done because
-      # it is hard to know what local variables correspond to what metric.
-      # Estimator is going to execute all `reduced_update_op`s as part of
-      # a group inside a single `Session.run()` call, which will avoid duplicate
-      # computation.
-      reduced_update_op = _reduce_metric_variables(len(tower_specs))
     eval_metric_ops[name] = (metric_tensor, reduced_update_op)
-
   estimator_spec['eval_metric_ops'] = eval_metric_ops
   return model_fn_lib.EstimatorSpec(**estimator_spec)
 

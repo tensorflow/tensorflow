@@ -58,7 +58,9 @@ static bool ContainsSendOrRecv(const HloComputation* comp) {
 
 static bool IsOrContainsSendOrRecv(const HloInstruction* instr) {
   if (instr->opcode() == HloOpcode::kSend ||
-      instr->opcode() == HloOpcode::kRecv) {
+      instr->opcode() == HloOpcode::kSendDone ||
+      instr->opcode() == HloOpcode::kRecv ||
+      instr->opcode() == HloOpcode::kRecvDone) {
     return true;
   }
   for (const auto& subcomp : instr->called_computations()) {
@@ -287,7 +289,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -340,7 +342,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       //
       // Careful: HloInstruction::operand_index returns the first index the
       // operand appears in, but it may appear more than once!
-      if (user->user_count() == 1 && user->users()[0] == while_body_root &&
+      if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
           std::count(while_body_root->operands().begin(),
                      while_body_root->operands().end(), user) == 1) {
@@ -401,6 +403,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   // Compute the shape of the while op after we remove the dead indices.
   std::vector<Shape> new_while_tuple_elem_shapes;
+  new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
         while_init->shape().tuple_shapes(old_idx));
@@ -441,7 +444,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         // This is a GTE of an index that we've removed.  Remove it from the
         // cloned computation.
         CHECK(user->user_count() == 0 ||
-              user->user_count() == 1 && user->users()[0] == while_body_root)
+              user->user_count() == 1 &&
+                  user->users().front() == while_body_root)
             << "Instruction " << user->ToStringNoMetadata()
             << " should be unused (except by root of while body), but has "
                "users: {"
@@ -467,6 +471,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
+  new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_body_root_elems.push_back(
         while_body_root->mutable_operand(old_idx));
@@ -481,6 +486,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // clean this up in the common case where while_init is a tuple op.  (It's
   // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
+  new_while_init_elems.reserve(new_to_old_tuple_idx.size());
   for (int64 old_idx : new_to_old_tuple_idx) {
     new_while_init_elems.push_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -552,7 +558,7 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // the loop aren't removed, just cloned and added back to the loop.
   // Nevertheless our infrastructure sees loop simplification as removal of
   // these nodes and currently doesn't allow it.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
     return false;

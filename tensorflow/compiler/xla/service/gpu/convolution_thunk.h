@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -87,6 +88,14 @@ class ConvolutionThunk : public Thunk {
       const BufferAllocations& buffer_allocations,
       perftools::gputools::Stream* stream) override;
 
+  // Returns true if the next run of ExecuteOnStream will do autotuning.  If so,
+  // we want the GPU to be quiescent during autotuning, so as not to introduce
+  // noise in our results.
+  bool ShouldHaltAllActivityBeforeRunning(
+      perftools::gputools::Stream*) override {
+    return !best_algorithm_.has_value();
+  }
+
  private:
   tensorflow::Status ConvolveWithTune(
       const perftools::gputools::dnn::BatchDescriptor& input_descriptor,
@@ -116,13 +125,15 @@ class ConvolutionThunk : public Thunk {
 
   // Returns the convolve algorithms that can be used for this ConvolutionThunk.
   std::vector<perftools::gputools::dnn::AlgorithmDesc> GetAlgorithms(
+      bool with_winograd_nonfused,
       perftools::gputools::StreamExecutor* stream_exec) const;
 
   // Fastest cuDNN convolution algorithm for this thunk learned from
   // auto-tuning. If auto-tuning is disabled or failed, best_algorithm_ is set
-  // to the default value indicating cuDNN's convolution will choose
-  // the best algorithm from some heuristics based on its parameters.
-  perftools::gputools::dnn::AlgorithmConfig best_algorithm_;
+  // to the default value, indicating cuDNN's convolution will choose the best
+  // algorithm from some heuristics based on its parameters.
+  tensorflow::gtl::optional<perftools::gputools::dnn::AlgorithmConfig>
+      best_algorithm_;
 
   const ConvolutionKind convolution_kind_;
 
