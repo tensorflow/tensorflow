@@ -1151,7 +1151,9 @@ class TensorFlowTestCase(googletest.TestCase):
                                     float_rtol=1e-6,
                                     float_atol=1e-6,
                                     half_rtol=1e-3,
-                                    half_atol=1e-3):
+                                    half_atol=1e-3,
+                                    bfloat16_rtol=1e-2,
+                                    bfloat16_atol=1e-2):
     """Like assertAllClose, but also suitable for comparing fp16 arrays.
 
     In particular, the tolerance is reduced to 1e-3 if at least
@@ -1166,6 +1168,8 @@ class TensorFlowTestCase(googletest.TestCase):
       float_atol: absolute tolerance for float32.
       half_rtol: relative tolerance for float16.
       half_atol: absolute tolerance for float16.
+      bfloat16_rtol: relative tolerance for bfloat16.
+      bfloat16_atol: absolute tolerance for bfloat16.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -1179,8 +1183,8 @@ class TensorFlowTestCase(googletest.TestCase):
       atol = max(atol, half_atol)
     if (a.dtype == dtypes.bfloat16.as_numpy_dtype or
         b.dtype == dtypes.bfloat16.as_numpy_dtype):
-      rtol = max(rtol, half_rtol)
-      atol = max(atol, half_atol)
+      rtol = max(rtol, bfloat16_rtol)
+      atol = max(atol, bfloat16_atol)
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol)
 
