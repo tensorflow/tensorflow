@@ -43,14 +43,14 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override {
     string tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
-    *output = new Dataset(input, std::move(tag));
+    *output = new Dataset(ctx, input, std::move(tag));
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(const DatasetBase* input, string tag)
-        : input_(input), tag_(std::move(tag)) {
+    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input, string tag)
+        : GraphDatasetBase(ctx), input_(input), tag_(std::move(tag)) {
       input_->Ref();
     }
 
@@ -71,6 +71,17 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override { return "LatencyStatsDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_node;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      Node* tag_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(tag_, &tag_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_node, tag_node}, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -81,6 +92,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        tf_shared_lock l(mu_);
         uint64 start = ctx->env()->NowMicros();
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         uint64 end = ctx->env()->NowMicros();
@@ -92,8 +104,23 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
         return s;
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        return Status::OK();
+      }
+
      private:
-      const std::unique_ptr<IteratorBase> input_impl_;
+      mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

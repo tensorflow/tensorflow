@@ -224,6 +224,34 @@ class StatsDatasetSerializationTest(
         lambda: self._build_dataset_bytes_stats(num_outputs),
         lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
 
+  def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag))
+
+  def _build_dataset_multiple_tags(self,
+                                   num_elements,
+                                   tag1="record_latency",
+                                   tag2="record_latency_2"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
+
+  def testLatencyStatsDatasetSaveableCore(self):
+    num_outputs = 100
+
+    self.run_core_tests(
+        lambda: self._build_dataset_latency_stats(num_outputs),
+        lambda: self._build_dataset_latency_stats(num_outputs // 10),
+        num_outputs)
+
+    self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
+                        None, num_outputs)
+
+    tag1 = "record_latency"
+    tag2 = "record_latency"
+    self.run_core_tests(
+        lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
+        None, num_outputs)
+
 
 if __name__ == "__main__":
   test.main()
