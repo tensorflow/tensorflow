@@ -12,9 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATASET_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATASET_H_
+#include "tensorflow/core/kernels/data/sql/driver_manager.h"
+#include "tensorflow/core/kernels/data/sql/sqlite_query_connection.h"
 
-#include "tensorflow/core/kernels/data/dataset.h"
+namespace tensorflow {
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATASET_H_
+namespace sql {
+
+std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
+    const string& driver_name) {
+  if (driver_name == "sqlite") {
+    return std::unique_ptr<SqliteQueryConnection>(new SqliteQueryConnection());
+  } else {  // TODO(b/64276826, b/64276995) Add support for other db types.
+            // Change to registry pattern.
+    return nullptr;
+  }
+}
+
+}  // namespace sql
+
+}  // namespace tensorflow
