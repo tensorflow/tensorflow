@@ -2018,8 +2018,8 @@ bool HloParser::ParseParamList() {
   } else {
     do {
       Shape shape;
-      if (!ParseToken(TokKind::kName, "expects name in parameter") ||
-          !ParseShape(&shape)) {
+      string name;
+      if (!ParseName(&name) || !ParseShape(&shape)) {
         return false;
       }
     } while (EatIfPresent(TokKind::kComma));
@@ -2067,7 +2067,8 @@ bool HloParser::CanBeShape() {
 
 bool HloParser::ParseName(string* result) {
   VLOG(1) << "ParseName";
-  if (lexer_.GetKind() != TokKind::kName) {
+  if (lexer_.GetKind() != TokKind::kIdent &&
+      lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
   }
   *result = lexer_.GetStrVal();

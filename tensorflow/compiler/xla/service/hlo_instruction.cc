@@ -1913,11 +1913,20 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
+namespace {
+
+string PrintName(const string& name, const HloPrintOptions& options) {
+  return StrCat(options.print_percent() ? "%" : "", name);
+}
+
+}  // namespace
+
 string HloInstruction::ToString(const HloPrintOptions& options) const {
   string result =
-      StrCat("%", name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
+      StrCat(PrintName(name(), options), " = ",
+             ShapeUtil::HumanStringWithLayout(shape()), " ",
              HloOpcodeString(opcode()), "(", OperandsToString(options), ")");
-  for (const string& extra : ExtraAttributesToString()) {
+  for (const string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
   if (options.print_metadata() &&
@@ -1969,7 +1978,7 @@ string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
         str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
       }
       if (!options.compact_operands()) {
-        str.push_back(StrCat("%", operand->name()));
+        str.push_back(PrintName(operand->name(), options));
       }
       StrAppend(out, Join(str, " "));
     });
@@ -1981,7 +1990,8 @@ string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
   return operands;
 }
 
-std::vector<string> HloInstruction::ExtraAttributesToString() const {
+std::vector<string> HloInstruction::ExtraAttributesToString(
+    const HloPrintOptions& options) const {
   std::vector<string> extra;
   if (opcode() == HloOpcode::kFusion) {
     extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
@@ -2028,23 +2038,28 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(StrCat("condition=%", while_condition()->name()));
-    extra.push_back(StrCat("body=%", while_body()->name()));
+    extra.push_back(
+        StrCat("condition=", PrintName(while_condition()->name(), options)));
+    extra.push_back(StrCat("body=", PrintName(while_body()->name(), options)));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=%", select()->name()));
-    extra.push_back(StrCat("scatter=%", scatter()->name()));
+    extra.push_back(StrCat("select=", PrintName(select()->name(), options)));
+    extra.push_back(StrCat("scatter=", PrintName(scatter()->name(), options)));
   } else if (opcode() == HloOpcode::kConditional) {
-    extra.push_back(StrCat("true_computation=%", true_computation()->name()));
-    extra.push_back(StrCat("false_computation=%", false_computation()->name()));
+    extra.push_back(StrCat("true_computation=",
+                           PrintName(true_computation()->name(), options)));
+    extra.push_back(StrCat("false_computation=",
+                           PrintName(false_computation()->name(), options)));
   } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
              opcode() == HloOpcode::kReduceWindow ||
              opcode() == HloOpcode::kReduce) {
-    extra.push_back(StrCat("to_apply=%", to_apply()->name()));
+    extra.push_back(
+        StrCat("to_apply=", PrintName(to_apply()->name(), options)));
   } else if (!called_computations().empty()) {
     extra.push_back(StrCat(
         "calls=", Join(called_computations(), ", ",
-                       [](string* out, const HloComputation* computation) {
-                         StrAppend(out, "%", computation->name());
+                       [&](string* out, const HloComputation* computation) {
+                         StrAppend(out,
+                                   PrintName(computation->name(), options));
                        })));
   }
 
@@ -2062,8 +2077,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (!control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
                            Join(control_predecessors_, ", ",
-                                [](string* out, HloInstruction* pre) {
-                                  StrAppend(out, "%", pre->name());
+                                [&](string* out, HloInstruction* pre) {
+                                  StrAppend(out,
+                                            PrintName(pre->name(), options));
                                 }),
                            "}"));
   }

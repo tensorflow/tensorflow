@@ -59,14 +59,15 @@ class HloModule;
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
  public:
-  // Constructs the default print options: don't print large constants, print
-  // metadata, don't compact operands, and no indentation.
+  // Constructs the default print options: don't print large constants, don't
+  // compact operands, no indentation.
   HloPrintOptions()
       : print_large_constants_(false),
         print_metadata_(true),
         compact_operands_(false),
         print_operand_shape_(true),
         print_program_shape_(true),
+        print_percent_(true),
         indent_amount_(0) {}
 
   static HloPrintOptions ShortParsable() {
@@ -74,7 +75,8 @@ class HloPrintOptions {
         .set_print_large_constants(true)
         .set_print_metadata(false)
         .set_print_operand_shape(false)
-        .set_print_program_shape(false);
+        .set_print_program_shape(false)
+        .set_print_percent(false);
   }
 
   // If true, large constants will be printed out.
@@ -101,6 +103,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, names will be printed with prefix '%'.
+  HloPrintOptions& set_print_percent(bool value) {
+    print_percent_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out, and their names will
   // be omitted (note that in this case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -119,6 +127,7 @@ class HloPrintOptions {
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_program_shape() const { return print_program_shape_; }
+  bool print_percent() const { return print_percent_; }
   int indent_amount() const { return indent_amount_; }
 
  private:
@@ -127,6 +136,7 @@ class HloPrintOptions {
   bool compact_operands_;
   bool print_operand_shape_;
   bool print_program_shape_;
+  bool print_percent_;
   int indent_amount_;
 };
 
@@ -726,7 +736,8 @@ class HloInstruction {
   string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  std::vector<string> ExtraAttributesToString() const;
+  std::vector<string> ExtraAttributesToString(
+      const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;

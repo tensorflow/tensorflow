@@ -369,7 +369,10 @@ string HloComputation::ToString(const HloPrintOptions& options) const {
   for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
-  s << "%" << name();
+  if (options.print_percent()) {
+    s << "%";
+  }
+  s << name();
   if (options.print_program_shape()) {
     s << " " << ShapeUtil::HumanString(ComputeProgramShape());
   }

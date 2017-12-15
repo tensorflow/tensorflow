@@ -173,7 +173,7 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name() << ":\n\n";
+  s << "HloModule " << name() << "\n\n";
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     if (computation == entry_computation()) {
       s << "ENTRY ";

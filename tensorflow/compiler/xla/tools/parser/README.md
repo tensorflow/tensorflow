@@ -91,6 +91,7 @@ tuple_elements
 name
   : identifier ':'
   | '%' identifier
+  | identifier
   ;
 
 identifier
