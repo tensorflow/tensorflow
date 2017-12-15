@@ -1358,6 +1358,7 @@ class _DeferredTensor(object):
                                                          self.get_shape(),
                                                          self.dtype.name)
 
+
 def _is_tensor_or_tensor_list(v):
   v = nest.flatten(v)
   if v and isinstance(v[0], ops.Tensor):
