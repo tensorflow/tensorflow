@@ -1907,11 +1907,6 @@ class Stream {
   // Otherwise returns an error describing why the blocking failed.
   port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
-  // DEPRECATED(b/70298427) - new code should use BlockHostUntilDone()
-  //
-  // Equivalent to BlockHostUntilDone()
-  port::Status BlockHostUntilDoneWithStatus() LOCKS_EXCLUDED(mu_);
-
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
   // use

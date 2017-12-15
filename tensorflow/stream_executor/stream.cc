@@ -5086,9 +5086,5 @@ port::Status Stream::BlockHostUntilDone() {
   return first_error;
 }
 
-port::Status Stream::BlockHostUntilDoneWithStatus() {
-  return BlockHostUntilDone();
-}
-
 }  // namespace gputools
 }  // namespace perftools
