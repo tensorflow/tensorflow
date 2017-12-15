@@ -18,16 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
-from tensorflow.python.training import saver as saver_lib
 from tensorflow.contrib.data.python.ops import rolling_ops
 
 class RollingWindowTest(test.TestCase):
