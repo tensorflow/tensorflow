@@ -91,6 +91,9 @@ tensorflow::ImportNumpy();
 // _GLIBCXX_USE_CXX11_ABI flag value
 %constant const int __cxx11_abi_flag__ = tf_cxx11_abi_flag();
 
+// Flag indicating whether the build is monolithic
+%constant const int __monolithic_build__ = tf_monolithic_build();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
