@@ -105,7 +105,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // always boolean.
   // These operations are handled outside of the parent HloEvaluator handlers
   // instead of from within TypedVisitor.
-  template <typename ReturnT>
+  //
+  // Type params:
+  //   - ReturnT: The type of input and output of each operation.
+  //   - ElementwiseT: The type in which internal computation are done.
+  template <typename ReturnT, typename ElementwiseT = ReturnT>
   class TypedVisitor;
 
   // Wraps around instruction handling to infer types before dispatching to
