@@ -641,12 +641,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-py_proto_library(
-    name = "xla_data_proto_py_pb2",
-    api_version = 2,
-    deps = [":xla_data_proto"],
-)
-
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
 cc_header_only_library(
     name = "xla_headers_lib",

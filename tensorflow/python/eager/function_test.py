@@ -323,6 +323,25 @@ class FunctionTest(test.TestCase):
 
     self.assertEqual(1, int(outer()))
 
+  def testReturnCapturedEagerTensor(self):
+    t = constant_op.constant(1)
+
+    @function.defun
+    def read():
+      return t
+
+    self.assertEqual(1, int(read()))
+
+  def testReturnCapturedGraphTensor(self):
+    with context.graph_mode(), self.test_session():
+      t = constant_op.constant(1)
+
+      @function.defun
+      def read():
+        return t
+
+      self.assertEqual(1, int(self.evaluate(read())))
+
   def testSequenceInputs(self):
     clip_by_global_norm = function.defun(clip_ops.clip_by_global_norm)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]

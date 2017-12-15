@@ -23,10 +23,10 @@ import itertools
 import numpy as np
 
 from tensorflow.compiler.xla.python import xla_client
-from tensorflow.python.platform import googletest
+import unittest
 
 
-class LocalComputationTest(googletest.TestCase):
+class LocalComputationTest(unittest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
   def _NewComputation(self, name=None):
@@ -895,4 +895,4 @@ class EmbeddedComputationsTest(LocalComputationTest):
 
 
 if __name__ == "__main__":
-  googletest.main()
+  unittest.main()

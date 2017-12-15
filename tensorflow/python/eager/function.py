@@ -91,13 +91,24 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     is not enabled. A placeholder which will have the value of the
     tensor at runtime otherwise.
   """
+  del as_ref  # Unused.
+
   if context.in_eager_mode():
     return value
-  _ = as_ref
+
+  default_graph = ops.get_default_graph()
+  if not default_graph.building_function:
+    return value
+
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
     # Capturing is not enabled.
     return constant_op.constant(value.numpy())
+  if type(value) == ops.Tensor and value.graph is default_graph:
+    # The tensor has already been converted and captured. The type check
+    # is intentional: we are checking that value is a Tensor and not an
+    # EagerTensor.
+    return value
   return capture_value(tensor_map, value, dtype, name)
 
 
@@ -499,20 +510,26 @@ def _defun_internal(name, func, args, kwds):
           func_outputs = func(*func_inputs, **kwds)
         finally:
           variables = tape.pop_tape().watched_variables()
+
+        # Returning a closed-over tensor as an output does not trigger a
+        # call to convert_to_tensor, so we manually capture all such tensors.
+        outputs_list = nest.flatten(func_outputs)
+        func_def_outputs = [
+            _convert_to_graph_tensor(x) for x in outputs_list if x is not None
+        ]
+
       ids = list(sorted(captures.keys()))
       if ids:
         extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
       else:
         extra_inputs = []
         extra_placeholders = []
-      outputs_list = nest.flatten(func_outputs)
       output_shapes = tuple(x.shape for x in outputs_list if x is not None)
 
   flat_inputs = [x for x in nest.flatten(func_inputs)
                  if isinstance(x, ops.Tensor)]
   all_inputs = flat_inputs + list(extra_placeholders)
   all_ignored_ops = frozenset(x.op for x in all_inputs)
-  func_def_outputs = [x for x in outputs_list if x is not None]
   fname = _inference_name(name)
   operations = tuple(x for x in tmp_graph.get_operations()
                      if x not in all_ignored_ops)
