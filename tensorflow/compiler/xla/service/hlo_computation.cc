@@ -369,8 +369,11 @@ string HloComputation::ToString(const HloPrintOptions& options) const {
   for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
-  s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
-    << " {\n";
+  s << "%" << name();
+  if (options.print_program_shape()) {
+    s << " " << ShapeUtil::HumanString(ComputeProgramShape());
+  }
+  s << " {\n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     for (int i = 0; i < options.indent_amount(); i++) {
       s << "    ";

@@ -171,6 +171,7 @@ class HloParser {
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
 
+  bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
   bool ParseParamList();
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
@@ -183,6 +184,12 @@ class HloParser {
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const string& msg);
+
+  // Returns true if the current token is the beginning of a shape.
+  bool CanBeShape();
+  // Returns true if the current token is the beginning of a
+  // param_list_to_shape.
+  bool CanBeParamListToShape();
 
   // Logs the current parsing line and the given message. Always returns false.
   bool TokenError(StringPiece msg);
@@ -267,7 +274,7 @@ bool HloParser::ParseComputations() {
   return true;
 }
 
-// computation ::= ('ENTRY')? name param_list '->' shape instruction_list
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
 bool HloParser::ParseComputation() {
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
   string name;
@@ -277,14 +284,14 @@ bool HloParser::ParseComputation() {
   }
   auto builder = MakeUnique<HloComputation::Builder>(name);
 
+  LocTy shape_loc = nullptr;
   Shape shape;
-  string root_name;
-  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'")) {
+  if (CanBeParamListToShape() && !ParseParamListToShape(&shape, &shape_loc)) {
     return false;
   }
 
-  LocTy shape_ty = lexer_.GetLoc();
-  if (!ParseShape(&shape) || !ParseInstructionList(builder.get(), &root_name)) {
+  string root_name;
+  if (!ParseInstructionList(builder.get(), &root_name)) {
     return false;
   }
 
@@ -311,9 +318,10 @@ bool HloParser::ParseComputation() {
     CHECK_EQ(root, computation->root_instruction());
   }
 
-  if (!ShapeUtil::Compatible(root->shape(), shape)) {
+  // If param_list_to_shape was present, check compatibility.
+  if (shape_loc != nullptr && !ShapeUtil::Compatible(root->shape(), shape)) {
     return Error(
-        shape_ty,
+        shape_loc,
         StrCat("Shape of computation ", name, ", ",
                ShapeUtil::HumanString(shape),
                ", is not compatible with that of its root instruction ",
@@ -1438,7 +1446,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
 // operands1
 //   ::= /*empty*/
 //   ::= operand (, operand)*
-// operand ::= shape name
+// operand ::= (shape)? name
 bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
@@ -1449,9 +1457,14 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   } else {
     do {
       LocTy loc = lexer_.GetLoc();
-      Shape shape;
       string name;
-      if (!ParseShape(&shape) || !ParseName(&name)) {
+      if (CanBeShape()) {
+        Shape shape;
+        if (!ParseShape(&shape)) {
+          return false;
+        }
+      }
+      if (!ParseName(&name)) {
         return false;
       }
       HloInstruction* instruction =
@@ -1976,6 +1989,19 @@ bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
       end, StrCat("expects an int64 list to end with ", TokKindToString(end)));
 }
 
+// param_list_to_shape ::= param_list '->' shape
+bool HloParser::ParseParamListToShape(Shape* shape, LocTy* shape_loc) {
+  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'")) {
+    return false;
+  }
+  *shape_loc = lexer_.GetLoc();
+  return ParseShape(shape);
+}
+
+bool HloParser::CanBeParamListToShape() {
+  return lexer_.GetKind() == TokKind::kLparen;
+}
+
 // param_list ::= '(' param_list1 ')'
 // param_list1
 //   ::= /*empty*/
@@ -2030,6 +2056,13 @@ bool HloParser::ParseShape(Shape* result) {
   *result = lexer_.GetShapeVal();
   lexer_.Lex();
   return true;
+}
+
+bool HloParser::CanBeShape() {
+  // A non-tuple shape starts with a kShape token; a tuple shape starts with
+  // '('.
+  return lexer_.GetKind() == TokKind::kShape ||
+         lexer_.GetKind() == TokKind::kLparen;
 }
 
 bool HloParser::ParseName(string* result) {

@@ -65,7 +65,17 @@ class HloPrintOptions {
       : print_large_constants_(false),
         print_metadata_(true),
         compact_operands_(false),
+        print_operand_shape_(true),
+        print_program_shape_(true),
         indent_amount_(0) {}
+
+  static HloPrintOptions ShortParsable() {
+    return HloPrintOptions()
+        .set_print_large_constants(true)
+        .set_print_metadata(false)
+        .set_print_operand_shape(false)
+        .set_print_program_shape(false);
+  }
 
   // If true, large constants will be printed out.
   HloPrintOptions& set_print_large_constants(bool value) {
@@ -76,6 +86,18 @@ class HloPrintOptions {
   // If true, metatdata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
+    return *this;
+  }
+
+  // If true, operands' shapes will be printed.
+  HloPrintOptions& set_print_operand_shape(bool value) {
+    print_operand_shape_ = value;
+    return *this;
+  }
+
+  // If true, program shape of hlo computations will be printed.
+  HloPrintOptions& set_print_program_shape(bool value) {
+    print_program_shape_ = value;
     return *this;
   }
 
@@ -95,12 +117,16 @@ class HloPrintOptions {
   bool print_large_constants() const { return print_large_constants_; }
   bool print_metadata() const { return print_metadata_; }
   bool compact_operands() const { return compact_operands_; }
+  bool print_operand_shape() const { return print_operand_shape_; }
+  bool print_program_shape() const { return print_program_shape_; }
   int indent_amount() const { return indent_amount_; }
 
  private:
   bool print_large_constants_;
   bool print_metadata_;
   bool compact_operands_;
+  bool print_operand_shape_;
+  bool print_program_shape_;
   int indent_amount_;
 };
 

@@ -1964,10 +1964,14 @@ string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
       slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
     }
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
-      *out += ShapeUtil::HumanStringWithLayout(operand->shape());
-      if (!options.compact_operands()) {
-        StrAppend(out, " %", operand->name());
+      std::vector<string> str;
+      if (options.print_operand_shape()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
       }
+      if (!options.compact_operands()) {
+        str.push_back(StrCat("%", operand->name()));
+      }
+      StrAppend(out, Join(str, " "));
     });
     const int64 remaining = operands_.size() - slice.size();
     if (slice.size() != operands_.size()) {

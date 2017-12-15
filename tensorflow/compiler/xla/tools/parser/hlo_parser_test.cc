@@ -407,44 +407,6 @@ ENTRY %Concat2x3With2x5.v3 () -> f32[2,8] {
 
 )"
 },
-// map
-{
-"Map",
-R"(HloModule MapBinaryAdder_module:
-
-%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
-  %lhs = f32[] parameter(0)
-  %rhs = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
-}
-
-ENTRY %MapBinaryAdder.v3 (param0: f32[4], param1: f32[4]) -> f32[4] {
-  %param0 = f32[4]{0} parameter(0)
-  %param1 = f32[4]{0} parameter(1)
-  ROOT %map = f32[4]{0} map(f32[4]{0} %param0, f32[4]{0} %param1), to_apply=%add_F32.v3
-}
-
-)"
-},
-// reduce
-{
-"Reduce",
-R"(HloModule ReduceR3ToR2_module:
-
-%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
-  %lhs = f32[] parameter(0)
-  %rhs = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
-}
-
-ENTRY %ReduceR3ToR2.v3 (input: f32[8,16,256]) -> f32[8,16] {
-  %input = f32[8,16,256]{2,1,0} parameter(0)
-  %constant = f32[] constant(0)
-  ROOT %reduce = f32[8,16]{1,0} reduce(f32[8,16,256]{2,1,0} %input, f32[] %constant), dimensions={2}, to_apply=%add_F32.v3
-}
-
-)"
-},
 // select and scatter
 {
 "SelectAndScatter",
@@ -665,17 +627,62 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 }
 
 )"
+}
+  });
+  // clang-format on
+}
+
+std::vector<TestData> CreateShortTestCases() {
+  // clang-format off
+  return std::vector<TestData>({
+// map
+{
+"Map",
+R"(HloModule MapBinaryAdder_module:
+
+%add_F32.v3 {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %MapBinaryAdder.v3 {
+  %param0 = f32[4]{0} parameter(0)
+  %param1 = f32[4]{0} parameter(1)
+  ROOT %map = f32[4]{0} map(%param0, %param1), to_apply=%add_F32.v3
+}
+
+)"
+},
+// reduce
+{
+"Reduce",
+R"(HloModule ReduceR3ToR2_module:
+
+%add_F32.v3 {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %ReduceR3ToR2.v3 {
+  %input = f32[8,16,256]{2,1,0} parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce = f32[8,16]{1,0} reduce(%input, %constant), dimensions={2}, to_apply=%add_F32.v3
+}
+
+)"
 },
 // infeed/outfeed
 {
 "InfeedOutfeed",
 R"(HloModule outfeed_module:
 
-ENTRY %InfeedToOutfeed () -> (u32[3], pred[]) {
+ENTRY %InfeedToOutfeed {
   %infeed = (u32[3]{0}, pred[]) infeed()
-  %outfeed = () outfeed((u32[3]{0}, pred[]) %infeed)
+  %outfeed = () outfeed(%infeed)
   ROOT %infeed.1 = (u32[3]{0}, pred[]) infeed()
-  %outfeed.1 = () outfeed((u32[3]{0}, pred[]) %infeed.1)
+  %outfeed.1 = () outfeed(%infeed.1)
 }
 
 )"
@@ -685,10 +692,10 @@ ENTRY %InfeedToOutfeed () -> (u32[3], pred[]) {
 "Rng",
 R"(HloModule rng_module:
 
-ENTRY %Rng () -> f32[8] {
+ENTRY %Rng {
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(1)
-  ROOT %rng = f32[8]{0} rng(f32[] %constant, f32[] %constant.1), distribution=rng_uniform
+  ROOT %rng = f32[8]{0} rng(%constant, %constant.1), distribution=rng_uniform
 }
 
 )"
@@ -698,9 +705,9 @@ ENTRY %Rng () -> f32[8] {
 "ReducePrevison",
 R"(HloModule reduce_precision:
 
-ENTRY %ReducePrecision () -> f32[1] {
+ENTRY %ReducePrecision {
   %constant = f32[1]{0} constant({3.14159})
-  ROOT %reduce-precision = f32[1]{0} reduce-precision(f32[1]{0} %constant), exponent_bits=8, mantissa_bits=10
+  ROOT %reduce-precision = f32[1]{0} reduce-precision(%constant), exponent_bits=8, mantissa_bits=10
 }
 
 )"
@@ -710,34 +717,33 @@ ENTRY %ReducePrecision () -> f32[1] {
 "Conditional",
 R"(HloModule conditional:
 
-%Negate (x: f32[]) -> f32[] {
+%Negate {
   %x = f32[] parameter(0)
-  ROOT %negate = f32[] negate(f32[] %x)
+  ROOT %negate = f32[] negate(%x)
 }
 
-%Identity (y: f32[]) -> f32[] {
+%Identity {
   %y = f32[] parameter(0)
-  ROOT %copy = f32[] copy(f32[] %y)
+  ROOT %copy = f32[] copy(%y)
 }
 
-ENTRY %Parameters1.v4 () -> f32[] {
+ENTRY %Parameters1.v4 {
   %constant = pred[] constant(true)
   %constant.1 = f32[] constant(56)
   %constant.2 = f32[] constant(12)
-  ROOT %conditional = f32[] conditional(pred[] %constant, f32[] %constant.1, f32[] %constant.2), true_computation=%Negate, false_computation=%Identity
+  ROOT %conditional = f32[] conditional(%constant, %constant.1, %constant.2), true_computation=%Negate, false_computation=%Identity
 }
 
 )"
 },
-
 // CustomCall
 {
 "CustomCall",
 R"(HloModule custom_call:
 
-ENTRY %CustomCall () -> f32[1,2,3] {
+ENTRY %CustomCall {
   %constant = f32[1]{0} constant({12345})
-  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar"
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(%constant), custom_call_target="foo\"bar"
 }
 
 )"
@@ -747,9 +753,9 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 "NonDefaultNames",
 R"(HloModule add_constants_module:
 
-ENTRY %add_constants () -> f32[] {
+ENTRY %add_constants {
   %foo = f32[] constant(3.14)
-  ROOT %bar = f32[] add(f32[] %foo, f32[] %foo)
+  ROOT %bar = f32[] add(%foo, %foo)
 }
 
 )"
@@ -778,10 +784,27 @@ class HloParserTest : public ::testing::Test,
   }
 };
 
+class HloParserShortTest : public HloParserTest {
+ protected:
+  void ExpectEqualShort() {
+    const string& original = GetParam().module_string;
+    auto result = Parse(original);
+    TF_ASSERT_OK(result.status());
+    EXPECT_EQ(original,
+              result.ValueOrDie()->ToString(HloPrintOptions::ShortParsable()));
+  }
+};
+
 TEST_P(HloParserTest, Run) { ExpectEqual(); }
+
+TEST_P(HloParserShortTest, Run) { ExpectEqualShort(); }
 
 INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTest,
                         ::testing::ValuesIn(CreateTestCases()),
+                        TestDataToString);
+
+INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserShortTest,
+                        ::testing::ValuesIn(CreateShortTestCases()),
                         TestDataToString);
 
 TEST_F(HloParserTest, Empty) {

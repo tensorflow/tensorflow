@@ -15,8 +15,10 @@ computations
   ;
 
 computation
-  : 'ENTRY' name param_list '->' shape instruction_list
-  | name param_list '->' shape instruction_list
+  : 'ENTRY' name param_list_to_shape instruction_list
+  | name param_list_to_shape instruction_list
+  | 'ENTRY' name instruction_list
+  | name instruction_list
   ;
 
 instruction_list
@@ -41,6 +43,7 @@ operands1
   ;
 operand
   : shape name
+  | name
   ;
 
 attributes
@@ -58,6 +61,10 @@ attribute_value
   | [0-9]+(x[0-9]+)+                                    /*dxd_pattern*/
   | [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*  /*pad_pattern*/
   | '{' sub_attributes '}'
+  ;
+
+param_list_to_shape
+  : param_list '->' shape
   ;
 
 param_list
