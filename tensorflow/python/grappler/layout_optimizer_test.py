@@ -78,6 +78,17 @@ def _two_layer_model(x):
   return h_pool2
 
 
+def _model_with_second_port():
+  random_seed.set_random_seed(0)
+  x = random_ops.truncated_normal([2, 5, 5, 4], seed=0)
+  scale = constant_op.constant(0.1, shape=[4])
+  offset = constant_op.constant(0.3, shape=[4])
+  y, mean, _ = nn.fused_batch_norm(x, scale, offset)
+  mul = math_ops.add(y, mean)
+  output = array_ops.identity(mul)
+  return output
+
+
 def _model_with_branch(x):
   x_image = array_ops.reshape(x, [-1, 28, 28, 1])
   w_conv1 = _weight([5, 5, 1, 32])
@@ -414,6 +425,31 @@ class LayoutOptimizerTest(test.TestCase):
                     nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
                     nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testBinaryOpSecondPort(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _model_with_second_port()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-FusedBatchNorm-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Add-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testGradient(self):

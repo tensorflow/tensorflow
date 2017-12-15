@@ -286,23 +286,31 @@ class NodeProcessor : public GraphProcessor {
  protected:
   bool IsPortDimsN(const NodeDef& node, int port, int n) const {
     if (node.attr().find("_output_shapes") != node.attr().end()) {
-      auto shape = node.attr().at("_output_shapes").list().shape(port);
-      if (shape.unknown_rank()) {
-        return false;
-      }
-      if (shape.dim_size() == n) {
-        return true;
+      if (node.attr().at("_output_shapes").list().shape_size() > port) {
+        auto shape = node.attr().at("_output_shapes").list().shape(port);
+        if (shape.unknown_rank()) {
+          return false;
+        }
+        if (shape.dim_size() == n) {
+          return true;
+        }
       }
     }
     return false;
   }
 
-  bool IsDimsN(const NodeDef& node, int n) const {
+  bool IsPortZeroDimsN(const NodeDef& node, int n) const {
     return IsPortDimsN(node, 0, n);
   }
 
-  bool IsDimsFour(const NodeDef& node) const {
-    return NodeProcessor::IsDimsN(node, 4) || IsNodeNCHWToNHWC(node.name());
+  bool IsPortZeroDimsFour(const NodeDef& node) const {
+    return NodeProcessor::IsPortZeroDimsN(node, 4) ||
+           IsNodeNCHWToNHWC(node.name());
+  }
+
+  bool IsPortDimsFour(const NodeDef& node, int port) const {
+    return NodeProcessor::IsPortDimsN(node, port, 4) ||
+           IsNodeNCHWToNHWC(node.name());
   }
 
   bool IsNHWC() const {
@@ -332,8 +340,8 @@ class NodeProcessor : public GraphProcessor {
   }
 
   virtual bool ShouldProcess() const {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
-           IsOnGPU();
+    return !MustPreserve() && IsNHWC() && IsPortZeroDimsFour(*node_) &&
+           HasOutputs() && IsOnGPU();
   }
 
   virtual bool IsOnGPU() const {
@@ -726,7 +734,9 @@ class BiasAddGradProcessor : public NodeProcessor {
     }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
-      if (IsNHWC() && IsDimsFour(*input)) {
+      int port;
+      ParseNodeName(node_->input(0), &port);
+      if (IsNHWC() && IsPortDimsFour(*input, port)) {
         return true;
       }
     }
@@ -743,8 +753,8 @@ class Conv2DProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
-           (!IsGemmUsed() || no_gemm_) && IsOnGPU();
+    return !MustPreserve() && IsNHWC() && IsPortZeroDimsFour(*node_) &&
+           HasOutputs() && (!IsGemmUsed() || no_gemm_) && IsOnGPU();
   }
 
   TensorShapeProto GetShape(const string& input_name) const {
@@ -902,7 +912,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() && IsOnGPU();
   }
 
@@ -987,7 +997,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
            (IsNDOperateWithMD(4, 0) || IsNDOperateWithMD(4, 1) ||
             IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4) ||
@@ -999,10 +1009,14 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     std::vector<int> input_pos;
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
-    if (IsDimsFour(*input0)) {
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    int input1_port;
+    ParseNodeName(node_->input(1), &input1_port);
+    if (IsPortDimsFour(*input0, input0_port)) {
       input_pos.push_back(0);
     }
-    if (IsDimsFour(*input1)) {
+    if (IsPortDimsFour(*input1, input1_port)) {
       input_pos.push_back(1);
     }
     return input_pos;
@@ -1011,9 +1025,16 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
   bool IsNDOperateWithMD(int n, int m) const {
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    int input1_port;
+    ParseNodeName(node_->input(1), &input1_port);
+
     if (input0 && input1) {
-      bool input0_is_n = (n == 4) ? IsDimsFour(*input0) : IsDimsN(*input0, n);
-      bool input1_is_m = (m == 4) ? IsDimsFour(*input1) : IsDimsN(*input1, m);
+      bool input0_is_n = (n == 4) ? IsPortDimsFour(*input0, input0_port)
+                                  : IsPortDimsN(*input0, input0_port, n);
+      bool input1_is_m = (m == 4) ? IsPortDimsFour(*input1, input1_port)
+                                  : IsPortDimsN(*input1, input1_port, m);
       return input0_is_n && input1_is_m;
     }
     return false;
@@ -1082,8 +1103,14 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
           AddPrefixToNodeName(base_name, kReshapeConst, "-");
       auto input_node = node_map_->GetNode(node_->input(vector_index));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
-      int vector_size =
-          input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
+      int port;
+      ParseNodeName(node_->input(vector_index), &port);
+      int vector_size = input_node->attr()
+                            .at("_output_shapes")
+                            .list()
+                            .shape(port)
+                            .dim(0)
+                            .size();
       AddNodeShapeConst(shape_const_node_name, vector_size,
                         NodeName(node_->input(vector_index)));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
@@ -1141,7 +1168,7 @@ class PadProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() && PaddingSupported() && IsOnGPU();
   }
   Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
@@ -1216,7 +1243,9 @@ class ShapeProcessor : public AgnosticNodeProcessor {
     std::vector<int> input_pos;
     for (int i = 0; i < node_->input_size(); i++) {
       auto input = node_map_->GetNode(node_->input(i));
-      if (IsDimsFour(*input) &&
+      int port;
+      ParseNodeName(node_->input(i), &port);
+      if (IsPortDimsFour(*input, port) &&
           (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
         input_pos.push_back(i);
       }
@@ -1267,7 +1296,7 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsN(*node_, 2) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsN(*node_, 2) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW() &&
            IsOnGPU();
   }
@@ -1318,8 +1347,10 @@ class SumProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
+    int port;
+    ParseNodeName(node_->input(0), &port);
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsDimsFour(*input0) && IsAlongDimNHW() && IsOnGPU();
+           IsPortDimsFour(*input0, port) && IsAlongDimNHW() && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
