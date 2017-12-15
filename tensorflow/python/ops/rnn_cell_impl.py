@@ -250,40 +250,6 @@ class RNNCell(base_layer.Layer):
     self._last_zero_state = (state_size, batch_size, dtype, output)
     return output
 
-
-class BasicRNNCell(RNNCell):
-  """The most basic RNN cell.
-
-  Args:
-    num_units: int, The number of units in the RNN cell.
-    activation: Nonlinearity to use.  Default: `tanh`.
-    reuse: (optional) Python boolean describing whether to reuse variables
-     in an existing scope.  If not `True`, and the existing scope already has
-     the given variables, an error is raised.
-  """
-
-  def __init__(self, num_units, activation=None, reuse=None):
-    super(BasicRNNCell, self).__init__(_reuse=reuse)
-    self._num_units = num_units
-    self._activation = activation or math_ops.tanh
-    self._linear = None
-
-  @property
-  def state_size(self):
-    return self._num_units
-
-  @property
-  def output_size(self):
-    return self._num_units
-
-  def call(self, inputs, state):
-    """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-    if self._linear is None:
-      self._linear = _Linear([inputs, state], self._num_units, True)
-
-    output = self._activation(self._linear([inputs, state]))
-    return output, output
-
 class _LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
