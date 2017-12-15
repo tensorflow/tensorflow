@@ -649,6 +649,8 @@ class ApplyAdadeltaOp : public OpKernel {
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
