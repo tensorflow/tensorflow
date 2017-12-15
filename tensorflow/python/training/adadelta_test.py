@@ -34,7 +34,8 @@ class AdadeltaOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_resource=False):
     num_updates = 4  # number of ADADELTA steps to perform
-    for dtype in [dtypes.half, dtypes.float32]:
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64,
+                  dtypes.complex64, dtypes.complex128]:
       for grad in [0.2, 0.1, 0.01]:
         for lr in [1.0, 0.5, 0.1]:
           with self.test_session():
