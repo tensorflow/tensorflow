@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.bayesflow.python.ops import layers_dense_variational_impl as prob_layers_lib
+from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -41,7 +42,7 @@ class Counter(object):
     return self._value
 
 
-class MockDistribution(normal_lib.Normal):
+class MockDistribution(independent_lib.Independent):
   """Monitors DenseVariational calls to the underlying distribution."""
 
   def __init__(self, result_sample, result_log_prob, loc=None, scale=None):
@@ -49,6 +50,10 @@ class MockDistribution(normal_lib.Normal):
     self.result_log_prob = result_log_prob
     self.result_loc = loc
     self.result_scale = scale
+    self.result_distribution = normal_lib.Normal(loc=0.0, scale=1.0)
+    if loc is not None and scale is not None:
+      self.result_distribution = normal_lib.Normal(loc=self.result_loc,
+                                                   scale=self.result_scale)
     self.called_log_prob = Counter()
     self.called_sample = Counter()
     self.called_loc = Counter()
@@ -61,6 +66,10 @@ class MockDistribution(normal_lib.Normal):
   def sample(self, *args, **kwargs):
     self.called_sample()
     return self.result_sample
+
+  @property
+  def distribution(self):  # for dummy check on Independent(Normal)
+    return self.result_distribution
 
   @property
   def loc(self):
@@ -95,16 +104,16 @@ class DenseVariationalLocalReparametrization(test.TestCase):
       inputs = random_ops.random_uniform([2, 3], seed=1)
 
       # No keys.
-      loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
-      self.assertEqual(len(loss_keys), 0)
-      self.assertListEqual(dense_vi.losses, loss_keys)
+      losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+      self.assertEqual(len(losses), 0)
+      self.assertListEqual(dense_vi.losses, losses)
 
       _ = dense_vi(inputs)
 
       # Yes keys.
-      loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
-      self.assertEqual(len(loss_keys), 1)
-      self.assertListEqual(dense_vi.losses, loss_keys)
+      losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+      self.assertEqual(len(losses), 1)
+      self.assertListEqual(dense_vi.losses, losses)
 
   def testKLPenaltyBoth(self):
     def _make_normal(dtype, *args):  # pylint: disable=unused-argument
@@ -118,16 +127,16 @@ class DenseVariationalLocalReparametrization(test.TestCase):
       inputs = random_ops.random_uniform([2, 3], seed=1)
 
       # No keys.
-      loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
-      self.assertEqual(len(loss_keys), 0)
-      self.assertListEqual(dense_vi.losses, loss_keys)
+      losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+      self.assertEqual(len(losses), 0)
+      self.assertListEqual(dense_vi.losses, losses)
 
       _ = dense_vi(inputs)
 
       # Yes keys.
-      loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
-      self.assertEqual(len(loss_keys), 2)
-      self.assertListEqual(dense_vi.losses, loss_keys)
+      losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+      self.assertEqual(len(losses), 2)
+      self.assertListEqual(dense_vi.losses, losses)
 
   def testVariationalNonLocal(self):
     batch_size, in_size, out_size = 2, 3, 4
@@ -183,9 +192,9 @@ class DenseVariationalLocalReparametrization(test.TestCase):
           expected_bias_divergence_, actual_bias_divergence_,
       ] = sess.run([
           expected_outputs, outputs,
-          kernel_posterior.result_sample, dense_vi.kernel.posterior_tensor,
+          kernel_posterior.result_sample, dense_vi.kernel_posterior_tensor,
           kernel_divergence.result, kl_penalty[0],
-          bias_posterior.result_sample, dense_vi.bias.posterior_tensor,
+          bias_posterior.result_sample, dense_vi.bias_posterior_tensor,
           bias_divergence.result, kl_penalty[1],
       ])
 
@@ -206,11 +215,15 @@ class DenseVariationalLocalReparametrization(test.TestCase):
           rtol=1e-6, atol=0.)
 
       self.assertAllEqual(
-          [[kernel_posterior, kernel_prior, kernel_posterior.result_sample]],
+          [[kernel_posterior.distribution,
+            kernel_prior.distribution,
+            kernel_posterior.result_sample]],
           kernel_divergence.args)
 
       self.assertAllEqual(
-          [[bias_posterior, bias_prior, bias_posterior.result_sample]],
+          [[bias_posterior.distribution,
+            bias_prior.distribution,
+            bias_posterior.result_sample]],
           bias_divergence.args)
 
   def testVariationalLocal(self):
@@ -274,7 +287,7 @@ class DenseVariationalLocalReparametrization(test.TestCase):
       ] = sess.run([
           expected_outputs, outputs,
           kernel_divergence.result, kl_penalty[0],
-          bias_posterior.result_sample, dense_vi.bias.posterior_tensor,
+          bias_posterior.result_sample, dense_vi.bias_posterior_tensor,
           bias_divergence.result, kl_penalty[1],
       ])
 
@@ -292,11 +305,13 @@ class DenseVariationalLocalReparametrization(test.TestCase):
           rtol=1e-6, atol=0.)
 
       self.assertAllEqual(
-          [[kernel_posterior, kernel_prior, None]],
+          [[kernel_posterior.distribution, kernel_prior.distribution, None]],
           kernel_divergence.args)
 
       self.assertAllEqual(
-          [[bias_posterior, bias_prior, bias_posterior.result_sample]],
+          [[bias_posterior.distribution,
+            bias_prior.distribution,
+            bias_posterior.result_sample]],
           bias_divergence.args)
 
 
