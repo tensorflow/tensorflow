@@ -330,11 +330,6 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
       grad_a.set_shape(a_shape)
       return grad_a
 
-    # TODO(rmlarsen): Define a gradient that is numerically stable for
-    # abs(m-n) > 1. Currently this does not work because there are effectively
-    # multiple singular values with value zero. I am not sure if this is a true
-    # instability or if it simply throws off the finite difference gradient
-    # checker.
     if op.get_attr("full_matrices") and abs(m - n) > 1:
       raise NotImplementedError(
           "svd gradient is not implemented for abs(m - n) > 1 "
