@@ -185,6 +185,10 @@ def tf_copts(android_optimization_level_override="-O2"):
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + select({
+            "//tensorflow:framework_shared_object": [],
+            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
+      })
+      + select({
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): WIN_COPTS,
