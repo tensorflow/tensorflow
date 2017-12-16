@@ -736,15 +736,13 @@ Status SelectGrad(const Scope& scope, const Operation& op,
   auto zeros = ZerosLike(scope, x);
   auto grad = grad_inputs[0];
 
-  Scope grad_scope = scope.WithControlDependencies(grad);
-  auto gx_1 = Where3(grad_scope, comparator, grad, zeros);
-  auto gx_2 = Where3(grad_scope, comparator, zeros, grad);
+  auto gx_1 = Where3(scope, comparator, grad, zeros);
+  auto gx_2 = Where3(scope, comparator, zeros, grad);
 
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(gx_1);
   grad_outputs->push_back(gx_2);
-
-  return grad_scope.status();
+  return scope.status();
 }
 REGISTER_GRADIENT_OP("Select", SelectGrad);
 
