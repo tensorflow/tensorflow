@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -981,10 +982,11 @@ def _compute_sampled_logits(weights,
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
   Returns:
-    out_logits, out_labels: `Tensor` objects each with shape
+    out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
+    out_labels: A Tensor object with the same shape as `out_logits`.
   """
 
   if isinstance(weights, variables.PartitionedVariable):
@@ -1095,15 +1097,16 @@ def _compute_sampled_logits(weights,
 
     # Construct output logits and labels. The true labels/logits start at col 0.
     out_logits = array_ops.concat([true_logits, sampled_logits], 1)
-    # true_logits is a float tensor, ones_like(true_logits) is a float tensor
-    # of ones. We then divide by num_true to ensure the per-example labels sum
-    # to 1.0, i.e. form a proper probability distribution.
+
+    # true_logits is a float tensor, ones_like(true_logits) is a float
+    # tensor of ones. We then divide by num_true to ensure the per-example
+    # labels sum to 1.0, i.e. form a proper probability distribution.
     out_labels = array_ops.concat([
         array_ops.ones_like(true_logits) / num_true,
         array_ops.zeros_like(sampled_logits)
     ], 1)
 
-  return out_logits, out_labels
+    return out_logits, out_labels
 
 
 def nce_loss(weights,

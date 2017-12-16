@@ -458,7 +458,6 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
   return select({
-      "//tensorflow:with_gcp_support_windows_override": [],
       "//tensorflow:with_gcp_support_android_override": [],
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
