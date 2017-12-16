@@ -754,7 +754,7 @@ template <typename T>
 struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
+struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
