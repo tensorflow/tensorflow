@@ -29,6 +29,45 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
+#if GOOGLE_CUDA
+template <>
+struct scalar_arg_op<std::complex<float>> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_arg_op)
+  typedef typename Eigen::NumTraits<std::complex<float>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const float operator()(
+      const std::complex<float>& a) const {
+    return ::atan2f(a.imag(), a.real());
+  }
+};
+
+template <>
+struct scalar_arg_op<std::complex<double>> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_arg_op)
+  typedef typename Eigen::NumTraits<std::complex<double>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
+      const std::complex<double>& a) const {
+    return ::atan2(a.imag(), a.real());
+  }
+};
+#endif
+
+// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
+template <typename T>
+struct scalar_fmod2_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
+                                                           const T& b) const {
+    return std::fmod(a, b);
+  }
+};
+template <typename T>
+struct functor_traits<scalar_fmod2_op<T>> {
+  enum {
+    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
+    PacketAccess = false,
+  };
+};
+
 template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
@@ -1008,41 +1047,9 @@ template <typename T>
 struct get_imag
     : base<T, Eigen::internal::scalar_imag_op<T>, typename T::value_type> {};
 
-template <typename Scalar>
-struct scalar_get_angle_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
-  typedef typename Eigen::NumTraits<Scalar>::Real result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const result_type
-  operator()(const Scalar& a) const {
-    return Eigen::numext::arg(a);
-  }
-};
-
-#if GOOGLE_CUDA
-template <>
-struct scalar_get_angle_op<complex64> {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
-  typedef typename Eigen::NumTraits<complex64>::Real result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const float operator()(
-      const complex64& a) const {
-    return ::atan2f(a.imag(), a.real());
-  }
-};
-
-template <>
-struct scalar_get_angle_op<complex128> {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
-  typedef typename Eigen::NumTraits<complex128>::Real result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
-      const complex128& a) const {
-    return ::atan2(a.imag(), a.real());
-  }
-};
-#endif
-
 template <typename T>
-struct get_angle : base<T, scalar_get_angle_op<T>,
-                        typename scalar_get_angle_op<T>::result_type> {};
+struct get_angle
+    : base<T, Eigen::internal::scalar_arg_op<T>, typename T::value_type> {};
 
 template <typename T>
 struct conj : base<T, Eigen::internal::scalar_conjugate_op<T>> {};
