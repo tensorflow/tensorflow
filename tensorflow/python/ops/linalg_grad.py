@@ -373,9 +373,9 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     if m == n:
       grad_a_before_transpose = term1
     else:
-      proj_v1_perp = (linalg_ops.eye(n, dtype=v.dtype)
-                      - math_ops.matmul(v1, v1, adjoint_b=True))
-      term2_nous = math_ops.matmul(grad_v1, proj_v1_perp, adjoint_a=True)
+      gv1t = array_ops.matrix_transpose(grad_v1)
+      gv1t_v1 = math_ops.matmul(gv1t, v1)
+      term2_nous = gv1t - math_ops.matmul(gv1t_v1, v1, adjoint_b=True)
 
       if op.get_attr("full_matrices"):
         v2 = v[..., :, m:n]
