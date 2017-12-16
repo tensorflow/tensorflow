@@ -36,6 +36,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 

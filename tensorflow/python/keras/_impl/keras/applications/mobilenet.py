@@ -350,7 +350,7 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       include_top: whether to include the fully-connected
           layer at the top of the network.
       weights: one of `None` (random initialization),
-          "imagenet" (pre-training on ImageNet),
+          'imagenet' (pre-training on ImageNet),
           or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of
           `layers.Input()`)
@@ -536,6 +536,8 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
 
   if old_data_format:
     K.set_image_data_format(old_data_format)
+  elif weights is not None:
+    model.load_weights(weights)
   return model
 
 

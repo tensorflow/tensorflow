@@ -187,7 +187,7 @@ est_inception_v3.train(input_fn=train_input_fn, steps=2000)
 Note that the names of feature columns and labels of a keras estimator come from
 the corresponding compiled keras model. For example, the input key names for
 @{$get_started/input_fn} in above `est_inception_v3` estimator can be obtained
-from `keras_inception_v3.input_names`, and similarily, the predicted output
+from `keras_inception_v3.input_names`, and similarly, the predicted output
 names can be obtained from `keras_inception_v3.output_names`.
 
 For more details, please refer to the documentation for

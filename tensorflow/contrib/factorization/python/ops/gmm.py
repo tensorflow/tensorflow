@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.contrib import framework
 from tensorflow.contrib.factorization.python.ops import gmm_ops
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
@@ -167,7 +167,7 @@ class GMM(estimator.Estimator):
                                      self._num_clusters, self._random_seed,
                                      self._covariance_type,
                                      self._params)
-      incr_step = state_ops.assign_add(variables.get_global_step(), 1)
+      incr_step = state_ops.assign_add(training_util.get_global_step(), 1)
       loss = math_ops.reduce_sum(losses)
       training_op = with_dependencies([training_op, incr_step], loss)
       training_hooks = [_InitializeClustersHook(

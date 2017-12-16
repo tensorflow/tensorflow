@@ -36,8 +36,8 @@ _TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            '.tf_configure.bazelrc')
 _TF_WORKSPACE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              'WORKSPACE')
-_DEFAULT_CUDA_VERSION = '8.0'
-_DEFAULT_CUDNN_VERSION = '6'
+_DEFAULT_CUDA_VERSION = '9.0'
+_DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
@@ -1096,6 +1096,27 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+def set_trisycl_include_dir(environ_cp):
+  """Set TRISYCL_INCLUDE_DIR"""
+  ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
+                             'include directory. (Use --config=sycl_trisycl '
+                             'when building with Bazel) '
+                             '[Default is %s]: '
+                             ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
+  while True:
+    trisycl_include_dir = get_from_env_or_user_or_default(
+      environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
+      _DEFAULT_TRISYCL_INCLUDE_DIR)
+    if os.path.exists(trisycl_include_dir):
+      break
+
+    print('Invalid triSYCL include directory, %s cannot be found'
+          % (trisycl_include_dir))
+
+  # Set TRISYCL_INCLUDE_DIR
+  environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
+  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
+                              trisycl_include_dir)
 
 def set_trisycl_include_dir(environ_cp):
   """Set TRISYCL_INCLUDE_DIR."""
@@ -1211,6 +1232,15 @@ def create_android_bazelrc_configs():
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
+def set_windows_build_flags():
+  if is_windows():
+    # The non-monolithic build is not supported yet
+    write_to_bazelrc('build --config monolithic')
+    # Suppress warning messages
+    write_to_bazelrc('build --copt=-w --host_copt=-w')
+    # Output more verbose information when something goes wrong
+    write_to_bazelrc('build --verbose_failures')
+
 
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
@@ -1289,6 +1319,7 @@ def main():
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()
+  set_windows_build_flags()
   create_android_bazelrc_configs()
 
   if workspace_has_any_android_rule():
