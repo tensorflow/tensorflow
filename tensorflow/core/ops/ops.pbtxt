@@ -6439,12 +6439,12 @@ op {
   name: "DataFormatVecPermute"
   input_arg {
     name: "x"
-    description: "Vector in source data format. Must be of size 4."
+    description: "Vector of size 4 or Tensor of shape (2, 4) in source data format."
     type_attr: "T"
   }
   output_arg {
     name: "y"
-    description: "Vector in destination data format. Must be of size 4."
+    description: "Vector of size 4 or Tensor of shape (2, 4) in destination data format."
     type_attr: "T"
   }
   attr {
@@ -6476,7 +6476,7 @@ op {
     }
     description: "destination data format."
   }
-  summary: "Returns the permuted vector in the destination data format given the one in"
+  summary: "Returns the permuted vector/tensor in the destination data format given the one in"
   description: "the source data format."
 }
 op {
