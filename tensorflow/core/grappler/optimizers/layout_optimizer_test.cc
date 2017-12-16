@@ -263,7 +263,7 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
 
 TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -276,7 +276,7 @@ TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
 
 TEST_F(LayoutOptimizerTest, Pad) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto c = ops::Const(s.WithOpName("c"), {1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
   auto p = ops::Pad(s.WithOpName("p"), conv, c);
   auto o = ops::Identity(s.WithOpName("o"), p);
@@ -303,7 +303,7 @@ TEST_F(LayoutOptimizerTest, Pad) {
 
 TEST_F(LayoutOptimizerTest, Connectivity) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto i1 = ops::Identity(s.WithOpName("i1"), conv);
   auto i2 = ops::Identity(s.WithOpName("i2"), i1);
   auto i3 = ops::Identity(s.WithOpName("i3"), i2);
@@ -333,7 +333,7 @@ TEST_F(LayoutOptimizerTest, Connectivity) {
 
 TEST_F(LayoutOptimizerTest, ConnectivityBinaryOpWithInputScalarAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto i1 = ops::Identity(s.WithOpName("i1"), conv);
   auto i2 = ops::Identity(s.WithOpName("i2"), i1);
   auto scalar_sub = ops::Const(s.WithOpName("scalar_sub"), 3.0f, {});
@@ -366,7 +366,7 @@ TEST_F(LayoutOptimizerTest, ConnectivityBinaryOpWithInputScalarAnd4D) {
 
 TEST_F(LayoutOptimizerTest, PreserveFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto i = ops::Identity(s.WithOpName("i"), conv);
   GrapplerItem item;
   item.fetch.push_back("Conv2D");
@@ -381,7 +381,7 @@ TEST_F(LayoutOptimizerTest, PreserveFetch) {
 
 TEST_F(LayoutOptimizerTest, EmptyDevice) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -396,7 +396,7 @@ TEST_F(LayoutOptimizerTest, EmptyDevice) {
 TEST_F(LayoutOptimizerTest, GPUDevice) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv =
-      SimpleConv2D(&s, 3, 2, "VALID", "/job:w/replica:0/task:0/device:gpu:0");
+      SimpleConv2D(&s, 4, 2, "VALID", "/job:w/replica:0/task:0/device:gpu:0");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -411,7 +411,7 @@ TEST_F(LayoutOptimizerTest, GPUDevice) {
 TEST_F(LayoutOptimizerTest, CPUDeviceLowercase) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv =
-      SimpleConv2D(&s, 3, 2, "VALID", "/job:w/replica:0/task:0/device:cpu:0");
+      SimpleConv2D(&s, 4, 2, "VALID", "/job:w/replica:0/task:0/device:cpu:0");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -425,7 +425,7 @@ TEST_F(LayoutOptimizerTest, CPUDeviceLowercase) {
 
 TEST_F(LayoutOptimizerTest, CPUDeviceUppercase) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID", "/CPU:0");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID", "/CPU:0");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -467,7 +467,7 @@ TEST_F(LayoutOptimizerTest, FusedBatchNormGradTrainingFalse) {
 
 TEST_F(LayoutOptimizerTest, SplitDimC) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
   auto c = ops::Const(s.WithOpName("c"), 3, {});
   auto split = ops::Split(s.WithOpName("split"), c, conv, 2);
   auto i = ops::Identity(s.WithOpName("i"), split[0]);
@@ -487,7 +487,7 @@ TEST_F(LayoutOptimizerTest, SplitDimC) {
 
 TEST_F(LayoutOptimizerTest, SplitDimH) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 6, 2, "SAME");
   auto c = ops::Const(s.WithOpName("c"), 1, {});
   auto split = ops::Split(s.WithOpName("split"), c, conv, 2);
   auto i = ops::Identity(s.WithOpName("i"), split[0]);
@@ -507,7 +507,7 @@ TEST_F(LayoutOptimizerTest, SplitDimH) {
 
 TEST_F(LayoutOptimizerTest, SplitDimW) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
   auto c = ops::Const(s.WithOpName("c"), 2, {});
   auto split = ops::Split(s.WithOpName("split"), c, conv, 2);
   auto i = ops::Identity(s.WithOpName("i"), split[0]);
@@ -527,7 +527,7 @@ TEST_F(LayoutOptimizerTest, SplitDimW) {
 
 TEST_F(LayoutOptimizerTest, SplitDimN) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
   auto c = ops::Const(s.WithOpName("c"), 0, {});
   auto split = ops::Split(s.WithOpName("split"), c, conv, 2);
   auto i = ops::Identity(s.WithOpName("i"), split[0]);
@@ -547,7 +547,7 @@ TEST_F(LayoutOptimizerTest, SplitDimN) {
 
 TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
   auto c = ops::Const(s.WithOpName("c"), 0, {});
   auto i1 = ops::Identity(s.WithOpName("i1"), c);
   auto split = ops::Split(s.WithOpName("split"), i1, conv, 2);
@@ -570,7 +570,7 @@ TEST_F(LayoutOptimizerTest, SplitNonConstDim) {
 
 TEST_F(LayoutOptimizerTest, SplitSamePortToMultipleInputsOfSameNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 5, 2, "VALID");
   auto axis = ops::Const(s.WithOpName("axis"), 3);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
   auto concat =
@@ -593,7 +593,7 @@ TEST_F(LayoutOptimizerTest, SplitSamePortToMultipleInputsOfSameNode) {
 
 TEST_F(LayoutOptimizerTest, ConcatDimH) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "SAME");
   auto axis = ops::Const(s.WithOpName("axis"), 1);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
   auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
@@ -614,7 +614,7 @@ TEST_F(LayoutOptimizerTest, ConcatDimH) {
 
 TEST_F(LayoutOptimizerTest, ConcatNonConst) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "SAME");
   auto axis = ops::Const(s.WithOpName("axis"), 1);
   auto i = ops::Identity(s.WithOpName("i"), axis);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
@@ -639,7 +639,7 @@ TEST_F(LayoutOptimizerTest, ConcatNonConst) {
 
 TEST_F(LayoutOptimizerTest, ConcatDimW) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "SAME");
   auto axis = ops::Const(s.WithOpName("axis"), 2);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
   auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
@@ -660,7 +660,7 @@ TEST_F(LayoutOptimizerTest, ConcatDimW) {
 
 TEST_F(LayoutOptimizerTest, ConcatDimN) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto axis = ops::Const(s.WithOpName("axis"), 0);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
   auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
@@ -681,7 +681,7 @@ TEST_F(LayoutOptimizerTest, ConcatDimN) {
 
 TEST_F(LayoutOptimizerTest, ConcatDimC) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto axis = ops::Const(s.WithOpName("axis"), 3);
   auto split = ops::Split(s.WithOpName("split"), axis, conv, 2);
   auto concat = ops::Concat(s.WithOpName("concat"), {split[0], split[1]}, axis);
@@ -702,7 +702,7 @@ TEST_F(LayoutOptimizerTest, ConcatDimC) {
 
 TEST_F(LayoutOptimizerTest, Sum) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto reduction_indices =
       ops::Const(s.WithOpName("reduction_indices"), {0, 1, 2}, {3});
   auto sum = ops::Sum(s.WithOpName("sum"), conv, reduction_indices);
@@ -731,7 +731,7 @@ TEST_F(LayoutOptimizerTest, Sum) {
 
 TEST_F(LayoutOptimizerTest, MulScalarAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto scalar = ops::Const(s.WithOpName("scalar"), 3.0f, {});
   auto mul = ops::Mul(s.WithOpName("mul"), scalar, conv);
   auto o = ops::Identity(s.WithOpName("o"), mul);
@@ -748,7 +748,7 @@ TEST_F(LayoutOptimizerTest, MulScalarAnd4D) {
 
 TEST_F(LayoutOptimizerTest, Mul4DAndScalar) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto scalar = ops::Const(s.WithOpName("scalar"), 3.0f, {});
   auto mul = ops::Mul(s.WithOpName("mul"), conv, scalar);
   auto o = ops::Identity(s.WithOpName("o"), mul);
@@ -765,7 +765,7 @@ TEST_F(LayoutOptimizerTest, Mul4DAndScalar) {
 
 TEST_F(LayoutOptimizerTest, Mul4DAndUnknownRank) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto unknown_rank =
       ops::Placeholder(s.WithOpName("unknown"), DT_FLOAT,
                        ops::Placeholder::Shape(PartialTensorShape()));
@@ -788,7 +788,7 @@ TEST_F(LayoutOptimizerTest, Mul4DAndUnknownRank) {
 
 TEST_F(LayoutOptimizerTest, Mul4DAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto i = ops::Identity(s.WithOpName("i"), conv);
   auto mul = ops::Mul(s.WithOpName("mul"), conv, i);
   auto o = ops::Identity(s.WithOpName("o"), mul);
@@ -805,7 +805,7 @@ TEST_F(LayoutOptimizerTest, Mul4DAnd4D) {
 
 TEST_F(LayoutOptimizerTest, Mul4DAndVector) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto vector = ops::Const(s.WithOpName("vector"), {3.0f, 7.0f}, {2});
   auto mul = ops::Mul(s.WithOpName("mul"), conv, vector);
   auto o = ops::Identity(s.WithOpName("o"), mul);
@@ -829,7 +829,7 @@ TEST_F(LayoutOptimizerTest, Mul4DAndVector) {
 
 TEST_F(LayoutOptimizerTest, MulVectorAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto vector = ops::Const(s.WithOpName("vector"), {3.0f, 7.0f}, {2});
   auto mul = ops::Mul(s.WithOpName("mul"), vector, conv);
   auto o = ops::Identity(s.WithOpName("o"), mul);
@@ -931,7 +931,7 @@ TEST_F(LayoutOptimizerTest, DoNotApplyOptimizerTwice) {
 
 TEST_F(LayoutOptimizerTest, ShapeNWithInputs4DAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto shapen = ops::ShapeN(s.WithOpName("shapen"), {conv, conv});
   auto add = ops::Add(s.WithOpName("add"), shapen[0], shapen[1]);
   GrapplerItem item;
@@ -960,7 +960,7 @@ TEST_F(LayoutOptimizerTest, ShapeNWithInputs4DAnd4D) {
 
 TEST_F(LayoutOptimizerTest, ShapeNWithInputsVectorAnd4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto vector = ops::Const(s.WithOpName("vector"), 3.0f, {7});
   auto shapen = ops::ShapeN(s.WithOpName("shapen"), {vector, conv});
   auto add = ops::Add(s.WithOpName("add"), shapen[0], shapen[1]);
@@ -985,7 +985,7 @@ TEST_F(LayoutOptimizerTest, ShapeNWithInputsVectorAnd4D) {
 
 TEST_F(LayoutOptimizerTest, ShapeNWithInputs4DAndNoNeedToTransform4D) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
   auto tensor_4d = ops::Const(s.WithOpName("tensor_4d"), 3.0f, {1, 1, 1, 3});
   auto i1 = ops::Identity(s.WithOpName("i1"), tensor_4d);
   Output i2 = ops::Identity(s.WithOpName("i2"), i1);
@@ -1000,6 +1000,70 @@ TEST_F(LayoutOptimizerTest, ShapeNWithInputs4DAndNoNeedToTransform4D) {
   auto shapen_node = node_map.GetNode("shapen");
   EXPECT_EQ(shapen_node->input(0), "Conv2D");
   EXPECT_EQ(shapen_node->input(1), "i2");
+}
+
+TEST_F(LayoutOptimizerTest, Switch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  ops::Variable ctrl(s.WithOpName("ctrl"), {}, DT_BOOL);
+  auto sw = ops::Switch(s.WithOpName("switch"), conv, ctrl);
+  auto i1 = ops::Identity(s.WithOpName("i1"), sw.output_true);
+  auto i2 = ops::Identity(s.WithOpName("i2"), sw.output_false);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto switch_node = node_map.GetNode("switch");
+  EXPECT_EQ(switch_node->input(0), "Conv2D");
+  EXPECT_EQ(switch_node->input(1), "ctrl");
+  auto i1_node = node_map.GetNode("i1");
+  auto i2_node = node_map.GetNode("i2");
+  auto trans1 = node_map.GetNode(i1_node->input(0));
+  EXPECT_EQ(trans1->input(0), "switch:1");
+  auto trans2 = node_map.GetNode(i2_node->input(0));
+  EXPECT_EQ(trans2->input(0), "switch");
+}
+
+TEST_F(LayoutOptimizerTest, MergeBothInputsConvertible) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  Output i1 = ops::Identity(s.WithOpName("i1"), conv);
+  auto merge = ops::Merge(s.WithOpName("merge"), {conv, i1});
+  auto i2 = ops::Identity(s.WithOpName("i2"), merge.output);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto merge_node = node_map.GetNode("merge");
+  EXPECT_EQ(merge_node->input(0), "Conv2D");
+  EXPECT_EQ(merge_node->input(1), "i1");
+  auto i2_node = node_map.GetNode("i2");
+  EXPECT_EQ(i2_node->input(0), "LayoutOptimizerTransposeNCHWToNHWC-merge-0-0");
+  auto transpose =
+      node_map.GetNode("LayoutOptimizerTransposeNCHWToNHWC-merge-0-0");
+  EXPECT_EQ(transpose->input(0), "merge");
+}
+
+TEST_F(LayoutOptimizerTest, MergeOneInputNotConvertible) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto tensor_4d = ops::Const(s.WithOpName("tensor_4d"), 3.0f, {1, 1, 1, 3});
+  auto merge = ops::Merge(s.WithOpName("merge"), {tensor_4d, conv});
+  auto i2 = ops::Identity(s.WithOpName("i2"), merge.output);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto merge_node = node_map.GetNode("merge");
+  EXPECT_EQ(merge_node->input(0), "tensor_4d");
+  EXPECT_EQ(merge_node->input(1),
+            "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-0-1");
 }
 
 }  // namespace

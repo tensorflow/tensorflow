@@ -100,6 +100,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Lgamma",
                                           "Log",
                                           "Log1p",
+                                          "Merge",
                                           "Mul",
                                           "Neg",
                                           "Pad",
@@ -119,6 +120,9 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Sinh",
                                           "Slice",
                                           "Split",
+                                          "Switch",
+                                          "RefMerge",
+                                          "RefSwitch",
                                           "Round",
                                           "Rsqrt",
                                           "RsqrtGrad",
@@ -1161,6 +1165,40 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   int axis_node_pos_;
 };
 
+class MergeProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit MergeProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
+           IsEveryInputAfterNCHWToNHWC() && IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos;
+    input_pos.reserve(node_->input_size());
+    for (int i = 0; i < node_->input_size(); i++) {
+      input_pos.push_back(i);
+    }
+    return input_pos;
+  }
+
+ private:
+  bool IsEveryInputAfterNCHWToNHWC() const {
+    for (const auto& input : node_->input()) {
+      auto input_node = node_map_->GetNode(input);
+      if (IsNodeAfterNCHWToNHWC(*input_node) ||
+          IsNodeNCHWToNHWC(input_node->name())) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+};
+
 class PadProcessor : public AgnosticNodeProcessor {
  public:
   explicit PadProcessor(const OptimizeContext& opt_cxt)
@@ -1385,6 +1423,15 @@ class SumProcessor : public AgnosticNodeProcessor {
   }
 };
 
+class SwitchProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SwitchProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::set<int> GetOutputPos() const override { return {0, 1}; }
+};
+
 class DataLayoutOptimizer : GraphProcessor {
  public:
   explicit DataLayoutOptimizer(
@@ -1486,6 +1533,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
+          } else if (IsMerge(*node)) {
+            node_processor.reset(new MergeProcessor(opt_cxt));
           } else if (IsPad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
           } else if (IsReluGrad(*node)) {
@@ -1500,6 +1549,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {
             node_processor.reset(new SumProcessor(opt_cxt));
+          } else if (IsSwitch(*node)) {
+            node_processor.reset(new SwitchProcessor(opt_cxt));
           } else {
             node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
           }
