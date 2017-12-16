@@ -32,7 +32,6 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
-from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
 
@@ -1012,10 +1011,7 @@ class _ModelFnWrapper(object):
     self._ctx = ctx
 
   def call_without_tpu(self, features, labels):
-    # Let CrossShardOptimizer be called without TPU in model_fn, since it's
-    # common to set the train_op even when running evaluate() or predict().
-    with tpu_function.tpu_shard_context(1):
-      return self._call_model_fn(features, labels)
+    return self._call_model_fn(features, labels)
 
   def convert_to_single_tpu_train_step(self, dequeue_fn):
     """Converts user provided model_fn` as a single train step on TPU.
