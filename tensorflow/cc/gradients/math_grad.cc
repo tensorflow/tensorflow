@@ -488,21 +488,23 @@ Status PowGrad(const Scope& scope, const Operation& op,
   // Avoid false singularity at x = 0
   DataType x_dtype = x.type();
   auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
-#define RETURN(comp)  \
-  auto log_x = Where3(scope,  \
-                      comp(scope, x, zero),  \
-                      Log(scope, x),  \
-                      ZerosLike(scope, x));  \
-  auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);  \
-  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1)
   if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
     // real(x) < 0 is fine for the complex case
-    RETURN(NotEqual);
+    auto log_x = Where3(scope,
+                        NotEqual(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
   } else {
     // There's no sensible real value to return if x < 0, so return 0
-    RETURN(Greater);
+    auto log_x = Where3(scope,
+                        Greater(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
   }
-#undef RETURN
 }
 REGISTER_GRADIENT_OP("Pow", PowGrad);
 
