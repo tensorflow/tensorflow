@@ -706,7 +706,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
         exec_type, exec_value, exec_tb)
 
   def __del__(self):
-    self._sess.__del__()
+    if hasattr(self._sess, "__del__"):
+      self._sess.__del__()
 
   def close(self):
     self._sess.close()

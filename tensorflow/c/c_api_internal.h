@@ -143,11 +143,11 @@ struct TF_ImportGraphDefOptions {
 struct TF_ImportGraphDefResults {
   std::vector<TF_Output> return_tensors;
   std::vector<TF_Operation*> return_nodes;
-  std::vector<const char*> unused_key_names;
-  std::vector<int> unused_key_indexes;
+  std::vector<const char*> missing_unused_key_names;
+  std::vector<int> missing_unused_key_indexes;
 
-  // Backing memory for unused_key_names values.
-  std::list<tensorflow::string> unused_key_names_data;
+  // Backing memory for missing_unused_key_names values.
+  std::list<tensorflow::string> missing_unused_key_names_data;
 };
 
 struct TF_DeviceList {

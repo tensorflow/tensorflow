@@ -515,7 +515,7 @@ TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
 
 TEST_F(LiteralUtilTest, ReshapeR0) {
   auto original = Literal::CreateR0<float>(1.7f);
-  auto reshape = original->Reshape(/*shape=*/{}).ConsumeValueOrDie();
+  auto reshape = original->Reshape(/*dimensions=*/{}).ConsumeValueOrDie();
   EXPECT_EQ(*original, *reshape);
 }
 

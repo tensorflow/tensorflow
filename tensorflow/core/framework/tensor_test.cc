@@ -175,6 +175,28 @@ void TestCopies(const Tensor& t) {
   }
 }
 
+TEST(Tensor_Half, Simple) {
+  Tensor t(DT_HALF, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<Eigen::half>()(a, b) = static_cast<Eigen::half>(a * b);
+    }
+  }
+  TestCopies<Eigen::half>(t);
+}
+
+TEST(Tensor_Bfloat16, Simple) {
+  Tensor t(DT_BFLOAT16, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<bfloat16>()(a, b) = static_cast<bfloat16>(a * b);
+    }
+  }
+  TestCopies<bfloat16>(t);
+}
+
 TEST(Tensor_Float, Simple) {
   Tensor t(DT_FLOAT, TensorShape({10, 20}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
@@ -334,41 +356,126 @@ class TensorReshapeTest : public ::testing::Test {
     tensor(0, 0, 0, 0) = 0.01f;
     tensor(1, 2, 3, 4) = 0.02f;
   }
+
+  template <typename T>
+  using ReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64>);
+  template <typename T>
+  using ConstReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64>) const;
+
+  template <typename T, ReshapeFunc<T> Func>
+  void TestReshape(std::initializer_list<int64> sizes) {
+    T shaped = (t.*Func)(sizes);
+    TestReshapeImpl(shaped, sizes);
+  }
+
+  template <typename T, ConstReshapeFunc<T> Func>
+  void TestReshape(std::initializer_list<int64> sizes) {
+    T shaped = (static_cast<const Tensor&>(t).*Func)(sizes);
+    TestReshapeImpl(shaped, sizes);
+  }
+
+  template <typename T>
+  void TestReshapeImpl(T shaped, std::initializer_list<int64> sizes) {
+    auto iter = sizes.begin();
+    for (int i = 0; i < shaped.rank(); ++i, ++iter) {
+      EXPECT_EQ(*iter, shaped.dimension(i));
+    }
+
+    using Index = typename T::Index;
+    using Scalar = typename T::Scalar;
+    constexpr int N = T::NumIndices;
+
+    // To handle the cast when `shaped` is bit casted into a different type.
+    const float expected_first = 0.01f;
+    Eigen::DSizes<Index, N> coord;
+    EXPECT_EQ(shaped(coord), *reinterpret_cast<const Scalar*>(&expected_first));
+
+    for (int i = 0; i < N; ++i) {
+      coord[i] = shaped.dimension(i) - 1;
+    }
+    const float expected_last = 0.02f;
+    constexpr int kNumScalarPerFloat =
+        sizeof(float) / sizeof(Scalar);  // Assuming even divide.
+    EXPECT_EQ(shaped(coord), reinterpret_cast<const Scalar*>(
+                                 &expected_last)[kNumScalarPerFloat - 1]);
+  }
 };
 
 TEST_F(TensorReshapeTest, Reshape) {
   LOG(INFO) << "shaped";
-  {
-    auto shaped = t.shaped<float, 1>({120});
-    EXPECT_EQ(120, shaped.dimension(0));
-    EXPECT_EQ(shaped(0), 0.01f);
-    EXPECT_EQ(shaped(119), 0.02f);
-  }
-  {
-    auto shaped = t.shaped<float, 2>({6, 20});
-    EXPECT_EQ(6, shaped.dimension(0));
-    EXPECT_EQ(20, shaped.dimension(1));
-    EXPECT_EQ(shaped(0, 0), 0.01f);
-    EXPECT_EQ(shaped(5, 19), 0.02f);
-  }
-  {
-    auto shaped = t.shaped<float, 3>({6, 4, 5});
-    EXPECT_EQ(6, shaped.dimension(0));
-    EXPECT_EQ(4, shaped.dimension(1));
-    EXPECT_EQ(5, shaped.dimension(2));
-    EXPECT_EQ(shaped(0, 0, 0), 0.01f);
-    EXPECT_EQ(shaped(5, 3, 4), 0.02f);
-  }
-  {
-    auto shaped = t.shaped<float, 4>({2, 3, 4, 5});
-    EXPECT_EQ(2, shaped.dimension(0));
-    EXPECT_EQ(3, shaped.dimension(1));
-    EXPECT_EQ(4, shaped.dimension(2));
-    EXPECT_EQ(5, shaped.dimension(3));
 
-    EXPECT_EQ(shaped(0, 0, 0, 0), 0.01f);
-    EXPECT_EQ(shaped(1, 2, 3, 4), 0.02f);
+#define TEST_RESHAPE(...)                                                  \
+  {                                                                        \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));        \
+    TestReshape<TTypes<float, N>::Tensor, &Tensor::shaped<float, N>>(      \
+        {__VA_ARGS__});                                                    \
+    TestReshape<TTypes<float, N>::ConstTensor, &Tensor::shaped<float, N>>( \
+        {__VA_ARGS__});                                                    \
+    TestReshape<TTypes<float, N>::UnalignedTensor,                         \
+                &Tensor::unaligned_shaped<float, N>>({__VA_ARGS__});       \
+    TestReshape<TTypes<float, N>::UnalignedConstTensor,                    \
+                &Tensor::unaligned_shaped<float, N>>({__VA_ARGS__});       \
+    TestReshape<TTypes<float, N>::Tensor,                                  \
+                &Tensor::bit_casted_shaped<float, N>>({__VA_ARGS__});      \
+    TestReshape<TTypes<float, N>::ConstTensor,                             \
+                &Tensor::bit_casted_shaped<float, N>>({__VA_ARGS__});      \
+    TestReshape<TTypes<int32, N>::Tensor,                                  \
+                &Tensor::bit_casted_shaped<int32, N>>({__VA_ARGS__});      \
+    TestReshape<TTypes<int32, N>::ConstTensor,                             \
+                &Tensor::bit_casted_shaped<int32, N>>({__VA_ARGS__});      \
   }
+
+  TEST_RESHAPE(120);
+  TEST_RESHAPE(6, 20);
+  TEST_RESHAPE(6, 4, 5);
+  TEST_RESHAPE(2, 3, 4, 5);
+#undef TEST_RESHAPE
+}
+
+TEST_F(TensorReshapeTest, BitcastReshapeDifferentSize) {
+#define TEST_BITCAST8_RESHAPE(...)                                    \
+  {                                                                   \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
+    TestReshape<TTypes<uint8, N>::Tensor,                             \
+                &Tensor::bit_casted_shaped<uint8, N>>({__VA_ARGS__}); \
+  }
+
+  TEST_BITCAST8_RESHAPE(480);
+  TEST_BITCAST8_RESHAPE(24, 20);
+  TEST_BITCAST8_RESHAPE(6, 16, 5);
+  TEST_BITCAST8_RESHAPE(2, 3, 4, 20);
+#undef TEST_BITCAST8_RESHAPE
+#define TEST_BITCAST16_RESHAPE(...)                                   \
+  {                                                                   \
+    constexpr int N = (sizeof((int[]){__VA_ARGS__}) / sizeof(int));   \
+    TestReshape<TTypes<int16, N>::Tensor,                             \
+                &Tensor::bit_casted_shaped<int16, N>>({__VA_ARGS__}); \
+  }
+
+  TEST_BITCAST16_RESHAPE(240);
+  TEST_BITCAST16_RESHAPE(6, 40);
+  TEST_BITCAST16_RESHAPE(12, 4, 5);
+  TEST_BITCAST16_RESHAPE(2, 3, 8, 5);
+  TEST_BITCAST16_RESHAPE(2, 3, 4, 1, 10);
+#undef TEST_BITCAST16_RESHAPE
+}
+
+TEST_F(TensorReshapeTest, ReshapeError) {
+  EXPECT_DEATH((t.shaped<float, 0>({})), "1 vs. 120");
+  EXPECT_DEATH((t.shaped<float, 1>({119})), "119 vs. 120");
+  EXPECT_DEATH((t.shaped<float, 4>({2, 3, 4, 6})), "144 vs. 120");
+
+  EXPECT_DEATH((t.unaligned_shaped<float, 0>({})), "1 vs. 120");
+  EXPECT_DEATH((t.unaligned_shaped<float, 1>({119})), "119 vs. 120");
+  EXPECT_DEATH((t.unaligned_shaped<float, 4>({2, 3, 4, 6})), "144 vs. 120");
+
+  EXPECT_DEATH((t.bit_casted_shaped<float, 0>({})), "4 vs. 480");
+  EXPECT_DEATH((t.bit_casted_shaped<float, 1>({119})), "476 vs. 480");
+  EXPECT_DEATH((t.bit_casted_shaped<float, 4>({2, 3, 4, 6})), "576 vs. 480");
+
+  Tensor string_tensor{DT_STRING, {10}};
+  // Note that the error message compare # of elements, not # of bytes.
+  EXPECT_DEATH((string_tensor.bit_casted_shaped<string, 1>({9})), "9 vs. 10");
 }
 
 TEST_F(TensorReshapeTest, Flat) {

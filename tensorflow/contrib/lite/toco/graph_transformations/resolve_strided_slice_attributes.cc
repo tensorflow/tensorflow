@@ -39,6 +39,10 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
 
   const auto& start_array = *model->arrays[op->inputs[1]];
   if (!start_array.has_shape()) return false;
+  if (toco::RequiredBufferSizeForShape(start_array.shape()) != 4) {
+    // Only 4D arrays are supported for now.
+    return false;
+  }
 
   const auto& stop_array = *model->arrays[op->inputs[2]];
   if (!stop_array.has_shape()) return false;
@@ -49,11 +53,6 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   op->start_indices = start_array.GetBuffer<ArrayDataType::kInt32>().data;
   op->stop_indices = stop_array.GetBuffer<ArrayDataType::kInt32>().data;
   op->strides = stride_array.GetBuffer<ArrayDataType::kInt32>().data;
-
-  // Only 4D arrays are supported for now.
-  CHECK_EQ(op->start_indices.size(), 4);
-  CHECK_EQ(op->stop_indices.size(), 4);
-  CHECK_EQ(op->strides.size(), 4);
 
   // TODO(dkalenichenko): Delete the extra inputs?
 

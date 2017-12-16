@@ -215,7 +215,8 @@ def infogan_model(
       disc_scope,
       lambda x, y: discriminator_fn(x, y)[0],  # conform to non-InfoGAN API
       structured_generator_inputs,
-      predicted_distributions)
+      predicted_distributions,
+      discriminator_fn)
 
 
 def acgan_model(
@@ -326,6 +327,53 @@ def _use_aux_loss(aux_loss_weight):
     return False
 
 
+def _tensor_pool_adjusted_model(model, tensor_pool_fn):
+  """Adjusts model using `tensor_pool_fn`.
+
+  Args:
+    model: A GANModel tuple.
+    tensor_pool_fn: A function that takes (generated_data, generator_inputs),
+      stores them in an internal pool and returns a previously stored
+      (generated_data, generator_inputs) with some probability. For example
+      tfgan.features.tensor_pool.
+
+  Returns:
+    A new GANModel tuple where discriminator outputs are adjusted by taking
+    pooled generator outputs as inputs. Returns the original model if
+    `tensor_pool_fn` is None.
+
+  Raises:
+    ValueError: If tensor pool does not suport the `model`.
+  """
+  if tensor_pool_fn is None:
+    return model
+
+  pooled_generated_data, pooled_generator_inputs = tensor_pool_fn(
+      (model.generated_data, model.generator_inputs))
+
+  if isinstance(model, namedtuples.GANModel):
+    dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
+                                             pooled_generator_inputs)
+    return model._replace(discriminator_gen_outputs=dis_gen_outputs)
+  elif isinstance(model, namedtuples.ACGANModel):
+    (dis_pooled_gen_outputs,
+     dis_pooled_gen_classification_logits) = model.discriminator_fn(
+         pooled_generated_data, pooled_generator_inputs)
+    return model._replace(
+        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        discriminator_gen_classification_logits=
+        dis_pooled_gen_classification_logits)
+  elif isinstance(model, namedtuples.InfoGANModel):
+    (dis_pooled_gen_outputs,
+     pooled_predicted_distributions) = model.discriminator_and_aux_fn(
+         pooled_generated_data, pooled_generator_inputs)
+    return model._replace(
+        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        predicted_distributions=pooled_predicted_distributions)
+  else:
+    raise ValueError('Tensor pool does not support `model`: %s.' % type(model))
+
+
 def gan_loss(
     # GANModel.
     model,
@@ -338,6 +386,7 @@ def gan_loss(
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
+    tensor_pool_fn=None,
     # Options.
     add_summaries=True):
   """Returns losses necessary to train generator and discriminator.
@@ -363,6 +412,10 @@ def gan_loss(
       https://arxiv.org/abs/1610.09585
     aux_cond_discriminator_weight: If not None: add a classification loss as in
       https://arxiv.org/abs/1610.09585
+    tensor_pool_fn: A function that takes (generated_data, generator_inputs),
+      stores them in an internal pool and returns previous stored
+      (generated_data, generator_inputs). For example
+      `tf.gan.features.tensor_pool`. Defaults to None (not using tensor pool).
     add_summaries: Whether or not to add summaries for the losses.
 
   Returns:
@@ -402,7 +455,9 @@ def gan_loss(
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
-  dis_loss = discriminator_loss_fn(model, add_summaries=add_summaries)
+  dis_loss = discriminator_loss_fn(
+      _tensor_pool_adjusted_model(model, tensor_pool_fn),
+      add_summaries=add_summaries)
 
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):

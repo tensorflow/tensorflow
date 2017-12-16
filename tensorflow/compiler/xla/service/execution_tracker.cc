@@ -39,9 +39,7 @@ AsyncExecution::AsyncExecution(Backend* backend,
 
 tensorflow::Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
-    if (!stream->BlockHostUntilDone()) {
-      return InternalError("failed to block until done");
-    }
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
   return tensorflow::Status::OK();
 }

@@ -63,7 +63,7 @@ namespace serving {
 // instead of N independent ones, with their sharing deliberately coordinated.
 //
 // SharedBatchScheduler does not implement the BatchScheduler API; rather, it
-// presents an abstraction of "queues", where each queue coresponds to one type
+// presents an abstraction of "queues", where each queue corresponds to one type
 // of task. Tasks submitted to a given queue are placed in their own batches,
 // and cannot be mixed with other tasks. Queues can be added and deleted
 // dynamically, to accommodate e.g. versions of a model being brought up and

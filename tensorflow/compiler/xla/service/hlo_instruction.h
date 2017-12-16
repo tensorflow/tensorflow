@@ -166,6 +166,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers);
 
+  // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
+  // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS
+  // and the RHS must be of rank 2.
+  static std::unique_ptr<HloInstruction> CreateCanonicalDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs);
+
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.

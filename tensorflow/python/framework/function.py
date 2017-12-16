@@ -82,8 +82,8 @@ class Defun(object):
     return x + y, x - y
 
   # Building the graph.
-  a = tf.Constant([1.0])
-  b = tf.Constant([2.0])
+  a = tf.constant([1.0])
+  b = tf.constant([2.0])
   c, d = MyFunc(a, b, name='mycall')
   ```
   """

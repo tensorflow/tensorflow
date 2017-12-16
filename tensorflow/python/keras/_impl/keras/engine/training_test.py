@@ -836,6 +836,11 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            validation_data=custom_generator(),
+                            validation_steps=1,
+                            workers=0)
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -845,6 +850,10 @@ class TestGeneratorMethods(test.TestCase):
                                 steps=5,
                                 max_queue_size=10,
                                 use_multiprocessing=False)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=0)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
                                  max_queue_size=10,
@@ -854,6 +863,11 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  use_multiprocessing=False)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False,
+                                 workers=0)
 
         # Test legacy API
         model.fit_generator(custom_generator(),

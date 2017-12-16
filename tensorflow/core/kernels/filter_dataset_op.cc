@@ -162,7 +162,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           Notification n;
           Status ret;
           std::vector<Tensor> result;
-          ret = dataset()->captured_func_->Run(opts, *out_tensors, &result);
+          ret = dataset()->captured_func_->RunWithBorrowedArgs(
+              opts, *out_tensors, &result);
 
           if (!ret.ok()) {
             return ret;

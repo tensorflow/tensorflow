@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "DataFormatVecPermute"
+  in_arg {
+    name: "x"
+    description: <<END
+Vector in source data format. Must be of size 4.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+Vector in destination data format. Must be of size 4.
+END
+  }
+  attr {
+    name: "src_format"
+    description: <<END
+source data format.
+END
+  }
+  attr {
+    name: "dst_format"
+    description: <<END
+destination data format.
+END
+  }
+  summary: "Returns the permuted vector in the destination data format given the one in"
+  description: <<END
+the source data format.
+END
+}

@@ -6,6 +6,7 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
+    "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
     "if_static",
 )
@@ -183,6 +184,10 @@ def tf_copts(android_optimization_level_override="-O2"):
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
+      + select({
+            "//tensorflow:framework_shared_object": [],
+            "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
+      })
       + select({
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
@@ -1368,9 +1373,12 @@ def tf_py_test(name,
                shard_count=1,
                additional_deps=[],
                flaky=0,
-               xla_enabled=False):
+               xla_enabled=False,
+               grpc_enabled=False):
   if xla_enabled:
     additional_deps = additional_deps + tf_additional_xla_deps_py()
+  if grpc_enabled:
+    additional_deps = additional_deps + tf_additional_grpc_deps_py()
   py_test(
       name=name,
       size=size,
@@ -1403,7 +1411,8 @@ def cuda_py_test(name,
                  additional_deps=[],
                  tags=[],
                  flaky=0,
-                 xla_enabled=False):
+                 xla_enabled=False,
+                 grpc_enabled=False):
   test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(
       name=name,
@@ -1416,7 +1425,8 @@ def cuda_py_test(name,
       shard_count=shard_count,
       additional_deps=additional_deps,
       flaky=flaky,
-      xla_enabled=xla_enabled)
+      xla_enabled=xla_enabled,
+      grpc_enabled=grpc_enabled)
 
 register_extension_info(
     extension_name = "cuda_py_test",
@@ -1433,7 +1443,8 @@ def sycl_py_test(name,
                  additional_deps=[],
                  tags=[],
                  flaky=0,
-                 xla_enabled=False):
+                 xla_enabled=False,
+                 grpc_enabled=False):
   test_tags = tags + tf_sycl_tests_tags()
   tf_py_test(
       name=name,
@@ -1446,7 +1457,8 @@ def sycl_py_test(name,
       shard_count=shard_count,
       additional_deps=additional_deps,
       flaky=flaky,
-      xla_enabled=xla_enabled)
+      xla_enabled=xla_enabled,
+      grpc_enabled=grpc_enabled)
 
 register_extension_info(
     extension_name = "sycl_py_test",
@@ -1461,7 +1473,8 @@ def py_tests(name,
              tags=[],
              shard_count=1,
              prefix="",
-             xla_enabled=False):
+             xla_enabled=False,
+             grpc_enabled=False):
   for src in srcs:
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
@@ -1475,7 +1488,8 @@ def py_tests(name,
         shard_count=shard_count,
         data=data,
         additional_deps=additional_deps,
-        xla_enabled=xla_enabled)
+        xla_enabled=xla_enabled,
+        grpc_enabled=grpc_enabled)
 
 def cuda_py_tests(name,
                   srcs,
@@ -1485,7 +1499,8 @@ def cuda_py_tests(name,
                   shard_count=1,
                   tags=[],
                   prefix="",
-                  xla_enabled=False):
+                  xla_enabled=False,
+                  grpc_enabled=False):
   test_tags = tags + tf_cuda_tests_tags()
   py_tests(
       name=name,
@@ -1496,7 +1511,8 @@ def cuda_py_tests(name,
       tags=test_tags,
       shard_count=shard_count,
       prefix=prefix,
-      xla_enabled=xla_enabled)
+      xla_enabled=xla_enabled,
+      grpc_enabled=grpc_enabled)
 
 # Creates a genrule named <name> for running tools/proto_text's generator to
 # make the proto_text functions, for the protos passed in <srcs>.

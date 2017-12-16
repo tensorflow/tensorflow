@@ -19,6 +19,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
@@ -213,6 +214,39 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "checkpointable",
+    srcs = ["checkpointable.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/contrib/eager/proto:checkpointable_object_graph_proto_py",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "checkpointable_test",
+    srcs = ["checkpointable_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":checkpointable",
+        ":network",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "@six_archive//:six",
     ],
 )
 

@@ -1125,16 +1125,20 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     for (int i = start_value_index; i < end_value_index; ++i) {
       if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
       if (rank != InferenceContext::kUnknownRank) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+        break;
       }
     }
     if (rank == InferenceContext::kUnknownRank) {
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    }
-    if (rank == 0) {
+    } else if (rank == 0) {
       return errors::InvalidArgument(
           "Can't concatenate scalars (use tf.stack instead)");
+    } else {
+      for (int i = start_value_index; i < end_value_index; ++i) {
+        // Check that all the inputs are of the correct rank.
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+      }
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;

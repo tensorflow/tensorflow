@@ -167,20 +167,15 @@ Finally, the `logits` tensor that will contain the output is returned.
 The `loss()` function further builds the graph by adding the required loss
 ops.
 
-First, the values from the `labels_placeholder` are converted to 64-bit integers. Then, a @{tf.nn.sparse_softmax_cross_entropy_with_logits} op is added to automatically produce 1-hot labels from the `labels_placeholder` and compare the output logits from the `inference()` function with those 1-hot labels.
+First, the values from the `labels_placeholder` are converted to 64-bit
+integers. Then, a @{tf.losses.sparse_softmax_cross_entropy} op is used to
+calculate the batch's average cross entropy, of the `inference()` result,
+compared to the labels.
 
 ```python
 labels = tf.to_int64(labels)
-cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    labels=labels, logits=logits, name='xentropy')
-```
-
-It then uses @{tf.reduce_mean}
-to average the cross entropy values across the batch dimension (the first
-dimension) as the total loss.
-
-```python
-loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
+cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+    labels=labels, logits=logits)
 ```
 
 And the tensor that will then contain the loss value is returned.

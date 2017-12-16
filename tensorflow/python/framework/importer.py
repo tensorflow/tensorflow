@@ -462,7 +462,33 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
     _ProcessNewOps(graph)
 
-    # TODO(skyewm): error if unused input map key
+    # Create _DefinedFunctions for any imported functions.
+    #
+    # We do this by creating _DefinedFunctions directly from `graph_def`, and
+    # adding them to `graph`. Adding an existing function to a TF_Graph is a
+    # no-op, so this only has the effect of updating the Python state (usually
+    # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
+    #
+    # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
+    # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
+    if graph_def.library and graph_def.library.function:
+      # pylint: disable=protected-access
+      functions = function._from_library(graph_def.library)
+      for f in functions:
+        f.add_to_graph(graph)
+      # pylint: enable=protected-access
+
+    # Treat input mappings that don't appear in the graph as an error, because
+    # they are likely to be due to a typo.
+    missing_unused_input_keys = (
+        c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+            results))
+    if missing_unused_input_keys:
+      missing_unused_input_keys = [compat.as_str(s)
+                                   for s in missing_unused_input_keys]
+      raise ValueError(
+          'Attempted to map inputs that were not found in graph_def: [%s]'
+          % ', '.join(missing_unused_input_keys))
 
     if return_elements is None:
       return None
