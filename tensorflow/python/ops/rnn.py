@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -816,7 +817,8 @@ def _dynamic_rnn_loop(cell,
   # time_steps is defined inside control flow, see the comment in
   # control_flow_ops.py.
   if (context.in_eager_mode() or
-      time_steps.op._get_control_flow_context() is None):  # pylint: disable=protected-access
+      not (control_flow_util.IsInWhileLoop(time_steps.op) or
+           control_flow_util.IsInCond(time_steps.op))):
     maximum_iterations = time_steps
   else:
     maximum_iterations = None

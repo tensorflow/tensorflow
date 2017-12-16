@@ -1424,6 +1424,10 @@ class ControlFlowContext(object):
       # pylint: enable=protected-access
 
   @property
+  def name(self):
+    return self._name
+
+  @property
   def outer_context(self):
     """Return the context containing this context."""
     return self._outer_context
@@ -1528,6 +1532,9 @@ class ControlFlowContext(object):
   def IsWhileContext(self):
     return False
 
+  def IsCondContext(self):
+    return False
+
   def __str__(self):
     return self.name
 
@@ -1583,10 +1590,6 @@ class CondContext(ControlFlowContext):
     self._branch = context_def.branch
     super(CondContext, self).__init__(values_def=context_def.values_def,
                                       import_scope=import_scope)
-
-  @property
-  def name(self):
-    return self._name
 
   @property
   def pred(self):
@@ -1768,6 +1771,9 @@ class CondContext(ControlFlowContext):
     if not isinstance(result, (list, _basetuple)):
       result = [result]
     return original_result, result
+
+  def IsCondContext(self):
+    return True
 
 
 def _UnpackIfSingleton(res):
@@ -2078,10 +2084,6 @@ class WhileContext(ControlFlowContext):
                          for enter_name in context_def.loop_enter_names]
     super(WhileContext, self).__init__(values_def=context_def.values_def,
                                        import_scope=import_scope)
-
-  @property
-  def name(self):
-    return self._name
 
   @property
   def maximum_iterations(self):
@@ -2909,16 +2911,15 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       # that will be error-prone and hard to reason about for users.
       #
       # TODO(skyewm): make this work (it's tricky).
-      # pylint: disable=protected-access
       if (context.in_graph_mode() and
-          maximum_iterations.op._get_control_flow_context() is not None):
+          (util.IsInWhileLoop(maximum_iterations.op) or
+           util.IsInCond(maximum_iterations.op))):
         raise ValueError(
             "maximum_iterations tensor cannot be declared in tf.cond or "
             "tf.while_loop. Please file an issue at "
             "https://github.com/tensorflow/tensorflow/issues if you require "
             "this functionality. (Control flow context: %s)" %
-            maximum_iterations.op._get_control_flow_context().name)
-      # pylint: enable=protected-access
+            maximum_iterations.op._get_control_flow_context().name)  # pylint: disable=protected-access
 
       counter = constant_op.constant(
           0, dtype=maximum_iterations.dtype, name="iteration_counter")

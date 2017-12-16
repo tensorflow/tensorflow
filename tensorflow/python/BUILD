@@ -2045,6 +2045,7 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
+        ":control_flow_util",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":rnn_cell",
