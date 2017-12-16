@@ -95,14 +95,14 @@ class DataFormatVecPermuteOp : public OpKernel {
                                   input.shape().DebugString()));
     } else if (input.dims() == 2) {
       OP_REQUIRES(
-          context, input.dim_size(0) == 2,
+          context, input.dim_size(0) == 4,
           errors::InvalidArgument(
-              "First dimension of 2D input must be of size 2, but got shape ",
+              "First dimension of 2D input must be of size 4, but got shape ",
               input.shape().DebugString()));
       OP_REQUIRES(
-          context, input.dim_size(1) == 4,
+          context, input.dim_size(1) == 2,
           errors::InvalidArgument(
-              "Second dimension of 2D input must be of size 4, but got shape ",
+              "Second dimension of 2D input must be of size 2, but got shape ",
               input.shape().DebugString()));
     }
 

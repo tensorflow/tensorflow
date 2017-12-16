@@ -991,22 +991,21 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
 
-  def testNCHWToNHWC2D(self):
-    x_val = [[7, 4, 9, 3], [4, 3, 5, 1]]
+  def testNHWCToNCHW2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x)
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
-      print(y_val)
-      self.assertAllEqual(y_val, [[7, 3, 4, 9], [4, 1, 3, 5]])
+      self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
 
-  def testNHWCToNCHW2D(self):
-    x_val = [[7, 4, 9, 3], [4, 3, 5, 1]]
+  def testNCHWToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
-      self.assertAllEqual(y_val, [[7, 9, 3, 4], [4, 5, 1, 3]])
+      self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
 
 if __name__ == "__main__":

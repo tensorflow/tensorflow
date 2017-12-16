@@ -50,15 +50,20 @@ struct VecPermuteNHWCToNCHW {
   template <typename Output, typename Device>
   void eval(typename TTypes<T>::ConstFlat input, Output& output,
             const Device& d) const {
-    output.template chip<0>(0).device(d) = input.template chip<0>(0);
-    output.template chip<0>(1).device(d) = input.template chip<0>(3);
-    output.template chip<0>(2).device(d) = input.template chip<0>(1);
-    output.template chip<0>(3).device(d) = input.template chip<0>(2);
     if (input.size() == 8) {
-      output.template chip<0>(4).device(d) = input.template chip<0>(4);
-      output.template chip<0>(5).device(d) = input.template chip<0>(7);
-      output.template chip<0>(6).device(d) = input.template chip<0>(5);
-      output.template chip<0>(7).device(d) = input.template chip<0>(6);
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(1);
+      output.template chip<0>(2).device(d) = input.template chip<0>(6);
+      output.template chip<0>(3).device(d) = input.template chip<0>(7);
+      output.template chip<0>(4).device(d) = input.template chip<0>(2);
+      output.template chip<0>(5).device(d) = input.template chip<0>(3);
+      output.template chip<0>(6).device(d) = input.template chip<0>(4);
+      output.template chip<0>(7).device(d) = input.template chip<0>(5);
+    } else {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(3);
+      output.template chip<0>(2).device(d) = input.template chip<0>(1);
+      output.template chip<0>(3).device(d) = input.template chip<0>(2);
     }
   }
 };
@@ -74,15 +79,20 @@ struct VecPermuteNCHWToNHWC {
   template <typename Output, typename Device>
   void eval(typename TTypes<T>::ConstFlat input, Output& output,
             const Device& d) const {
-    output.template chip<0>(0).device(d) = input.template chip<0>(0);
-    output.template chip<0>(1).device(d) = input.template chip<0>(2);
-    output.template chip<0>(2).device(d) = input.template chip<0>(3);
-    output.template chip<0>(3).device(d) = input.template chip<0>(1);
     if (input.size() == 8) {
-      output.template chip<0>(4).device(d) = input.template chip<0>(4);
-      output.template chip<0>(5).device(d) = input.template chip<0>(6);
-      output.template chip<0>(6).device(d) = input.template chip<0>(7);
-      output.template chip<0>(7).device(d) = input.template chip<0>(5);
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(1);
+      output.template chip<0>(2).device(d) = input.template chip<0>(4);
+      output.template chip<0>(3).device(d) = input.template chip<0>(5);
+      output.template chip<0>(4).device(d) = input.template chip<0>(6);
+      output.template chip<0>(5).device(d) = input.template chip<0>(7);
+      output.template chip<0>(6).device(d) = input.template chip<0>(2);
+      output.template chip<0>(7).device(d) = input.template chip<0>(3);
+    } else {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(2);
+      output.template chip<0>(2).device(d) = input.template chip<0>(3);
+      output.template chip<0>(3).device(d) = input.template chip<0>(1);
     }
   }
 };
