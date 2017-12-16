@@ -41,21 +41,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import training_util
 
 
-def replicate_model_fn(model_fn, optimizer_fn, devices=None):
+def replicate_model_fn(model_fn,
+                       optimizer_fn,
+                       loss_reduction=losses.Reduction.SUM,
+                       devices=None):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
   such a model over GPUs, each GPU gets its own instance of the forward pass
   (a.k.a. a tower).  The input features and labels get sharded into the chunks
-  that correspond to the number of GPUs.  Each tower computes its own loss based
+  that correspond to the number of GPUs.  Each tower computes a loss based
   on its input.  For each such loss, gradients are computed.  After that, the
-  available losses are summed to form aggregated loss.  The available
-  gradients are summed too.  Then, they update weights using the specified
+  available losses are aggregated to form aggregated loss.  Available
+  gradients are summed.  Then, they update weights using the specified
   optimizer.
 
   If `devices` are `None`, then all available GPUs are going to be used for
@@ -102,7 +106,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   On reduction algorithms:
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
-    - Losses from all towers are reduced using sum.
+    - Losses from all towers are reduced according to `loss_reduction`.
     - Gradients are reduced using sum for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
@@ -124,6 +128,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     optimizer_fn: a function that returns an optimizer instance.  The function
       may accept one `params` argument.  This is the `params` argument as
       defined by `Estimator`.  See  the `Estimator` documentation for details.
+    loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
@@ -137,9 +142,11 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   return _replicate_model_fn_with_mode(
       model_fn,
       optimizer_fn,
+      loss_reduction,
       devices,
-      # TODO(isaprykin): Query system configuration to choose modes other than
-      # `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often appropriate.
+      # TODO(isaprykin): Query the system configuration to choose modes other
+      # than `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often
+      # appropriate.
       mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER)
 
 
@@ -171,9 +178,13 @@ class _VariableDistributionMode(object):
 def _replicate_model_fn_with_mode(
     model_fn,
     optimizer_fn,
+    loss_reduction=losses.Reduction.SUM,
     devices=None,
     mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
   """A version of `replicate_model_fn` that allows to specify a `mode`."""
+  if loss_reduction == losses.Reduction.NONE:
+    raise ValueError('Tower losses need to be reduced in some way, yet {} '
+                     'reduction is specified.'.format(loss_reduction))
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
@@ -199,6 +210,7 @@ def _replicate_model_fn_with_mode(
         features=feature_shards,
         labels=label_shards,
         params=params,
+        loss_reduction=loss_reduction,
         config=config,
         devices=devices,
         local_ps_devices=ps_devices)
@@ -269,6 +281,7 @@ def _get_loss_towers(model_fn,
                      config,
                      devices,
                      local_ps_devices,
+                     loss_reduction=losses.Reduction.SUM,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -307,12 +320,15 @@ def _get_loss_towers(model_fn,
           if labels:
             labels_shard = labels[i]
 
-          tower_specs.append(
-              model_fn(
-                  mode=mode,
-                  features=features[i],
-                  labels=labels_shard,
-                  **optional_params))
+          tower_spec = model_fn(
+              mode=mode,
+              features=features[i],
+              labels=labels_shard,
+              **optional_params)
+          if loss_reduction != losses.Reduction.SUM:
+            tower_spec = _scale_tower_loss(
+                tower_spec, number_of_towers=len(devices))
+          tower_specs.append(tower_spec)
   return tower_specs
 
 
@@ -337,6 +353,17 @@ def _local_device_setter(worker_device, ps_devices, ps_strategy):
       return worker_device_spec.to_string()
 
   return local_device_chooser
+
+
+def _scale_tower_loss(tower_spec, number_of_towers):
+  """Scale down the loss for arriving at the average loss by summing."""
+  if tower_spec.loss is None:
+    return tower_spec
+
+  estimator_spec = _asdict(tower_spec)
+  estimator_spec['loss'] = math_ops.div(
+      tower_spec.loss, 1.0 * number_of_towers, name='averaged_loss')
+  return model_fn_lib.EstimatorSpec(**estimator_spec)
 
 
 def _minimize_towers(tower_specs, optimizer):
@@ -388,7 +415,7 @@ def _train_spec(tower_specs,
                 aggregation_device,
                 aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.TRAIN`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.TRAIN
   estimator_spec['train_op'] = train_op
   estimator_spec['loss'] = _compute_sum_on_device(
@@ -399,7 +426,7 @@ def _train_spec(tower_specs,
 
 def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.EVAL`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.EVAL
   estimator_spec['loss'] = _compute_sum_on_device(
       [spec.loss for spec in tower_specs], aggregation_device,
@@ -467,7 +494,7 @@ def _reduce_metric_variables(number_of_towers):
 
 def _predict_spec(tower_specs, aggregation_device):
   """Populate replicated EstimatorSpec for `GraphKeys.PREDICT`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.PREDICT
 
   with ops_lib.device(aggregation_device):
@@ -527,3 +554,19 @@ def _dict_concat(*dicts):
     for k, v in six.iteritems(d):
       list_dict.setdefault(k, []).append(v)
   return list_dict
+
+
+def _asdict(namedtuple):
+  """Returns a namedtuple as a dictionary.
+
+  This is required because `_asdict()` in Python 3.x.x is broken in classes
+  that inherit from `collections.namedtuple`. See
+  https://bugs.python.org/issue24931 for more details.
+
+  Args:
+    namedtuple: An object that inherits from `collections.namedtuple`.
+
+  Returns:
+    A dictionary version of the tuple.
+  """
+  return {k: getattr(namedtuple, k) for k in namedtuple._fields}
