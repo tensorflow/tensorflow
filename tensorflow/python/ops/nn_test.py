@@ -859,10 +859,7 @@ class LeakyReluTest(test_lib.TestCase):
       outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
       with self.test_session() as sess:
         outputs = sess.run(outputs)
-      if dtype == np.float16:
-        tol = 2e-3
-      else:
-        tol = 1e-6
+      tol = 2e-3 if dtype == np.float16 else 1e-6
       self.assertAllClose(outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
 
