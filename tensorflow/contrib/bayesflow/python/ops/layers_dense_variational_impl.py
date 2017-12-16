@@ -14,8 +14,12 @@
 # ==============================================================================
 """Dense Bayesian layer using KL-divergence based variational inference.
 
-@@DenseVariational
-@@dense_variational
+@@DenseReparameterization
+@@DenseLocalReparameterization
+@@DenseFlipout
+@@dense_reparameterization
+@@dense_local_reparameterization
+@@dense_flipout
 
 @@default_loc_scale_fn
 @@default_mean_field_normal_fn
@@ -35,16 +39,23 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as layers_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops.distributions import kullback_leibler as kl_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
-    "DenseVariational",
-    "dense_variational",
+    "DenseReparameterization",
+    "DenseLocalReparameterization",
+    "DenseFlipout",
+    "dense_reparameterization",
+    "dense_local_reparameterization",
+    "dense_flipout",
     "default_loc_scale_fn",
     "default_mean_field_normal_fn",
 ]
@@ -201,8 +212,8 @@ def default_mean_field_normal_fn(
   return _fn
 
 
-class DenseVariational(layers_lib.Layer):
-  """Densely-connected variational class.
+class _DenseVariational(layers_lib.Layer):
+  """Abstract densely-connected class (private, used as implementation base).
 
   This layer implements the Bayesian variational inference analogue to
   a dense layer by assuming the `kernel` and/or the `bias` are drawn
@@ -225,10 +236,6 @@ class DenseVariational(layers_lib.Layer):
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_use_local_reparameterization: Python `bool` indicating whether
-      `kernel` calculation should employ the Local Reparameterization Trick.
-      When `True`, `kernel_posterior_fn` must create an instance of
-      `tf.distributions.Normal`.
     kernel_posterior_fn: Python `callable` which creates
       `tf.distributions.Distribution` instance representing the surrogate
       posterior of the `kernel` parameter. Default value:
@@ -271,8 +278,6 @@ class DenseVariational(layers_lib.Layer):
     units: Python integer, dimensionality of the output space.
     activation: Activation function (`callable`).
     activity_regularizer: Regularizer function for the output.
-    kernel_use_local_reparameterization: Python `bool` indicating whether
-      `kernel` calculation should employ the Local Reparameterization Trick.
     kernel_posterior_fn: `callable` returning posterior.
     kernel_posterior_tensor_fn: `callable` operating on posterior.
     kernel_prior_fn: `callable` returning prior.
@@ -281,31 +286,6 @@ class DenseVariational(layers_lib.Layer):
     bias_posterior_tensor_fn: `callable` operating on posterior.
     bias_prior_fn: `callable` returning prior.
     bias_divergence_fn: `callable` returning divergence.
-
-  #### Examples
-
-  We illustrate a Bayesian neural network with [variational inference](
-  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
-  assuming a dataset of `features` and `labels`.
-
-  ```python
-  tfp = tf.contrib.bayesflow
-
-  net = tfp.layers.DenseVariational(512, activation=tf.nn.relu)(features)
-  logits = tfp.layers.DenseVariational(10)(net)
-  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits)
-  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-  loss = neg_log_likelihood + kl
-  train_op = tf.train.AdamOptimizer().minimize(loss)
-  ```
-
-  It uses reparameterization gradients to minimize the
-  Kullback-Leibler divergence up to a constant, also known as the
-  negative Evidence Lower Bound. It consists of the sum of two terms:
-  the expected negative log-likelihood, which we approximate via
-  Monte Carlo; and the KL divergence, which is added via regularizer
-  terms which are arguments to the layer.
   """
 
   def __init__(
@@ -314,7 +294,6 @@ class DenseVariational(layers_lib.Layer):
       activation=None,
       activity_regularizer=None,
       trainable=True,
-      kernel_use_local_reparameterization=True,
       kernel_posterior_fn=default_mean_field_normal_fn(),
       kernel_posterior_tensor_fn=lambda d: d.sample(),
       kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
@@ -326,7 +305,7 @@ class DenseVariational(layers_lib.Layer):
       bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
       name=None,
       **kwargs):
-    super(DenseVariational, self).__init__(
+    super(_DenseVariational, self).__init__(
         trainable=trainable,
         name=name,
         activity_regularizer=activity_regularizer,
@@ -334,8 +313,6 @@ class DenseVariational(layers_lib.Layer):
     self.units = units
     self.activation = activation
     self.input_spec = layers_lib.InputSpec(min_ndim=2)
-    self.kernel_use_local_reparameterization = (
-        kernel_use_local_reparameterization)
     self.kernel_posterior_fn = kernel_posterior_fn
     self.kernel_posterior_tensor_fn = kernel_posterior_tensor_fn
     self.kernel_prior_fn = kernel_prior_fn
@@ -419,30 +396,6 @@ class DenseVariational(layers_lib.Layer):
       self._built_bias_divergence = True
     return outputs
 
-  def _apply_variational_kernel(self, inputs):
-    if not self.kernel_use_local_reparameterization:
-      self.kernel_posterior_tensor = self.kernel_posterior_tensor_fn(
-          self.kernel_posterior)
-      self.kernel_posterior_affine = None
-      self.kernel_posterior_affine_tensor = None
-      return self._matmul(inputs, self.kernel_posterior_tensor)
-    if (not isinstance(self.kernel_posterior, independent_lib.Independent) or
-        not isinstance(self.kernel_posterior.distribution, normal_lib.Normal)):
-      raise TypeError(
-          "`kernel_use_local_reparameterization=True` requires "
-          "`kernel_posterior_fn` produce an instance of "
-          "`tf.distributions.Independent(tf.distributions.Normal)` "
-          "(saw: \"{}\").".format(type(self.kernel_posterior).__name__))
-    self.kernel_posterior_affine = normal_lib.Normal(
-        loc=self._matmul(inputs, self.kernel_posterior.distribution.loc),
-        scale=standard_ops.sqrt(self._matmul(
-            standard_ops.square(inputs),
-            standard_ops.square(self.kernel_posterior.distribution.scale))))
-    self.kernel_posterior_affine_tensor = (
-        self.kernel_posterior_tensor_fn(self.kernel_posterior_affine))
-    self.kernel_posterior_tensor = None
-    return self.kernel_posterior_affine_tensor
-
   def _apply_variational_bias(self, inputs):
     if self.bias_posterior is None:
       self.bias_posterior_tensor = None
@@ -479,13 +432,155 @@ class DenseVariational(layers_lib.Layer):
     return input_shape[:-1].concatenate(self.units)
 
 
-def dense_variational(
+class DenseReparameterization(_DenseVariational):
+  """Densely-connected layer class with reparameterization estimator.
+
+  This layer implements the Bayesian variational inference analogue to
+  a dense layer by assuming the `kernel` and/or the `bias` are drawn
+  from distributions. By default, the layer implements a stochastic
+  forward pass via sampling from the kernel and bias posteriors,
+
+  ```none
+  kernel, bias ~ posterior
+  outputs = activation(matmul(inputs, kernel) + bias)
+  ```
+
+  The arguments permit separate specification of the surrogate posterior
+  (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
+  distributions.
+
+  Args:
+    units: Integer or Long, dimensionality of the output space.
+    activation: Activation function (`callable`). Set it to None to maintain a
+      linear activation.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    kernel_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `kernel` parameter. Default value:
+      `default_mean_field_normal_fn()`.
+    kernel_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    kernel_prior_fn: Python `callable` which creates `tf.distributions`
+      instance. See `default_mean_field_normal_fn` docstring for required
+      parameter signature.
+      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    bias_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `bias` parameter. Default value:
+      `default_mean_field_normal_fn(is_singular=True)` (which creates an
+      instance of `tf.distributions.Deterministic`).
+    bias_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+      See `default_mean_field_normal_fn` docstring for required parameter
+      signature. Default value: `None` (no prior, no variational inference)
+    bias_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    name: Python `str`, the name of the layer. Layers with the same name will
+      share `tf.Variable`s, but to avoid mistakes we require `reuse=True` in
+      such cases.
+    reuse: Python `bool`, whether to reuse the `tf.Variable`s of a previous
+      layer by the same name.
+
+  Properties:
+    units: Python integer, dimensionality of the output space.
+    activation: Activation function (`callable`).
+    activity_regularizer: Regularizer function for the output.
+    kernel_posterior_fn: `callable` returning posterior.
+    kernel_posterior_tensor_fn: `callable` operating on posterior.
+    kernel_prior_fn: `callable` returning prior.
+    kernel_divergence_fn: `callable` returning divergence.
+    bias_posterior_fn: `callable` returning posterior.
+    bias_posterior_tensor_fn: `callable` operating on posterior.
+    bias_prior_fn: `callable` returning prior.
+    bias_divergence_fn: `callable` returning divergence.
+
+  #### Examples
+
+  We illustrate a Bayesian neural network with [variational inference](
+  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
+  assuming a dataset of `features` and `labels`.
+
+  ```python
+  tfp = tf.contrib.bayesflow
+
+  net = tfp.layers.DenseReparameterization(
+      512, activation=tf.nn.relu)(features)
+  logits = tfp.layers.DenseReparameterization(10)(net)
+  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+  loss = neg_log_likelihood + kl
+  train_op = tf.train.AdamOptimizer().minimize(loss)
+  ```
+
+  It uses reparameterization gradients to minimize the
+  Kullback-Leibler divergence up to a constant, also known as the
+  negative Evidence Lower Bound. It consists of the sum of two terms:
+  the expected negative log-likelihood, which we approximate via
+  Monte Carlo; and the KL divergence, which is added via regularizer
+  terms which are arguments to the layer.
+  """
+
+  def __init__(
+      self,
+      units,
+      activation=None,
+      activity_regularizer=None,
+      trainable=True,
+      kernel_posterior_fn=default_mean_field_normal_fn(),
+      kernel_posterior_tensor_fn=lambda d: d.sample(),
+      kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
+          loc=dtype.as_numpy_dtype(0.), scale=dtype.as_numpy_dtype(1.)),
+      kernel_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      bias_posterior_fn=default_mean_field_normal_fn(is_singular=True),
+      bias_posterior_tensor_fn=lambda d: d.sample(),
+      bias_prior_fn=None,
+      bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      name=None,
+      **kwargs):
+    super(DenseReparameterization, self).__init__(
+        units=units,
+        activation=activation,
+        activity_regularizer=activity_regularizer,
+        trainable=trainable,
+        kernel_posterior_fn=kernel_posterior_fn,
+        kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
+        kernel_prior_fn=kernel_prior_fn,
+        kernel_divergence_fn=kernel_divergence_fn,
+        bias_posterior_fn=bias_posterior_fn,
+        bias_posterior_tensor_fn=bias_posterior_tensor_fn,
+        bias_prior_fn=bias_prior_fn,
+        bias_divergence_fn=bias_divergence_fn,
+        name=name,
+        **kwargs)
+
+  def _apply_variational_kernel(self, inputs):
+    self.kernel_posterior_tensor = self.kernel_posterior_tensor_fn(
+        self.kernel_posterior)
+    self.kernel_posterior_affine = None
+    self.kernel_posterior_affine_tensor = None
+    return self._matmul(inputs, self.kernel_posterior_tensor)
+
+
+def dense_reparameterization(
     inputs,
     units,
     activation=None,
     activity_regularizer=None,
     trainable=True,
-    kernel_use_local_reparameterization=True,
     kernel_posterior_fn=default_mean_field_normal_fn(),
     kernel_posterior_tensor_fn=lambda d: d.sample(),
     kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
@@ -497,7 +592,7 @@ def dense_variational(
     bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
     name=None,
     reuse=None):
-  """Densely-connected variational layer.
+  """Densely-connected layer with reparameterization estimator.
 
   This layer implements the Bayesian variational inference analogue to
   a dense layer by assuming the `kernel` and/or the `bias` are drawn
@@ -521,10 +616,6 @@ def dense_variational(
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    kernel_use_local_reparameterization: Python `bool` indicating whether
-      `kernel` calculation should employ the Local Reparameterization Trick.
-      When `True`, `kernel_posterior_fn` must create an instance of
-      `tf.distributions.Normal`.
     kernel_posterior_fn: Python `callable` which creates
       `tf.distributions.Distribution` instance representing the surrogate
       posterior of the `kernel` parameter. Default value:
@@ -576,8 +667,9 @@ def dense_variational(
   ```python
   tfp = tf.contrib.bayesflow
 
-  net = tfp.layers.dense_variational(features, 512, activation=tf.nn.relu)
-  logits = tfp.layers.dense_variational(net, 10)
+  net = tfp.layers.dense_reparameterization(
+      features, 512, activation=tf.nn.relu)
+  logits = tfp.layers.dense_reparameterization(net, 10)
   neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
   kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -592,13 +684,11 @@ def dense_variational(
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
   """
-  layer = DenseVariational(
+  layer = DenseReparameterization(
       units,
       activation=activation,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
-      kernel_use_local_reparameterization=(
-          kernel_use_local_reparameterization),
       kernel_posterior_fn=kernel_posterior_fn,
       kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
       kernel_prior_fn=kernel_prior_fn,
@@ -612,3 +702,600 @@ def dense_variational(
       _scope=name,
       _reuse=reuse)
   return layer.apply(inputs)
+
+
+class DenseLocalReparameterization(_DenseVariational):
+  """Densely-connected layer class with local reparameterization estimator.
+
+  This layer implements the Bayesian variational inference analogue to
+  a dense layer by assuming the `kernel` and/or the `bias` are drawn
+  from distributions. By default, the layer implements a stochastic
+  forward pass via sampling from the kernel and bias posteriors,
+
+  ```none
+  kernel, bias ~ posterior
+  outputs = activation(matmul(inputs, kernel) + bias)
+  ```
+
+  The arguments permit separate specification of the surrogate posterior
+  (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
+  distributions.
+
+  Args:
+    units: Integer or Long, dimensionality of the output space.
+    activation: Activation function (`callable`). Set it to None to maintain a
+      linear activation.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    kernel_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `kernel` parameter. Default value:
+      `default_mean_field_normal_fn()`.
+    kernel_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    kernel_prior_fn: Python `callable` which creates `tf.distributions`
+      instance. See `default_mean_field_normal_fn` docstring for required
+      parameter signature.
+      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    bias_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `bias` parameter. Default value:
+      `default_mean_field_normal_fn(is_singular=True)` (which creates an
+      instance of `tf.distributions.Deterministic`).
+    bias_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+      See `default_mean_field_normal_fn` docstring for required parameter
+      signature. Default value: `None` (no prior, no variational inference)
+    bias_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    name: Python `str`, the name of the layer. Layers with the same name will
+      share `tf.Variable`s, but to avoid mistakes we require `reuse=True` in
+      such cases.
+    reuse: Python `bool`, whether to reuse the `tf.Variable`s of a previous
+      layer by the same name.
+
+  Properties:
+    units: Python integer, dimensionality of the output space.
+    activation: Activation function (`callable`).
+    activity_regularizer: Regularizer function for the output.
+    kernel_posterior_fn: `callable` returning posterior.
+    kernel_posterior_tensor_fn: `callable` operating on posterior.
+    kernel_prior_fn: `callable` returning prior.
+    kernel_divergence_fn: `callable` returning divergence.
+    bias_posterior_fn: `callable` returning posterior.
+    bias_posterior_tensor_fn: `callable` operating on posterior.
+    bias_prior_fn: `callable` returning prior.
+    bias_divergence_fn: `callable` returning divergence.
+
+  #### Examples
+
+  We illustrate a Bayesian neural network with [variational inference](
+  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
+  assuming a dataset of `features` and `labels`.
+
+  ```python
+  tfp = tf.contrib.bayesflow
+
+  net = tfp.layers.DenseLocalReparameterization(
+      512, activation=tf.nn.relu)(features)
+  logits = tfp.layers.DenseLocalReparameterization(10)(net)
+  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+  loss = neg_log_likelihood + kl
+  train_op = tf.train.AdamOptimizer().minimize(loss)
+  ```
+
+  It uses local reparameterization gradients to minimize the
+  Kullback-Leibler divergence up to a constant, also known as the
+  negative Evidence Lower Bound. It consists of the sum of two terms:
+  the expected negative log-likelihood, which we approximate via
+  Monte Carlo; and the KL divergence, which is added via regularizer
+  terms which are arguments to the layer.
+  """
+
+  def __init__(
+      self,
+      units,
+      activation=None,
+      activity_regularizer=None,
+      trainable=True,
+      kernel_posterior_fn=default_mean_field_normal_fn(),
+      kernel_posterior_tensor_fn=lambda d: d.sample(),
+      kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
+          loc=dtype.as_numpy_dtype(0.), scale=dtype.as_numpy_dtype(1.)),
+      kernel_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      bias_posterior_fn=default_mean_field_normal_fn(is_singular=True),
+      bias_posterior_tensor_fn=lambda d: d.sample(),
+      bias_prior_fn=None,
+      bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      name=None,
+      **kwargs):
+    super(DenseLocalReparameterization, self).__init__(
+        units=units,
+        activation=activation,
+        activity_regularizer=activity_regularizer,
+        trainable=trainable,
+        kernel_posterior_fn=kernel_posterior_fn,
+        kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
+        kernel_prior_fn=kernel_prior_fn,
+        kernel_divergence_fn=kernel_divergence_fn,
+        bias_posterior_fn=bias_posterior_fn,
+        bias_posterior_tensor_fn=bias_posterior_tensor_fn,
+        bias_prior_fn=bias_prior_fn,
+        bias_divergence_fn=bias_divergence_fn,
+        name=name,
+        **kwargs)
+
+  def _apply_variational_kernel(self, inputs):
+    if (not isinstance(self.kernel_posterior, independent_lib.Independent) or
+        not isinstance(self.kernel_posterior.distribution, normal_lib.Normal)):
+      raise TypeError(
+          "`DenseLocalReparameterization` requires "
+          "`kernel_posterior_fn` produce an instance of "
+          "`tf.distributions.Independent(tf.distributions.Normal)` "
+          "(saw: \"{}\").".format(type(self.kernel_posterior).__name__))
+    self.kernel_posterior_affine = normal_lib.Normal(
+        loc=self._matmul(inputs, self.kernel_posterior.distribution.loc),
+        scale=standard_ops.sqrt(self._matmul(
+            standard_ops.square(inputs),
+            standard_ops.square(self.kernel_posterior.distribution.scale))))
+    self.kernel_posterior_affine_tensor = (
+        self.kernel_posterior_tensor_fn(self.kernel_posterior_affine))
+    self.kernel_posterior_tensor = None
+    return self.kernel_posterior_affine_tensor
+
+
+def dense_local_reparameterization(
+    inputs,
+    units,
+    activation=None,
+    activity_regularizer=None,
+    trainable=True,
+    kernel_posterior_fn=default_mean_field_normal_fn(),
+    kernel_posterior_tensor_fn=lambda d: d.sample(),
+    kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
+        loc=dtype.as_numpy_dtype(0.), scale=dtype.as_numpy_dtype(1.)),
+    kernel_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+    bias_posterior_fn=default_mean_field_normal_fn(is_singular=True),
+    bias_posterior_tensor_fn=lambda d: d.sample(),
+    bias_prior_fn=None,
+    bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+    name=None,
+    reuse=None):
+  """Densely-connected layer with local reparameterization estimator.
+
+  This layer implements the Bayesian variational inference analogue to
+  a dense layer by assuming the `kernel` and/or the `bias` are drawn
+  from distributions. By default, the layer implements a stochastic
+  forward pass via sampling from the kernel and bias posteriors,
+
+  ```none
+  kernel, bias ~ posterior
+  outputs = activation(matmul(inputs, kernel) + bias)
+  ```
+
+  The arguments permit separate specification of the surrogate posterior
+  (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
+  distributions.
+
+  Args:
+    inputs: Tensor input.
+    units: Integer or Long, dimensionality of the output space.
+    activation: Activation function (`callable`). Set it to None to maintain a
+      linear activation.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    kernel_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `kernel` parameter. Default value:
+      `default_mean_field_normal_fn()`.
+    kernel_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    kernel_prior_fn: Python `callable` which creates `tf.distributions`
+      instance. See `default_mean_field_normal_fn` docstring for required
+      parameter signature.
+      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    bias_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `bias` parameter. Default value:
+      `default_mean_field_normal_fn(is_singular=True)` (which creates an
+      instance of `tf.distributions.Deterministic`).
+    bias_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+      See `default_mean_field_normal_fn` docstring for required parameter
+      signature. Default value: `None` (no prior, no variational inference)
+    bias_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    name: Python `str`, the name of the layer. Layers with the same name will
+      share `tf.Variable`s, but to avoid mistakes we require `reuse=True` in
+      such cases.
+    reuse: Python `bool`, whether to reuse the `tf.Variable`s of a previous
+      layer by the same name.
+
+  Returns:
+    output: `Tensor` representing a the affine transformed input under a random
+      draw from the surrogate posterior distribution.
+
+  #### Examples
+
+  We illustrate a Bayesian neural network with [variational inference](
+  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
+  assuming a dataset of `features` and `labels`.
+
+  ```python
+  tfp = tf.contrib.bayesflow
+
+  net = tfp.layers.dense_local_reparameterization(
+      features, 512, activation=tf.nn.relu)
+  logits = tfp.layers.dense_local_reparameterization(net, 10)
+  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+  loss = neg_log_likelihood + kl
+  train_op = tf.train.AdamOptimizer().minimize(loss)
+  ```
+
+  It uses local reparameterization gradients to minimize the
+  Kullback-Leibler divergence up to a constant, also known as the
+  negative Evidence Lower Bound. It consists of the sum of two terms:
+  the expected negative log-likelihood, which we approximate via
+  Monte Carlo; and the KL divergence, which is added via regularizer
+  terms which are arguments to the layer.
+  """
+  layer = DenseLocalReparameterization(
+      units,
+      activation=activation,
+      activity_regularizer=activity_regularizer,
+      trainable=trainable,
+      kernel_posterior_fn=kernel_posterior_fn,
+      kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
+      kernel_prior_fn=kernel_prior_fn,
+      kernel_divergence_fn=kernel_divergence_fn,
+      bias_posterior_fn=bias_posterior_fn,
+      bias_posterior_tensor_fn=bias_posterior_tensor_fn,
+      bias_prior_fn=bias_prior_fn,
+      bias_divergence_fn=bias_divergence_fn,
+      name=name,
+      dtype=inputs.dtype.base_dtype,
+      _scope=name,
+      _reuse=reuse)
+  return layer.apply(inputs)
+
+
+class DenseFlipout(_DenseVariational):
+  """Densely-connected layer class with Flipout estimator.
+
+  This layer implements the Bayesian variational inference analogue to
+  a dense layer by assuming the `kernel` and/or the `bias` are drawn
+  from distributions. By default, the layer implements a stochastic
+  forward pass via sampling from the kernel and bias posteriors,
+
+  ```none
+  kernel, bias ~ posterior
+  outputs = activation(matmul(inputs, kernel) + bias)
+  ```
+
+  The arguments permit separate specification of the surrogate posterior
+  (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
+  distributions.
+
+  Args:
+    units: Integer or Long, dimensionality of the output space.
+    activation: Activation function (`callable`). Set it to None to maintain a
+      linear activation.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    kernel_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `kernel` parameter. Default value:
+      `default_mean_field_normal_fn()`.
+    kernel_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    kernel_prior_fn: Python `callable` which creates `tf.distributions`
+      instance. See `default_mean_field_normal_fn` docstring for required
+      parameter signature.
+      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    bias_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `bias` parameter. Default value:
+      `default_mean_field_normal_fn(is_singular=True)` (which creates an
+      instance of `tf.distributions.Deterministic`).
+    bias_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+      See `default_mean_field_normal_fn` docstring for required parameter
+      signature. Default value: `None` (no prior, no variational inference)
+    bias_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    seed: Python scalar `int` which initializes the random number
+      generator. Default value: `None` (i.e., use global seed).
+    name: Python `str`, the name of the layer. Layers with the same name will
+      share `tf.Variable`s, but to avoid mistakes we require `reuse=True` in
+      such cases.
+    reuse: Python `bool`, whether to reuse the `tf.Variable`s of a previous
+      layer by the same name.
+
+  Properties:
+    units: Python integer, dimensionality of the output space.
+    activation: Activation function (`callable`).
+    activity_regularizer: Regularizer function for the output.
+    kernel_posterior_fn: `callable` returning posterior.
+    kernel_posterior_tensor_fn: `callable` operating on posterior.
+    kernel_prior_fn: `callable` returning prior.
+    kernel_divergence_fn: `callable` returning divergence.
+    bias_posterior_fn: `callable` returning posterior.
+    bias_posterior_tensor_fn: `callable` operating on posterior.
+    bias_prior_fn: `callable` returning prior.
+    bias_divergence_fn: `callable` returning divergence.
+    seed: Python integer, used to create random seeds.
+
+  #### Examples
+
+  We illustrate a Bayesian neural network with [variational inference](
+  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
+  assuming a dataset of `features` and `labels`.
+
+  ```python
+  tfp = tf.contrib.bayesflow
+
+  net = tfp.layers.DenseFlipout(
+      512, activation=tf.nn.relu)(features)
+  logits = tfp.layers.DenseFlipout(10)(net)
+  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+  loss = neg_log_likelihood + kl
+  train_op = tf.train.AdamOptimizer().minimize(loss)
+  ```
+
+  It uses the Flipout gradient estimator to minimize the
+  Kullback-Leibler divergence up to a constant, also known as the
+  negative Evidence Lower Bound. It consists of the sum of two terms:
+  the expected negative log-likelihood, which we approximate via
+  Monte Carlo; and the KL divergence, which is added via regularizer
+  terms which are arguments to the layer.
+  """
+
+  def __init__(
+      self,
+      units,
+      activation=None,
+      activity_regularizer=None,
+      trainable=True,
+      kernel_posterior_fn=default_mean_field_normal_fn(),
+      kernel_posterior_tensor_fn=lambda d: d.sample(),
+      kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
+          loc=dtype.as_numpy_dtype(0.), scale=dtype.as_numpy_dtype(1.)),
+      kernel_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      bias_posterior_fn=default_mean_field_normal_fn(is_singular=True),
+      bias_posterior_tensor_fn=lambda d: d.sample(),
+      bias_prior_fn=None,
+      bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+      seed=None,
+      name=None,
+      **kwargs):
+    super(DenseFlipout, self).__init__(
+        units=units,
+        activation=activation,
+        activity_regularizer=activity_regularizer,
+        trainable=trainable,
+        kernel_posterior_fn=kernel_posterior_fn,
+        kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
+        kernel_prior_fn=kernel_prior_fn,
+        kernel_divergence_fn=kernel_divergence_fn,
+        bias_posterior_fn=bias_posterior_fn,
+        bias_posterior_tensor_fn=bias_posterior_tensor_fn,
+        bias_prior_fn=bias_prior_fn,
+        bias_divergence_fn=bias_divergence_fn,
+        name=name,
+        **kwargs)
+    self.seed = seed
+
+  def _apply_variational_kernel(self, inputs):
+    if (not isinstance(self.kernel_posterior, independent_lib.Independent) or
+        not isinstance(self.kernel_posterior.distribution, normal_lib.Normal)):
+      raise TypeError(
+          "`DenseFlipout` requires "
+          "`kernel_posterior_fn` produce an instance of "
+          "`tf.distributions.Independent(tf.distributions.Normal)` "
+          "(saw: \"{}\").".format(type(self.kernel_posterior).__name__))
+    self.kernel_posterior_affine = normal_lib.Normal(
+        loc=array_ops.zeros_like(self.kernel_posterior.distribution.loc),
+        scale=self.kernel_posterior.distribution.scale)
+    self.kernel_posterior_affine_tensor = (
+        self.kernel_posterior_tensor_fn(self.kernel_posterior_affine))
+    self.kernel_posterior_tensor = None
+
+    input_shape = array_ops.shape(inputs)
+    batch_shape = input_shape[:-1]
+
+    sign_input = random_sign(input_shape, dtype=inputs.dtype, seed=self.seed)
+    sign_output = random_sign(
+        array_ops.concat([batch_shape,
+                          array_ops.expand_dims(self.units, 0)], 0),
+        dtype=inputs.dtype,
+        seed=distribution_util.gen_new_seed(
+            self.seed, salt="conv_variational"))
+    perturbed_inputs = self._matmul(
+        inputs * sign_input, self.kernel_posterior_affine_tensor) * sign_output
+
+    outputs = self._matmul(inputs, self.kernel_posterior.distribution.loc)
+    outputs += perturbed_inputs
+    return outputs
+
+
+def dense_flipout(
+    inputs,
+    units,
+    activation=None,
+    activity_regularizer=None,
+    trainable=True,
+    kernel_posterior_fn=default_mean_field_normal_fn(),
+    kernel_posterior_tensor_fn=lambda d: d.sample(),
+    kernel_prior_fn=lambda dtype, *args: normal_lib.Normal(  # pylint: disable=g-long-lambda
+        loc=dtype.as_numpy_dtype(0.), scale=dtype.as_numpy_dtype(1.)),
+    kernel_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+    bias_posterior_fn=default_mean_field_normal_fn(is_singular=True),
+    bias_posterior_tensor_fn=lambda d: d.sample(),
+    bias_prior_fn=None,
+    bias_divergence_fn=lambda q, p, ignore: kl_lib.kl_divergence(q, p),
+    seed=None,
+    name=None,
+    reuse=None):
+  """Densely-connected layer with Flipout estimator.
+
+  This layer implements the Bayesian variational inference analogue to
+  a dense layer by assuming the `kernel` and/or the `bias` are drawn
+  from distributions. By default, the layer implements a stochastic
+  forward pass via sampling from the kernel and bias posteriors,
+
+  ```none
+  kernel, bias ~ posterior
+  outputs = activation(matmul(inputs, kernel) + bias)
+  ```
+
+  The arguments permit separate specification of the surrogate posterior
+  (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
+  distributions.
+
+  Args:
+    inputs: Tensor input.
+    units: Integer or Long, dimensionality of the output space.
+    activation: Activation function (`callable`). Set it to None to maintain a
+      linear activation.
+    activity_regularizer: Regularizer function for the output.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    kernel_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `kernel` parameter. Default value:
+      `default_mean_field_normal_fn()`.
+    kernel_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    kernel_prior_fn: Python `callable` which creates `tf.distributions`
+      instance. See `default_mean_field_normal_fn` docstring for required
+      parameter signature.
+      Default value: `tf.distributions.Normal(loc=0., scale=1.)`.
+    kernel_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    bias_posterior_fn: Python `callable` which creates
+      `tf.distributions.Distribution` instance representing the surrogate
+      posterior of the `bias` parameter. Default value:
+      `default_mean_field_normal_fn(is_singular=True)` (which creates an
+      instance of `tf.distributions.Deterministic`).
+    bias_posterior_tensor_fn: Python `callable` which takes a
+      `tf.distributions.Distribution` instance and returns a representative
+      value. Default value: `lambda d: d.sample()`.
+    bias_prior_fn: Python `callable` which creates `tf.distributions` instance.
+      See `default_mean_field_normal_fn` docstring for required parameter
+      signature. Default value: `None` (no prior, no variational inference)
+    bias_divergence_fn: Python `callable` which takes the surrogate posterior
+      distribution, prior distribution and random variate sample(s) from the
+      surrogate posterior and computes or approximates the KL divergence. The
+      distributions are `tf.distributions.Distribution`-like instances and the
+      sample is a `Tensor`.
+    seed: Python scalar `int` which initializes the random number
+      generator. Default value: `None` (i.e., use global seed).
+    name: Python `str`, the name of the layer. Layers with the same name will
+      share `tf.Variable`s, but to avoid mistakes we require `reuse=True` in
+      such cases.
+    reuse: Python `bool`, whether to reuse the `tf.Variable`s of a previous
+      layer by the same name.
+
+  Returns:
+    output: `Tensor` representing a the affine transformed input under a random
+      draw from the surrogate posterior distribution.
+
+  #### Examples
+
+  We illustrate a Bayesian neural network with [variational inference](
+  https://en.wikipedia.org/wiki/Variational_Bayesian_methods),
+  assuming a dataset of `features` and `labels`.
+
+  ```python
+  tfp = tf.contrib.bayesflow
+
+  net = tfp.layers.dense_flipout(
+      features, 512, activation=tf.nn.relu)
+  logits = tfp.layers.dense_flipout(net, 10)
+  neg_log_likelihood = tf.nn.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
+  kl = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+  loss = neg_log_likelihood + kl
+  train_op = tf.train.AdamOptimizer().minimize(loss)
+  ```
+
+  It uses the Flipout gradient estimator to minimize the
+  Kullback-Leibler divergence up to a constant, also known as the
+  negative Evidence Lower Bound. It consists of the sum of two terms:
+  the expected negative log-likelihood, which we approximate via
+  Monte Carlo; and the KL divergence, which is added via regularizer
+  terms which are arguments to the layer.
+  """
+  layer = DenseFlipout(
+      units,
+      activation=activation,
+      activity_regularizer=activity_regularizer,
+      trainable=trainable,
+      kernel_posterior_fn=kernel_posterior_fn,
+      kernel_posterior_tensor_fn=kernel_posterior_tensor_fn,
+      kernel_prior_fn=kernel_prior_fn,
+      kernel_divergence_fn=kernel_divergence_fn,
+      bias_posterior_fn=bias_posterior_fn,
+      bias_posterior_tensor_fn=bias_posterior_tensor_fn,
+      bias_prior_fn=bias_prior_fn,
+      bias_divergence_fn=bias_divergence_fn,
+      seed=seed,
+      name=name,
+      dtype=inputs.dtype.base_dtype,
+      _scope=name,
+      _reuse=reuse)
+  return layer.apply(inputs)
+
+
+def random_sign(shape, dtype=dtypes.float32, seed=None):
+  """Draw values from {-1, 1} uniformly, i.e., Rademacher distribution."""
+  random_bernoulli = random_ops.random_uniform(shape, minval=0, maxval=2,
+                                               dtype=dtypes.int32,
+                                               seed=seed)
+  return math_ops.cast(2 * random_bernoulli - 1, dtype)

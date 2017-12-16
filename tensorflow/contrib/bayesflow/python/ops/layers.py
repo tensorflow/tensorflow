@@ -28,8 +28,12 @@ from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational_impl impor
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'DenseVariational',
-    'dense_variational',
+    'DenseReparameterization',
+    'DenseLocalReparameterization',
+    'DenseFlipout',
+    'dense_reparameterization',
+    'dense_local_reparameterization',
+    'dense_flipout',
     'default_loc_scale_fn',
     'default_mean_field_normal_fn',
 ]
