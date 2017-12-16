@@ -19,7 +19,6 @@ Note: The PNG encode and decode Ops support RGBA, but the conversions Ops
 presently only support RGB, HSV, and GrayScale. Presently, the alpha channel has
 to be stripped from the image and re-attached using slicing ops.
 
-*   @{tf.image.decode_bmp}
 *   @{tf.image.decode_gif}
 *   @{tf.image.decode_jpeg}
 *   @{tf.image.encode_jpeg}

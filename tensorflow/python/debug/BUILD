@@ -535,7 +535,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        "nomac",
         "oss_serial",
     ],
     deps = [

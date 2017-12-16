@@ -9,12 +9,7 @@ load("//third_party/mpi:mpi.bzl", "if_mpi")
 
 py_library(
     name = "contrib_py",
-    srcs = glob(
-        ["**/*.py"],
-        exclude = [
-            "**/*_test.py",
-        ],
-    ),
+    srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

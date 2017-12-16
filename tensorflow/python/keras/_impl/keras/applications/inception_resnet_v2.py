@@ -211,7 +211,7 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
       include_top: whether to include the fully-connected
           layer at the top of the network.
       weights: one of `None` (random initialization),
-          'imagenet' (pre-training on ImageNet),
+          "imagenet" (pre-training on ImageNet),
           or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.

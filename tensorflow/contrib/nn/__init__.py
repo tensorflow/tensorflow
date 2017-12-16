@@ -21,7 +21,6 @@
 @@deprecated_flipped_sigmoid_cross_entropy_with_logits
 @@nth_element
 @@rank_sampled_softmax_loss
-@@sampled_sparse_softmax_loss
 @@scaled_softplus
 """
 

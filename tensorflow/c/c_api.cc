@@ -579,7 +579,6 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
       status->status = InvalidArgument(
           "invalid string tensor encoding (string #", i, " of ",
           srcarray.size(), "): ", status->status.error_message());
-      delete[] base;
       return nullptr;
     }
     dst += consumed;
@@ -589,7 +588,6 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     status->status = InvalidArgument(
         "invalid string tensor encoding (decoded ", (dst - base),
         " bytes, but the tensor is encoded in ", size, " bytes");
-    delete[] base;
     return nullptr;
   }
 

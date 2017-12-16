@@ -2084,10 +2084,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     shard_count = 2,
-    tags = [
-        "no_gpu",
-        "no_oss",
-    ],
 )
 
 cuda_py_test(

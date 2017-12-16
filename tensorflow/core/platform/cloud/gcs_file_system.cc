@@ -22,9 +22,6 @@ limitations under the License.
 #include <cstring>
 #include <fstream>
 #include <vector>
-#ifdef _WIN32
-#include <io.h>  //for _mktemp
-#endif
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -42,12 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-
-#ifdef _WIN32
-#ifdef DeleteFile
-#undef DeleteFile
-#endif
-#endif
 
 namespace tensorflow {
 
@@ -118,25 +109,16 @@ constexpr char kReadRequestTimeout[] = "GCS_READ_REQUEST_TIMEOUT_SECS";
 // upload requests.
 constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
 
-// TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
   if (!filename) {
     return errors::Internal("'filename' cannot be nullptr.");
   }
-#ifndef _WIN32
   char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
   int fd = mkstemp(buffer);
   if (fd < 0) {
     return errors::Internal("Failed to create a temporary file.");
   }
   close(fd);
-#else
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  char* ret = _mktemp(buffer);
-  if (ret == nullptr) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-#endif
   *filename = buffer;
   return Status::OK();
 }
@@ -324,7 +306,6 @@ class GcsWritableFile : public WritableFile {
         file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
         initial_retry_delay_usec_(initial_retry_delay_usec) {
-    // TODO: to make it safer, outfile_ should be constructed from an FD
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
                     std::ofstream::binary | std::ofstream::app);
@@ -448,7 +429,7 @@ class GcsWritableFile : public WritableFile {
       return errors::Internal("'size' cannot be nullptr");
     }
     const auto tellp = outfile_.tellp();
-    if (tellp == static_cast<std::streampos>(-1)) {
+    if (tellp == -1) {
       return errors::Internal(
           "Could not get the size of the internal temporary file.");
     }

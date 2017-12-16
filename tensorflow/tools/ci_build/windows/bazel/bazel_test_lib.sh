@@ -96,6 +96,10 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
+function clean_output_base() {
+  bazel clean --expunge
+}
+
 function run_configure_for_cpu_build {
   # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
   # yes "" | ./configure doesn't work on Windows, so we set all the
@@ -111,7 +115,7 @@ function run_configure_for_cpu_build {
     export TF_NEED_MKL=0
   fi
   export TF_NEED_VERBS=0
-  export TF_NEED_GCP=1
+  export TF_NEED_GCP=0
   export TF_NEED_HDFS=0
   export TF_NEED_OPENCL_SYCL=0
   echo "" | ./configure

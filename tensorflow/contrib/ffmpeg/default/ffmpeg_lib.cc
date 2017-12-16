@@ -49,8 +49,7 @@ std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
           "-nostdin",             // No interactive commands accepted.
           "-f", input_format_id,  // eg: "mp3"
           "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
-          "-loglevel", "error",   // Print errors only.
-          "-hide_banner",         // Skip printing build options, version, etc.
+          "-loglevel", "info",  // Enable verbose logging to support debugging.
           "-map_metadata", "-1",  // Copy global metadata from input to output.
           "-vn",                  // No video recording.
           "-ac:a:0", StrCat(channel_count), "-ar:a:0",
@@ -73,8 +72,7 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
           "-probesize",
           StrCat(kDefaultProbeSize),
           "-loglevel",
-          "error",  // Print errors only.
-          "-hide_banner",  // Skip printing build options, version, etc.
+          "info",  // Enable verbose logging to support debugging.
           "-vcodec",
           "rawvideo",
           "-pix_fmt",

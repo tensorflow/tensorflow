@@ -18,9 +18,6 @@ limitations under the License.
 #include <cmath>
 #include <cstdio>
 #include <ctime>
-#ifdef _WIN32
-#define timegm _mkgmtime
-#endif
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
