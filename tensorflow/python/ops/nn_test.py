@@ -854,12 +854,12 @@ class LeakyReluTest(test_lib.TestCase):
     self.assertAllClose(inputs, outputs)
 
   def testValues(self):
-    for dtype in [np.float16, np.float32, np.float64]:
-      np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=dtype)
+    for dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      np_values = np.array([-2, -1, 0, 1, 2], dtype=dtype)
       outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
       with self.test_session() as sess:
         outputs = sess.run(outputs)
-      self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+      self.assertAllClose(outputs, [-0.4, -0.2, 0.0, 1.0, 2.0])
 
 
 class SwishTest(test_lib.TestCase):
