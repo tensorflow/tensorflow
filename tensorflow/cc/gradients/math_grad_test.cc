@@ -866,12 +866,11 @@ TEST_F(NaryGradTest, Minimum) {
 }
 
 TEST_F(NaryGradTest, Select) {
-  TensorShape x_shape({3, 4});
-  TensorShape y_shape({3, 4});
-  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  TensorShape shape({3, 4});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Where3(scope_, Greater(scope_, x1, x2), x1, x2);
-  RunTest({x1, x2}, {x_shape, x_shape}, {y}, {y_shape});
+  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
 }
 
 }  // namespace
