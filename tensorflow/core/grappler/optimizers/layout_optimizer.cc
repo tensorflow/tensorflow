@@ -1205,28 +1205,15 @@ class PadProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  bool ShouldProcess() const override {
-    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && PaddingSupported() && IsOnGPU();
-  }
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
-
- private:
-  bool PaddingSupported() const {
-    auto pad_const = node_map_->GetNode(node_->input(1));
-    bool is_const = IsConstant(*pad_const);
-    bool is_4D = false;
-    if (HasAttribute(*pad_const, "value").ok()) {
-      Tensor tensor;
-      if (tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor())) {
-        if (tensor.dims() == 2) {
-          if (tensor.dim_size(0) == 4 && tensor.dim_size(1) == 2) {
-            is_4D = true;
-          }
-        }
-      }
+  Status CustomizedProcessing() override {
+    auto index_node = node_map_->GetNode(node_->input(1));
+    if (IsConstant(*index_node)) {
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(1));
+    } else {
+      DataType dtype = node_->attr().at("Tpaddings").type();
+      AddDataFormatTranformToInput("DataFormatVecPermute", 1, dtype);
     }
-    return is_const && is_4D;
+    return Status::OK();
   }
 };
 
