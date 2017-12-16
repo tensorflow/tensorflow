@@ -103,6 +103,12 @@ def if_ios(a):
       "//conditions:default": [],
   })
 
+def if_ios_x86_64(a):
+  return select({
+      clean_dep("//tensorflow:ios_x86_64"): a,
+      "//conditions:default": [],
+  })
+
 def if_mobile(a):
   return select({
       clean_dep("//tensorflow:android"): a,
@@ -177,6 +183,7 @@ def tf_copts(android_optimization_level_override="-O2"):
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
+      + if_ios_x86_64(["-msse4.1"])
       + select({
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
