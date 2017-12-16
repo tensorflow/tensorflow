@@ -1008,9 +1008,40 @@ template <typename T>
 struct get_imag
     : base<T, Eigen::internal::scalar_imag_op<T>, typename T::value_type> {};
 
+template <typename Scalar>
+struct scalar_get_angle_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
+  typedef typename Eigen::NumTraits<Scalar>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const result_type
+  operator()(const Scalar& a) const {
+    return Eigen::numext::arg(a);
+  }
+};
+
+#if GOOGLE_CUDA
+template <>
+struct scalar_get_angle_op<complex64> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
+  typedef typename Eigen::NumTraits<complex64>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const float
+  operator()(const complex64& a) const {
+    return ::atan2f(a.imag(), a.real());
+  }
+};
+
+template <>
+struct scalar_get_angle_op<complex128> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_get_angle_op)
+  typedef typename Eigen::NumTraits<complex128>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double
+  operator()(const complex128& a) const {
+    return ::atan2(a.imag(), a.real());
+  }
+};
+#endif
+
 template <typename T>
-struct get_angle
-    : base<T, Eigen::internal::scalar_arg_op<T>, typename T::value_type> {};
+struct get_angle : base<T, scalar_get_angle_op<T>, typename scalar_get_angle_op<T>::result_type> {};
 
 template <typename T>
 struct conj : base<T, Eigen::internal::scalar_conjugate_op<T>> {};
