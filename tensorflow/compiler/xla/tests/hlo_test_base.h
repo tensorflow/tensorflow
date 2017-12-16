@@ -93,27 +93,14 @@ class HloTestBase : public ::testing::Test {
   // DebugOptions, e.g. when creating a module from a string or a file.
   static DebugOptions GetDebugOptionsForTest();
 
-  // Executes the given module and returns a global data handle.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape);
-
-  // Transfers the given literal to the device and returns the data handle.
-  perftools::gputools::DeviceMemoryBase TransferToDevice(
-      const Literal& literal);
-
-  // Transfers the array referred to by the given handle from the device and
-  // returns as a Literal.
-  std::unique_ptr<Literal> TransferFromDevice(
-      const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
-
   // Executes the given module and return the result as a Literal.
+  StatusOr<std::unique_ptr<Literal>> Execute(
+      std::unique_ptr<HloModule> module,
+      tensorflow::gtl::ArraySlice<Literal*> arguments);
+
   std::unique_ptr<Literal> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
+      tensorflow::gtl::ArraySlice<Literal*> arguments);
 
   // Executes the given hlo module on two backends and compares results.
   //

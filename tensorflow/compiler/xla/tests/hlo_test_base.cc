@@ -111,28 +111,16 @@ std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
   return debug_options;
 }
 
-StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
+StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        arguments,
-    Shape* result_shape) {
-  return test_runner_.Execute(std::move(module), arguments, result_shape);
-}
-
-se::DeviceMemoryBase HloTestBase::TransferToDevice(const Literal& literal) {
-  return test_runner_.TransferToDevice(literal).ValueOrDie();
-}
-
-std::unique_ptr<Literal> HloTestBase::TransferFromDevice(
-    const Shape& shape, se::DeviceMemoryBase device_base) {
-  return test_runner_.TransferFromDevice(shape, device_base).ValueOrDie();
+    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+  return test_runner_.Execute(std::move(module), arguments);
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  return test_runner_.ExecuteAndTransfer(std::move(module), arguments)
-      .ValueOrDie();
+    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+  return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
