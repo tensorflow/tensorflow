@@ -1267,8 +1267,9 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
                  [](const Literal& literal) { return &literal; });
 
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal,
-                      evaluator.Evaluate(*module, parameter_ptrs));
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<const Literal*>(
+                                               *module, parameter_ptrs));
+
   // Since the shape_with_output_layout option in ExecutionOption is
   // non-effective to the Evaluator results, explicit relayout here.
   if (arg->has_output_layout()) {

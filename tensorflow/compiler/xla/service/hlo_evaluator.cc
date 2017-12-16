@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -1210,6 +1211,97 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  template <typename NativeT>
+  StatusOr<std::unique_ptr<Literal>> MapImpl(HloInstruction* map) {
+    auto operands = map->operands();
+    HloComputation* computation = map->to_apply();
+
+    auto result = Literal::CreateFromShape(map->shape());
+
+    HloEvaluator embedded_evaluator;
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          std::vector<std::unique_ptr<Literal>> arg_literals;
+          arg_literals.reserve(operands.size());
+
+          // Construct scalar literal parameters to be passed to the map
+          // computation.
+          for (auto operand : operands) {
+            const Literal& arg_literal =
+                parent_->GetEvaluatedLiteralFor(operand);
+
+            auto curr_val = arg_literal.Get<NativeT>(multi_index);
+            auto curr_val_literal = Literal::CreateR0<NativeT>(curr_val);
+
+            arg_literals.push_back(std::move(curr_val_literal));
+          }
+
+          std::unique_ptr<Literal> computed_result =
+              embedded_evaluator
+                  .Evaluate<std::unique_ptr<Literal>>(*computation,
+                                                      arg_literals)
+                  .ConsumeValueOrDie();
+          // Clear visit states so that the we can use the evaluate again on
+          // the same computation.
+          embedded_evaluator.ResetVisitStates();
+
+          return computed_result->Get<ReturnT>({});
+        }));
+    return std::move(result);
+  }
+
+  Status HandleMap(HloInstruction* map) override {
+    switch (map->operand(0)->shape().element_type()) {
+      case PRED: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<bool>(map));
+        break;
+      }
+      case U8: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8>(map));
+        break;
+      }
+      case U32: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32>(map));
+        break;
+      }
+      case U64: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint64>(map));
+        break;
+      }
+      case S8: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8>(map));
+        break;
+      }
+      case S32: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int32>(map));
+        break;
+      }
+      case S64: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64>(map));
+        break;
+      }
+      case F32: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<float>(map));
+        break;
+      }
+      case F64: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<double>(map));
+        break;
+      }
+      case C64: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<complex64>(map));
+        break;
+      }
+      default:
+        LOG(FATAL) << "HandleMap: unhandled primitive type for "
+                      "input operand: "
+                   << PrimitiveType_Name(
+                          map->operand(0)->shape().element_type());
+    }
+
+    return Status::OK();
+  }
+
   Status HandleReduce(HloInstruction* reduce) override {
     auto arg = reduce->operand(0);
     auto init_value = reduce->operand(1);
@@ -1256,6 +1348,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
+    HloEvaluator embedded_evaluator;
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
@@ -1275,13 +1368,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
             std::vector<const Literal*> args = {curr_val_literal.get(),
                                                 result_val_literal.get()};
 
-            // We need a new visitor for each evaluation, so that the same
-            // computation can be visited more than once (with different
-            // inputs).
-            HloEvaluator embedded_evaluator;
             std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate(*function, args)
+                embedded_evaluator.Evaluate<const Literal*>(*function, args)
                     .ConsumeValueOrDie();
+            // Clear visit states so that the we can use the evaluate again on
+            // the same computation.
+            embedded_evaluator.ResetVisitStates();
 
             // Assign computed result to result_val.
             result_val = computed_result->Get<ReturnT>({});
@@ -1338,6 +1430,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     DimensionVector window_index(window.dimensions_size());
     DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
 
+    HloEvaluator embedded_evaluator;
     // For each resulting dimension, calculate and assign computed value.
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> output_index) {
@@ -1369,13 +1462,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 Literal::CreateR0<ReturnT>(result_val);
             const std::vector<const Literal*> args = {curr_val_literal.get(),
                                                       result_val_literal.get()};
-            // We need a new visitor for each evaluation, so that the same
-            // computation can be visited more than once (with different
-            // inputs).
-            HloEvaluator embedded_evaluator;
             std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate(*function, args)
+                embedded_evaluator.Evaluate<const Literal*>(*function, args)
                     .ConsumeValueOrDie();
+
+            // Clear visit states so that the we can use the evaluate again on
+            // the same computation.
+            embedded_evaluator.ResetVisitStates();
 
             result_val = computed_result->Get<ReturnT>({});
           } while (IndexUtil::BumpIndices(window_shape, &window_index));
@@ -1542,8 +1635,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
 
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
+    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast
+    // is removed.
     if (!(ShapeUtil::SameDimensions(shape, rhs->shape()) &&
           ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
       return Unimplemented(
@@ -1644,13 +1737,17 @@ HloEvaluator::HloEvaluator() {
   });
 }
 
+template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloModule& module,
-    tensorflow::gtl::ArraySlice<const Literal*> arg_literals) {
+    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
   XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
 
-  arg_literals_ = arg_literals;
   evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
 
   TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
 
@@ -1658,27 +1755,36 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
       GetEvaluatedLiteralFor(module.entry_computation()->root_instruction()));
 }
 
+template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     const HloComputation& computation,
-    tensorflow::gtl::ArraySlice<const Literal*> arg_literals) {
+    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
-  arg_literals_ = arg_literals;
+
   evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return MakeUnique<Literal>(
       GetEvaluatedLiteralFor(computation.root_instruction()));
 }
 
+template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction,
-    tensorflow::gtl::ArraySlice<const Literal*> operands) {
+    tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals) {
   TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
-  arg_literals_ = operands;
   evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
+  }
 
   // Evaluate operands of Parameter type against the input literals which
   // caches the evaluated literal results.
@@ -1769,7 +1875,10 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()));
+  DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
+      << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
+      << ", but input literal shape is: "
+      << ShapeUtil::HumanString(input_literal->shape());
 
   evaluated_[parameter] = MakeUnique<Literal>(*input_literal);
   return Status::OK();
@@ -1794,8 +1903,8 @@ Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
 Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   tensorflow::gtl::ArraySlice<HloInstruction*> operands(
       concatenate->operands());
-  // The result concatenate dimension is going to be the sum of all concatenate
-  // dimensions of the operands taking part of the operation.
+  // The result concatenate dimension is going to be the sum of all
+  // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
   CHECK(!ShapeUtil::IsTuple(reference_shape));
   const int64 rank = ShapeUtil::Rank(reference_shape);
@@ -2004,5 +2113,31 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   return Status::OK();
 }
+
+// Explicit instantiation of templatized Evaluate* methods.
+//
+template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
+    const Literal*>(const HloModule& module,
+                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    const HloModule& module,
+    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
+
+template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
+    const Literal*>(const HloComputation& computation,
+                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    const HloComputation& computation,
+    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
+
+template StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate<
+    const Literal*>(HloInstruction* instruction,
+                    tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+template StatusOr<std::unique_ptr<Literal>>
+HloEvaluator::Evaluate<std::unique_ptr<Literal>>(
+    HloInstruction* instruction,
+    tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arg_literals);
 
 }  // namespace xla

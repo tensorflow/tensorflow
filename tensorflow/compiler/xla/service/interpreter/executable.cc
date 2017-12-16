@@ -98,12 +98,10 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteOnStream(
 
   // Create the arguments as an vector of XLA literals
   std::vector<std::unique_ptr<Literal>> arg_literals;
-  std::vector<Literal*> arg_literals_ptrs;
   for (int64 p = 0; p < computation->num_parameters(); ++p) {
     // Create the input literal for the parameter
     HloInstruction* param = computation->parameter_instruction(p);
     arg_literals.emplace_back(Literal::CreateFromShape(param->shape()));
-    arg_literals_ptrs.push_back(arg_literals.back().get());
 
     // Copy in the data from the stream_executor buffers
     void* buffer = arg_literals.back()->MutableInternalData();
@@ -113,8 +111,9 @@ StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteOnStream(
 
   // Execute the graph using the HloEvaluator.
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> output,
-                      evaluator.Evaluate(*computation, arg_literals_ptrs));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Literal> output,
+      evaluator.Evaluate<std::unique_ptr<Literal>>(*computation, arg_literals));
 
   // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
