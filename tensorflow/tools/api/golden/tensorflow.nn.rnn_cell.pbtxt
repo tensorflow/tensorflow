@@ -40,4 +40,8 @@ tf_module {
     name: "ResidualWrapper"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "SRUCell"
+    mtype: "<type \'type\'>"
+  }
 }
