@@ -1704,7 +1704,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   EXPECT_NE(exit_start_micro, exit_1_start_micro);
 
   // Check dependency among the nodes; no matter what scheduling mechanism we
-  // use, the scheduled ops should follow these depedency chains.
+  // use, the scheduled ops should follow these dependency chains.
   // Note that currently, VirtualScheduler executes while/Merge twice; hence,
   // we're not testing dependency chains related to while/Merge.
   // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
