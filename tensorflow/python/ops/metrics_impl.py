@@ -185,11 +185,11 @@ def _safe_div(numerator, denominator, name):
   Returns:
     0 if `denominator` <= 0, else `numerator` / `denominator`
   """
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.truediv(numerator, denominator),
-      0,
-      name=name)
+  t = math_ops.truediv(numerator, denominator)
+  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
+  contion = math_ops.greater(denominator, zero)
+  zero = math_ops.cast(zero, t.dtype)
+  return array_ops.where(contion, t, zero, name=name)
 
 
 def _safe_scalar_div(numerator, denominator, name):

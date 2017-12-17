@@ -24,10 +24,12 @@ from __future__ import print_function
 
 import collections as collections_lib
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -3297,9 +3299,72 @@ def count(values,
     return count_, update_op
 
 
+def cohen_kappa(labels, predictions, num_classes, weights=None,
+                metrics_collections=None, updates_collections=None, name=None):
+  if context.in_eager_mode():
+    raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
+                       'when eager execution is enabled.')
+  if num_classes < 2:
+    raise ValueError('`num_classes` must be greater than 1.'
+                     'Found: {}'.format(num_classes))
+  with variable_scope.variable_scope(name, 'cohen_kappa',
+                                     (labels, predictions, weights)):
+    labels.get_shape().with_rank_at_most(2)
+    labels = array_ops.squeeze(labels)
+    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
+        predictions=predictions, labels=labels, weights=weights)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+
+    stat_dtype = (dtypes.int64
+                  if weights is None or weights.dtype.is_integer
+                  else dtypes.float32)
+    total_po = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_po')
+    total_pe_row = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_pe_row')
+    total_pe_col = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_pe_col')
+
+    # Table of the counts of agreement:
+    counts_in_table = confusion_matrix.confusion_matrix(
+      labels, predictions,
+      num_classes=num_classes, weights=weights,
+      dtype=stat_dtype, name="counts_in_table")
+
+    po = array_ops.diag_part(counts_in_table, name='po')
+    pe_row = math_ops.reduce_sum(counts_in_table, axis=0, name='pe_row')
+    pe_col = math_ops.reduce_sum(counts_in_table, axis=1, name='pe_col')
+    with ops.control_dependencies([po, pe_row, pe_col]):
+      update_po = state_ops.assign_add(total_po, po)
+      update_pe_row = state_ops.assign_add(total_pe_row, pe_row)
+      update_pe_col = state_ops.assign_add(total_pe_col, pe_col)
+
+    def _calculate_k(po, pe_row, pe_col, name):
+      po_sum = math_ops.reduce_sum(po)
+      total = math_ops.reduce_sum(pe_row)
+      pe_sum = math_ops.reduce_sum(
+          metrics_impl._safe_div(pe_row * pe_col, total, None))  # pylint: disable=protected-access
+      po_sum, pe_sum, total = (math_ops.to_double(po_sum),
+                               math_ops.to_double(pe_sum),
+                               math_ops.to_double(total))
+      # kappa = (po - pe) / (N - pe)
+      k = metrics_impl._safe_scalar_div(  # pylint: disable=protected-access
+          po_sum - pe_sum, total - pe_sum, name=name)
+      return k
+
+    kappa = _calculate_k(total_po, total_pe_row, total_pe_col, name='value')
+    update_op = _calculate_k(update_po, update_pe_row, update_pe_col, 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, kappa)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return kappa, update_op
+
+
 __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
+    'cohen_kappa',
     'count',
     'precision_recall_at_equal_thresholds',
     'recall_at_precision',
