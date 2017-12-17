@@ -1523,7 +1523,7 @@ void ConvertOperatorSpecialCasedAsRNNBackEdge(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   // At the moment, the only type of operator special-cased in this way is
-  // NextIteration, occuring only in control-flow cycles.
+  // NextIteration, occurring only in control-flow cycles.
   CHECK_EQ(node.op(), "NextIteration");
   CHECK_EQ(node.input_size(), 1);
   auto* rnn_state = model->flags.add_rnn_states();

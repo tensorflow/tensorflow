@@ -419,7 +419,7 @@ still adds significant value to the learning capability of your models.
 Somewhat counterintuitively, when creating feature crosses, you typically still
 should include the original (uncrossed) features in your model (as in the
 preceding code snippet). The independent latitude and longitude features help the
-model distinguish between examples where a hash collision has occured in the
+model distinguish between examples where a hash collision has occurred in the
 crossed feature.
 
 ## Indicator and embedding columns
