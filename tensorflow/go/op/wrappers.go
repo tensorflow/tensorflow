@@ -13931,14 +13931,14 @@ func DataFormatVecPermuteDstFormat(value string) DataFormatVecPermuteAttr {
 	}
 }
 
-// Returns the permuted vector/tensor in the destination data format given the one in
+// Returns the permuted vector/tensor in the destination data format given the
 //
-// the source data format.
+// one in the source data format.
 //
 // Arguments:
-//	x: Vector of size 4 or Tensor of shape (2, 4) in source data format.
+//	x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
 //
-// Returns Vector of size 4 or Tensor of shape (2, 4) in destination data format.
+// Returns Vector of size 4 or Tensor of shape (4, 2) in destination data format.
 func DataFormatVecPermute(scope *Scope, x tf.Output, optional ...DataFormatVecPermuteAttr) (y tf.Output) {
 	if scope.Err() != nil {
 		return
