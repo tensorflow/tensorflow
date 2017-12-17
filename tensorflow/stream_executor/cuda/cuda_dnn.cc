@@ -2761,14 +2761,27 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
   float zero = 0.0;
 
   if (is_training) {
-    stream->ThenMemZero(batch_mean, batch_mean->size());
-    stream->ThenMemZero(batch_var, batch_var->size());
+    CHECK_EQ(batch_mean->is_null(), batch_var->is_null())
+        << "batch_mean and batch_var must both be null or both be non-null";
+
+    void* batch_mean_opaque;
+    void* batch_var_opaque;
+    if (!batch_mean->is_null() && !batch_var->is_null()) {
+      stream->ThenMemZero(batch_mean, batch_mean->size());
+      stream->ThenMemZero(batch_var, batch_var->size());
+      batch_mean_opaque = batch_mean->opaque();
+      batch_var_opaque = batch_var->opaque();
+    } else {
+      batch_mean_opaque = nullptr;
+      batch_var_opaque = nullptr;
+    }
+
     status = wrap::cudnnBatchNormalizationForwardTraining(
         parent_, ToHandle(dnn_handle_), mode, &one, &zero,
         x_descriptor.handle(), x.opaque(), x_descriptor.handle(), y->opaque(),
         scale_offset_descriptor.handle(), scale.opaque(), offset.opaque(), 1.0,
-        batch_mean->opaque(), batch_var->opaque(), epsilon,
-        saved_mean->opaque(), saved_inv_var->opaque());
+        batch_mean_opaque, batch_var_opaque, epsilon, saved_mean->opaque(),
+        saved_inv_var->opaque());
 #if CUDNN_VERSION < 5000
     CHECK(inv_var_to_var);
     inv_var_to_var();
