@@ -1056,7 +1056,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
       case HloOpcode::kBatchNormGrad:
         return Printf("feature_index=%lld", instr->feature_index());
       case HloOpcode::kCustomCall:
-        return Printf("custom_call_target=%s", instr->custom_call_target());
+        return Printf("target=%s", instr->custom_call_target());
       case HloOpcode::kSlice:
         return std::all_of(instr->slice_strides().begin(),
                            instr->slice_strides().end(),
