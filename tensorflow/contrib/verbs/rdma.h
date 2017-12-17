@@ -86,8 +86,8 @@ enum BufferType {
   TENSOR
 };
 enum RdmaMessageType {
-  RDMA_MESSAGE_BUFFER_REQUEST,
-  RDMA_MESSAGE_BUFFER_RESPONSE,
+  RDMA_MESSAGE_META_DATA_UPDATE,
+  RDMA_MESSAGE_TENSOR_RE_REQUEST,
   RDMA_MESSAGE_TENSOR_REQUEST,
 };
 
@@ -221,7 +221,7 @@ class RdmaTensorRequest {
   //
   // 1. Update the local meta-data cache.
   // 2. Reallocate the result tensor (and proxy tensor if required).
-  // 3. Send RDMA_MESSAGE_BUFFER_RESPONSE to the remote side.
+  // 3. Re-send the request to the remote side.
   void RecvTensorMetaData(DataType dtype, TensorShape shape, bool is_dead,
                           size_t proto_size);
 

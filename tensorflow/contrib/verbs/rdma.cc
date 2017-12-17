@@ -48,11 +48,11 @@ uint32_t NameHash(const string& name) {
 // convenience function for printing message
 string MessageTypeToString(RdmaMessageType rmt) {
   switch (rmt) {
-    case RDMA_MESSAGE_BUFFER_REQUEST:
-      return "RDMA_MESSAGE_BUFFER_REQUEST";
+    case RDMA_MESSAGE_META_DATA_UPDATE:
+      return "RDMA_MESSAGE_META_DATA_UPDATE";
       break;
-    case RDMA_MESSAGE_BUFFER_RESPONSE:
-      return "RDMA_MESSAGE_BUFFER_RESPONSE";
+    case RDMA_MESSAGE_TENSOR_RE_REQUEST:
+      return "RDMA_MESSAGE_TENSOR_RE_REQUEST";
       break;
     case RDMA_MESSAGE_TENSOR_REQUEST:
       return "RDMA_MESSAGE_TENSOR_REQUEST";
@@ -497,12 +497,12 @@ void RdmaAdapter::Process_CQ() {
           tb->EnqueueItem(key_with_step_id);
           // send the next tensor
           worker_env_->compute_pool->Schedule([tb]() { tb->SendNextItem(); });
-        } else if (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) {
+        } else if (rm.type_ == RDMA_MESSAGE_META_DATA_UPDATE) {
           // remote host requests to create a tensor buffer;
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
           request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
                                       rm.is_dead_, rm.tensor_bytes_);
-        } else if (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE) {
+        } else if (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST) {
           // remote creates a buffer and responds
           // find buffer
           RdmaTensorBuffer* tb =
@@ -1264,11 +1264,11 @@ void RdmaTensorBuffer::PostCopyOperations(
     mu_.unlock();
     // no longer used: put back the key since it is not sent;
     // ask the remote to create the same buffer
-    rm.type_ = RDMA_MESSAGE_BUFFER_REQUEST;
+    rm.type_ = RDMA_MESSAGE_META_DATA_UPDATE;
     // rm.remote_addr_ = reinterpret_cast<uint64_t>(buffer_);
     // rm.rkey_ = self_->rkey;
     RDMA_LOG(1) << "Step 0x" << std::hex << step_id << std::dec
-                << ": Sending  RDMA_MESSAGE_BUFFER_REQUEST #"
+                << ": Sending RDMA_MESSAGE_META_DATA_UPDATE #"
                 << rm.request_index_ << ": " << key << "("
                 << " shape = " << rm.tensor_shape_.DebugString() << "."
                 << " data-type = " << DataTypeString(rm.data_type_) << "."
@@ -1349,10 +1349,10 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   // TENSOR_REQUEST:  Imm-type: MESSAGE
   //                  Fields: type, request_index, name, step_id, remote_addr,
   //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
-  // BUFFER_REQUEST:  Imm-type: MESSAGE
+  // META_DATA_UPDATE: Imm-type: MESSAGE
   //                  Fields: type, request_index, is_dead, data_type,
   //                      tensor_shape, tensor_bytes
-  // BUFFER_RESPONSE: Imm-type: MESSAGE
+  // TENSOR_RE_REQUST: Imm-type: MESSAGE
   //                  Fields: type, request_index, name, step_id, remote_addr,
   //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
   // Tensor content:  Imm-type: request_index
@@ -1364,7 +1364,7 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
          sizeof(rm.request_index_));
   // name, step_id, remote_addr, rkey
   if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
+      (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST)) {
     memcpy(&message[kNameSizeStartIndex], &rm.name_size_,
            sizeof(rm.name_size_));
     memcpy(&message[kNameStartIndex], rm.name_.data(), rm.name_.size());
@@ -1375,8 +1375,8 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   }
   // is_dead, data_type, tensor_shape, tensor_bytes
   if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
+      (rm.type_ == RDMA_MESSAGE_META_DATA_UPDATE) ||
+      (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST)) {
     memcpy(&message[kIsDeadStartIndex], &rm.is_dead_, sizeof(rm.is_dead_));
 
     memcpy(&message[kDataTypeStartIndex], &rm.data_type_,
@@ -1404,7 +1404,7 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
          sizeof(rm.request_index_));
   // name, step_id, remote_addr, rkey
   if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
+      (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST)) {
     memcpy(&rm.name_size_, &message[kNameSizeStartIndex],
            sizeof(rm.name_size_));
     rm.name_ = string(&message[kNameStartIndex], rm.name_size_);
@@ -1415,8 +1415,8 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
   }
   // data_type, tensor_bytes, tensor_shape, is_dead
   if ((rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_REQUEST) ||
-      (rm.type_ == RDMA_MESSAGE_BUFFER_RESPONSE)) {
+      (rm.type_ == RDMA_MESSAGE_META_DATA_UPDATE) ||
+      (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST)) {
     memcpy(&rm.is_dead_, &message[kIsDeadStartIndex], sizeof(rm.is_dead_));
     memcpy(&rm.data_type_, &message[kDataTypeStartIndex],
            sizeof(rm.data_type_));
@@ -1612,7 +1612,7 @@ void RdmaTensorRequest::RecvTensorMetaData(DataType dtype, TensorShape shape,
   if (!AllocateTensors()) {
     return;
   }
-  Send(RDMA_MESSAGE_BUFFER_RESPONSE);
+  Send(RDMA_MESSAGE_TENSOR_RE_REQUEST);
 }
 
 void RdmaTensorRequest::RecvTensorContent() {
