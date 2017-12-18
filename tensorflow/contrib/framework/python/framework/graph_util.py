@@ -133,6 +133,17 @@ def fuse_op(graph_def, input_nodes, output_nodes, output_dtypes,
 def get_placeholders(graph):
   """Get placeholders of a graph.
 
+  For example:
+
+  ```python
+  a = tf.placeholder(dtype=tf.float32, shape=[2, 2], name='a')
+  a = tf.placeholder(dtype=tf.int32, shape=[3, 2], name='b')
+
+  # would give [<tf.Tensor 'a:0' shape=(2, 2) dtype=float32>,
+  # <tf.Tensor 'b:0' shape=(3, 2) dtype=int32>]
+  tf.contrib.framework.get_placeholders(tf.get_default_graph())
+  ```
+
   Args:
     graph: A tf.Graph.
   Returns:
