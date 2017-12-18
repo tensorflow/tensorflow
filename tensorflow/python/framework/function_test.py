@@ -1333,7 +1333,7 @@ class UnrollLSTMTest(test.TestCase):
         value=math_ops.matmul(xm, weights), num_or_size_splits=4, axis=1)
     new_c = math_ops.sigmoid(f_g) * cprev + math_ops.sigmoid(
         i_g) * math_ops.tanh(i_i)
-    new_c = clip_ops.clip_by_value(new_c, -50.0, 50.0)
+    new_c = math_ops.maximum(math_ops.minimum(new_c, 50.0), -50.0)
     new_m = math_ops.sigmoid(o_g) * math_ops.tanh(new_c)
     return new_m, new_c
 
