@@ -232,6 +232,15 @@ class RdmaTensorRequest {
   // invoke Done().
   void RecvTensorContent();
 
+#ifdef RDMA_DATA_VALIDATION
+  // Receive tensor checksum
+  //
+  // For validation: Get and store the Tensor's expected checksum for the
+  // current request. Compare the result Tensor's checksum with the stored
+  // checksum right before invoking Done().
+  void RecvTensorChecksum(uint64_t checksum) { checksum_ = checksum; }
+#endif
+
  private:
   void Done(const Status& s);
   void Send(RdmaMessageType message_type);
@@ -250,6 +259,9 @@ class RdmaTensorRequest {
   void* rdma_addr_;
   ibv_mr* mr_;
   RecvDoneCallback done_;
+#ifdef RDMA_DATA_VALIDATION
+  uint64_t checksum_;
+#endif
 };
 
 class RdmaBuffer;
@@ -435,7 +447,8 @@ class RdmaTensorBuffer : public RdmaBuffer {
                           const string& key_with_step_id, const Tensor* copy,
                           const TensorProto* proto, const StringPiece* copy_buf,
                           const Rendezvous::Args& send_args,
-                          const Rendezvous::Args& recv_args);
+                          const Rendezvous::Args& recv_args,
+                          uint64_t checksum);
 
   // Responses:
   void AddOrUpdateResponse(const RdmaMessage& rm);
@@ -446,6 +459,9 @@ class RdmaTensorBuffer : public RdmaBuffer {
   static void CountCopies(const std::string& key, void* src_addr,
                           void* dst_addr, size_t tensor_bytes,
                           bool is_gpu_to_cpu);
+  static uint64_t Checksum(Device* device, const DeviceContext* device_context,
+                           const Tensor& in);
+
   void ReSendNextItem();
 
  private:
@@ -500,17 +516,22 @@ struct RdmaMessage {
   string name_;
   int64 step_id_;
   uint64_t request_index_;
-  uint64_t remote_addr_;
+  union {
+    uint64_t remote_addr_;
+#ifdef RDMA_DATA_VALIDATION
+    uint64_t checksum_;
+#endif
+  };
   uint32_t rkey_;
   bool is_dead_;
   DataType data_type_;
   TensorShape tensor_shape_;
   size_t tensor_bytes_;
 
-  // type|name_size|name|step_id|request_index|remote_addr|rkey|is_dead|...
-  //   1B|    2B   | 512|  8B   |     8B      |       8B  | 4B |    1B |...
-  // ...|data_type|tensor_shape|tensor_bytes|
-  // ...|   XB    |    XB      |    8B      |
+  // type|name_size|name|step_id|request_index|remote_addr/checksum|rkey|...
+  //   1B|    2B   | 512|  8B   |     8B      |       8B           | 4B |...
+  // ...|is_dead|data_type|tensor_shape|tensor_bytes|
+  // ...|    1B |   XB    |    XB      |    8B      |
   //
   static const size_t kNameCapacity = 512;
   static const size_t kTypeStartIndex = 0;
@@ -522,6 +543,7 @@ struct RdmaMessage {
       kStepIdStartIndex + sizeof(step_id_);
   static const size_t kRemoteAddrStartIndex =
       kRequestIndexStartIndex + sizeof(request_index_);
+  static const size_t kChecksumStartIndex = kRemoteAddrStartIndex;
   static const size_t kRkeyStartIndex =
       kRemoteAddrStartIndex + sizeof(remote_addr_);
   static const size_t kIsDeadStartIndex = kRkeyStartIndex + sizeof(rkey_);

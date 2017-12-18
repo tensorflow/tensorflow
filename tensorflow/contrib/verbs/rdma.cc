@@ -502,6 +502,9 @@ void RdmaAdapter::Process_CQ() {
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
           request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
                                       rm.is_dead_, rm.tensor_bytes_);
+#ifdef RDMA_DATA_VALIDATION
+          request->RecvTensorChecksum(rm.checksum_);
+#endif
         } else if (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST) {
           // remote creates a buffer and responds
           // find buffer
@@ -1050,6 +1053,27 @@ void RdmaTensorBuffer::CountCopies(const std::string& key, void* src_addr,
 #endif
 }
 
+/* static */
+uint64_t RdmaTensorBuffer::Checksum(Device* device,
+                                    const DeviceContext* device_context,
+                                    const Tensor& in) {
+  uint64 checksum = 0;
+  if (DataTypeCanUseMemcpy(in.dtype())) {
+#if GOOGLE_CUDA
+    if (in.TotalBytes() == 0) {
+      return 0;
+    }
+    checksum = (device_context != nullptr)
+                   ? GPUUtil::Checksum(device, device_context, in)
+                   : GPUUtil::Checksum(in);
+#endif
+  } else {
+    string s = in.SummarizeValue(999999);
+    checksum = Hash64(s.c_str(), s.size(), 0);
+  }
+  return checksum;
+}
+
 void RdmaTensorBuffer::AddOrUpdateResponse(const RdmaMessage& rm) {
   mutex_lock lock{mu_};
   responses_[rm.step_id_] = RdmaTensorResponse(rm);
@@ -1097,6 +1121,11 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
     AllocatorAttributes dst_alloc_attr;
     dst_alloc_attr.set_on_host(true);
 
+    uint64_t checksum = 0;
+#ifdef RDMA_DATA_VALIDATION
+    checksum =
+        RdmaTensorBuffer::Checksum(src_dev, send_args.device_context, in);
+#endif
     bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
     // string tensor needs to be serialized
     Tensor copy;
@@ -1123,27 +1152,29 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         GPUUtil::CopyGPUTensorToCPU(
             src_dev, send_args.device_context, &in, &copy,
             [this, copy, tensor_bytes, buffer_size, key, in, step_id,
-             key_with_step_id, is_dead, send_args, recv_args](const Status& s) {
+             key_with_step_id, is_dead, send_args, recv_args,
+             checksum](const Status& s) {
               CHECK(s.ok()) << "copy tensor from gpu sync";
               StringPiece copy_buf;
               copy_buf = copy.tensor_data();
               PostCopyOperations(true, buffer_size, tensor_bytes, key, in,
                                  step_id, is_dead, key_with_step_id, &copy,
-                                 NULL, &copy_buf, send_args, recv_args);
+                                 NULL, &copy_buf, send_args, recv_args,
+                                 checksum);
             });
       } else {
         // "val" is on a GPU. No longer uses GPUUtil to fill the proto, use
         // aync instead
         GPUUtil::SetProtoFromGPU(
             in, src_dev, send_args.device_context, &proto, is_dead,
-	    [this, proto, buffer_size, key, in, step_id, key_with_step_id,
-            is_dead, send_args, recv_args](const Status& s) mutable {
+            [this, proto, buffer_size, key, in, step_id, key_with_step_id,
+             is_dead, send_args, recv_args, checksum](const Status& s) mutable {
               CHECK(s.ok()) << "copy proto from gpu sync";
               auto tensor_bytes = proto.ByteSize();
               buffer_size += tensor_bytes;
               PostCopyOperations(false, buffer_size, tensor_bytes, key, in,
                                  step_id, is_dead, key_with_step_id, NULL,
-                                 &proto, NULL, send_args, recv_args);
+                                 &proto, NULL, send_args, recv_args, checksum);
             });
       }
 #endif  // GOOGLE_CUDA
@@ -1160,7 +1191,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
       buffer_size += tensor_bytes;
       PostCopyOperations(can_memcpy, buffer_size, tensor_bytes, key, in,
                          step_id, is_dead, key_with_step_id, nullptr, &proto,
-                         &copy_buf, send_args, recv_args);
+                         &copy_buf, send_args, recv_args, checksum);
     }
   };
   return cb;
@@ -1234,7 +1265,8 @@ void RdmaTensorBuffer::PostCopyOperations(
     const Tensor& in, int64 step_id, bool is_dead,
     const string& key_with_step_id, const Tensor* copy,
     const TensorProto* proto, const StringPiece* copy_buf,
-    const Rendezvous::Args& send_args, const Rendezvous::Args& recv_args) {
+    const Rendezvous::Args& send_args, const Rendezvous::Args& recv_args,
+    uint64_t checksum) {
   RdmaTensorResponse response = *GetResponse(step_id);
   uint32_t request_index = response.rm_.request_index_;
   // prepare message
@@ -1251,6 +1283,11 @@ void RdmaTensorBuffer::PostCopyOperations(
   bool first_time = response.rm_.data_type_ == DT_INVALID;
   bool meta_data_changed =
       TensorMetaDataChanged(response.rm_, in, is_dead, tensor_bytes);
+#ifdef RDMA_DATA_VALIDATION
+  // Always send meta-data
+  meta_data_changed = response.rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
+  rm.checksum_ = checksum;
+#endif
   if (first_time || meta_data_changed) {
     if (first_time) {
       RDMA_LOG(2) << "Sending meta-data for the first time: " << key;
@@ -1386,6 +1423,9 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
     memcpy(&message[kTensorBytesStartIndex], &rm.tensor_bytes_,
            sizeof(rm.tensor_bytes_));
   }
+#ifdef RDMA_DATA_VALIDATION
+  memcpy(&message[kChecksumStartIndex], &rm.checksum_, sizeof(rm.checksum_));
+#endif
   return string(message, kMessageTotalBytes);
 }
 
@@ -1425,6 +1465,9 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
     memcpy(&rm.tensor_bytes_, &message[kTensorBytesStartIndex],
            sizeof(rm.tensor_bytes_));
   }
+#ifdef RDMA_DATA_VALIDATION
+  memcpy(&rm.checksum_, &message[kChecksumStartIndex], sizeof(rm.checksum_));
+#endif
 }
 
 //*****************************************************************************
@@ -1518,6 +1561,41 @@ RdmaTensorRequest::~RdmaTensorRequest() { DeallocateTensors(); }
 
 void RdmaTensorRequest::Done(const Status& s) {
   Tensor val = std::move(*result_tensor_);
+
+#ifdef RDMA_DATA_VALIDATION
+  // Validate checksum
+  // Unfortunately we can't always do a Checksum from the result
+  // tensor. If the result tensor is on GPU, then we need to copy
+  // it back to CPU. If we happen to be in the midst of a proxy
+  // callback, then the copying will get stuck.
+  uint64_t checksum =
+      (proxy_tensor_ != nullptr)
+          ? RdmaTensorBuffer::Checksum(nullptr, nullptr, *proxy_tensor_)
+          : RdmaTensorBuffer::Checksum(dst_dev_, recv_args_.device_context,
+                                       val);
+  RDMA_LOG(2) << "Request #" << index_ << ": " << key_
+              << ": Checksum: " << std::hex << " Expected = 0x" << checksum_
+              << ". Actual = 0x" << checksum << ".";
+  if (checksum_ != checksum) {
+    // Checksum failed. There is one case where this is allowed - if the
+    // tensor is an AssignAdd of the global step. Since the data-validation
+    // always postpones the Tensor response in order to send a checksum message,
+    // it is possible that the global-step was updated while the response was
+    // still in queue. For other Tensors this can't happen because the queued
+    // response owns the Tensor buffer, but for global-step, the buffer is
+    // shared between all Tensors.
+    if ((val.TotalBytes() == 8) && (val.dtype() == DT_INT64)) {
+      int64_t prev_val = *(int64_t*)DMAHelper::base(&val) - 1;
+      checksum = Hash64((const char*)&prev_val, 8, 0);
+    }
+    CHECK(checksum_ == checksum)
+        << "Checksum validation failed for request #" << index_ << ": " << key_
+        << std::hex << " " << val.DebugString() << " (0x" << val.TotalBytes()
+        << " bytes): "
+        << " Expected 0x" << checksum_ << ". Got 0x" << checksum << ".";
+  }
+#endif
+
   Rendezvous::Args recv_args = std::move(recv_args_);
   bool is_dead = meta_data_->is_dead_;
   RecvDoneCallback done = done_;
@@ -1634,8 +1712,6 @@ void RdmaTensorRequest::RecvTensorContent() {
                                 dst_dev_, result_tensor_,
                                 [this](const Status& s) {
                                   CHECK(s.ok()) << "copy tensor to gpu sync";
-                                  delete proxy_tensor_;
-                                  proxy_tensor_ = nullptr;
                                   Done(s);
                                 });
     return;
