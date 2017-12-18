@@ -3301,6 +3301,53 @@ def count(values,
 
 def cohen_kappa(labels, predictions, num_classes, weights=None,
                 metrics_collections=None, updates_collections=None, name=None):
+  """Calculates [Cohen's kappa](https://en.wikipedia.org/wiki/Cohen's_kappa)
+  which is a statistic that measures inter-annotator agreement.
+
+  The `cohen_kappa` function creates three local variables: `total_po`,
+  `total_pe_row`, and `total_pe_col`, that are used to compute the
+  Cohen's kappa. This value is ultimately returned as `kappa`, an idempotent
+  operation that is calculate by
+
+      pe = (pe_row * pe_col) / N
+      k = (sum(po) - sum(pe)) / (N - sum(pe))
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `kappa`. `update_op` weights each prediction by the corresponding value in
+  `weights`.
+
+  Class labels are expected to start at 0. E.g., if `num_classes`
+  was three, then the possible labels would be [0, 1, 2].
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  NOTE: Equivalent to `sklearn.metrics.cohen_kappa_score`, but the method
+  doesn't support weighted matrix yet.
+
+  Args:
+    labels: 1-D `Tensor` of the ground truth values.
+    predictions: 1-D `Tensor` of the predicted values.
+    num_classes: The possible number of labels.
+    weights: Optional `Tensor` whose shape matches `predictions`.
+    metrics_collections: An optional list of collections that `kappa` should
+      be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    kappa: Scalar float `Tensor` representing the current Cohen's kappa.
+    update_op: `Operation` that increments `total_po`, `total_pe_row` and
+      `total_pe_col` variables appropriately and whose value matches `kappa`.
+
+  Raises:
+    ValueError: If `num_classes` is less than 2, or `predictions` and `labels`
+      have mismatched shapes, or if `weights` is not `None` and its shape
+      doesn't match `predictions`, or if either `metrics_collections` or
+      `updates_collections` are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
+  """
   if context.in_eager_mode():
     raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
                        'when eager execution is enabled.')
