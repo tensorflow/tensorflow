@@ -477,16 +477,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
           /*mandatory=*/true));
     } else if (instruction->opcode() == HloOpcode::kCustomCall) {
       // Add constraints for kCustomCall instruction operands and instructions.
-      // For now we only support row major layouts for all inputs and outputs.
-      auto row_major_shape = [](const Shape& old_shape) {
-        Shape new_shape(old_shape);
-        std::vector<int64> dimension_order(new_shape.dimensions_size());
-        std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
-        *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
-        return new_shape;
-      };
-
-      Shape result_shape(row_major_shape(instruction->shape()));
+      // For now we only support major-first layouts for all inputs and outputs.
+      Shape result_shape = ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+          instruction->shape().element_type(),
+          AsInt64Slice(instruction->shape().dimensions()));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(result_shape, instruction));
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
@@ -496,7 +490,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
           continue;
         }
 
-        Shape row_major_operand_shape(row_major_shape(operand_shape));
+        Shape row_major_operand_shape =
+            ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+                operand_shape.element_type(),
+                AsInt64Slice(operand_shape.dimensions()));
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
             row_major_operand_shape, instruction, i, /*mandatory=*/true));
       }
