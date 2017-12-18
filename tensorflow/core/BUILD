@@ -575,6 +575,7 @@ cc_library(
 
 # Generates library per group of ops.
 tf_gen_op_libs(
+    is_external = False,
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
