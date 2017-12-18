@@ -765,13 +765,15 @@ class HloInstruction {
   // Returns feature_index field associated with the instruction. The index
   // represents the index of the feature dimension.
   //
-  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
+  // or kBatchNormGrad.
   int64 feature_index() const { return feature_index_; }
 
   // Returns a epsilon value associated with the instruction. The is a small
   // number added to the variance to avoid divide-by-zero error.
   //
-  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
+  // or kBatchNormGrad.
   float epsilon() const { return epsilon_; }
 
   // Returns the infeed configuration string. The infeed configuration includes
