@@ -1,9 +1,5 @@
 # HloModule string syntax
 
-TODO: Support all subcomputations (for fusion, reduce, ...).
-
-TODO: Support all extra attributes, e.g. dimensions, strides.
-
 ```yacc
 hlo_module
   : 'HloModule' name computations
