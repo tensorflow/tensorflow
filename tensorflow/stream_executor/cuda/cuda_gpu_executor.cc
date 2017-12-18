@@ -664,7 +664,7 @@ bool CUDAExecutor::StopTimer(Stream *stream, Timer *timer) {
   return AsCUDATimer(timer)->Stop(AsCUDAStream(stream));
 }
 
-port::Status CUDAExecutor::BlockHostUntilDoneWithStatus(Stream *stream) {
+port::Status CUDAExecutor::BlockHostUntilDone(Stream *stream) {
   return CUDADriver::SynchronizeStream(context_, AsCUDAStreamValue(stream));
 }
 

@@ -67,7 +67,7 @@ class UnaryOpsTest(XLATestCase):
         output = op(pinp)
       result = session.run(output, {pinp: inp})
       if equality_test is None:
-        equality_test = self.assertAllClose
+        equality_test = self.assertAllCloseAccordingToType
       equality_test(result, expected, rtol=rtol, atol=atol)
 
   def ListsAreClose(self, result, expected, rtol, atol):
@@ -573,7 +573,8 @@ class UnaryOpsTest(XLATestCase):
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = [dtypes.bool, dtypes.int32, dtypes.float32] + self.complex_tf_types
+    types = (set([dtypes.bool, dtypes.int32, dtypes.float32]) |
+             self.complex_tf_types)
     for shape in shapes:
       for src_type in types:
         for dst_type in types:

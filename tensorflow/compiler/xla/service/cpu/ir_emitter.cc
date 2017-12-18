@@ -1111,8 +1111,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
         llvm_ir::IrArray::Index kernel_index(num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
-          kernel_index[dnums.kernel_spatial_dimensions(i)] = kernel_spatial[i];
+          kernel_index[dnums.kernel_spatial_dimensions(i)] =
+              window.dimensions(i).window_reversal()
+                  ? ir_builder_.CreateNSWSub(
+                        ir_builder_.getInt64(window.dimensions(i).size() - 1),
+                        kernel_spatial[i])
+                  : kernel_spatial[i];
         }
+
         kernel_index[dnums.kernel_input_feature_dimension()] = input_feature;
         kernel_index[dnums.kernel_output_feature_dimension()] = output_feature;
 
@@ -1380,9 +1386,14 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   llvm::LoadInst* param_address_untyped =
       ir_builder_.CreateLoad(param_address_offset);
   param_address_untyped->setName(AsStringRef(IrName(parameter, "untyped")));
-  if (hlo_module_config_.debug_options()
+  if (is_top_level_computation_ &&
+      hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    // We never reassign parameters, so this load is invariant.
+    // In the entry computation the parameter slots in the %params argument are
+    // invariant through program execution.  In computations that are called
+    // from the entry computation (via kWhile, kCall and kConditional) the
+    // parameter slots are *not* invariant since they're written to by their
+    // callers.
     param_address_untyped->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(param_address_untyped->getContext(), /*MDs=*/{}));
@@ -1509,13 +1520,9 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
 IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
     PrimitiveType element_type, unsigned element_count) {
-  // Here we assume that the largest register is a vector register.
-  int max_vector_register_size_in_bytes =
-      target_machine_features_.largest_register_size_in_bytes(
-          compute_function_->function());
-
   int vector_register_size_in_elements =
-      max_vector_register_size_in_bytes /
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
       ShapeUtil::ByteSizeOfPrimitiveType(element_type);
 
   ShardedVectorType sharded_vector_type;
@@ -2827,10 +2834,14 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
       GetTempBuffersArgument(), slice.index(), &ir_builder_);
   llvm::LoadInst* tempbuf_address_base =
       ir_builder_.CreateLoad(tempbuf_address_ptr);
-  if (hlo_module_config_.debug_options()
+  if (is_top_level_computation_ &&
+      hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    // Loading the address of a buffer is invariant of the point at which the
-    // load is executed in the program because we never reassign buffers.
+    // In the entry computation the parameter slots in the %params argument are
+    // invariant through program execution.  In computations that are called
+    // from the entry computation (via kWhile, kCall and kConditional) the
+    // parameter slots are *not* invariant since they're written to by their
+    // callers.
     tempbuf_address_base->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
@@ -3042,36 +3053,26 @@ StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
                                  argument_addrs, name);
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes(
-    llvm::Function* function) {
-  auto itr = largest_register_size_in_bytes_.find(function);
-  if (itr != largest_register_size_in_bytes_.end()) {
-    return itr->second;
+llvm::TargetTransformInfo* TargetMachineFeatures::GetTargetTransformInfoFor(
+    const llvm::Function& function) {
+  auto it = target_transform_infos_.find(&function);
+  if (it == target_transform_infos_.end()) {
+    // Using a dummy function analysis manager is kind of hacky, but LLVM's
+    // TargetTransformInfoWrapperPass::getTTI does the same thing.
+    //
+    // TODO(sanjoy): Fix this within LLVM by directly exposing
+    // TargetTransformInfo factories from TargetMachine.
+    llvm::FunctionAnalysisManager DummyFAM;
+    llvm::TargetTransformInfo target_transform_info =
+        target_machine_->getTargetIRAnalysis().run(function, DummyFAM);
+    auto emplace_result = target_transform_infos_.emplace(
+        &function, std::move(target_transform_info));
+    CHECK(emplace_result.second);
+    it = emplace_result.first;
   }
 
-  int result = largest_register_size_in_bytes_impl(function);
-
-  InsertOrDie(&largest_register_size_in_bytes_, function, result);
-  DCHECK_EQ(result, largest_register_size_in_bytes_.begin()->second);
-  return result;
+  return &it->second;
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes_impl(
-    llvm::Function* function) const {
-  auto register_info =
-      target_machine_->getSubtargetImpl(*function)->getRegisterInfo();
-
-  unsigned largest_register_size = 0;
-  for (const llvm::TargetRegisterClass* register_class :
-       register_info->regclasses()) {
-    if (register_class->isAllocatable()) {
-      largest_register_size =
-          std::max(largest_register_size,
-                   register_info->getRegSizeInBits(*register_class));
-    }
-  }
-
-  return largest_register_size / 8;
-}
 }  // namespace cpu
 }  // namespace xla

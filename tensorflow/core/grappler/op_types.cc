@@ -26,7 +26,11 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsAdd(const NodeDef& node) {
-  return node.op() == "Add" || node.op() == "AddV2";
+  if (node.op() == "AddV2" || node.op() == "Add") {
+    DataType type = node.attr().at("T").type();
+    return type != DT_STRING;
+  }
+  return false;
 }
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }

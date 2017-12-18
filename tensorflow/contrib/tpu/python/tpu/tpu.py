@@ -52,6 +52,8 @@ _NOT_IMPLEMENTED_OPS = set([
     "TensorSummaryV2",
     ])
 
+_TPU_REPLICATE_ATTR = "_tpu_replicate"
+
 
 def _tpu_system_device_name(job):
   """Returns the device name for the TPU_SYSTEM device of `job`."""
@@ -138,9 +140,9 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
     # pylint: enable=protected-access
-    if "_tpu_replicate" in op.node_def.attr:
+    if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr["_tpu_replicate"].s = self._name
+    op.node_def.attr[_TPU_REPLICATE_ATTR].s = self._name
     op.graph.prevent_feeding(op)
     op.graph.prevent_fetching(op)
 

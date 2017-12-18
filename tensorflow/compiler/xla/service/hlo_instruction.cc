@@ -104,7 +104,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->literal_ = MakeUnique<Literal>(proto.literal());
   }
   instruction->parameter_number_ = proto.parameter_number();
-  instruction->parameter_name_ = proto.parameter_name();
 
   instruction->tuple_index_ = proto.tuple_index();
   for (int64 dimension : proto.dimensions()) {
@@ -154,7 +153,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
-  instruction->parameter_name_ = name;
   instruction->name_ = name;
   return instruction;
 }
@@ -1245,7 +1243,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CloneFusionWithNewOperands(shape, new_operands, module);
       break;
     case HloOpcode::kParameter:
-      clone = CreateParameter(parameter_number_, shape, parameter_name_);
+      clone = CreateParameter(parameter_number_, shape, name_);
       break;
     case HloOpcode::kBatchNormTraining:
       CHECK_EQ(new_operands.size(), 3);
@@ -1274,6 +1272,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                   new_operands[4], epsilon(), feature_index());
       break;
     case HloOpcode::kConditional:
+      CHECK_EQ(new_operands.size(), 3);
+      clone = CreateConditional(shape, new_operands[0], new_operands[1],
+                                true_computation(), new_operands[2],
+                                false_computation());
+      break;
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1915,16 +1918,23 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-string HloInstruction::ToString(bool compact_operands, bool include_metadata,
-                                bool include_large_constants) const {
+namespace {
+
+string PrintName(const string& name, const HloPrintOptions& options) {
+  return StrCat(options.print_percent() ? "%" : "", name);
+}
+
+}  // namespace
+
+string HloInstruction::ToString(const HloPrintOptions& options) const {
   string result =
-      StrCat("%", name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-             HloOpcodeString(opcode()), "(",
-             OperandsToString(compact_operands, include_large_constants), ")");
-  for (const string& extra : ExtraAttributesToString()) {
+      StrCat(PrintName(name(), options), " = ",
+             ShapeUtil::HumanStringWithLayout(shape()), " ",
+             HloOpcodeString(opcode()), "(", OperandsToString(options), ")");
+  for (const string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
-  if (include_metadata &&
+  if (options.print_metadata() &&
       (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
        !metadata_.source_file().empty())) {
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
@@ -1932,14 +1942,13 @@ string HloInstruction::ToString(bool compact_operands, bool include_metadata,
   return result;
 }
 
-string HloInstruction::OperandsToString(bool compact,
-                                        bool include_large_constants) const {
+string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
     if ((!ShapeUtil::IsTuple(shape()) &&
          ShapeUtil::ElementsIn(shape()) <= 10) ||
-        include_large_constants) {
+        options.print_large_constants()) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();
@@ -1964,14 +1973,19 @@ string HloInstruction::OperandsToString(bool compact,
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
-    if (compact && slice.size() > kMaxOperandsToShowIfCompact) {
+    if (options.compact_operands() &&
+        slice.size() > kMaxOperandsToShowIfCompact) {
       slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
     }
     operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
-      *out += ShapeUtil::HumanStringWithLayout(operand->shape());
-      if (!compact) {
-        StrAppend(out, " %", operand->name());
+      std::vector<string> str;
+      if (options.print_operand_shape()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
       }
+      if (!options.compact_operands()) {
+        str.push_back(PrintName(operand->name(), options));
+      }
+      StrAppend(out, Join(str, " "));
     });
     const int64 remaining = operands_.size() - slice.size();
     if (slice.size() != operands_.size()) {
@@ -1981,7 +1995,8 @@ string HloInstruction::OperandsToString(bool compact,
   return operands;
 }
 
-std::vector<string> HloInstruction::ExtraAttributesToString() const {
+std::vector<string> HloInstruction::ExtraAttributesToString(
+    const HloPrintOptions& options) const {
   std::vector<string> extra;
   if (opcode() == HloOpcode::kFusion) {
     extra.push_back(StrCat("kind=", xla::ToString(fusion_kind())));
@@ -2028,23 +2043,28 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(StrCat("condition=%", while_condition()->name()));
-    extra.push_back(StrCat("body=%", while_body()->name()));
+    extra.push_back(
+        StrCat("condition=", PrintName(while_condition()->name(), options)));
+    extra.push_back(StrCat("body=", PrintName(while_body()->name(), options)));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=%", select()->name()));
-    extra.push_back(StrCat("scatter=%", scatter()->name()));
+    extra.push_back(StrCat("select=", PrintName(select()->name(), options)));
+    extra.push_back(StrCat("scatter=", PrintName(scatter()->name(), options)));
   } else if (opcode() == HloOpcode::kConditional) {
-    extra.push_back(StrCat("true_computation=%", true_computation()->name()));
-    extra.push_back(StrCat("false_computation=%", false_computation()->name()));
+    extra.push_back(StrCat("true_computation=",
+                           PrintName(true_computation()->name(), options)));
+    extra.push_back(StrCat("false_computation=",
+                           PrintName(false_computation()->name(), options)));
   } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
              opcode() == HloOpcode::kReduceWindow ||
              opcode() == HloOpcode::kReduce) {
-    extra.push_back(StrCat("to_apply=%", to_apply()->name()));
+    extra.push_back(
+        StrCat("to_apply=", PrintName(to_apply()->name(), options)));
   } else if (!called_computations().empty()) {
     extra.push_back(StrCat(
         "calls=", Join(called_computations(), ", ",
-                       [](string* out, const HloComputation* computation) {
-                         StrAppend(out, "%", computation->name());
+                       [&](string* out, const HloComputation* computation) {
+                         StrAppend(out,
+                                   PrintName(computation->name(), options));
                        })));
   }
 
@@ -2062,8 +2082,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (!control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
                            Join(control_predecessors_, ", ",
-                                [](string* out, HloInstruction* pre) {
-                                  StrAppend(out, "%", pre->name());
+                                [&](string* out, HloInstruction* pre) {
+                                  StrAppend(out,
+                                            PrintName(pre->name(), options));
                                 }),
                            "}"));
   }
@@ -2115,7 +2136,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     *proto.mutable_literal() = literal_->ToProto();
   }
   proto.set_parameter_number(parameter_number_);
-  proto.set_parameter_name(parameter_name_);
   if (opcode() == HloOpcode::kFusion) {
     proto.set_fusion_kind(xla::ToString(fusion_kind()));
     *proto.mutable_fused_instructions_computation() =

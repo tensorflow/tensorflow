@@ -530,6 +530,11 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       if (!persistent_) {
         vspace.ReleaseBackwardFunction(trace.backward_function);
       }
+      for (Gradient* grad : out_gradients) {
+        if (grad != nullptr) {
+          vspace.DeleteGradient(grad);
+        }
+      }
     }
     VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "
             << trace.input_tensor_id.size() << " sources";

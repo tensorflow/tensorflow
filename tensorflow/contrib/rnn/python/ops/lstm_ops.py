@@ -29,7 +29,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
 _lstm_ops_so = loader.load_op_library(
@@ -396,15 +395,17 @@ class LSTMBlockCell(LayerRNNCell):
       raise ValueError(
           "Expecting inputs_shape[1] to be set: %s" % str(inputs_shape))
     input_size = inputs_shape[1].value
-    self._kernel = vs.get_variable(
+    self._kernel = self.add_variable(
         self._names["W"], [input_size + self._num_units, self._num_units * 4])
-    self._bias = vs.get_variable(
+    self._bias = self.add_variable(
         self._names["b"], [self._num_units * 4],
         initializer=init_ops.constant_initializer(0.0))
     if self._use_peephole:
-      self._w_i_diag = vs.get_variable(self._names["wci"], [self._num_units])
-      self._w_f_diag = vs.get_variable(self._names["wcf"], [self._num_units])
-      self._w_o_diag = vs.get_variable(self._names["wco"], [self._num_units])
+      self._w_i_diag = self.add_variable(self._names["wci"], [self._num_units])
+      self._w_f_diag = self.add_variable(self._names["wcf"], [self._num_units])
+      self._w_o_diag = self.add_variable(self._names["wco"], [self._num_units])
+
+    self.built = True
 
   def call(self, inputs, state):
     """Long short-term memory cell (LSTM)."""
@@ -597,7 +598,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
                cell_clip=None,
                use_peephole=False,
                reuse=None,
-               name="rnn/lstm_cell"):
+               name="lstm_fused_cell"):
     """Initialize the LSTM cell.
 
     Args:
@@ -629,15 +630,17 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
 
   def build(self, input_shape):
     input_size = input_shape[2].value
-    self._kernel = vs.get_variable(
+    self._kernel = self.add_variable(
         "kernel", [input_size + self._num_units, self._num_units * 4])
-    self._bias = vs.get_variable(
+    self._bias = self.add_variable(
         "bias", [self._num_units * 4],
         initializer=init_ops.constant_initializer(0.0))
     if self._use_peephole:
-      self._w_i_diag = vs.get_variable("w_i_diag", [self._num_units])
-      self._w_f_diag = vs.get_variable("w_f_diag", [self._num_units])
-      self._w_o_diag = vs.get_variable("w_o_diag", [self._num_units])
+      self._w_i_diag = self.add_variable("w_i_diag", [self._num_units])
+      self._w_f_diag = self.add_variable("w_f_diag", [self._num_units])
+      self._w_o_diag = self.add_variable("w_o_diag", [self._num_units])
+
+    self.built = True
 
   def _call_cell(self,
                  inputs,

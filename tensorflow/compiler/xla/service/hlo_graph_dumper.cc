@@ -1056,7 +1056,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
       case HloOpcode::kBatchNormGrad:
         return Printf("feature_index=%lld", instr->feature_index());
       case HloOpcode::kCustomCall:
-        return Printf("custom_call_target=%s", instr->custom_call_target());
+        return Printf("target=%s", instr->custom_call_target());
       case HloOpcode::kSlice:
         return std::all_of(instr->slice_strides().begin(),
                            instr->slice_strides().end(),
@@ -1438,7 +1438,8 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+      env, path,
+      module.ToString(HloPrintOptions().set_print_large_constants(true))));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

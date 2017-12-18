@@ -78,6 +78,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);

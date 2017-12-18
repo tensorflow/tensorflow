@@ -77,12 +77,14 @@ cc_library(
         "activations.cc",
         "add.cc",
         "basic_rnn.cc",
+        "batch_to_space_nd.cc",
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "fully_connected.cc",
+        "gather.cc",
         "hashtable_lookup.cc",
         "kernel_util.cc",
         "l2norm.cc",
@@ -98,6 +100,7 @@ cc_library(
         "skip_gram.cc",
         "space_to_depth.cc",
         "svdf.cc",
+        "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [
         "kernel_util.h",
@@ -155,6 +158,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "batch_to_space_nd_test",
+    size = "small",
+    srcs = ["batch_to_space_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "concatenation_test",
     size = "small",
     srcs = ["concatenation_test.cc"],
@@ -194,6 +209,18 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unidirectional_sequence_rnn_test",
+    size = "small",
+    srcs = ["unidirectional_sequence_rnn_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -244,6 +271,19 @@ tf_cc_test(
     srcs = ["reshape_test.cc"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "gather_test",
+    size = "small",
+    srcs = ["gather_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
