@@ -1013,9 +1013,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "batchnorm_rewriter",
-    srcs = ["batchnorm_rewriter.cc"],
-    hdrs = ["batchnorm_rewriter.h"],
+    name = "batchnorm_expander",
+    srcs = ["batchnorm_expander.cc"],
+    hdrs = ["batchnorm_expander.h"],
     deps = [
         ":hlo",
         ":hlo_pass",
@@ -1033,11 +1033,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "batchnorm_rewriter_test",
+    name = "batchnorm_expander_test",
     size = "small",
-    srcs = ["batchnorm_rewriter_test.cc"],
+    srcs = ["batchnorm_expander_test.cc"],
     deps = [
-        ":batchnorm_rewriter",
+        ":batchnorm_expander",
         ":hlo",
         ":hlo_matchers",
         ":hlo_pass",

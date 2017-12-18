@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -281,7 +281,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
 
-    pass.AddPass<BatchNormRewriter>(
+    pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,

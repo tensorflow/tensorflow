@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 
 #include <algorithm>
 #include <memory>
@@ -45,9 +45,9 @@ limitations under the License.
 
 namespace xla {
 
-// BatchNormRewriterVisitor traverses the HLO computation and rewrites BatchNorm
+// BatchNormExpanderVisitor traverses the HLO computation and rewrites BatchNorm
 // operations into smaller operations.
-class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
+class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
  public:
   // Default visitor action is to do nothing and return OK.
   Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
@@ -68,10 +68,10 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
 
-  ~BatchNormRewriterVisitor() override = default;
+  ~BatchNormExpanderVisitor() override = default;
 
  private:
-  explicit BatchNormRewriterVisitor(HloComputation* computation,
+  explicit BatchNormExpanderVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
                                     bool rewrite_inference_op,
                                     bool rewrite_grad_op, bool use_fusion)
@@ -94,7 +94,7 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
     return computation_->parent()->AddEmbeddedComputation(b.Build(scalar_op));
   }
 
-  // Current HloComputation instance the BatchNormRewriter is
+  // Current HloComputation instance the BatchNormExpander is
   // traversing.
   HloComputation* computation_;
 
@@ -130,11 +130,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
   }
 };
 
-bool BatchNormRewriterVisitor::Run(HloComputation* computation,
+bool BatchNormExpanderVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
                                    bool rewrite_inference_op,
                                    bool rewrite_grad_op, bool use_fusion) {
-  BatchNormRewriterVisitor visitor(
+  BatchNormExpanderVisitor visitor(
       computation,
       /*rewrite_training_op=*/rewrite_training_op,
       /*rewrite_inference_op=*/rewrite_inference_op,
@@ -144,7 +144,7 @@ bool BatchNormRewriterVisitor::Run(HloComputation* computation,
   return visitor.changed_;
 }
 
-Status BatchNormRewriterVisitor::HandleBatchNormTraining(
+Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     HloInstruction* batch_norm) {
   if (!rewrite_training_op_) {
     return Status::OK();
@@ -299,7 +299,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   return Status::OK();
 }
 
-Status BatchNormRewriterVisitor::HandleBatchNormInference(
+Status BatchNormExpanderVisitor::HandleBatchNormInference(
     HloInstruction* batch_norm) {
   if (!rewrite_inference_op_) {
     return Status::OK();
@@ -397,7 +397,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormInference(
   return Status::OK();
 }
 
-Status BatchNormRewriterVisitor::HandleBatchNormGrad(
+Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     HloInstruction* batch_norm) {
   // Use the following formulas to calculate gradients:
   // scale_grad =
@@ -593,17 +593,17 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
   return Status::OK();
 }
 
-StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
-  XLA_VLOG_LINES(2, "BatchNormRewriter::Run(), before:\n" + module->ToString());
+StatusOr<bool> BatchNormExpander::Run(HloModule* module) {
+  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
+    if (BatchNormExpanderVisitor::Run(comp, rewrite_training_op_,
                                       rewrite_inference_op_, rewrite_grad_op_,
                                       use_fusion_)) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "BatchNormRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "BatchNormExpander::Run(), after:\n" + module->ToString());
   return changed;
 }
 

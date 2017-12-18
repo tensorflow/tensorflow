@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 
 #include <memory>
 #include <utility>
@@ -36,10 +36,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using BatchNormRewriterTest = HloTestBase;
+using BatchNormExpanderTest = HloTestBase;
 
 // Test that we expand BatchNormTraining.
-TEST_F(BatchNormRewriterTest, BatchNormTraining) {
+TEST_F(BatchNormExpanderTest, BatchNormTraining) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
   Shape scale_shape = ShapeUtil::MakeShape(F32, {2});
   Shape offset_shape = ShapeUtil::MakeShape(F32, {2});
@@ -63,7 +63,7 @@ TEST_F(BatchNormRewriterTest, BatchNormTraining) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormTraining);
-  BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+  BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
@@ -73,7 +73,7 @@ TEST_F(BatchNormRewriterTest, BatchNormTraining) {
 }
 
 // Test that we expand BatchNormGrad.
-TEST_F(BatchNormRewriterTest, BatchNormGrad) {
+TEST_F(BatchNormExpanderTest, BatchNormGrad) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
   Shape scale_shape = ShapeUtil::MakeShape(F32, {2});
   Shape mean_shape = ShapeUtil::MakeShape(F32, {2});
@@ -105,7 +105,7 @@ TEST_F(BatchNormRewriterTest, BatchNormGrad) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormGrad);
-  BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+  BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());

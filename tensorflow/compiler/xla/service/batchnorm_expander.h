@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_REWRITER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_REWRITER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_EXPANDER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_EXPANDER_H_
 
 #include <utility>
 
@@ -26,18 +26,18 @@ namespace xla {
 // A pass which rewrites batch norm operations into more operations. Breaking a
 // big operation into smaller operations helps leverage our generic fusion
 // logic.
-class BatchNormRewriter : public HloPassInterface {
+class BatchNormExpander : public HloPassInterface {
  public:
   // When use_fusion is set, a multi-output fusion node is created.
-  BatchNormRewriter(bool rewrite_training_op = false,
+  BatchNormExpander(bool rewrite_training_op = false,
                     bool rewrite_inference_op = false,
                     bool rewrite_grad_op = false, bool use_fusion = true)
       : rewrite_training_op_(rewrite_training_op),
         rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op),
         use_fusion_(use_fusion) {}
-  ~BatchNormRewriter() = default;
-  tensorflow::StringPiece name() const override { return "batchnorm_rewriter"; }
+  ~BatchNormExpander() = default;
+  tensorflow::StringPiece name() const override { return "batchnorm_expander"; }
 
   // Run operation expander on the given computation. Returns whether the
   // computation was changed.
@@ -52,4 +52,4 @@ class BatchNormRewriter : public HloPassInterface {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_REWRITER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_BATCHNORM_EXPANDER_H_
