@@ -446,6 +446,7 @@ xla_test(
     backends = [
         "cpu",
         "gpu",
+        "cpu_parallel",
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
