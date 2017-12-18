@@ -54,12 +54,13 @@ REGISTER_OP("DecodeCompressed")
     .Attr("compression_type: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-Reinterpret the bytes of a string as a vector of numbers.
+Decompress the bytes of a string to the output string.
 
-bytes: All the elements must have the same length.
+bytes: A Tensor of string which is compressed.
 compression_type: A scalar containing either (i) the empty string (no
   compression), (ii) "ZLIB", or (iii) "GZIP".
-output: A Tensor with the same shape as input `bytes`.
+output: A Tensor with the same shape as input `bytes`, uncompressed
+  from bytes.
 )doc");
 
 REGISTER_OP("ParseExample")
