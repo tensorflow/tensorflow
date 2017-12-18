@@ -21,6 +21,7 @@ from __future__ import print_function
 import math
 
 import numpy as np
+from sklearn import metrics as sk_metrics
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
@@ -6658,6 +6659,195 @@ class CountTest(test.TestCase):
       for i in range(4):
         update_op.eval(feed_dict={values: feed_values[i]})
       self.assertAlmostEqual(4.1, result.eval(), 5)
+
+
+class CohenKappaTest(test.TestCase):
+
+  def _confuse_matrix_to_samples(self, confuse_matrix):
+    x, y = confuse_matrix.shape
+    pairs = []
+    for label in range(x):
+      for feature in range(y):
+        pairs += [label, feature] * confuse_matrix[label, feature]
+    pairs = np.array(pairs).reshape((-1, 2))
+    return pairs[:, 0], pairs[:, 1]
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.cohen_kappa(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2)
+    _assert_metric_variables(self, (
+        'cohen_kappa/total_po:0',
+        'cohen_kappa/total_pe_row:0',
+        'cohen_kappa/total_pe_col:0',))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    kappa, _ = metrics.cohen_kappa(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2,
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [kappa])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.cohen_kappa(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2,
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+      (10, 1), maxval=3, dtype=dtypes_lib.int64, seed=1)
+    labels = random_ops.random_uniform(
+      (10, 1), maxval=3, dtype=dtypes_lib.int64, seed=2)
+    kappa, update_op = metrics.cohen_kappa(labels, predictions, 3)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_kappa = kappa.eval()
+      for _ in range(10):
+        self.assertAlmostEqual(initial_kappa, kappa.eval(), 5)
+
+  def testBasic(self):
+    confuse_matrix = np.array([
+      [9, 3, 1],
+      [4, 8, 2],
+      [2, 1, 6]])
+    labels, predictions = self._confuse_matrix_to_samples(confuse_matrix)
+
+    dtypes = [dtypes_lib.int32, dtypes_lib.int64,
+              dtypes_lib.float32, dtypes_lib.float64]
+    shapes = [(len(labels,)),  # 1-dim
+              (len(labels), 1)]  # 2-dim
+    weights = [None, np.ones_like(labels)]
+
+    for dtype in dtypes:
+      for shape in shapes:
+        for weight in weights:
+          with self.test_session() as sess:
+            predictions_tensor = constant_op.constant(
+                np.reshape(predictions, shape), dtype=dtype)
+            labels_tensor = constant_op.constant(
+                np.reshape(labels, shape), dtype=dtype)
+            kappa, update_op = metrics.cohen_kappa(
+                labels_tensor, predictions_tensor, 3, weights=weight)
+
+            sess.run(variables.local_variables_initializer())
+            self.assertAlmostEqual(0.45, sess.run(update_op), 2)
+            self.assertAlmostEqual(0.45, kappa.eval(), 2)
+
+  def testBasic2(self):
+    labels = np.random.randint(0, 4, size=(100, 1))
+    predictions = np.random.randint(0, 4, size=(100, 1))
+    expect = sk_metrics.cohen_kappa_score(labels, predictions)
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(labels)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 4, size=(100, 1))
+    expect = sk_metrics.cohen_kappa_score(inputs, inputs)
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(inputs)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testAllIncorrect(self):
+    labels = np.arange(0, 100) % 4
+    predictions = (labels + 1) % 4
+    expect = sk_metrics.cohen_kappa_score(labels, predictions)
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(labels)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testWeighted(self):
+    labels = np.random.randint(0, 4, size=(100, 1))
+    predictions = np.random.randint(0, 4, size=(100, 1))
+    weights = np.random.random(size=(100, 1))
+    expect = sk_metrics.cohen_kappa_score(labels, predictions,
+                                          sample_weight=weights[:, 0])
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(labels)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4,
+                                             weights=weights)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testWithMultipleUpdates(self):
+    num_samples = 1000
+    batch_size = 100
+    num_classes = 4
+    labels_np = np.random.randint(0, num_classes, size=(num_samples, 1))
+    predictions_np = np.random.randint(0, num_classes, size=(num_samples, 1))
+    weights_np = np.random.random(size=(num_samples, 1))
+
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size, 1))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(batch_size, 1))
+    weights = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size, 1))
+    kappa, update_op = metrics.cohen_kappa(labels, predictions, num_classes,
+                                           weights=weights)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      for idx in range(0, num_samples, batch_size):
+        batch_start, batch_end = idx, idx + batch_size
+        expect = sk_metrics.cohen_kappa_score(
+            labels_np[:batch_end, 0],
+            predictions_np[:batch_end, 0],
+            sample_weight=weights_np[:batch_end, 0])
+        self.assertAlmostEqual(
+            expect,
+            sess.run(update_op,
+                     feed_dict={labels: labels_np[batch_start:batch_end],
+                                predictions: predictions_np[batch_start:batch_end],
+                                weights: weights_np[batch_start:batch_end]}),
+            5)
+
+      final_expect = sk_metrics.cohen_kappa_score(
+          labels_np, predictions_np, sample_weight=weights_np[:, 0])
+      self.assertAlmostEqual(final_expect, kappa.eval(), 5)
+
+  def testInvalidNumClasses(self):
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 1))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 1))
+    with self.assertRaisesRegexp(ValueError, 'num_classes'):
+      metrics.cohen_kappa(labels, predictions, 1)
 
 
 if __name__ == '__main__':

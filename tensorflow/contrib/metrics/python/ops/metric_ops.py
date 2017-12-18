@@ -3309,6 +3309,7 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
                      'Found: {}'.format(num_classes))
   with variable_scope.variable_scope(name, 'cohen_kappa',
                                      (labels, predictions, weights)):
+    # Convert 2-dim (num, 1) to 1-dim (num,)
     labels.get_shape().with_rank_at_most(2)
     labels = array_ops.squeeze(labels)
     predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
