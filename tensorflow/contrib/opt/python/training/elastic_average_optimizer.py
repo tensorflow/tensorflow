@@ -79,9 +79,9 @@ class ElasticAverageCustomGetter(object):
     if trainable:
       with ops.device(self._worker_device):
         local_var = getter(name, trainable=True,
-                           collections=[ops.GraphKeys.LOCAL_VARIABLES], 
+                           collections=[ops.GraphKeys.LOCAL_VARIABLES],
                            *args, **kwargs)
-        
+
       global_center_variable = variable_scope.variable(
         name='%s/%s' %
              (GLOBAL_VARIABLE_NAME,
@@ -96,7 +96,7 @@ class ElasticAverageCustomGetter(object):
           initial_value=local_var.initialized_value(),
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES])
-        
+
       self._local_map[local_var] = local_center_variable
       self._global_map[local_var] = global_center_variable
       return local_var
@@ -173,7 +173,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
                         colocate_gradients_with_ops=False,
                         grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
-    
+
     Add rho*elastic_difference to loss to control the exploration
     This is the first part of `minimize()`.  It returns a list
     of (gradient, variable) pairs where "gradient" is the gradient
@@ -204,7 +204,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     """
     if not var_list:
       var_list = variables.trainable_variables()
-      
+
     elastic_difference = [math_ops.subtract(v, lv) for v, lv in zip(
       variables.trainable_variables(),
       [self._local_map[var] for var in var_list])]
