@@ -50,6 +50,7 @@ cc_library(
     name = "partial_run_mgr",
     srcs = ["partial_run_mgr.cc"],
     hdrs = ["partial_run_mgr.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_interface",
         "//tensorflow/core:framework",
@@ -73,6 +74,7 @@ cc_library(
     name = "message_wrappers",
     srcs = ["message_wrappers.cc"],
     hdrs = ["message_wrappers.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:master_proto_cc",
@@ -105,6 +107,7 @@ cc_library(
         "cluster_function_library_runtime.h",
         "worker_session.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":graph_mgr",
         ":worker_cache",
@@ -138,6 +141,7 @@ cc_library(
     name = "session_mgr",
     srcs = ["session_mgr.cc"],
     hdrs = ["session_mgr.h"],
+    copts = tf_copts(),
     deps = [
         ":graph_mgr",
         ":worker_cache_wrapper",
@@ -164,6 +168,7 @@ tf_cc_test(
 cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
+    copts = tf_copts(),
     deps = ["//tensorflow/core:lib"],
 )
 
@@ -173,6 +178,7 @@ cc_library(
     hdrs = [
         "tensor_coding.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -187,6 +193,7 @@ cc_library(
     hdrs = [
         "worker_interface.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":call_options",
         ":message_wrappers",
@@ -202,6 +209,7 @@ cc_library(
     hdrs = [
         "worker.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":graph_mgr",
         ":partial_run_mgr",
@@ -219,6 +227,7 @@ cc_library(
     name = "call_options",
     srcs = ["call_options.cc"],
     hdrs = ["call_options.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
     ],
@@ -257,6 +266,7 @@ tf_cc_test(
 cc_library(
     name = "worker_cache",
     hdrs = ["worker_cache.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_interface",
         "//tensorflow/core:lib",
@@ -267,6 +277,7 @@ cc_library(
 cc_library(
     name = "worker_cache_wrapper",
     hdrs = ["worker_cache_wrapper.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_cache",
         "//tensorflow/core:lib",
@@ -278,6 +289,7 @@ cc_library(
     name = "remote_device",
     srcs = ["remote_device.cc"],
     hdrs = ["remote_device.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_cache",
         ":worker_interface",
@@ -290,6 +302,7 @@ cc_library(
 cc_library(
     name = "master_interface",
     hdrs = ["master_interface.h"],
+    copts = tf_copts(),
     deps = [
         ":call_options",
         ":message_wrappers",
@@ -302,6 +315,7 @@ cc_library(
     name = "master",
     srcs = ["master.cc"],
     hdrs = ["master.h"],
+    copts = tf_copts(),
     deps = [
         ":call_options",
         ":master_env",
@@ -324,6 +338,7 @@ cc_library(
     name = "master_session",
     srcs = ["master_session.cc"],
     hdrs = ["master_session.h"],
+    copts = tf_copts(),
     deps = [
         ":call_options",
         ":master_env",
@@ -347,6 +362,7 @@ cc_library(
     name = "local_master",
     srcs = ["local_master.cc"],
     hdrs = ["local_master.h"],
+    copts = tf_copts(),
     deps = [
         ":master",
         ":master_interface",
@@ -358,6 +374,7 @@ cc_library(
     name = "rendezvous_mgr_interface",
     srcs = [],
     hdrs = ["rendezvous_mgr_interface.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_env",
         "//tensorflow/core:framework_internal",
@@ -369,6 +386,7 @@ cc_library(
     name = "scheduler",
     srcs = ["scheduler.cc"],
     hdrs = ["scheduler.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -399,6 +417,7 @@ cc_library(
 cc_library(
     name = "master_env",
     hdrs = ["master_env.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
@@ -410,6 +429,7 @@ cc_library(
     name = "graph_mgr",
     srcs = ["graph_mgr.cc"],
     hdrs = ["graph_mgr.h"],
+    copts = tf_copts(),
     deps = [
         ":message_wrappers",
         ":rendezvous_mgr_interface",
@@ -429,6 +449,7 @@ cc_library(
     name = "worker_cache_partial",
     srcs = ["worker_cache_partial.cc"],
     hdrs = ["worker_cache_partial.h"],
+    copts = tf_copts(),
     deps = [
         ":worker_cache",
         ":worker_interface",
@@ -443,6 +464,7 @@ cc_library(
     name = "worker_cache_logger",
     srcs = ["worker_cache_logger.cc"],
     hdrs = ["worker_cache_logger.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -454,6 +476,7 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

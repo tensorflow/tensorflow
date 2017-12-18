@@ -9,6 +9,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 filegroup(
     name = "mobile_srcs",
@@ -40,6 +41,7 @@ filegroup(
 
 cc_library(
     name = "ctc",
+    copts = tf_copts(),
     deps = [
         ":ctc_beam_search_lib",
         ":ctc_loss_calculator_lib",
@@ -60,6 +62,7 @@ cc_library(
         "ctc_beam_search.h",
         "ctc_decoder.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":ctc_loss_util_lib",
         "//tensorflow/core:lib",
@@ -90,6 +93,7 @@ cc_library(
     hdrs = [
         "ctc_loss_calculator.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":ctc_loss_util_lib",
         "//tensorflow/core:framework",
@@ -103,4 +107,5 @@ cc_library(
     hdrs = [
         "ctc_loss_util.h",
     ],
+    copts = tf_copts(),
 )

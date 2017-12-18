@@ -73,6 +73,7 @@ tf_kernel_library(
         "kernels/nccl_ops.cc",
         "kernels/nccl_rewrite.cc",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

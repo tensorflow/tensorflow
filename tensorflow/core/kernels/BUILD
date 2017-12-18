@@ -78,6 +78,7 @@ config_setting(
 cc_library(
     name = "assign_op",
     hdrs = ["assign_op.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -149,12 +150,14 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
+    copts = tf_copts(),
     deps = ["//third_party/eigen3"],
 )
 
 cc_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
+    copts = tf_copts(),
     deps = [
         ":eigen_helpers",
         ":gpu_util_hdrs",
@@ -166,6 +169,7 @@ cc_library(
 cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
+    copts = tf_copts(),
     deps = [
         ":eigen_helpers",
         "//third_party/eigen3",
@@ -188,6 +192,7 @@ tf_kernel_library(
 cc_library(
     name = "conv_3d",
     hdrs = ["conv_3d.h"],
+    copts = tf_copts(),
     deps = [
         ":eigen_helpers",
         "//tensorflow/core:framework",
@@ -198,6 +203,7 @@ cc_library(
     name = "fill_functor",
     srcs = ["fill_functor.cc"],
     hdrs = ["fill_functor.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -208,6 +214,7 @@ cc_library(
     name = "initializable_lookup_table",
     srcs = ["initializable_lookup_table.cc"],
     hdrs = ["initializable_lookup_table.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -218,6 +225,7 @@ cc_library(
     name = "lookup_util",
     srcs = ["lookup_util.cc"],
     hdrs = ["lookup_util.h"],
+    copts = tf_copts(),
     deps = [
         ":initializable_lookup_table",
         "//tensorflow/core:framework",
@@ -251,7 +259,7 @@ cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -263,17 +271,20 @@ cc_library(
 cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
+    copts = tf_copts(),
     deps = ["//third_party/eigen3"],
 )
 
 cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
+    copts = tf_copts(),
 )
 
 cc_library(
     name = "gpu_util_hdrs",
     hdrs = ["gpu_utils.h"],
+    copts = tf_copts(),
 )
 
 tf_cc_test(
@@ -293,6 +304,7 @@ cc_library(
     name = "reshape_util",
     srcs = ["reshape_util.cc"],
     hdrs = ["reshape_util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -337,6 +349,7 @@ cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
+    copts = tf_copts(),
     deps = [
         ":batch_util",
         "//tensorflow/core:framework",
@@ -348,6 +361,7 @@ cc_library(
 cc_library(
     name = "queue_op",
     hdrs = ["queue_op.h"],
+    copts = tf_copts(),
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
@@ -359,6 +373,7 @@ cc_library(
     name = "priority_queue",
     srcs = ["priority_queue.cc"],
     hdrs = ["priority_queue.h"],
+    copts = tf_copts(),
     deps = [
         ":batch_util",
         ":queue_base",
@@ -386,7 +401,7 @@ cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
@@ -416,6 +431,7 @@ cc_library(
     hdrs = [
         "split_lib.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
@@ -425,6 +441,7 @@ cc_library(
 cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
+    copts = tf_copts(),
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
@@ -435,6 +452,7 @@ cc_library(
     name = "training_op_helpers",
     srcs = ["training_op_helpers.cc"],
     hdrs = ["training_op_helpers.h"],
+    copts = tf_copts(),
     visibility = [":friends"],
     deps = [
         ":dense_update_functor",
@@ -447,6 +465,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
+    copts = tf_copts(),
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework_lite",
@@ -458,6 +477,7 @@ cc_library(
     name = "warn_about_ints",
     srcs = ["warn_about_ints.cc"],
     hdrs = ["warn_about_ints.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -477,6 +497,7 @@ cc_library(
         "cuda_device_array.h",
         "cuda_device_array_gpu.h",
     ],
+    copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core:framework",
@@ -498,6 +519,7 @@ cc_library(
         "eigen_spatial_convolutions.h",
         "eigen_volume_patch.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//third_party/eigen3",
     ],
@@ -506,6 +528,7 @@ cc_library(
 cc_library(
     name = "image_resizer_state",
     hdrs = ["image_resizer_state.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:private"],
     deps = [
         ":bounds_check",
@@ -542,6 +565,7 @@ ARRAY_DEPS = [
 
 cc_library(
     name = "array_not_windows",
+    copts = tf_copts(),
     deps = [
         ":immutable_constant_op",
     ],
@@ -575,6 +599,7 @@ tf_kernel_library(
 
 cc_library(
     name = "array",
+    copts = tf_copts(),
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
@@ -1151,6 +1176,7 @@ tf_kernel_library(
 cc_library(
     name = "gather_functor_hdr",
     hdrs = ["gather_functor.h"],
+    copts = tf_copts(),
 )
 
 tf_kernel_library(
@@ -1457,6 +1483,7 @@ cc_library(
     name = "range_sampler",
     srcs = ["range_sampler.cc"],
     hdrs = ["range_sampler.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
@@ -1519,6 +1546,7 @@ tf_cc_test(
 
 cc_library(
     name = "data_flow",
+    copts = tf_copts(),
     deps = [
         ":barrier_ops",
         ":conditional_accumulator_base_op",
@@ -1544,6 +1572,7 @@ cc_library(
 
 cc_library(
     name = "lookup",
+    copts = tf_copts(),
     deps = [
         ":lookup_table_init_op",
         ":lookup_table_op",
@@ -1708,6 +1737,7 @@ tf_kernel_library(
 
 cc_library(
     name = "checkpoint_ops",
+    copts = tf_copts(),
     deps = [
         ":generate_vocab_remapping_op",
         ":load_and_remap_matrix_op",
@@ -1780,6 +1810,7 @@ cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
     hdrs = ["fifo_queue.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:private"],
     deps = [
         ":batch_util",
@@ -1795,6 +1826,7 @@ cc_library(
     name = "padding_fifo_queue",
     srcs = ["padding_fifo_queue.cc"],
     hdrs = ["padding_fifo_queue.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:private"],
     deps = [
         ":batch_util",
@@ -1813,6 +1845,7 @@ cc_library(
     hdrs = [
         "conditional_accumulator_base.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1823,6 +1856,7 @@ cc_library(
 cc_library(
     name = "typed_conditional_accumulator_base",
     hdrs = ["typed_conditional_accumulator_base.h"],
+    copts = tf_copts(),
     deps = [
         ":conditional_accumulator_base",
     ],
@@ -1834,6 +1868,7 @@ cc_library(
         "conditional_accumulator.h",
         "conditional_accumulator_base_op.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":conditional_accumulator_base",
         ":fill_functor",
@@ -1844,6 +1879,7 @@ cc_library(
 cc_library(
     name = "sparse_conditional_accumulator",
     hdrs = ["sparse_conditional_accumulator.h"],
+    copts = tf_copts(),
     deps = [
         ":typed_conditional_accumulator_base",
     ],
@@ -1903,6 +1939,7 @@ tf_kernel_library(
 
 cc_library(
     name = "image",
+    copts = tf_copts(),
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",
@@ -1949,6 +1986,7 @@ tf_kernel_library(
 cc_library(
     name = "adjust_hsv_gpu_lib",
     hdrs = ["adjust_hsv_gpu.cu.h"],
+    copts = tf_copts(),
     deps = ["//tensorflow/core:framework"],
 )
 
@@ -2189,6 +2227,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "io",
+    copts = tf_copts(),
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
@@ -2323,6 +2362,7 @@ tf_cc_tests(
 
 cc_library(
     name = "linalg",
+    copts = tf_copts(),
     deps = [
         ":cholesky_grad",
         ":cholesky_op",
@@ -2461,6 +2501,7 @@ cc_library(
     name = "linalg_ops_common",
     srcs = ["linalg_ops_common.cc"],
     hdrs = ["linalg_ops_common.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
@@ -2471,6 +2512,7 @@ cc_library(
 
 cc_library(
     name = "logging",
+    copts = tf_copts(),
     deps = [
         ":logging_ops",
         ":summary_audio_op",
@@ -2555,6 +2597,7 @@ MATH_DEPS = [
 
 cc_library(
     name = "math_not_windows",
+    copts = tf_copts(),
     deps = [
         ":sparse_matmul_op",
     ],
@@ -2577,6 +2620,7 @@ tf_kernel_library(
 
 cc_library(
     name = "math",
+    copts = tf_copts(),
     deps = [
         ":aggregate_ops",
         ":argmax_op",
@@ -3116,6 +3160,7 @@ tf_kernel_library(
 
 cc_library(
     name = "nn",
+    copts = tf_copts(),
     deps = [
         ":batch_norm_op",
         ":bias_op",
@@ -3411,6 +3456,7 @@ cc_library(
         "maxpooling_op.h",
         "pooling_ops_common.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":eigen_helpers",
         ":ops_util_hdrs",
@@ -3494,6 +3540,7 @@ tf_kernel_library(
 
 cc_library(
     name = "parsing",
+    copts = tf_copts(),
     deps = [
         ":decode_csv_op",
         ":decode_raw_op",
@@ -3556,6 +3603,7 @@ tf_kernel_library(
 
 cc_library(
     name = "random_ops",
+    copts = tf_copts(),
     deps = [
         ":random_op",
         ":random_shuffle_op",
@@ -3611,6 +3659,7 @@ tf_kernel_library(
 
 cc_library(
     name = "required",
+    copts = tf_copts(),
     deps = [
         ":no_op",
         ":sendrecv_ops",
@@ -3653,6 +3702,7 @@ tf_cc_test(
 
 cc_library(
     name = "sparse",
+    copts = tf_copts(),
     deps = [
         ":serialize_sparse_op",
         ":sparse_add_grad_op",
@@ -3838,6 +3888,7 @@ cc_library(
         "smooth-hinge-loss.h",
         "squared-loss.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -3893,6 +3944,7 @@ cc_library(
     name = "sdca_internal",
     srcs = ["sdca_internal.cc"],
     hdrs = ["sdca_internal.h"],
+    copts = tf_copts(),
     deps = [
         ":loss_updaters",
         "//tensorflow/core:framework",
@@ -3904,6 +3956,7 @@ cc_library(
 
 cc_library(
     name = "state",
+    copts = tf_copts(),
     deps = [
         ":count_up_to_op",
         ":dense_update_ops",
@@ -4015,6 +4068,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "string",
+    copts = tf_copts(),
     deps = [
         ":as_string_op",
         ":base64_ops",
@@ -4422,6 +4476,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "audio",
+    copts = tf_copts(),
     deps = [
         ":decode_wav_op",
         ":encode_wav_op",
@@ -5580,6 +5635,7 @@ cc_library(
         "i_remote_fused_graph_ops_definitions.h",
         "remote_fused_graph_execute_utils.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -5594,6 +5650,7 @@ cc_library(
     testonly = 1,
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
     hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
+    copts = tf_copts(),
     deps = [
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
@@ -5664,6 +5721,7 @@ cc_library(
     srcs = [
         "remote_fused_graph_rewriter_transform.cc",
     ],
+    copts = tf_copts(),
     deps = [
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
@@ -5849,6 +5907,7 @@ tf_mkl_kernel_library(
 cc_library(
     name = "stats_aggregator",
     hdrs = ["stats_aggregator.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5870,6 +5929,7 @@ cc_library(
     name = "batch_util",
     srcs = ["batch_util.cc"],
     hdrs = ["batch_util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5880,6 +5940,7 @@ cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -5893,6 +5954,7 @@ cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],
+    copts = tf_copts(),
     deps = [
         ":captured_function",
         ":dataset",
@@ -5906,6 +5968,7 @@ cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
     hdrs = ["captured_function.h"],
+    copts = tf_copts(),
     deps = [
         ":dataset",
         "//tensorflow/core:core_cpu_internal",
@@ -5923,6 +5986,7 @@ cc_library(
     name = "window_dataset",
     srcs = ["window_dataset.cc"],
     hdrs = ["window_dataset.h"],
+    copts = tf_copts(),
     deps = [
         ":dataset",
         "//tensorflow/core:framework",
@@ -6374,6 +6438,7 @@ cc_library(
     name = "summary_interface",
     srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -6444,6 +6509,7 @@ cc_library(
         "meta_support.h",
         "quantization_utils.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",

@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 filegroup(
     name = "all_files",
@@ -22,6 +23,7 @@ cc_library(
     hdrs = [
         "utils.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -47,6 +49,7 @@ cc_library(
     hdrs = [
         "input_yielder.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [],
 )
@@ -57,6 +60,7 @@ cc_library(
     hdrs = [
         "trivial_test_graph_input_yielder.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":input_yielder",
@@ -74,6 +78,7 @@ cc_library(
     hdrs = [
         "file_input_yielder.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":input_yielder",

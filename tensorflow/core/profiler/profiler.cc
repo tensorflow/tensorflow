@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#ifdef HAVE_LINENOISE
 #include "linenoise.h"
+#endif
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -41,6 +43,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+#ifdef HAVE_LINENOISE
 void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
   if (buf_str.find(" ") == buf_str.npos) {
@@ -64,7 +67,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     }
   }
 }
-
+#endif
 int Run(int argc, char** argv) {
   string FLAGS_profile_path = "";
   string FLAGS_graph_path = "";
@@ -262,32 +265,44 @@ int Run(int argc, char** argv) {
     tf_stat->ShowGraphNode(cmd, opts);
     return 0;
   }
-
+#ifdef HAVE_LINENOISE
   linenoiseSetCompletionCallback(completion);
   linenoiseHistoryLoad(".tfprof_history.txt");
-
+#endif
   bool looped = false;
   while (true) {
+#ifdef HAVE_LINENOISE
     char* line = linenoise("tfprof> ");
-    if (line == nullptr) {
-      if (!looped) {
-        fprintf(stderr,
-                "Cannot start interative shell, "
-                "use 'bazel-bin' instead of 'bazel run'.\n");
-      }
-      break;
-    }
+	if (line == nullptr) {
+		if (!looped) {
+			fprintf(stderr,
+				"Cannot start interative shell, "
+				"use 'bazel-bin' instead of 'bazel run'.\n");
+		}
+		break;
+	}
+#else
+	printf("tfprof> ");
+	string line_s;
+	std::getline(std::cin, line_s);
+	if (!std::cin) {
+		break;
+	}
+#endif
     looped = true;
+#ifdef HAVE_LINENOISE
     string line_s = line;
     free(line);
+#endif
 
     if (line_s.empty()) {
       printf("%s", opts.ToString().c_str());
       continue;
     }
+#ifdef HAVE_LINENOISE
     linenoiseHistoryAdd(line_s.c_str());
     linenoiseHistorySave(".tfprof_history.txt");
-
+#endif
     Options new_opts = opts;
     Status s = ParseCmdLine(line_s, &cmd, &new_opts);
     if (!s.ok()) {

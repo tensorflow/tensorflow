@@ -22,7 +22,7 @@ exports_files(["ffmpeg_lib.h"])
 cc_library(
     name = "decode_audio_op_cc",
     srcs = ["decode_audio_op.cc"],
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
@@ -36,7 +36,7 @@ cc_library(
 cc_library(
     name = "encode_audio_op_cc",
     srcs = ["encode_audio_op.cc"],
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [
@@ -50,7 +50,7 @@ cc_library(
 cc_library(
     name = "decode_video_op_cc",
     srcs = ["decode_video_op.cc"],
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     linkstatic = 1,
     visibility = ["//visibility:private"],
     deps = [

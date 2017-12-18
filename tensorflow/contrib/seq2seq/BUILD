@@ -90,6 +90,7 @@ tf_gen_op_libs(
 
 tf_kernel_library(
     name = "beam_search_ops_kernels",
+    is_external = True,
     prefix = "kernels/beam_search_ops",
     deps = [
         "//tensorflow/core:framework",

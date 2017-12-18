@@ -25,6 +25,7 @@ cc_library(
         "framework/while_gradients.h",
     ],
     hdrs = ["framework/gradients.h"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -86,6 +87,7 @@ cc_library(
     name = "gradient_checker",
     srcs = ["framework/gradient_checker.cc"],
     hdrs = ["framework/gradient_checker.h"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":client_session",
@@ -118,6 +120,7 @@ tf_cc_test(
 
 cc_library(
     name = "grad_ops",
+    copts = tf_copts(),
     deps = [
         ":array_grad",
         ":data_flow_grad",
@@ -131,6 +134,7 @@ cc_library(
     testonly = 1,
     srcs = ["gradients/grad_testutil.cc"],
     hdrs = ["gradients/grad_testutil.h"],
+    copts = tf_copts(),
     deps = [
         ":grad_op_registry",
         ":ops",
@@ -295,6 +299,7 @@ cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],
     hdrs = ["framework/grad_op_registry.h"],
+    copts = tf_copts(),
     deps = [
         ":ops",
         ":scope",
@@ -304,6 +309,7 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["gradients/array_grad.cc"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -334,6 +340,7 @@ tf_cc_test(
 cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -363,6 +370,7 @@ tf_cc_test(
 cc_library(
     name = "nn_grad",
     srcs = ["gradients/nn_grad.cc"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -392,6 +400,7 @@ tf_cc_test(
 cc_library(
     name = "data_flow_grad",
     srcs = ["gradients/data_flow_grad.cc"],
+    copts = tf_copts(),
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -566,6 +575,7 @@ tf_cc_test(
 cc_library(
     name = "test_op_op_lib",
     srcs = ["framework/test_op.cc"],
+    copts = tf_copts(),
     linkstatic = 1,
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
@@ -576,6 +586,7 @@ cc_library(
     testonly = 1,
     srcs = ["framework/testutil.cc"],
     hdrs = ["framework/testutil.h"],
+    copts = tf_copts(),
     deps = [
         ":client_session",
         ":ops",
@@ -641,6 +652,7 @@ cc_library(
     name = "queue_runner",
     srcs = ["training/queue_runner.cc"],
     hdrs = ["training/queue_runner.h"],
+    copts = tf_copts(),
     deps = [
         ":coordinator",
         "//tensorflow/core:core_cpu",
@@ -675,6 +687,7 @@ cc_library(
     name = "coordinator",
     srcs = ["training/coordinator.cc"],
     hdrs = ["training/coordinator.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

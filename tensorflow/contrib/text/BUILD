@@ -57,6 +57,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "skip_gram_kernels",
     srcs = ["kernels/skip_gram_kernels.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

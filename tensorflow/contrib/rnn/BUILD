@@ -350,6 +350,7 @@ tf_kernel_library(
     gpu_srcs = [
         "kernels/blas_gemm.h",
     ],
+    is_external = True,
     prefix = "kernels/gru_ops",
     deps = [
         "//tensorflow/core:framework",
@@ -368,6 +369,7 @@ tf_kernel_library(
     gpu_srcs = [
         "kernels/blas_gemm.h",
     ],
+    is_external = True,
     prefix = "kernels/lstm_ops",
     deps = [
         "//tensorflow/core:framework",

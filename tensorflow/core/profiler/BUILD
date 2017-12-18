@@ -20,12 +20,15 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 tf_cc_binary(
     name = "profiler",
     srcs = ["profiler.cc"],
+    copts = tf_copts() + if_not_windows(["-DHAVE_LINENOISE"]),
     deps = [
         ":protos_all_cc",
         "//tensorflow/c:c_api",
@@ -38,8 +41,7 @@ tf_cc_binary(
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
-        "@linenoise//:linenoise",
-    ],
+    ] + if_not_windows(["@linenoise//:linenoise"]),
 )
 
 tf_proto_library(

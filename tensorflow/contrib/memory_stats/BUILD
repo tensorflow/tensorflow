@@ -27,6 +27,7 @@ tf_kernel_library(
     srcs = [
         "kernels/memory_stats_ops.cc",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
     ],

@@ -33,6 +33,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
 load(
@@ -52,6 +53,7 @@ cc_library(
     name = "grpc_util",
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
+    copts = tf_copts(),
     deps = [
         "@grpc//:grpc_unsecure",
         "@grpc//:grpc++_unsecure",
@@ -65,6 +67,7 @@ cc_library(
     name = "grpc_client_cq_tag",
     srcs = [],
     hdrs = ["grpc_client_cq_tag.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_util",
         "//tensorflow/core:lib",
@@ -76,6 +79,7 @@ cc_library(
     name = "grpc_state",
     srcs = [],
     hdrs = ["grpc_state.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_util",
@@ -90,6 +94,7 @@ cc_library(
     name = "grpc_remote_worker",
     srcs = ["grpc_remote_worker.cc"],
     hdrs = ["grpc_remote_worker.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_state",
@@ -110,6 +115,7 @@ cc_library(
     name = "grpc_channel",
     srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_util",
         "//tensorflow/core:framework",
@@ -123,6 +129,7 @@ cc_library(
     name = "grpc_tensor_coding",
     srcs = ["grpc_tensor_coding.cc"],
     hdrs = ["grpc_tensor_coding.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -138,6 +145,7 @@ cc_library(
     name = "grpc_call",
     srcs = [],
     hdrs = ["grpc_call.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -149,6 +157,7 @@ cc_library(
     name = "async_service_interface",
     srcs = [],
     hdrs = ["async_service_interface.h"],
+    copts = tf_copts(),
     deps = [],
 )
 
@@ -156,6 +165,7 @@ cc_library(
     name = "grpc_worker_cache",
     srcs = ["grpc_worker_cache.cc"],
     hdrs = ["grpc_worker_cache.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_channel",
         ":grpc_client_cq_tag",
@@ -199,6 +209,7 @@ cc_library(
     name = "grpc_worker_service_impl",
     srcs = ["grpc_worker_service_impl.cc"],
     hdrs = ["grpc_worker_service_impl.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_serialization_traits",
         "//tensorflow/core:worker_proto_cc",
@@ -211,6 +222,7 @@ cc_library(
     name = "grpc_remote_master",
     srcs = ["grpc_remote_master.cc"],
     hdrs = ["grpc_remote_master.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_master_service_impl",
         ":grpc_util",
@@ -227,6 +239,7 @@ cc_library(
     name = "grpc_master_service",
     srcs = ["grpc_master_service.cc"],
     hdrs = ["grpc_master_service.h"],
+    copts = tf_copts(),
     deps = [
         ":async_service_interface",
         ":grpc_call",
@@ -245,6 +258,7 @@ cc_library(
     name = "grpc_master_service_impl",
     srcs = ["grpc_master_service_impl.cc"],
     hdrs = ["grpc_master_service_impl.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_serialization_traits",
         "//tensorflow/core:master_proto_cc",
@@ -256,6 +270,7 @@ cc_library(
     name = "grpc_serialization_traits",
     srcs = [],
     hdrs = ["grpc_serialization_traits.h"],
+    copts = tf_copts(),
     deps = [
         "@grpc//:grpc++_unsecure",
     ],
@@ -265,6 +280,7 @@ cc_library(
     name = "rpc_rendezvous_mgr",
     srcs = ["rpc_rendezvous_mgr.cc"],
     hdrs = ["rpc_rendezvous_mgr.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -281,6 +297,7 @@ cc_library(
     name = "grpc_server_lib",
     srcs = ["grpc_server_lib.cc"],
     hdrs = ["grpc_server_lib.h"],
+    copts = tf_copts(),
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         ":async_service_interface",
@@ -310,6 +327,7 @@ cc_library(
 
 cc_library(
     name = "grpc_runtime",
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":grpc_server_lib",
@@ -395,6 +413,7 @@ cc_library(
     name = "grpc_session",
     srcs = ["grpc_session.cc"],
     hdrs = ["grpc_session.h"],
+    copts = tf_copts(),
     deps = [
         ":grpc_channel",
         ":grpc_remote_master",

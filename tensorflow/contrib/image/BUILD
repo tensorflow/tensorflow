@@ -43,6 +43,7 @@ tf_kernel_library(
         "kernels/image_ops_gpu.cu.cc",
         "kernels/image_ops.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -35,9 +35,9 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
   return os;
 }
 
-const char* const DEVICE_CPU = "CPU";
-const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
+TF_EXPORT const char* const DEVICE_CPU = "CPU";
+TF_EXPORT const char* const DEVICE_GPU = "GPU";
+TF_EXPORT const char* const DEVICE_SYCL = "SYCL";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
 #if GOOGLE_CUDA
