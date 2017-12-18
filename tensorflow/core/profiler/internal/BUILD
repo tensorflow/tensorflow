@@ -5,12 +5,14 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 cc_library(
     name = "tfprof_stats",
     srcs = ["tfprof_stats.cc"],
     hdrs = ["tfprof_stats.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_code",
         ":tfprof_graph",
@@ -33,6 +35,7 @@ cc_library(
     name = "tfprof_timeline",
     srcs = ["tfprof_timeline.cc"],
     hdrs = ["tfprof_timeline.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_node_show",
         ":tfprof_utils",
@@ -46,6 +49,7 @@ cc_library(
     name = "tfprof_node",
     srcs = ["tfprof_node.cc"],
     hdrs = ["tfprof_node.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_options",
         ":tfprof_utils",
@@ -60,6 +64,7 @@ cc_library(
     name = "tfprof_scope",
     srcs = ["tfprof_scope.cc"],
     hdrs = ["tfprof_scope.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -81,6 +86,7 @@ cc_library(
     name = "tfprof_op",
     srcs = ["tfprof_op.cc"],
     hdrs = ["tfprof_op.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -101,6 +107,7 @@ cc_library(
     name = "tfprof_code",
     srcs = ["tfprof_code.cc"],
     hdrs = ["tfprof_code.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -123,6 +130,7 @@ cc_library(
     name = "tfprof_graph",
     srcs = ["tfprof_graph.cc"],
     hdrs = ["tfprof_graph.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -142,6 +150,7 @@ cc_library(
     name = "tfprof_node_show",
     srcs = ["tfprof_node_show.cc"],
     hdrs = ["tfprof_node_show.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -157,6 +166,7 @@ cc_library(
     name = "tfprof_show",
     srcs = ["tfprof_show.cc"],
     hdrs = ["tfprof_show.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -177,6 +187,7 @@ cc_library(
     name = "tfprof_show_multi",
     srcs = ["tfprof_show_multi.cc"],
     hdrs = ["tfprof_show_multi.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
@@ -248,7 +259,7 @@ cc_library(
     name = "tfprof_utils",
     srcs = ["tfprof_utils.cc"],
     hdrs = ["tfprof_utils.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":tfprof_options",
         "//tensorflow/core:lib",
@@ -261,6 +272,7 @@ cc_library(
     name = "tfprof_options",
     srcs = ["tfprof_options.cc"],
     hdrs = ["tfprof_options.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -271,6 +283,7 @@ cc_library(
 cc_library(
     name = "print_model_analysis_hdr",
     hdrs = ["print_model_analysis.h"],
+    copts = tf_copts(),
     deps = ["//tensorflow/core:framework"],
 )
 
@@ -278,6 +291,7 @@ cc_library(
     name = "print_model_analysis",
     srcs = ["print_model_analysis.cc"],
     hdrs = ["print_model_analysis.h"],
+    copts = tf_copts(),
     deps = [
         ":tfprof_options",
         ":tfprof_stats",
@@ -321,7 +335,7 @@ cc_library(
     name = "tfprof_tensor",
     srcs = ["tfprof_tensor.cc"],
     hdrs = ["tfprof_tensor.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -355,11 +369,13 @@ tf_cc_test(
 cc_library(
     name = "tfprof_constants",
     hdrs = ["tfprof_constants.h"],
+    copts = tf_copts(),
 )
 
 cc_library(
     name = "tfprof_tf_testlib",
     testonly = 1,
+    copts = tf_copts(),
     deps = [
         ":tfprof_tf_lib",
         "//tensorflow/core:test",
@@ -370,6 +386,7 @@ cc_library(
 
 cc_library(
     name = "tfprof_tf_lib",
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

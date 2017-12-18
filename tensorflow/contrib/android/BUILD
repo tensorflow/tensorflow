@@ -29,7 +29,7 @@ filegroup(
 cc_library(
     name = "android_tensorflow_inference_jni",
     srcs = if_android([":android_tensorflow_inference_jni_srcs"]),
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
@@ -72,7 +72,7 @@ LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
 cc_binary(
     name = "libtensorflow_inference.so",
     srcs = [],
-    copts = tf_copts() + [
+    copts = tf_copts(is_external = True) + [
         "-ffunction-sections",
         "-fdata-sections",
     ],

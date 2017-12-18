@@ -40,6 +40,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "sparse_feature_cross_op_kernel",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/layers/kernels:sparse_feature_cross_kernel",
         "//tensorflow/core:framework",

@@ -37,6 +37,7 @@ filegroup(
 tf_kernel_library(
     name = "bigquery_reader_ops",
     srcs = ["bigquery_reader_ops.cc"],
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":bigquery_table_accessor",
@@ -52,7 +53,7 @@ cc_library(
     name = "bigquery_table_accessor",
     srcs = ["bigquery_table_accessor.cc"],
     hdrs = ["bigquery_table_accessor.h"],
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     linkstatic = 1,
     deps = [
         ":bigquery_table_partition_proto_cc",

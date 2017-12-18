@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -18,6 +19,7 @@ cc_library(
         "pywrap_tensor.h",
         "pywrap_tfe.h",
     ],
+    copts = tf_copts(),
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
@@ -195,6 +197,7 @@ cc_library(
     name = "python_eager_op_gen",
     srcs = ["python_eager_op_gen.cc"],
     hdrs = ["python_eager_op_gen.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -212,6 +215,7 @@ cc_library(
     srcs = [
         "python_eager_op_gen_main.cc",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":python_eager_op_gen",

@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 filegroup(
     name = "all_files",
@@ -19,6 +20,7 @@ cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],
     hdrs = ["op_types.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
@@ -32,6 +34,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -74,6 +77,7 @@ cc_library(
     name = "graph_view",
     srcs = ["graph_view.cc"],
     hdrs = ["graph_view.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
@@ -101,6 +105,7 @@ cc_library(
         "grappler_item.cc",
     ],
     hdrs = ["grappler_item.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":op_types",
@@ -116,6 +121,7 @@ cc_library(
         "grappler_item_builder.cc",
     ],
     hdrs = ["grappler_item_builder.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",

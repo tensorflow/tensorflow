@@ -50,6 +50,7 @@ cc_library(
         "utils/sparse_column_iterable.h",
         "utils/tensor_utils.h",
     ],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
@@ -126,6 +127,7 @@ cc_library(
     name = "models",
     srcs = ["models/multiple_additive_trees.cc"],
     hdrs = ["models/multiple_additive_trees.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":trees",
         ":utils",
@@ -157,6 +159,7 @@ cc_library(
     testonly = 1,
     srcs = ["testutil/batch_features_testutil.cc"],
     hdrs = ["testutil/batch_features_testutil.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":utils",
         "//tensorflow/core:framework_headers_lib",
@@ -169,6 +172,7 @@ cc_library(
     name = "random_tree_gen",
     srcs = ["testutil/random_tree_gen.cc"],
     hdrs = ["testutil/random_tree_gen.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/core:lib",
@@ -195,6 +199,7 @@ cc_library(
         "quantiles/weighted_quantiles_stream.h",
         "quantiles/weighted_quantiles_summary.h",
     ],
+    copts = tf_copts(is_external = True),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -243,6 +248,7 @@ cc_library(
     name = "trees",
     srcs = ["trees/decision_tree.cc"],
     hdrs = ["trees/decision_tree.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
@@ -356,6 +362,7 @@ py_test(
 cc_library(
     name = "class-partition-key",
     hdrs = ["learner/common/accumulators/class-partition-key.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ],
@@ -364,6 +371,7 @@ cc_library(
 cc_library(
     name = "feature-stats-accumulator",
     hdrs = ["learner/common/accumulators/feature-stats-accumulator.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":class-partition-key",
     ],
@@ -386,6 +394,7 @@ cc_library(
     name = "example_partitioner",
     srcs = ["learner/common/partitioners/example_partitioner.cc"],
     hdrs = ["learner/common/partitioners/example_partitioner.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:trees",
         "//tensorflow/contrib/boosted_trees/lib:utils",
@@ -409,6 +418,7 @@ tf_cc_test(
 cc_library(
     name = "gradient-stats",
     hdrs = ["learner/common/stats/gradient-stats.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -418,6 +428,7 @@ cc_library(
 cc_library(
     name = "node-stats",
     hdrs = ["learner/common/stats/node-stats.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":gradient-stats",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
@@ -430,6 +441,7 @@ cc_library(
 cc_library(
     name = "split-stats",
     hdrs = ["learner/common/stats/split-stats.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":node-stats",
     ],
@@ -438,6 +450,7 @@ cc_library(
 cc_library(
     name = "feature-split-candidate",
     hdrs = ["learner/common/stats/feature-split-candidate.h"],
+    copts = tf_copts(is_external = True),
     deps = [
         ":split-stats",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",

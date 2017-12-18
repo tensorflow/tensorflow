@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 filegroup(
     name = "all_files",
@@ -47,6 +48,7 @@ cc_library(
     hdrs = [
         "cluster.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -63,6 +65,7 @@ cc_library(
     hdrs = [
         "virtual_cluster.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
@@ -92,6 +95,7 @@ cc_library(
     hdrs = [
         "single_machine.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",

@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 filegroup(
     name = "all_files",
@@ -20,6 +21,7 @@ cc_library(
     hdrs = [
         "static_schedule.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -57,6 +59,7 @@ cc_library(
     hdrs = [
         "auto_parallel.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
@@ -91,6 +94,7 @@ cc_library(
     hdrs = [
         "constant_folding.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
@@ -134,6 +138,7 @@ cc_library(
     hdrs = [
         "graph_rewriter.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -148,6 +153,7 @@ cc_library(
     hdrs = [
         "graph_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -161,6 +167,7 @@ cc_library(
     hdrs = [
         "arithmetic_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":constant_folding",
@@ -201,6 +208,7 @@ cc_library(
     hdrs = [
         "dependency_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":constant_folding",
@@ -242,6 +250,7 @@ cc_library(
     hdrs = [
         "model_pruner.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
@@ -274,6 +283,7 @@ cc_library(
     hdrs = [
         "memory_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
@@ -312,6 +322,7 @@ cc_library(
     hdrs = [
         "layout_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
@@ -356,6 +367,7 @@ cc_library(
     hdrs = [
         "meta_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",

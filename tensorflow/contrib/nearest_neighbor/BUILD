@@ -55,6 +55,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "nearest_neighbor_ops_kernels",
     srcs = ["kernels/hyperplane_lsh_probes.cc"],
+    is_external = True,
     deps = [
         ":hyperplane_lsh_probes",
         ":nearest_neighbor_ops_op_lib",

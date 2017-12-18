@@ -124,6 +124,7 @@ py_library(
 tf_kernel_library(
     name = "tensor_forest_kernels",
     srcs = [":v2_op_sources"],
+    is_external = True,
     deps = [
         ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
@@ -233,6 +234,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "model_ops_kernels",
+    is_external = True,
     deps = [
         ":model_ops_lib",
         "//tensorflow/core:framework",
@@ -329,6 +331,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "stats_ops_kernels",
+    is_external = True,
     deps = [
         ":stats_ops_lib",
         "//tensorflow/core:framework",

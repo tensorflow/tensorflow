@@ -17,6 +17,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_test")
@@ -27,6 +28,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
@@ -186,6 +188,7 @@ cc_library(
     name = "cost_analyzer_lib",
     srcs = ["grappler/cost_analyzer.cc"],
     hdrs = ["grappler/cost_analyzer.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -203,6 +206,7 @@ cc_library(
     name = "model_analyzer_lib",
     srcs = ["grappler/model_analyzer.cc"],
     hdrs = ["grappler/model_analyzer.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -216,6 +220,7 @@ cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -228,6 +233,7 @@ cc_library(
     name = "bfloat16_lib",
     srcs = ["lib/core/bfloat16.cc"],
     hdrs = ["lib/core/bfloat16.h"],
+    copts = tf_copts(),
     deps = [
         ":numpy_lib",
         ":safe_ptr",
@@ -241,6 +247,7 @@ cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    copts = tf_copts(),
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
@@ -254,6 +261,7 @@ cc_library(
     name = "kernel_registry",
     srcs = ["util/kernel_registry.cc"],
     hdrs = ["util/kernel_registry.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -265,6 +273,7 @@ cc_library(
     name = "cpp_python_util",
     srcs = ["util/util.cc"],
     hdrs = ["util/util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -276,6 +285,7 @@ cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
+    copts = tf_copts(),
     deps = [
         ":ndarray_tensor_bridge",
         ":numpy_lib",
@@ -297,6 +307,7 @@ cc_library(
     name = "safe_ptr",
     srcs = ["lib/core/safe_ptr.cc"],
     hdrs = ["lib/core/safe_ptr.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -308,6 +319,7 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
+    copts = tf_copts(),
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
@@ -324,6 +336,7 @@ cc_library(
     name = "py_seq_tensor",
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
+    copts = tf_copts(),
     deps = [
         ":numpy_lib",
         ":py_util",
@@ -338,6 +351,7 @@ cc_library(
     name = "py_util",
     srcs = ["lib/core/py_util.cc"],
     hdrs = ["lib/core/py_util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
@@ -349,6 +363,7 @@ cc_library(
     name = "py_record_reader_lib",
     srcs = ["lib/io/py_record_reader.cc"],
     hdrs = ["lib/io/py_record_reader.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
@@ -361,6 +376,7 @@ cc_library(
     name = "py_record_writer_lib",
     srcs = ["lib/io/py_record_writer.cc"],
     hdrs = ["lib/io/py_record_writer.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
@@ -457,6 +473,7 @@ cc_library(
         "framework/python_op_gen.h",
         "framework/python_op_gen_internal.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -472,6 +489,7 @@ cc_library(
 cc_library(
     name = "python_op_gen_main",
     srcs = ["framework/python_op_gen_main.cc"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -1043,6 +1061,7 @@ tf_gen_op_wrapper_py(
 cc_library(
     name = "test_ops_kernels",
     srcs = ["framework/test_ops.cc"],
+    copts = tf_copts(),
     linkstatic = 1,
     deps = [
         "//tensorflow/core:framework",
@@ -1061,6 +1080,7 @@ tf_gen_op_wrapper_py(
 cc_library(
     name = "test_ops_2_kernels",
     srcs = ["framework/test_ops_2.cc"],
+    copts = tf_copts(),
     linkstatic = 1,
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
@@ -2973,7 +2993,7 @@ cc_library(
     name = "cpp_shape_inference",
     srcs = ["framework/cpp_shape_inference.cc"],
     hdrs = ["framework/cpp_shape_inference.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     visibility = ["//visibility:public"],
     deps = [
         ":cpp_shape_inference_proto_cc",
@@ -3042,6 +3062,7 @@ py_library(
 tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
     srcs = ["tensorflow.i"],
+    copts = tf_copts(),
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",

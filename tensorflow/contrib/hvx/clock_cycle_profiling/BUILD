@@ -29,7 +29,7 @@ tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
     srcs = ["clock_cycle_profiling_main.cc"],
-    copts = tf_copts(),
+    copts = tf_copts(is_external = True),
     linkopts = select({
         "//tensorflow:android": [
             "-pie",

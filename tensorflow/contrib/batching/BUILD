@@ -156,6 +156,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "batch_ops_kernels",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/batching/kernels:batch_kernels",
         "//tensorflow/contrib/batching/util:periodic_function",

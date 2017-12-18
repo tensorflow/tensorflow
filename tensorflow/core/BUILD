@@ -356,6 +356,7 @@ cc_library(
         "platform/types.h",
         "platform/windows/cpu_info.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
@@ -503,6 +504,7 @@ cc_library(
     name = "reader_base",
     srcs = ["framework/reader_base.cc"],
     hdrs = ["framework/reader_base.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -523,6 +525,7 @@ cc_library(
     name = "op_gen_lib",
     srcs = ["framework/op_gen_lib.cc"],
     hdrs = ["framework/op_gen_lib.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
@@ -563,6 +566,7 @@ cc_library(
         "platform/thread_annotations.h",
         "platform/types.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps =
         [
@@ -645,6 +649,7 @@ cc_library(
 cc_library(
     name = "word2vec_ops",
     srcs = ["ops/word2vec_ops.cc"],
+    copts = tf_copts(),
     linkstatic = 1,
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/core:framework"],
@@ -653,6 +658,7 @@ cc_library(
 
 cc_library(
     name = "ops",
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
@@ -697,6 +703,7 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["ops/array_grad.cc"],
+    copts = tf_copts(),
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -710,6 +717,7 @@ cc_library(
 cc_library(
     name = "functional_grad",
     srcs = ["ops/functional_grad.cc"],
+    copts = tf_copts(),
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -726,6 +734,7 @@ cc_library(
         "ops/math_grad.cc",
         "ops/random_grad.cc",
     ],
+    copts = tf_copts(),
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -739,6 +748,7 @@ cc_library(
 cc_library(
     name = "nn_grad",
     srcs = ["ops/nn_grad.cc"],
+    copts = tf_copts(),
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [

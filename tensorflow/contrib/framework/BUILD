@@ -85,6 +85,7 @@ tf_kernel_library(
         "kernels/zero_initializer_op_gpu.cu.cc",
         "kernels/zero_initializer_op.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
