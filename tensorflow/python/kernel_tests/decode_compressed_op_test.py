@@ -23,7 +23,7 @@ import gzip
 import sys
 import zlib
 
-from six import StringIO
+from six import BytesIO
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -39,8 +39,8 @@ class DecodeCompressedOpTest(test.TestCase):
     elif compression_type == "ZLIB":
       return zlib.compress(bytes)
     else:
-      out = StringIO()
-      with gzip.GzipFile(fileobj=out, mode="w") as f:
+      out = BytesIO()
+      with gzip.GzipFile(fileobj=out, mode="wb") as f:
         f.write(bytes)
       return out.getvalue()
 
@@ -53,9 +53,9 @@ class DecodeCompressedOpTest(test.TestCase):
         self.assertEqual([2], decompressed.get_shape().as_list())
 
         result = decompressed.eval(
-            feed_dict={in_bytes: [self._compress("AaAA", compression_type),
-                                  self._compress("bBbb", compression_type)]})
-        self.assertAllEqual(["AaAA", "bBbb"], result)
+            feed_dict={in_bytes: [self._compress(b"AaAA", compression_type),
+                                  self._compress(b"bBbb", compression_type)]})
+        self.assertAllEqual([b"AaAA", b"bBbb"], result)
 
   def testDecompressWithRaw(self):
     for compression_type in ["ZLIB", "GZIP", ""]:
@@ -66,7 +66,7 @@ class DecodeCompressedOpTest(test.TestCase):
         decode = parsing_ops.decode_raw(decompressed, out_type=dtypes.int16)
 
         result = decode.eval(
-            feed_dict={in_bytes: [self._compress("AaBC", compression_type)]})
+            feed_dict={in_bytes: [self._compress(b"AaBC", compression_type)]})
         self.assertAllEqual(
             [[ord("A") + ord("a") * 256, ord("B") + ord("C") * 256]], result)
 
