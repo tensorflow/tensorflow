@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -251,6 +252,31 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest_FileNotAccessible) {
   std::unique_ptr<GrapplerItem> item =
       GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
   ASSERT_TRUE(item == nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
+  MetaGraphDef meta_graph;
+  // y = XTimesTwo(x)
+  constexpr char device[] = "/cpu:0";
+  *meta_graph.mutable_graph_def() = test::function::GDef(
+      {test::function::NDef("x", "Const", {}, {{"dtype", DT_FLOAT}}, device),
+       test::function::NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}},
+                            device)},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  ItemConfig cfg;
+  cfg.inline_functions = false;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item != nullptr);
 }
 
 }  // namespace
