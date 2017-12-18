@@ -390,17 +390,12 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
   """Fused implementation of `map` and `batch`.
 
   Maps `map_func` across `batch_size` consecutive elements of this dataset
-  and then combines them into a batch. Similarly to `batch_and_drop_remainder`,
-  if the batch size does not evenly divide the input dataset size, this
-  transformation will drop the final smaller element.
-
-
-  Functionally, it is equivalent to `map` followed by
-  `batch_and_drop_remainder`. However, by fusing the two transformations
-  together, the implementation can be more efficient. This transformation is a
-  stop gap solution for performance critical workloads. Once automatic input
-  pipeline optimization are implemented, the fusing of map and batch will not
-  need to be exposed at the API level and this method will be removed.
+  and then combines them into a batch. Functionally, it is equivalent to `map`
+  followed by `batch`. However, by fusing the two transformations together, the
+  implementation can be more efficient. Surfacing this transformation in the API
+  is temporary. Once automatic input pipeline optimization is implemented,
+  the fusing of `map` and `batch` will happen automatically and this API will be
+  deprecated.
 
   Args:
     map_func: A function mapping a nested structure of tensors to another

@@ -37,7 +37,8 @@ Status MakeIteratorFromInputElement(
       });
   opts.step_container = &step_container;
   std::vector<Tensor> return_values;
-  TF_RETURN_IF_ERROR(captured_func->Run(opts, input_element, &return_values));
+  TF_RETURN_IF_ERROR(
+      captured_func->RunWithBorrowedArgs(opts, input_element, &return_values));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {

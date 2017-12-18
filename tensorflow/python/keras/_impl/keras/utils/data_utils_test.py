@@ -186,7 +186,7 @@ class TestEnqueuers(test.TestCase):
         use_multiprocessing=False)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   @unittest.skipIf(
@@ -198,7 +198,7 @@ class TestEnqueuers(test.TestCase):
         use_multiprocessing=True)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   def test_ordered_enqueuer_threads(self):

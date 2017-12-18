@@ -561,7 +561,7 @@ static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
     bool ret;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                               /*default=*/false, &ret));
+                                               /*default_val=*/false, &ret));
     return !ret;
   }();
   return is_enabled;
@@ -4251,7 +4251,12 @@ bool CudnnSupport::DoDepthConcatenate(
   for (size_t i = 0; i < input_data.size(); ++i) {
     const auto& dimensions = input_dimensions[i];
     tmp.resize(dimensions.ElementCount());
-    stream->ThenMemcpyD2H<float>(*input_data[i], &tmp).BlockHostUntilDone();
+    stream->ThenMemcpyD2H<float>(*input_data[i], &tmp);
+    port::Status block_status = stream->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      LOG(ERROR) << "BlockHostUntilDone failed: " << block_status;
+      return false;
+    }
 
     for (int64 batch = 0; batch < output_dimensions.count(); ++batch) {
       for (int64 yx = 0; yx < area; ++yx) {

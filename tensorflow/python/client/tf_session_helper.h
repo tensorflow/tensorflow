@@ -187,6 +187,10 @@ std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
                                                     int num_dims,
                                                     TF_Status* status);
 
+// Returns the string representations of the missing unused input mappings.
+std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+    TF_ImportGraphDefResults* results);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

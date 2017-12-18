@@ -741,6 +741,13 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a conditional node onto the computation.
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const Computation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const Computation& false_computation);
+
   // Enqueues a ReducePrecision node onto the computation.
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,
@@ -816,7 +823,7 @@ class ComputationBuilder {
   // The operand must represent a constant value, which in this case
   // means that it must not statically depend on any parameter of the
   // computation that is being built other then the ones specified on the
-  // paramtere list. The parameters in the list will be indexed by their
+  // parameter list. The parameters in the list will be indexed by their
   // parameter id property so the number of parameters specified should be at
   // least as many as the largest used parameter index.
   //

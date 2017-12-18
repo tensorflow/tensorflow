@@ -335,21 +335,17 @@ model's loss. This is the
 [objective](https://developers.google.com/machine-learning/glossary/#objective)
 that will be optimized.
 
-Before we calculate loss, we we must first convert the labels from a list of
-indexes `(0, 1, 2)` to a
-[one-hot representation](https://developers.google.com/machine-learning/glossary/#one-hot_encoding)
-by calling @{tf.one_hot}. Then, we can calculate the loss by calling
-@{tf.losses.softmax_cross_entropy}. Here's the complete code:
+We can calculate the loss by calling @{tf.losses.sparse_softmax_cross_entropy}.
+The value returned by this function will be lowest, approximately 0,
+probability of the correct class (at index `label`) is near 1.0. The loss value
+returned is progressively larger as the probability of the correct class
+decreases.
 
+This function returns the average over the whole batch.
 
 ```python
-    # Convert the labels to a one-hot tensor of shape (length of features, 3)
-    # and with a on-value of 1 for each one-hot vector of length 3.
-    onehot_labels = tf.one_hot(labels, 3, 1, 0)
-
     # Compute loss.
-    loss = tf.losses.softmax_cross_entropy(
-        onehot_labels=onehot_labels, logits=logits)
+    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 ```
 
 ### Evaluate

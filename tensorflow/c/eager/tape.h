@@ -350,7 +350,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
     // Call destructors for all unneeded gradient functions and
     // clear the op_tape. We can clear the tape because ownership of
     // backward functions that will be used for gradient computation
-    // has been transfered to `result`.
+    // has been transferred to `result`.
     for (const auto& op_pair : *op_tape) {
       op_pair.second.backward_function_deleter();
     }

@@ -69,6 +69,21 @@ class SparseTensor {
     CHECK_EQ(shape.size(), dims_) << "Shape rank must be SparseTensor rank.";
   }
 
+  SparseTensor(const SparseTensor& other)
+      : SparseTensor(other.ix_, other.vals_, other.shape_, other.order_) {}
+
+  SparseTensor(SparseTensor&& other)
+      : SparseTensor(std::move(other.ix_), std::move(other.vals_),
+                     std::move(other.shape_), std::move(other.order_)) {}
+
+  SparseTensor& operator=(const SparseTensor& other) {
+    ix_ = other.ix_;
+    vals_ = other.vals_;
+    shape_ = other.shape_;
+    order_ = other.order_;
+    return *this;
+  }
+
   std::size_t num_entries() const { return ix_.dim_size(0); }
 
   int dims() const { return shape_.size(); }

@@ -193,6 +193,33 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
         enable_dot_strength_reduction_(enable_dot_strength_reduction),
         enable_conv_simplification_(enable_conv_simplification) {}
 
+  // Transforms Dots where at least one input is a vector or has a degenerate
+  // dimension and converts it into a multiply and reduce. This should enable
+  // more fusion than leaving the nodes as Dot operations.
+  StatusOr<bool> HandleDotStrengthReduction(HloInstruction* dot);
+
+  // Reshapes an instruction to rank 1 if it is not already rank 1.
+  HloInstruction* Flatten(HloInstruction* hlo) {
+    if (ShapeUtil::Rank(hlo->shape()) == 1) {
+      return hlo;
+    }
+    return computation_->AddInstruction(HloInstruction::CreateReshape(
+        ShapeUtil::MakeShape(hlo->shape().element_type(),
+                             {ShapeUtil::ElementsIn(hlo->shape())}),
+        hlo));
+  }
+
+  // Helper method to perform and add reduction in a single dimension.
+  HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
+    HloInstruction* zero = computation_->AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+    HloComputation* AddReduce_computation = CreateScalarBinaryComputation(
+        computation_->parent(), F32, HloOpcode::kAdd);
+    Shape shape = ShapeUtil::DeleteDimension(dim, hlo->shape());
+    return computation_->AddInstruction(HloInstruction::CreateReduce(
+        shape, hlo, zero, {dim}, AddReduce_computation));
+  }
+
   // Convenience method for replacing an instruction with a bitcast.
   void ReplaceWithBitcast(HloInstruction* instruction);
 
@@ -251,6 +278,11 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
     changed_ = true;
     return Status::OK();
   }
+
+  StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
+  StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
+      const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+      HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
@@ -574,6 +606,256 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   return Status::OK();
 }
 
+StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
+    HloInstruction* dot) {
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+  int64 lhs_collapsing_dim =
+      dot->dot_dimension_numbers().lhs_contracting_dimensions(0);
+  if (lhs->IsRank2Transpose()) {
+    lhs = lhs->mutable_operand(0);
+    lhs_collapsing_dim = 1 - lhs_collapsing_dim;
+  }
+  const int64 lhs_kept_dim = 1 - lhs_collapsing_dim;
+
+  int64 rhs_collapsing_dim =
+      dot->dot_dimension_numbers().rhs_contracting_dimensions(0);
+  if (rhs->IsRank2Transpose()) {
+    rhs = rhs->mutable_operand(0);
+    rhs_collapsing_dim = 1 - rhs_collapsing_dim;
+  }
+  const int64 rhs_kept_dim = 1 - rhs_collapsing_dim;
+
+  auto reshape_if_necessary = [&](HloInstruction* hlo) {
+    if (ShapeUtil::SameDimensions(hlo->shape(), dot->shape())) {
+      return hlo;
+    }
+    return computation_->AddInstruction(
+        HloInstruction::CreateReshape(dot->shape(), hlo));
+  };
+
+  auto broadcast_to_dim = [&](HloInstruction* hlo, const Shape& shape,
+                              int64 dim) {
+    return computation_->AddInstruction(
+        HloInstruction::CreateBroadcast(shape, hlo, {dim}));
+  };
+
+  auto multiply = [&](HloInstruction* local_lhs, HloInstruction* local_rhs) {
+    return computation_->AddInstruction(HloInstruction::CreateBinary(
+        local_lhs->shape(), HloOpcode::kMultiply, local_lhs, local_rhs));
+  };
+
+  // Strength reduce dot(a[K] , b[K]) =
+  //  reshape(result.shape,
+  //          reduce_sum(multiply(a, b), {0}))
+  if (ShapeUtil::Rank(rhs->shape()) == 1 &&
+      ShapeUtil::Rank(lhs->shape()) == 1) {
+    TF_RETURN_IF_ERROR(
+        ReplaceInstruction(dot, reshape_if_necessary(AddReduce(
+                                    multiply(Flatten(lhs), Flatten(rhs)), 0))));
+    return true;
+  }
+
+  if (ShapeUtil::IsEffectiveScalar(rhs->shape()) &&
+      ShapeUtil::IsEffectiveScalar(lhs->shape())) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(
+        dot, reshape_if_necessary(multiply(Flatten(lhs), Flatten(rhs)))));
+    return true;
+  }
+
+  // Simplify outer product into multiply with implicit broadcasting.
+  //
+  // A dot(a[M, 1], b[1, N]) = multiply(a [M,1], b [1, N])
+  if (ShapeUtil::Rank(rhs->shape()) == 2 &&
+      rhs->shape().dimensions(rhs_collapsing_dim) == 1) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(
+        dot, multiply(broadcast_to_dim(Flatten(lhs), dot->shape(), 0),
+                      broadcast_to_dim(Flatten(rhs), dot->shape(), 1))));
+    return true;
+  }
+
+  // Strength reduce dot(a[1, K], b) =
+  //    reshape(result.shape,
+  //      reduce_sum(
+  //        multiply(broadcast(reshape(a, [K]), {0}), b),
+  //        {0})
+  //      )
+  //    )
+  if (ShapeUtil::Rank(lhs->shape()) == 1 ||
+      (ShapeUtil::Rank(lhs->shape()) == 2 &&
+       lhs->shape().dimensions(lhs_kept_dim) == 1)) {
+    if (ShapeUtil::Rank(rhs->shape()) == 1) {
+      TF_RETURN_IF_ERROR(ReplaceInstruction(
+          dot,
+          reshape_if_necessary(AddReduce(multiply(Flatten(lhs), rhs), 0))));
+      return true;
+    }
+    TF_RETURN_IF_ERROR(ReplaceInstruction(
+        dot, reshape_if_necessary(
+                 AddReduce(multiply(broadcast_to_dim(Flatten(lhs), rhs->shape(),
+                                                     rhs_collapsing_dim),
+                                    rhs),
+                           rhs_collapsing_dim))));
+    return true;
+  }
+
+  // Strength reduce dot(a, b[K, 1]) =
+  //  reshape(result.shape,
+  //    reduce_sum(multiply(a, broadcast(reshape([K],b), {1})), {0})
+  //  )
+  if (ShapeUtil::Rank(rhs->shape()) == 1 ||
+      (ShapeUtil::Rank(rhs->shape()) == 2 &&
+       rhs->shape().dimensions(rhs_kept_dim) == 1)) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(
+        dot, reshape_if_necessary(AddReduce(
+                 multiply(lhs, broadcast_to_dim(Flatten(rhs), lhs->shape(),
+                                                lhs_collapsing_dim)),
+                 lhs_collapsing_dim))));
+    return true;
+  }
+  return false;
+}
+
+StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
+    HloInstruction* dot) {
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  if (dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.lhs_batch_dimensions_size() != 0) {
+    return nullptr;
+  }
+
+  const int64 lhs_contracting_dim = dnums.lhs_contracting_dimensions(0);
+  const int64 rhs_contracting_dim = dnums.rhs_contracting_dimensions(0);
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * optimized_lhs_concat,
+      OptimizeDotOfConcatHelper(dot->shape(), lhs, lhs_contracting_dim, rhs,
+                                rhs_contracting_dim, /*swapped=*/false));
+  if (optimized_lhs_concat) {
+    return optimized_lhs_concat;
+  }
+
+  return OptimizeDotOfConcatHelper(dot->shape(), rhs, rhs_contracting_dim, lhs,
+                                   lhs_contracting_dim, /*swapped=*/true);
+}
+
+StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
+    const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
+    HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped) {
+  bool can_optimize = lhs->opcode() == HloOpcode::kConcatenate &&
+                      lhs->concatenate_dimension() == lhs_contracting_dim &&
+                      rhs->opcode() == HloOpcode::kConstant;
+  if (!can_optimize) {
+    return nullptr;
+  }
+
+  // We're replacing this:
+  //
+  //   +-----+-----+-----+      +-------------------+
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      |        R_0        |
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      +-------------------+
+  //   |     |     |     |      |                   |
+  //   | L_0 | L_1 | L_2 |   *  |        R_1        |
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      +-------------------+
+  //   |     |     |     |      |                   |
+  //   |     |     |     |      |        R_2        |
+  //   |     |     |     |      |                   |
+  //   +-----+-----+-----+      +-------------------+
+  //
+  // with this:
+  //
+  // [Sum over i]
+  //
+  //   +-----+     +-------------------+
+  //   |     |     |                   |
+  //   |     |  *  |        R_i        |
+  //   |     |     |                   |
+  //   |     |     +-------------------+
+  //   |     |
+  //   | L_i |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   |     |
+  //   +-----+
+  //
+  // where the LHS is a concatenate operation (so we can "split" the LHS tensor
+  // for free) and the RHS is a constant tensor (and thus can be split at
+  // compile time).  In the future, we may also want to do this when both the
+  // LHS and the RHS are concatenate operations that line up along the dimension
+  // being contracted over.
+  //
+  // We should be able to generalize this transform to work on a non-constant
+  // RHS when/if we have in-place slices or support input-fusing slices into
+  // Dots.
+
+  // Dimension numbers for the new dot instructions we'll create (L_i * R_i in
+  // the diagram above).
+  DotDimensionNumbers new_dot_dnums;
+  new_dot_dnums.add_lhs_contracting_dimensions(swapped ? rhs_contracting_dim
+                                                       : lhs_contracting_dim);
+  new_dot_dnums.add_rhs_contracting_dimensions(swapped ? lhs_contracting_dim
+                                                       : rhs_contracting_dim);
+
+  // Here we use the MKN notation, where the contracted dimension has K
+  // elements and the two non-contracted dimensions have M and N elements.
+  HloInstruction* add_result = nullptr;
+  int64 rhs_contracting_dim_offset = 0;
+  int64 n = rhs->shape().dimensions(1 - rhs_contracting_dim);
+  for (HloInstruction* concat_op : lhs->operands()) {
+    int64 sub_k = concat_op->shape().dimensions(lhs_contracting_dim);
+    Shape rhs_slice_shape(rhs->shape());
+    rhs_slice_shape.set_dimensions(rhs_contracting_dim, sub_k);
+
+    std::array<int64, 2> start_indices;
+    start_indices[rhs_contracting_dim] = rhs_contracting_dim_offset;
+    start_indices[1 - rhs_contracting_dim] = 0;
+
+    std::array<int64, 2> limit_indices;
+    limit_indices[rhs_contracting_dim] = rhs_contracting_dim_offset + sub_k;
+    limit_indices[1 - rhs_contracting_dim] = n;
+
+    HloInstruction* rhs_slice =
+        computation_->AddInstruction(HloInstruction::CreateSlice(
+            rhs_slice_shape, rhs, /*start_indices=*/start_indices,
+            /*limit_indices=*/limit_indices, /*strides=*/{1, 1}));
+
+    // TODO(b/69062148): We can get rid of `swapped` once all backends support
+    // "non-canonical" contraction dimensions (that contracts dimension 1 of the
+    // LHS with dimension 0 of the RHS).  But for now we keep the same
+    // contraction dimensions as the incoming dot operation to ensure the new
+    // dot operations can be lowered.
+    HloInstruction *new_dot_lhs, *new_dot_rhs;
+    if (swapped) {
+      new_dot_lhs = rhs_slice;
+      new_dot_rhs = concat_op;
+    } else {
+      new_dot_lhs = concat_op;
+      new_dot_rhs = rhs_slice;
+    }
+
+    auto* new_dot = computation_->AddInstruction(HloInstruction::CreateDot(
+        dot_shape, new_dot_lhs, new_dot_rhs, new_dot_dnums));
+
+    if (add_result) {
+      add_result = computation_->AddInstruction(HloInstruction::CreateBinary(
+          dot_shape, HloOpcode::kAdd, add_result, new_dot));
+    } else {
+      add_result = new_dot;
+    }
+
+    rhs_contracting_dim_offset += sub_k;
+  }
+
+  return add_result;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   auto lhs = dot->mutable_operand(0);
   auto rhs = dot->mutable_operand(1);
@@ -595,6 +877,22 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
+  TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_concat_optimized,
+                      OptimizeDotOfConcat(dot));
+  if (dot_of_concat_optimized) {
+    VLOG(10) << "Replaced dot(concat(...), constant) with add(dot(..., "
+                "constant)...)";
+    return ReplaceInstruction(dot, dot_of_concat_optimized);
+  }
+
+  if (enable_dot_strength_reduction_ && !is_layout_sensitive_) {
+    TF_ASSIGN_OR_RETURN(bool did_strength_reduction,
+                        HandleDotStrengthReduction(dot));
+    if (did_strength_reduction) {
+      return Status::OK();
+    }
+  }
+
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
   if (lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
     DotDimensionNumbers dot_dimension_numbers;
@@ -608,106 +906,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
   }
 
-  if (!enable_dot_strength_reduction_) {
-    return Status::OK();
-  }
-
-  // Simplify outer product into multiply with implicit broadcasting.
-  //
-  // A dot(a[M, 1], b[1, N]) = multiply(a [M,1], b [1, N])
-  if (ShapeUtil::Rank(rhs->shape()) == 2 && rhs->shape().dimensions(0) == 1) {
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateBinary(dot->shape(), HloOpcode::kMultiply,
-                                          lhs, rhs));
-  }
-
-  // The following graph transformations take Dots where at least one input is a
-  // vector or has a degenerate dimension and converts it into a multiply and
-  // reduce. This should enable more fusion than leaving the nodes as Dot
-  // operations.
-
-  // Strength reduce dot(a[K] , b[K]) =
-  //  reshape(result.shape,
-  //          reduce_sum(multiply(a, b), {0}))
-  if (ShapeUtil::Rank(rhs->shape()) == 1 &&
-      ShapeUtil::Rank(lhs->shape()) == 1) {
-    auto multiply = computation_->AddInstruction(HloInstruction::CreateBinary(
-        rhs->shape(), HloOpcode::kMultiply, lhs, rhs));
-    HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
-        computation_->parent(), F32, HloOpcode::kAdd);
-    auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
-    auto reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
-        ShapeUtil::MakeShape(dot->shape().element_type(), {}), multiply, zero,
-        {0}, add_reduce_computation));
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateReshape(dot->shape(), reduce));
-  }
-
-  // Strength reduce dot(a[1, K], b) =
-  //    reshape(result.shape,
-  //      reduce_sum(
-  //        multiply(broadcast(reshape(a, [K]), {0}), b),
-  //        {0})
-  //      )
-  //    )
-  if (ShapeUtil::Rank(lhs->shape()) == 1 ||
-      (ShapeUtil::Rank(lhs->shape()) == 2 && lhs->shape().dimensions(0) == 1)) {
-    auto new_lhs = computation_->AddInstruction(HloInstruction::CreateReshape(
-        ShapeUtil::MakeShape(lhs->shape().element_type(),
-                             {ShapeUtil::ElementsIn(lhs->shape())}),
-        lhs));
-    HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
-        computation_->parent(), F32, HloOpcode::kAdd);
-    auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
-    HloInstruction* reduce;
-    if (ShapeUtil::Rank(rhs->shape()) == 1) {
-      auto multiply = computation_->AddInstruction(HloInstruction::CreateBinary(
-          rhs->shape(), HloOpcode::kMultiply, new_lhs, rhs));
-      reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
-          ShapeUtil::MakeShape(dot->shape().element_type(), {}), multiply, zero,
-          {0}, add_reduce_computation));
-    } else {
-      new_lhs = computation_->AddInstruction(
-          HloInstruction::CreateBroadcast(rhs->shape(), new_lhs, {0}));
-      auto multiply = computation_->AddInstruction(HloInstruction::CreateBinary(
-          rhs->shape(), HloOpcode::kMultiply, new_lhs, rhs));
-
-      reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
-          ShapeUtil::MakeShape(dot->shape().element_type(),
-                               {rhs->shape().dimensions(1)}),
-          multiply, zero, {0}, add_reduce_computation));
-    }
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateReshape(dot->shape(), reduce));
-  }
-
-  // Strength reduce dot(a, b[K, 1]) =
-  //  reshape(result.shape,
-  //    reduce_sum(multiply(a, broadcast(reshape([K],b), {1})), {0})
-  //  )
-  if (ShapeUtil::Rank(rhs->shape()) == 1 ||
-      (ShapeUtil::Rank(rhs->shape()) == 2 && rhs->shape().dimensions(1) == 1)) {
-    auto new_rhs = computation_->AddInstruction(HloInstruction::CreateReshape(
-        ShapeUtil::MakeShape(rhs->shape().element_type(),
-                             {ShapeUtil::ElementsIn(rhs->shape())}),
-        rhs));
-    new_rhs = computation_->AddInstruction(
-        HloInstruction::CreateBroadcast(lhs->shape(), new_rhs, {1}));
-    auto multiply = computation_->AddInstruction(HloInstruction::CreateBinary(
-        lhs->shape(), HloOpcode::kMultiply, lhs, new_rhs));
-    HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
-        computation_->parent(), F32, HloOpcode::kAdd);
-    auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
-    auto reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
-        ShapeUtil::MakeShape(dot->shape().element_type(),
-                             {lhs->shape().dimensions(0)}),
-        multiply, zero, {1}, add_reduce_computation));
-    return ReplaceWithNewInstruction(
-        dot, HloInstruction::CreateReshape(dot->shape(), reduce));
-  }
   return Status::OK();
 }
 

@@ -347,6 +347,20 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   return instruction;
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCanonicalDot(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs) {
+  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
+  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
+
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kDot, shape));
+  instruction->AppendOperand(lhs);
+  instruction->AppendOperand(rhs);
+  instruction->dot_dimension_numbers_ = MakeUnique<DotDimensionNumbers>();
+  instruction->dot_dimension_numbers_->add_lhs_contracting_dimensions(1);
+  instruction->dot_dimension_numbers_->add_rhs_contracting_dimensions(0);
+  return instruction;
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateReducePrecision(const Shape& shape,
                                       HloInstruction* operand,
@@ -2019,6 +2033,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
     extra.push_back(StrCat("select=%", select()->name()));
     extra.push_back(StrCat("scatter=%", scatter()->name()));
+  } else if (opcode() == HloOpcode::kConditional) {
+    extra.push_back(StrCat("true_computation=%", true_computation()->name()));
+    extra.push_back(StrCat("false_computation=%", false_computation()->name()));
   } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
              opcode() == HloOpcode::kReduceWindow ||
              opcode() == HloOpcode::kReduce) {
@@ -2064,6 +2081,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (opcode() == HloOpcode::kReducePrecision) {
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
+  }
+  if (opcode() == HloOpcode::kCustomCall) {
+    extra.push_back(
+        StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
   }
   return extra;
 }

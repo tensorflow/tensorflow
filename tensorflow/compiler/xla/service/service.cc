@@ -566,8 +566,10 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Wait for all executions to complete.
   for (int64 i = 0; i < streams.size(); ++i) {
-    if (!streams[i]->BlockHostUntilDone()) {
-      return InternalError("failed to complete execution for stream %lld", i);
+    Status block_status = streams[i]->BlockHostUntilDone();
+    if (!block_status.ok()) {
+      return InternalError("failed to complete execution for stream %lld: %s",
+                           i, block_status.error_message().c_str());
     }
   }
 
@@ -1081,7 +1083,8 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> shaped_buffer,
       ShapedBuffer::Allocate(
-          shape, execute_backend_->memory_allocator(), master_device_ordinal,
+          execute_backend_->transfer_manager()->HostShapeToDeviceShape(shape),
+          execute_backend_->memory_allocator(), master_device_ordinal,
           [this](const Shape& shape) {
             return execute_backend_->transfer_manager()->GetByteSizeRequirement(
                 shape);
@@ -1389,6 +1392,17 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status =
           computation->AddConcatenateInstruction(arg->concatenate_request());
       break;
+    case OpRequest::kConditionalRequest: {
+      TF_ASSIGN_OR_RETURN(UserComputation * true_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().true_computation()));
+      TF_ASSIGN_OR_RETURN(UserComputation * false_computation,
+                          computation_tracker_.Resolve(
+                              arg->conditional_request().false_computation()));
+      handle_status = computation->AddConditionalInstruction(
+          arg->conditional_request(), *true_computation, *false_computation);
+      break;
+    }
     case OpRequest::kConstantRequest:
       handle_status =
           computation->AddConstantInstruction(arg->constant_request());

@@ -2268,7 +2268,7 @@ def recall_at_precision(labels,
     thresholds = [0.0 - _EPSILON] + thresholds + [1.0 + _EPSILON]
 
     values, update_ops = _streaming_confusion_matrix_at_thresholds(
-        labels, predictions, thresholds, weights)
+        predictions, labels, thresholds, weights)
 
     recall = _compute_recall_at_precision(values['tp'], values['fp'],
                                           values['fn'], precision, 'value')

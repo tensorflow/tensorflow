@@ -914,6 +914,75 @@ class FunctionTest(test.TestCase):
           np.array([1.0, 0.0]).astype(np.float32),
           sess.run(dinp, {inp: x}))
 
+  def testFunctionMarkedStateful(self):
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    @function.Defun(dtypes.int64)
+    def Bar(x):
+      return x
+
+    # NOTE(mrry): All functions are currently considered stateless by the
+    # runtime, so we simulate a "stateful" function.
+    # TODO(b/70565970): Remove this hack when we are able to build stateful
+    # functions using the API.
+    # pylint: disable=protected-access
+    Foo._signature.is_stateful = True
+    Bar._signature.is_stateful = True
+    # pylint: enable=protected-access
+
+    result_1 = Foo(3, [1.0, 2.0, 3.0, 4.0])
+    result_2 = Bar(constant_op.constant(100, dtype=dtypes.int64))
+
+    with session.Session() as sess:
+      self.assertEqual(4.0, sess.run(result_1))
+      self.assertEqual(100, sess.run(result_2))
+      self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
+
+  def testStatefulFunction(self):
+
+    @function.Defun()
+    def FunctionWithStatelessOp():
+      return constant_op.constant(42.0)
+
+    @function.Defun()
+    def FunctionWithStatefulOp():
+      return random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun()
+    def FunctionWithStatelessFunctionCall():
+      return FunctionWithStatelessOp()
+
+    @function.Defun()
+    def FunctionWithStatefulFunctionCall():
+      return FunctionWithStatefulOp()
+
+    # Test that the `is_stateful` bit is propagated.
+    self.assertFalse(FunctionWithStatelessOp.definition.signature.is_stateful)
+    self.assertTrue(FunctionWithStatefulOp.definition.signature.is_stateful)
+    self.assertFalse(
+        FunctionWithStatelessFunctionCall.definition.signature.is_stateful)
+    self.assertTrue(
+        FunctionWithStatefulFunctionCall.definition.signature.is_stateful)
+
+    # Ensure that two invocations of the same random-number-generating
+    # function produce different results.
+    result1 = FunctionWithStatefulFunctionCall()
+    result2 = FunctionWithStatefulFunctionCall()
+
+    # Statefulness affects how the function is treated by the various
+    # optimization passes, so run the test in each optimizer
+    # configuration.
+    for config in _OptimizerOptions():
+      with session.Session(config=config) as sess:
+        val1, val2 = sess.run((result1, result2))
+        self.assertFalse(all(val1 == val2))
+        val3, val4 = sess.run((result1, result2))
+        self.assertFalse(all(val3 == val1))
+        self.assertFalse(all(val4 == val2))
+
 
 @test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):

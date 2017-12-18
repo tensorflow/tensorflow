@@ -37,14 +37,26 @@ class PlatformUtil {
   static StatusOr<std::vector<perftools::gputools::Platform*>>
   GetSupportedPlatforms();
 
-  // Convenience function which returns the default supported platform. If
+  // Convenience function which returns the default supported platform for
+  // tests. If exactly one supported platform is present, then this platform is
+  // the default platform. If exactly two platforms are present and one of them
+  // is the interpreter platform, then the other platform is the default
+  // platform. Otherwise returns an error.
+  static StatusOr<perftools::gputools::Platform*> GetDefaultPlatform();
+
+  // Convenience function which returns the sole supported platform. If
   // exactly one supported platform is present, then this platform is the
   // default platform. Otherwise returns an error.
-  static StatusOr<perftools::gputools::Platform*> GetDefaultPlatform();
+  static StatusOr<perftools::gputools::Platform*> GetSolePlatform();
 
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
   static StatusOr<perftools::gputools::Platform*> GetPlatform(
+      const string& platform_name);
+
+  // Returns exactly one platform that does not have given name. Returns error
+  // if there is no such platform, or there are multiple such platforms.
+  static StatusOr<perftools::gputools::Platform*> GetPlatformExceptFor(
       const string& platform_name);
 
   // Returns a vector of StreamExecutors for the given platform. The vector is

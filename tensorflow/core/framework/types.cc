@@ -306,12 +306,34 @@ bool DataTypeCanUseMemcpy(DataType dt) {
   }
 }
 
+bool DataTypeAlwaysOnHost(DataType dt) {
+  // Includes DT_STRING and DT_RESOURCE.
+  switch (dt) {
+    case DT_STRING:
+    case DT_STRING_REF:
+    case DT_RESOURCE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool DataTypeIsFloating(DataType dt) {
   switch (dt) {
     case DT_HALF:
     case DT_BFLOAT16:
     case DT_FLOAT:
     case DT_DOUBLE:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool DataTypeIsComplex(DataType dt) {
+  switch (dt) {
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
       return true;
     default:
       return false;

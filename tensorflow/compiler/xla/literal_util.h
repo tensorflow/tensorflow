@@ -99,6 +99,7 @@ class Literal {
     f16s_.clear();
     f32s_.clear();
     f64s_.clear();
+    c64s_.clear();
     tuple_literals_.clear();
   }
 

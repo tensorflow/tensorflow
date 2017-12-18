@@ -95,11 +95,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/c2947c341c68.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/c2947c341c68.tar.gz",
       ],
-      sha256 = "0840c497f2749b5e90bda666aab96be6da90dc75b4e21ca9843cae69b7fed52a",
-      strip_prefix = "eigen-eigen-b6e6d0cf6a77",
+      sha256 = "f21f8ab8a8dbcb91cd0deeade19a043f47708d0da7a4000164cdf203b4a71e34",
+      strip_prefix = "eigen-eigen-c2947c341c68",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -651,7 +651,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party/flatbuffers:flatbuffers.BUILD")),
   )
 
-
   tf_http_archive(
       name = "tflite_mobilenet",
       sha256 = "23f814d1c076bdf03715dfb6cab3713aa4fbdf040fd5448c43196bd2e97a4c1b",
@@ -660,6 +659,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip",
       ],
       build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "tflite_smartreply",
+      sha256 = "8980151b85a87a9c1a3bb1ed4748119e4a85abd3cb5744d83da4d4bd0fbeef7c",
+      urls = [
+          "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
+      ],
+      build_file = str(Label("//third_party:tflite_smartreply.BUILD")),
   )
 
   ##############################################################################
@@ -736,13 +745,4 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "zlib",
       actual = "@zlib_archive//:zlib",
-  )
-
-  native.new_http_archive(
-      name = "tflite_smartreply",
-      build_file = str(Label("//third_party:tflite_smartreply.BUILD")),
-      sha256 = "8980151b85a87a9c1a3bb1ed4748119e4a85abd3cb5744d83da4d4bd0fbeef7c",
-      urls = [
-          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip"
-      ],
   )
