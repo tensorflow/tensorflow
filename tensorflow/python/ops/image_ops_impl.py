@@ -1005,7 +1005,11 @@ def adjust_gamma(image, gamma=1, gain=1):
     # Keep image dtype for computing the scale of corresponding dtype
     image = ops.convert_to_tensor(image, name='image')
     # Check gamma positive
-    tf.assert_positive(gamma)
+    if tf.framework.is_tensor(image):
+      tf.assert_non_negative(gamma)
+    else:
+       if gamma < 0:
+          raise ValueError('Gamma should be a non-negative real number')
    
     # scale = max(dtype) - min(dtype)
     scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0],
