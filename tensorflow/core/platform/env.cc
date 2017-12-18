@@ -275,7 +275,8 @@ string Env::GetExecutablePath() {
   size_t exe_path_size = PATH_MAX;
 
   if (sysctl(mib, 4, exe_path, &exe_path_size, NULL, 0) != 0) {
-    return "Resolving ", exe_path, " failed";
+    // Resolution of path failed
+    return "";
   }
 #elif defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandleW(NULL);
