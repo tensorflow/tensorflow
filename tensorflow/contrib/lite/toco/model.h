@@ -75,6 +75,7 @@ enum class OperatorType {
   kSlice,
   kSqueeze,
   kMean,
+  kArgMax,
   // The SVDF Op is a decomposition of a densely connected Op into
   // low rank filters. For details:
   // https://research.google.com/pubs/pub43813.html
@@ -97,6 +98,7 @@ enum class OperatorType {
   kTensorFlowMinimum,
   kTensorFlowMatMul,
   kTensorFlowMerge,
+  kNeg,
   kTensorFlowReshape,
   kTensorFlowRsqrt,
   kTensorFlowShape,
@@ -863,6 +865,16 @@ struct RankOperator : Operator {
   RankOperator() : Operator(OperatorType::kRank) {}
 };
 
+// Element-wise negation (-x) operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Neg
+struct NegOperator : Operator {
+  NegOperator() : Operator(OperatorType::kNeg) {}
+};
+
 // Element-wise reciprocal-square-root (x^-0.5) operator.
 //
 // Inputs:
@@ -1208,7 +1220,19 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int input_rank;
+  int axis = 0;
+  int input_rank = 0;
+};
+
+// ArgMax operator. It returns the index of the maximum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMax
+struct ArgMaxOperator : Operator {
+  ArgMaxOperator() : Operator(OperatorType::kArgMax) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.
@@ -1249,6 +1273,10 @@ struct SpaceToBatchNDOperator : Operator {
 // TensorFlow equivalent: BatchToSpaceND
 struct BatchToSpaceNDOperator : Operator {
   BatchToSpaceNDOperator() : Operator(OperatorType::kBatchToSpaceND) {}
+
+  std::vector<int> block_shape;
+  std::vector<int> before_crops;
+  std::vector<int> after_crops;
 };
 
 // Mean operator.

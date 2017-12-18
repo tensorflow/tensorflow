@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
@@ -67,6 +68,65 @@ class FunctionTest(test.TestCase):
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testBasicDefunOpGraphMode(self):
+    matmul = function.defun(math_ops.matmul)
+
+    def sq(a):
+      return matmul(a, a)
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    sq_op = function.make_defun_op(sq, t)
+
+    self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
+    out = sq_op(t)
+    self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testNestedOutputDefunOpGraphMode(self):
+    matmul = function.defun(math_ops.matmul)
+
+    def sq(a):
+      return (matmul(a, a), {'b': constant_op.constant(1.0)})
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    sq_op = function.make_defun_op(sq, t)
+
+    self.assertEqual(sq_op.output_shapes,
+                     (tensor_shape.TensorShape([2, 2]),
+                      {'b': tensor_shape.TensorShape([])}))
+    self.assertEqual(sq_op.output_dtypes,
+                     (dtypes.float32, {'b': dtypes.float32}))
+    (a, b) = sq_op(t)
+    self.assertAllEqual(a, math_ops.matmul(t, t).numpy())
+    self.assertAllEqual(b['b'].numpy(), 1.0)
+
+  def testDefunOpGraphModeWithGradients(self):
+    v = resource_variable_ops.ResourceVariable(1.0, name='v')
+
+    def step():
+      def inner():
+        return v * v
+
+      return backprop.implicit_grad(inner)()[0][0]
+
+    step_op = function.make_defun_op(step)
+
+    self.assertEqual(step_op.output_dtypes, dtypes.float32)
+    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape(None))
+    self.assertAllEqual(step_op(), 2.0)
+
+  def testDefunOpGraphModeNoneOutput(self):
+    def fn(unused_a, unused_b):
+      return None
+
+    x = constant_op.constant(1)
+    fn_op = function.make_defun_op(fn, x, x)
+
+    self.assertEqual(fn_op.output_dtypes, None)
+    self.assertEqual(fn_op.output_shapes, None)
+    self.assertAllEqual(fn_op(x, x), None)
 
   def testDefunReadVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -322,6 +382,25 @@ class FunctionTest(test.TestCase):
       return read()
 
     self.assertEqual(1, int(outer()))
+
+  def testReturnCapturedEagerTensor(self):
+    t = constant_op.constant(1)
+
+    @function.defun
+    def read():
+      return t
+
+    self.assertEqual(1, int(read()))
+
+  def testReturnCapturedGraphTensor(self):
+    with context.graph_mode(), self.test_session():
+      t = constant_op.constant(1)
+
+      @function.defun
+      def read():
+        return t
+
+      self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
     clip_by_global_norm = function.defun(clip_ops.clip_by_global_norm)

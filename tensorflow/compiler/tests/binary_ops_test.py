@@ -547,7 +547,7 @@ class BinaryOpsTest(XLATestCase):
       self._testDivision(dtype)
 
   def testFloatDivision(self):
-    for dtype in self.float_types + self.complex_types:
+    for dtype in self.float_types | self.complex_types:
       self._testDivision(dtype)
 
   def _testRemainder(self, dtype):

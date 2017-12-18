@@ -78,30 +78,7 @@ class HloRunner {
   template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> literals,
-      bool run_hlo_passes = true);
-
-  // Executes the given module and returns a global data handle.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape, bool run_hlo_passes = true);
-
-  // Transfers the given literal to the device and returns the data handle.
-  StatusOr<perftools::gputools::DeviceMemoryBase> TransferToDevice(
-      const Literal& literal);
-
-  // Transfers the array referred to by the given handle from the device and
-  // returns as a Literal.
-  StatusOr<std::unique_ptr<Literal>> TransferFromDevice(
-      const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
-
-  // Executes the given module and return the result as a Literal.
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
+      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
       bool run_hlo_passes = true);
 
   // If backend is not created in the constructor, creates and returns the
@@ -112,9 +89,12 @@ class HloRunner {
   Backend& backend();
 
  private:
-  struct EigenThreadPoolWrapper;
+  StatusOr<std::unique_ptr<Literal>> ExecuteInternal(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<Literal*> arguments,
+      bool run_hlo_passes = true);
 
-  std::vector<perftools::gputools::DeviceMemoryBase> allocations_;
+  struct EigenThreadPoolWrapper;
 
   std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 
@@ -124,15 +104,14 @@ class HloRunner {
 template <typename LiteralPtr>
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
-    const tensorflow::gtl::ArraySlice<LiteralPtr> literals,
+    const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
     bool run_hlo_passes) {
-  std::vector<perftools::gputools::DeviceMemoryBase> arguments;
-  for (const auto& literal : literals) {
-    TF_ASSIGN_OR_RETURN(perftools::gputools::DeviceMemoryBase argument,
-                        TransferToDevice(*literal));
-    arguments.push_back(argument);
+  // Construct a vector of plain pointers for the arguments.
+  std::vector<Literal*> argument_pointers;
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&*argument);
   }
-  return ExecuteAndTransfer(std::move(module), arguments, run_hlo_passes);
+  return ExecuteInternal(std::move(module), argument_pointers, run_hlo_passes);
 }
 
 }  // namespace xla

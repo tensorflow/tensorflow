@@ -34,6 +34,7 @@ from tensorflow.python.framework import test_ops  # pylint: disable=unused-impor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -336,24 +337,20 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
-  def testCyclic(self):
-    # Importing cycles not supported with C API enabled (this test will
-    # eventually be deleted).
-    # TODO(skyewm): write while loop test
-    if ops._USE_C_API: return
+  def testWhileLoop(self):
+    # Produce GraphDef containing while loop.
+    graph = ops.Graph()
+    with graph.as_default():
+      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+    graph_def = graph.as_graph_def()
 
+    # Import the GraphDef and make sure it runs.
     with ops.Graph().as_default():
-      a, b = importer.import_graph_def(
-          self._MakeGraphDef("""
-          node { name: 'A' op: 'Unary'
-                 attr { key: 'T' value { type: DT_INT32 } } input: 'B:0' }
-          node { name: 'B' op: 'Unary'
-                 attr { key: 'T' value { type: DT_INT32 } } input: 'A:0' }
-          """),
-          return_elements=["A", "B"])
-
-      self.assertEqual(a.inputs[0], b.outputs[0])
-      self.assertEqual(b.inputs[0], a.outputs[0])
+      imported_r, = importer.import_graph_def(graph_def,
+                                              return_elements=[r.name])
+      self.assertEqual(imported_r.name, "import/" + r.name)
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(imported_r), 10)
 
   def testTypeMismatchInGraphDef(self):
     if ops._USE_C_API:

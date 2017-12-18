@@ -202,6 +202,7 @@ cc_library(
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_unused_op.cc",
         "graph_transformations/resolve_batch_normalization.cc",
+        "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",
         "graph_transformations/resolve_constant_concatenation.cc",
         "graph_transformations/resolve_constant_fake_quant.cc",

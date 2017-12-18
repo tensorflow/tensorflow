@@ -1355,9 +1355,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     const bool is_add = IsAdd(*node) || IsBiasAdd(*node);
     const bool is_sub = IsSub(*node);
     const bool is_any_div = IsAnyDiv(*node);
-    // Simplify multiplication by ones or zeros, and addition/subtraction of
-    // zeros.
-    if (is_aggressive && use_shape_info &&
+    // Simplify arithmetic operations with ones or zeros.
+    if (safe_to_use_shapes &&
         (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
         properties.HasInputProperties(node->name()) &&
         properties.HasOutputProperties(node->name())) {
@@ -1370,7 +1369,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const TensorShapeProto& output_shape =
           properties.GetOutputProperties(node->name())[0].shape();
 
-      // Simplify element-wise  multiplication by ones or addition/subtraction
+      // Simplify element-wise multiplication by ones or addition/subtraction
       // of zeros.
       const TensorShapeProto& y_shape =
           properties.GetInputProperties(node->name())[1].shape();
@@ -1387,8 +1386,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
 
       // Replace 1 / y with Reciprocal op.
       if (y_matches_output_shape && is_any_div && x_is_one) {
-        ReplaceDivisionOfOnesByReciprocal(node);
-        continue;
+        DataType type = node->attr().at("T").type();
+        if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
+          ReplaceDivisionOfOnesByReciprocal(node);
+          continue;
+        }
       }
 
       const TensorShapeProto& x_shape =
@@ -1444,7 +1446,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         continue;
       }
       DataType type = node->attr().at("T").type();
-      if (IsDiv(*node) && !DataTypeIsFloating(type)) {
+      if (IsDiv(*node) &&
+          !(DataTypeIsFloating(type) || DataTypeIsComplex(type))) {
         continue;
       }
       // Insert new reciprocal op and change node from Div to Mul.
@@ -1483,8 +1486,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // TODO(rmlarsen): Handle non-associative/non-commutative operators like
     // subtraction and division, as well as mixed subtraction/addition,
     // division/multiplication.
-    if (is_aggressive && (is_add || is_mul) &&
-        NumNonControlInputs(*node) == 2) {
+    if ((is_add || is_mul) && NumNonControlInputs(*node) == 2) {
       NodeDef* left_child = node_map_->GetNode(node->input(0));
       NodeDef* right_child = node_map_->GetNode(node->input(1));
       // One child must be constant, and the other the same op as the parent.
@@ -1509,7 +1511,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         continue;
       }
 
-      const int parent_const_input = left_child_is_constant ? 0 : 1;
+      // Identify the nodes to swap.
       const NodeDef* left_leaf = node_map_->GetNode(child_node->input(0));
       const NodeDef* right_leaf = node_map_->GetNode(child_node->input(1));
       const bool left_leaf_is_constant = IsReallyConstant(*left_leaf);
@@ -1518,7 +1520,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         // Child is already foldable, leave it alone.
         continue;
       }
-      int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
+      const int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
+      const int parent_const_input = left_child_is_constant ? 0 : 1;
 
       // Swap the constant child with a non-constant leaf node.
       node_map_->UpdateInput(node->name(), node->input(parent_const_input),

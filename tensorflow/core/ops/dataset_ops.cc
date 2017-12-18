@@ -508,8 +508,33 @@ reshuffle_each_iteration: If true, each iterator over this dataset will be given
   `seed` and `seed2` inputs. If false, each iterator will be given the same
   seed, and repeated iteration over this dataset will yield the exact same
   sequence of results.
-seed: A scalar seed for the random number generator. If either seed or
-  seed2 is set to be non-zero, the random number generator is seeded
+seed: A scalar seed for the random number generator. If either `seed` or
+  `seed2` is set to be non-zero, the random number generator is seeded
+  by the given seed.  Otherwise, a random seed is used.
+seed2: A second scalar seed to avoid seed collision.
+)doc");
+
+REGISTER_OP("ShuffleAndRepeatDataset")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("count: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that shuffles and repeats elements from `input_dataset`
+pseudorandomly.
+
+buffer_size: The number of output elements to buffer in an iterator over
+  this dataset. Compare with the `min_after_dequeue` attr when creating a
+  `RandomShuffleQueue`.
+count: A scalar representing the number of times the underlying dataset
+  should be repeated. The default is `-1`, which results in infinite repetition.
+seed: A scalar seed for the random number generator. If either `seed` or
+  `seed2` is set to be non-zero, the random number generator is seeded
   by the given seed.  Otherwise, a random seed is used.
 seed2: A second scalar seed to avoid seed collision.
 )doc");

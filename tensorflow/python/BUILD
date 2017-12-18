@@ -171,7 +171,10 @@ tf_py_test(
     name = "flags_test",
     size = "small",
     srcs = ["platform/flags_test.py"],
-    additional_deps = [":platform"],
+    additional_deps = [
+        ":client_testlib",
+        ":platform",
+    ],
 )
 
 tf_py_test(
@@ -797,15 +800,23 @@ py_library(
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":client",
         ":errors",
-        ":framework",
         ":framework_for_generated_wrappers",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
+        ":random_seed",
+        ":resource_variable_ops",
+        ":session",
         ":training",
         ":util",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1105,6 +1116,7 @@ py_test(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -1211,6 +1223,11 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         ":random_ops",
+        ":resource_variable_ops",
+        ":session",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -2028,6 +2045,7 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
+        ":control_flow_util",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":rnn_cell",

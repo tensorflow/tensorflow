@@ -816,7 +816,8 @@ void BM_ParallelFusion(int num_iters) {
   std::unique_ptr<LocalExecutable> executable =
       client
           ->Compile(computation,
-                    {&buffer0->shape(), &buffer1->shape(), &buffer2->shape()},
+                    {&buffer0->on_host_shape(), &buffer1->on_host_shape(),
+                     &buffer2->on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
 

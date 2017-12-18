@@ -537,6 +537,17 @@ void ConvertFakeQuantWithMinMaxVars(
   model->operators.emplace_back(op);
 }
 
+void ConvertNegOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Neg");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  auto* op = new NegOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertRsqrtOperator(const NodeDef& node,
                           const TensorFlowImportFlags& tf_import_flags,
                           Model* model) {
@@ -1188,6 +1199,23 @@ void ConvertGatherOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertArgMaxOperator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
+  CHECK_EQ(node.op(), "ArgMax");
+  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  const auto axis_data_type = GetDataTypeAttr(node, "Tidx");
+  const auto output_type = GetDataTypeAttr(node, "output_type");
+  CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
+  CHECK(output_type == DT_INT64 || output_type == DT_INT32);
+  auto* op = new ArgMaxOperator;
+  op->output_data_type = ConvertDataType(output_type);
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertResizeBilinearOperator(const NodeDef& node,
                                    const TensorFlowImportFlags& tf_import_flags,
                                    Model* model) {
@@ -1738,6 +1766,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertFakeQuantWithMinMaxVars(node, tf_import_flags, model);
     } else if (node.op() == "FakeQuantWithMinMaxArgs") {
       ConvertFakeQuantWithMinMaxArgs(node, tf_import_flags, model);
+    } else if (node.op() == "Neg") {
+      ConvertNegOperator(node, tf_import_flags, model);
     } else if (node.op() == "Rsqrt") {
       ConvertRsqrtOperator(node, tf_import_flags, model);
     } else if (node.op() == "Squeeze") {
@@ -1843,6 +1873,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertStackOperator(node, tf_import_flags, model);
     } else if (node.op() == "Transpose") {
       ConvertTransposeOperator(node, tf_import_flags, model);
+    } else if (node.op() == "ArgMax") {
+      ConvertArgMaxOperator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }
