@@ -1091,7 +1091,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         instr->shape().dimensions_size() > 1 &&
         !ShapeUtil::IsTuple(instr->shape())) {
       StrAppend(&instr_shape, "{",
-                Join(instr->shape().layout().minor_to_major(), ","), "}");
+                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the

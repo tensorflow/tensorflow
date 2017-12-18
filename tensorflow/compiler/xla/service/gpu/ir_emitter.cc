@@ -766,8 +766,8 @@ llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
   // reduction dimension.
   std::vector<int64> dimensions;
   const Shape& shape = operand_array.GetShape();
-  for (int i = shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape.layout().minor_to_major(i);
+  for (int i = 0; i < LayoutUtil::MinorToMajor(shape).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape.layout(), i);
     if (dimension != reduction_dimension) {
       dimensions.push_back(dimension);
     }

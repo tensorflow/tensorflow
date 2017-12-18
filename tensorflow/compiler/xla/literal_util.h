@@ -1111,7 +1111,7 @@ void Literal::PopulateR2WithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64>(values.size()),
        static_cast<int64>(values.begin()->size())},
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
 
   const int64 dim0_size = values.size();
   const int64 dim1_size = values.begin()->size();
@@ -1142,9 +1142,10 @@ void Literal::PopulateR2(
 template <typename NativeT>
 void Literal::PopulateFromArrayWithLayout(const Array<NativeT>& values,
                                           const Layout& layout) {
+  CHECK_EQ(layout.format(), DENSE);
   *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
   Reserve(values.num_elements());
   values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
                      NativeT value) { this->Set(indices, value); });

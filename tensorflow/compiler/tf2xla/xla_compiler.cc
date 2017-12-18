@@ -502,18 +502,6 @@ Status BuildComputation(
   return Status::OK();
 }
 
-void AssignMajorToMinorLayout(xla::Shape* shape) {
-  if (xla::ShapeUtil::IsTuple(*shape)) {
-    for (xla::Shape& elem_shape : *shape->mutable_tuple_shapes()) {
-      AssignMajorToMinorLayout(&elem_shape);
-    }
-  } else {
-    auto& minor_to_major = *shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major.Resize(xla::ShapeUtil::Rank(*shape), 0);
-    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
-  }
-}
-
 }  // namespace
 
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
@@ -589,7 +577,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
   // Tensorflow expects a major-to-minor order of results.
-  AssignMajorToMinorLayout(&result->xla_output_shape);
+  xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;
