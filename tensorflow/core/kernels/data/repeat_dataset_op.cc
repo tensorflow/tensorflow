@@ -175,29 +175,24 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         do {
+          bool first_call = false;
           if (!input_impl_) {
+            first_call = true;
             input_impl_ = dataset()->input_->MakeIterator(prefix());
-            TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-            // If the first call to GetNext() fails because the end of
-            // sequence has been reached, we return an OutOfRange
-            // error to terminate the iteration. (Otherwise, this
-            // iterator would loop infinitely and never produce a
-            // value.)
-            if (!*end_of_sequence) {
-              return Status::OK();
-            } else {
-              input_impl_.reset();
+          }
+          TF_RETURN_IF_ERROR(
+              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+          if (!*end_of_sequence) {
+            return Status::OK();
+          } else {
+            input_impl_.reset();
+            if (first_call) {
+              // If the first call to GetNext() fails because the end of
+              // sequence has been reached, we return an OutOfRange error to
+              // terminate the iteration. (Otherwise, this iterator would loop
+              // infinitely and never produce a value.)
               return errors::OutOfRange(
                   "Attempted to repeat an empty dataset infinitely.");
-            }
-          } else {
-            TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-            if (!*end_of_sequence) {
-              return Status::OK();
-            } else {
-              input_impl_.reset();
             }
           }
         } while (true);

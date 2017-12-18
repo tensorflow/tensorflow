@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "ShuffleDataset"
+  graph_op_name: "ShuffleAndRepeatDataset"
   in_arg {
     name: "buffer_size"
     description: <<END
@@ -22,15 +22,15 @@ END
 A second scalar seed to avoid seed collision.
 END
   }
-  attr {
-    name: "reshuffle_each_iteration"
+  in_arg {
+    name: "count"
     description: <<END
-If true, each iterator over this dataset will be given
-a different pseudorandomly generated seed, based on a sequence seeded by the
-`seed` and `seed2` inputs. If false, each iterator will be given the same
-seed, and repeated iteration over this dataset will yield the exact same
-sequence of results.
+A scalar representing the number of times the underlying dataset
+should be repeated. The default is `-1`, which results in infinite repetition.
 END
   }
-  summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
+  summary: "Creates a dataset that shuffles and repeats elements from `input_dataset`"
+  description: <<END
+pseudorandomly.
+END
 }
