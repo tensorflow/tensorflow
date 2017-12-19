@@ -3468,6 +3468,19 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "virtual_gpu_test",
+    size = "small",
+    srcs = ["client/virtual_gpu_test.py"],
+    additional_deps = [
+        ":client",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 py_test(
     name = "graph_util_test",
     size = "small",

@@ -100,6 +100,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "layers_conv_variational_test",
+    size = "small",
+    srcs = ["python/kernel_tests/layers_conv_variational_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
     name = "layers_dense_variational_test",
     size = "small",
     srcs = ["python/kernel_tests/layers_dense_variational_test.py"],
