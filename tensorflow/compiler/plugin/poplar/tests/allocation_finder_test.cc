@@ -516,93 +516,101 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 }
 
 // Check it goes through while instructions
-//TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
-//  auto hlo_module = MakeUnique<HloModule>("test_module");
-//
-//  Shape counter_shape = ShapeUtil::MakeShape(S32, {});
-//  Shape input_shape = ShapeUtil::MakeShape(F32, {2});
-//  Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
-//  Shape tuple_shape = ShapeUtil::MakeTupleShape(
-//          {counter_shape,input_shape,weight_shape});
-//
-//  const HloInstruction* dot_inst;
-//
-//  /* Create while condition */
-//  HloComputation* comp_cond;
-//  {
-//  auto builder_cond = HloComputation::Builder(TestName());
-//  auto tuple = builder_cond.AddInstruction(
-//          HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
-//  auto limit = builder_cond.AddInstruction(
-//          HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
-//  auto c = builder_cond.AddInstruction(
-//          HloInstruction::CreateGetTupleElement(ShapeUtil::MakeShape(S32, {}),
-//                                                tuple, 0));
-//  builder_cond.AddInstruction(HloInstruction::CreateBinary(
-//        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
-//
-//  comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
-//  }
-//
-//  /* Create while body */
-//  HloComputation* comp_body;
-//  {
-//  auto builder_body = HloComputation::Builder(TestName());
-//  auto tuple = builder_body.AddInstruction(
-//          HloInstruction::CreateParameter(0, tuple_shape, "tuple"));
-//  auto c = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-//          counter_shape, tuple, 0));
-//  auto in = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-//          input_shape, tuple, 1));
-//  auto w = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
-//          weight_shape, tuple, 2));
-//  auto one = builder_body.AddInstruction(
-//          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
-//  auto new_c = builder_body.AddInstruction(HloInstruction::CreateBinary(
-//          c->shape(), HloOpcode::kAdd, c, one));
-//
-//  DotDimensionNumbers dot_dnums;
-//  dot_dnums.add_lhs_contracting_dimensions(1);
-//  dot_dnums.add_rhs_contracting_dimensions(0);
-//  auto new_in = builder_body.AddInstruction(
-//          HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
-//
-//  dot_inst = new_in;
-//
-//  builder_body.AddInstruction(
-//          HloInstruction::CreateTuple({new_c, new_in, w}));
-//
-//  comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
-//  }
-//
-//
-//  /* Create main computation */
-//  auto builder_main = HloComputation::Builder(TestName());
-//  auto c = builder_main.AddInstruction(
-//          HloInstruction::CreateParameter(0, counter_shape, "counter"));
-//  auto in = builder_main.AddInstruction(
-//          HloInstruction::CreateParameter(1, input_shape, "in"));
-//  auto w = builder_main.AddInstruction(
-//          HloInstruction::CreateParameter(2, weight_shape, "weight"));
-//
-//  auto init = builder_main.AddInstruction(
-//          HloInstruction::CreateTuple({c, in, w}));
-//
-//  auto main = builder_main.AddInstruction(
-//          HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
-//
-//  builder_main.AddInstruction(
-//          HloInstruction::CreateTuple({main}));
-//
-//  hlo_module->AddEntryComputation(builder_main.Build());
-//
-//  AllocationFinder finder;
-//  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
-//
-//  ASSERT_EQ(finder.tensor_allocation_map.size(), 3);
-//  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(w,0)),
-//        std::make_pair(dot_inst,1ll));
-//}
+TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+
+  Shape counter_shape = ShapeUtil::MakeShape(S32, {});
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(
+          {counter_shape,input_shape,weight_shape});
+
+  const HloInstruction* dot_inst;
+  const HloInstruction* body_param;
+
+  /* Create while condition */
+  HloComputation* comp_cond;
+  {
+  auto builder_cond = HloComputation::Builder(TestName());
+  auto tuple = builder_cond.AddInstruction(
+          HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
+  auto limit = builder_cond.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
+  auto c = builder_cond.AddInstruction(
+          HloInstruction::CreateGetTupleElement(ShapeUtil::MakeShape(S32, {}),
+                                                tuple, 0));
+  builder_cond.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+
+  comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
+  }
+
+  /* Create while body */
+  HloComputation* comp_body;
+  {
+  auto builder_body = HloComputation::Builder(TestName());
+  auto tuple = builder_body.AddInstruction(
+          HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
+  auto c = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+          counter_shape, tuple, 0));
+  auto in = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+          input_shape, tuple, 1));
+  auto w = builder_body.AddInstruction(HloInstruction::CreateGetTupleElement(
+          weight_shape, tuple, 2));
+  auto one = builder_body.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+  auto new_c = builder_body.AddInstruction(HloInstruction::CreateBinary(
+          c->shape(), HloOpcode::kAdd, c, one));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto new_in = builder_body.AddInstruction(
+          HloInstruction::CreateDot(input_shape, in, w, dot_dnums));
+
+  dot_inst = new_in;
+  body_param = tuple;
+
+  builder_body.AddInstruction(
+          HloInstruction::CreateTuple({new_c, new_in, w}));
+
+  comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
+  }
+
+
+  /* Create main computation */
+  auto builder_main = HloComputation::Builder(TestName());
+  auto c = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(0, counter_shape, "counter"));
+  auto in = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(1, input_shape, "in"));
+  auto w = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(2, weight_shape, "weight"));
+
+  auto init = builder_main.AddInstruction(
+          HloInstruction::CreateTuple({c, in, w}));
+
+  auto main = builder_main.AddInstruction(
+          HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
+
+  builder_main.AddInstruction(
+          HloInstruction::CreateTuple({main}));
+
+  hlo_module->AddEntryComputation(builder_main.Build());
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(in,0)),
+          std::make_pair(dot_inst,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(w,0)),
+          std::make_pair(dot_inst,1ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(body_param,1)),
+          std::make_pair(dot_inst,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(body_param,2)),
+          std::make_pair(dot_inst,1ll));
+}
 
 }
 }
