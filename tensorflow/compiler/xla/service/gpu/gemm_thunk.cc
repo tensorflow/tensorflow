@@ -264,9 +264,9 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
 
   auto make_descriptor = [this](se::DeviceMemoryBase data, const Shape& shape,
                                 bool transpose) -> MatrixDescriptor {
-    bool is_row_major = shape.layout().minor_to_major(0) != 0;
-    bool layout_mismatch = shape.layout().minor_to_major(0) !=
-                           output_shape_.layout().minor_to_major(0);
+    bool is_row_major = LayoutUtil::Minor(shape.layout(), 0) != 0;
+    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), 0) !=
+                           LayoutUtil::Minor(output_shape_.layout(), 0);
     return MatrixDescriptor(data, transpose ^ layout_mismatch,
                             shape.dimensions(is_row_major),
                             shape.dimensions(!is_row_major));
@@ -320,7 +320,7 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
   };
 
   bool launch_ok;
-  if (output_shape_.layout().minor_to_major(0) == 0) {
+  if (LayoutUtil::Minor(output_shape_.layout(), 0) == 0) {
     launch_ok = launch(
         lhs_descriptor, rhs_descriptor,
         MatrixDescriptor(output_data, false, output_num_rows, output_num_cols),

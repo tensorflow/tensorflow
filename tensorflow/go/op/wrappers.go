@@ -5884,6 +5884,39 @@ func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, out
 	return op.Output(0)
 }
 
+// Creates a dataset that shuffles and repeats elements from `input_dataset`
+//
+// pseudorandomly.
+//
+// Arguments:
+//
+//	buffer_size: The number of output elements to buffer in an iterator over
+// this dataset. Compare with the `min_after_dequeue` attr when creating a
+// `RandomShuffleQueue`.
+//	seed: A scalar seed for the random number generator. If either `seed` or
+// `seed2` is set to be non-zero, the random number generator is seeded
+// by the given seed.  Otherwise, a random seed is used.
+//	seed2: A second scalar seed to avoid seed collision.
+//	count: A scalar representing the number of times the underlying dataset
+// should be repeated. The default is `-1`, which results in infinite repetition.
+//
+//
+func ShuffleAndRepeatDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ShuffleAndRepeatDataset",
+		Input: []tf.Input{
+			input_dataset, buffer_size, seed, seed2, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a Dataset that returns pseudorandom numbers.
 //
 // Arguments:
@@ -6379,8 +6412,8 @@ func ShuffleDatasetReshuffleEachIteration(value bool) ShuffleDatasetAttr {
 //	buffer_size: The number of output elements to buffer in an iterator over
 // this dataset. Compare with the `min_after_dequeue` attr when creating a
 // `RandomShuffleQueue`.
-//	seed: A scalar seed for the random number generator. If either seed or
-// seed2 is set to be non-zero, the random number generator is seeded
+//	seed: A scalar seed for the random number generator. If either `seed` or
+// `seed2` is set to be non-zero, the random number generator is seeded
 // by the given seed.  Otherwise, a random seed is used.
 //	seed2: A second scalar seed to avoid seed collision.
 //

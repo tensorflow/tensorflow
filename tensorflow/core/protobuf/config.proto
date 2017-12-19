@@ -42,18 +42,24 @@ message GPUOptions {
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1", then one
-  // would specify this field as "5,3".  This field is similar in
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1",
+  // then one would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
   //
-  // NOTE: The GPU driver provides the process with the visible GPUs
-  // in an order which is not guaranteed to have any correlation to
-  // the *physical* GPU id in the machine.  This field is used for
-  // remapping "visible" to "virtual", which means this operates only
-  // after the process starts.  Users are required to use vendor
-  // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
-  // physical to visible device mapping prior to invoking TensorFlow.
+  // NOTE:
+  // 1. The GPU driver provides the process with the visible GPUs
+  //    in an order which is not guaranteed to have any correlation to
+  //    the *physical* GPU id in the machine.  This field is used for
+  //    remapping "visible" to "virtual", which means this operates only
+  //    after the process starts.  Users are required to use vendor
+  //    specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
+  //    physical to visible device mapping prior to invoking TensorFlow.
+  // 2. In the code, the ids in this list are also called "CUDA GPU id"s,
+  //    and the 'virtual' ids of GPU devices (i.e. the ids in the device
+  //    name "/device:GPU:<id>") are also called "TF GPU id"s. Please
+  //    refer to third_party/tensorflow/core/common_runtime/gpu/gpu_id.h
+  //    for more information.
   string visible_device_list = 5;
 
   // In the event polling loop sleep this many microseconds between
@@ -77,6 +83,52 @@ message GPUOptions {
   // memory is unpageable, having too much pinned memory might negatively impact
   // the overall host system performance.
   bool force_gpu_compatible = 8;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/programmers_guide/version_compat.
+  message Experimental {
+    // Configuration for breaking down a visible GPU into multiple "virtual"
+    // devices.
+    message VirtualDevices {
+      // Per "virtual" device memory limit, in MB. The number of elements in
+      // the list is the number of virtual devices to create on the
+      // corresponding visible GPU (see "virtual_devices" below).
+      // If empty, it will create single virtual device taking all available
+      // memory from the device.
+      //
+      // For the concept of "visible" and "virtual" GPU, see the comments for
+      // "visible_device_list" above for more information.
+      repeated float memory_limit_mb = 1;
+    }
+
+    // The multi virtual device settings. If empty (not set), it will create
+    // single virtual device on each visible GPU, according to the settings
+    // in "visible_device_list" above. Otherwise, the number of elements in the
+    // list must be the same as the number of visible GPUs (after
+    // "visible_device_list" filtering if it is set), and the string represented
+    // device names (e.g. /device:GPU:<id>) will refer to the virtual
+    // devices and have the <id> field assigned sequentially starting from 0,
+    // according to the order they appear in this list and the "memory_limit"
+    // list inside each element. For example,
+    //   visible_device_list = "1,0"
+    //   virtual_devices { memory_limit: 1GB memory_limit: 2GB }
+    //   virtual_devices {}
+    // will create three virtual devices as:
+    //   /device:GPU:0 -> visible GPU 1 with 1GB memory
+    //   /device:GPU:1 -> visible GPU 1 with 2GB memory
+    //   /device:GPU:2 -> visible GPU 0 with all available memory
+    //
+    // NOTE:
+    // 1. It's invalid to set both this and "per_process_gpu_memory_fraction"
+    //    at the same time.
+    // 2. Currently this setting is per-process, not per-session. Using
+    //    different settings in different sessions within same process will
+    //    result in undefined behavior.
+    repeated VirtualDevices virtual_devices = 1;
+  }
+
+  Experimental experimental = 9;
 };
 
 // Options passed to the graph optimizer
