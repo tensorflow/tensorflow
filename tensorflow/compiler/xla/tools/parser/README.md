@@ -5,6 +5,8 @@ hlo_module
   : 'HloModule' name computations
   ;
 
+/* If no computation is marked as ENTRY, the last computation will be the entry
+computation of the module.*/
 computations
   : computation
   | computation computations
@@ -17,6 +19,8 @@ computation
   | name instruction_list
   ;
 
+/* If no instruction is marked as ROOT, the last instruction will be the root of
+its computation. */
 instruction_list
   : '{' instruction_list1 '}'
   ;
