@@ -48,8 +48,8 @@ class GatherOpModel : public SingleOpModel {
     PopulateStringTensor(input_, data);
   }
 
-  void SetPositions(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(positions_, data);
+  void SetPositions(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(positions_, data);
   }
 
   std::vector<float> GetOutputFloat() { return ExtractVector<float>(output_); }
@@ -74,6 +74,27 @@ TEST(GatherOpTest, Shuffle) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputFloat(),
               ElementsAreArray(ArrayFloatNear({0.7, 0.8, -2, 0.2})));
+}
+
+TEST(GatherOpTest, Index) {
+  GatherOpModel m({2, 2}, TensorType_FLOAT32, {});
+  m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
+  m.SetPositions({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputFloat(),
+              ElementsAreArray(ArrayFloatNear({0.7, 0.8})));
+  EXPECT_THAT(m.GetOutputShape(),
+              ElementsAreArray({2}));
+}
+
+TEST(GatherOpTest, IndexToCornerCase) {
+  GatherOpModel m({3}, TensorType_FLOAT32, {});
+  m.SetInputFloat({1.0, 2.0, 3.0});
+  m.SetPositions({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputFloat(),
+              ElementsAreArray(ArrayFloatNear({2.0})));
+  EXPECT_TRUE(m.GetOutputShape().empty());
 }
 
 TEST(FloatGatherOpTest, Duplicate) {
