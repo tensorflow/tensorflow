@@ -159,6 +159,10 @@ _allowed_symbols = [
     'assign_log_moving_mean_exp',
     'moving_mean_variance',
     'estimator_head_distribution_regression',
+    'quadrature_scheme_softmaxnormal_gauss_hermite',
+    'quadrature_scheme_softmaxnormal_quantiles',
+    'quadrature_scheme_lognormal_gauss_hermite',
+    'quadrature_scheme_lognormal_quantiles',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

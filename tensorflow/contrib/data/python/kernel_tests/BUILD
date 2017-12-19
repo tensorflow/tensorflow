@@ -481,7 +481,9 @@ py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:client_testlib",

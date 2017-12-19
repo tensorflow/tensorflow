@@ -535,12 +535,39 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
 }
 
+namespace {
+// Removes all stateless nodes that do not contribute to a return
+// value from the function body.  Unlike `RemoveDeadNodes()`, which is
+// triggered by `OptimizerOptions.do_function_inlining`, this pass
+// ignores the SINK node, from which (by definition) all nodes are
+// reverse reachable.
+void PruneFunctionBody(Graph* g) {
+  VLOG(2) << "Pruning function body";
+  std::unordered_set<const Node*> nodes;
+  for (auto n : g->nodes()) {
+    // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
+    // to the seed set of `nodes`.
+    // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
+    // still needed. It would be preferable to prune entire loops and/or
+    // conditionals if they are not used in the graph.
+    if (n->IsControlFlow() || n->op_def().is_stateful()) {
+      nodes.insert(n);
+    }
+  }
+  bool changed = PruneForReverseReachability(g, std::move(nodes));
+  if (changed) {
+    FixupSourceAndSinkEdges(g);
+  }
+}
+}  // namespace
+
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
   std::unique_ptr<Graph> g(new Graph(lib_def_));
   CopyGraph(*fbody->graph, g.get());
 
+  PruneFunctionBody(g.get());
   optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));

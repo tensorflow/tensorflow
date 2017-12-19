@@ -747,6 +747,19 @@ class ControlFlowTest(test.TestCase):
           maximum_iterations=1)
       self.assertEqual(1, r.eval())
 
+  def testInvalidMaximumIterationsContext(self):
+    def outer_body(i, r):
+      r = control_flow_ops.while_loop(lambda i: i < 3, lambda i: i + 1, [0],
+                                      maximum_iterations=r.shape[0])
+      return i, r
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "maximum_iterations tensor cannot be declared in tf.cond or "
+        "tf.while_loop"):
+      control_flow_ops.while_loop(lambda i, r: i < 3, outer_body,
+                                  [0, constant_op.constant([1])])
+
   # Have more than 10 parallel iterations and hence exercise k-bound
   # most of the time.
   def testWhile_3(self):

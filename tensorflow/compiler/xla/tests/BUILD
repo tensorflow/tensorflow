@@ -117,6 +117,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/tools/parser:hlo_parser",
@@ -360,6 +361,7 @@ xla_test(
 xla_test(
     name = "map_test",
     srcs = ["map_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -444,6 +446,7 @@ xla_test(
     backends = [
         "cpu",
         "gpu",
+        "cpu_parallel",
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",

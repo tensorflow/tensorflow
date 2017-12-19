@@ -278,8 +278,6 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
       c_api.TF_ImportGraphDefOptionsAddReturnOperation(options,
                                                        compat.as_str(name))
 
-  # TODO(skyewm): control dependencies
-
 
 def _ProcessNewOps(graph):
   """Processes the newly-added TF_Operations in `graph`."""
@@ -287,11 +285,7 @@ def _ProcessNewOps(graph):
   # is specified in the attributes.
   colocation_pairs = {}
 
-  for c_op in c_api_util.new_tf_operations(graph):
-    # pylint: disable=protected-access
-    new_op = graph._create_op_from_tf_operation(c_op, compute_device=False)
-    # pylint: enable=protected-access
-
+  for new_op in graph._add_new_tf_operations(compute_devices=False):  # pylint: disable=protected-access
     colocation_names = _GetColocationNames(new_op)
     if colocation_names:
       colocation_pairs[new_op] = colocation_names

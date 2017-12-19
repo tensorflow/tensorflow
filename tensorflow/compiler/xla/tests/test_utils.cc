@@ -25,6 +25,7 @@ namespace {
 
 template <typename FloatT>
 void PopulateWithRandomFloatingPointData(Literal* literal) {
+  // TODO(b/69179121): Generate data that is less self-similar.
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;

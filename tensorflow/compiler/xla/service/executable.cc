@@ -26,23 +26,23 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
+StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>>
 Executable::ExecuteOnStreams(
     tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions> run_options,
     tensorflow::gtl::ArraySlice<
-        tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
+        tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
         arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
+  std::vector<std::unique_ptr<ShapedBuffer>> return_values(run_options.size());
+
   if (run_options.size() == 1) {
-    TF_ASSIGN_OR_RETURN(auto result,
+    TF_ASSIGN_OR_RETURN(return_values[0],
                         ExecuteOnStream(&run_options[0], arguments[0],
                                         /*hlo_execution_profile=*/nullptr));
-    return std::vector<perftools::gputools::DeviceMemoryBase>({result});
+    return std::move(return_values);
   }
 
-  std::vector<perftools::gputools::DeviceMemoryBase> return_values(
-      run_options.size());
   for (size_t i = 0; i < run_options.size(); ++i) {
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
@@ -54,7 +54,7 @@ Executable::ExecuteOnStreams(
     TF_RET_CHECK(options.stream() != nullptr);
     TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
   }
-  return return_values;
+  return std::move(return_values);
 }
 
 Status Executable::DumpSessionModule() {

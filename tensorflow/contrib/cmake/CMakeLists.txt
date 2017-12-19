@@ -33,6 +33,7 @@ option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
+option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -103,6 +104,10 @@ if (tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endif()
+
+if (tensorflow_DISABLE_EIGEN_FORCEINLINE)
+  add_definitions(-DEIGEN_STRONG_INLINE=inline)
 endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)

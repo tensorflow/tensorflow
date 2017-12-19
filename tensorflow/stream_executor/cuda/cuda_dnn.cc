@@ -2761,14 +2761,27 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
   float zero = 0.0;
 
   if (is_training) {
-    stream->ThenMemZero(batch_mean, batch_mean->size());
-    stream->ThenMemZero(batch_var, batch_var->size());
+    CHECK_EQ(batch_mean->is_null(), batch_var->is_null())
+        << "batch_mean and batch_var must both be null or both be non-null";
+
+    void* batch_mean_opaque;
+    void* batch_var_opaque;
+    if (!batch_mean->is_null() && !batch_var->is_null()) {
+      stream->ThenMemZero(batch_mean, batch_mean->size());
+      stream->ThenMemZero(batch_var, batch_var->size());
+      batch_mean_opaque = batch_mean->opaque();
+      batch_var_opaque = batch_var->opaque();
+    } else {
+      batch_mean_opaque = nullptr;
+      batch_var_opaque = nullptr;
+    }
+
     status = wrap::cudnnBatchNormalizationForwardTraining(
         parent_, ToHandle(dnn_handle_), mode, &one, &zero,
         x_descriptor.handle(), x.opaque(), x_descriptor.handle(), y->opaque(),
         scale_offset_descriptor.handle(), scale.opaque(), offset.opaque(), 1.0,
-        batch_mean->opaque(), batch_var->opaque(), epsilon,
-        saved_mean->opaque(), saved_inv_var->opaque());
+        batch_mean_opaque, batch_var_opaque, epsilon, saved_mean->opaque(),
+        saved_inv_var->opaque());
 #if CUDNN_VERSION < 5000
     CHECK(inv_var_to_var);
     inv_var_to_var();
@@ -2797,28 +2810,28 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<float>& y_backprop,
     const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
     DeviceMemory<float>* offset_backprop) {
   return DoBatchNormalizationBackwardImpl(
       stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop, x, scale, mean,
-      variance, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      inv_var, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
       offset_backprop);
 }
 
 bool CudnnSupport::DoBatchNormalizationBackward(
     Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
     const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
     DeviceMemory<float>* offset_backprop) {
   return DoBatchNormalizationBackwardImpl(
       stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale, mean,
-      variance, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      inv_var, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
       offset_backprop);
 }
 
@@ -2827,7 +2840,7 @@ bool CudnnSupport::DoBatchNormalizationBackwardImpl(
     Stream* stream, int cudnn_input_type, int cudnn_scale_type,
     const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
     const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
-    const DeviceMemory<U>& variance, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
     DeviceMemory<U>* offset_backprop) {
@@ -2854,7 +2867,7 @@ bool CudnnSupport::DoBatchNormalizationBackwardImpl(
       y_backprop.opaque(), x_descriptor.handle(), x_backprop->opaque(),
       scale_offset_descriptor.handle(), scale.opaque(),
       scale_backprop->opaque(), offset_backprop->opaque(), epsilon,
-      mean.opaque(), variance.opaque());
+      mean.opaque(), inv_var.opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to enqueue backward batch normalization on stream: "
                << ToString(status);

@@ -18,6 +18,7 @@ gen_zipped_test_files(
     files = [
         "add.zip",
         "avg_pool.zip",
+        "batch_to_space_nd.zip",
         "concat.zip",
         "constant.zip",
         "control_dep.zip",
@@ -25,6 +26,7 @@ gen_zipped_test_files(
         "depthwiseconv.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
+        "gather.zip",
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",

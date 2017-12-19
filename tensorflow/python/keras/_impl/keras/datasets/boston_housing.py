@@ -48,7 +48,7 @@ def load_data(path='boston_housing.npz', seed=113, test_split=0.2):
   f.close()
 
   np.random.seed(seed)
-  indices = np.arrange(len(x))
+  indices = np.arange(len(x))
   np.random.shuffle(indices)
   x = x[indices]
   y = y[indices]

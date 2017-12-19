@@ -72,24 +72,16 @@ class GpuExecutable : public Executable {
   // empty, in which case compilation is left up to the GPU driver.
   const std::vector<uint8>& cubin() const { return cubin_; }
 
-  // Both overloads of ExecuteOnStream will fail if the compute capability of
-  // the stream doesn't match the compute capability passed to this object's
-  // constructor.
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
+  // ExecuteOnStream will fail if the compute capability of the stream doesn't
+  // match the compute capability passed to this object's constructor.
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   const Status EqualOrFail(const Executable& executable) {
     // TODO(b/62952745) Implement equality test on GPU executable.

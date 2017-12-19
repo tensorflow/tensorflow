@@ -629,7 +629,7 @@ class Layer(object):
           self._assert_input_compatibility(inputs)
           if input_list and self._dtype is None:
             try:
-              self._dtype = input_list[0].dtype.name
+              self._dtype = input_list[0].dtype.base_dtype.name
             except AttributeError:
               pass
           input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
