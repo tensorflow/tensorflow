@@ -22,8 +22,9 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "partition_assignment",
     srcs = [
         "partition_assignment.cc",
@@ -63,7 +64,7 @@ cc_library(
 #    ],
 #)
 
-cc_library(
+tf_cc_library(
     name = "stream_assignment",
     srcs = ["stream_assignment.cc"],
     hdrs = ["stream_assignment.h"],
@@ -92,7 +93,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_to_ir_bindings",
     srcs = ["hlo_to_ir_bindings.cc"],
     hdrs = ["hlo_to_ir_bindings.h"],
@@ -110,7 +111,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
@@ -155,7 +156,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_loop_emitter",
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
@@ -172,7 +173,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
@@ -198,7 +199,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "buffer_allocations",
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
@@ -214,7 +215,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_executable",
     srcs = [
         "convolution_thunk.cc",
@@ -273,7 +274,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
@@ -289,7 +290,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "convolution_folding",
     srcs = ["convolution_folding.cc"],
     hdrs = ["convolution_folding.h"],
@@ -319,7 +320,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "instruction_fusion",
     srcs = ["instruction_fusion.cc"],
     hdrs = ["instruction_fusion.h"],
@@ -342,7 +343,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_copy_insertion",
     srcs = ["gpu_copy_insertion.cc"],
     hdrs = ["gpu_copy_insertion.h"],
@@ -357,7 +358,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
@@ -384,7 +385,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "pad_insertion",
     srcs = ["pad_insertion.cc"],
     hdrs = ["pad_insertion.h"],
@@ -399,7 +400,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_transfer_manager",
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
@@ -422,7 +423,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
@@ -480,7 +481,7 @@ cc_library(
     alwayslink = True,  # Contains compiler registration
 )
 
-cc_library(
+tf_cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
@@ -492,7 +493,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_layout_assignment",
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
@@ -523,7 +524,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_schedule",
     srcs = ["hlo_schedule.cc"],
     hdrs = ["hlo_schedule.h"],
@@ -555,7 +556,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "while_transformer",
     srcs = ["while_transformer.cc"],
     hdrs = ["while_transformer.h"],

@@ -19,6 +19,7 @@ package_group(
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
@@ -56,7 +57,7 @@ xla_proto_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -71,7 +72,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
@@ -82,7 +83,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
@@ -93,7 +94,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "service_interface",
     srcs = [],
     hdrs = ["service_interface.h"],
@@ -104,7 +105,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "status_macros",
     srcs = ["status_macros.cc"],
     hdrs = ["status_macros.h"],
@@ -130,7 +131,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "status",
     hdrs = ["status.h"],
     visibility = ["//visibility:public"],
@@ -140,7 +141,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "statusor",
     srcs = ["statusor.cc"],
     hdrs = [
@@ -169,7 +170,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = [
@@ -189,7 +190,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "protobuf_util",
     srcs = ["protobuf_util.cc"],
     hdrs = [
@@ -226,7 +227,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_util",
     srcs = [
         "index_util.cc",
@@ -291,7 +292,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "literal_util",
     srcs = ["literal_util.cc"],
     hdrs = ["literal_util.h"],
@@ -325,7 +326,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "metric_table_report",
     srcs = ["metric_table_report.cc"],
     hdrs = ["metric_table_report.h"],
@@ -336,7 +337,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "device_util",
     hdrs = ["device_util.h"],
     visibility = ["//visibility:public"],
@@ -347,7 +348,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array",
     hdrs = ["array.h"],
     deps = [
@@ -367,7 +368,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array2d",
     srcs = ["array2d.cc"],
     hdrs = ["array2d.h"],
@@ -390,7 +391,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array3d",
     hdrs = ["array3d.h"],
     visibility = [":friends"],
@@ -412,7 +413,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array4d",
     hdrs = ["array4d.h"],
     visibility = [":friends"],
@@ -435,14 +436,14 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "executable_run_options",
     srcs = ["executable_run_options.cc"],
     hdrs = ["executable_run_options.h"],
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "packed_literal_reader",
     srcs = ["packed_literal_reader.cc"],
     hdrs = ["packed_literal_reader.h"],
@@ -459,7 +460,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "test_helpers",
     testonly = 1,
     hdrs = ["test_helpers.h"],
@@ -473,7 +474,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "text_literal_reader",
     srcs = ["text_literal_reader.cc"],
     hdrs = ["text_literal_reader.h"],
@@ -506,7 +507,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "text_literal_writer",
     srcs = ["text_literal_writer.cc"],
     hdrs = ["text_literal_writer.h"],
@@ -535,7 +536,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_tree",
     hdrs = ["shape_tree.h"],
     visibility = ["//visibility:public"],
@@ -561,7 +562,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_layout",
     srcs = ["shape_layout.cc"],
     hdrs = ["shape_layout.h"],
@@ -575,7 +576,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "window_util",
     srcs = ["window_util.cc"],
     hdrs = ["window_util.h"],
@@ -587,7 +588,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "reference_util",
     srcs = ["reference_util.cc"],
     hdrs = ["reference_util.h"],

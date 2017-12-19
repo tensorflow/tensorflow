@@ -12,8 +12,9 @@ package_group(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",

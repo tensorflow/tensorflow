@@ -4,6 +4,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow/compiler/xla/client:friends"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -13,7 +15,7 @@ filegroup(
     ]),
 )
 
-cc_library(
+tf_cc_library(
     name = "arithmetic",
     srcs = ["arithmetic.cc"],
     hdrs = ["arithmetic.h"],
@@ -28,7 +30,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],

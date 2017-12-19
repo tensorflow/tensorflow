@@ -27,7 +27,7 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dumped_computation_to_graphviz_library",
     srcs = ["dumped_computation_to_graphviz.cc"],
     deps = [
@@ -71,7 +71,7 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "replay_computation_library",
     srcs = ["replay_computation.cc"],
     deps = [

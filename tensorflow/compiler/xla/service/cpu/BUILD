@@ -16,6 +16,7 @@ package_group(
 
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 
@@ -28,7 +29,7 @@ filegroup(
     ]),
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_transfer_manager",
     srcs = ["cpu_transfer_manager.cc"],
     hdrs = ["cpu_transfer_manager.h"],
@@ -49,7 +50,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_library(
+tf_cc_library(
     name = "external_constant_pool",
     srcs = ["external_constant_pool.cc"],
     hdrs = ["external_constant_pool.h"],
@@ -72,7 +73,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
@@ -147,7 +148,7 @@ cc_library(
     alwayslink = True,  # Contains compiler registration
 )
 
-cc_library(
+tf_cc_library(
     name = "simple_orc_jit",
     srcs = ["simple_orc_jit.cc"],
     hdrs = ["simple_orc_jit.h"],
@@ -179,7 +180,7 @@ cc_library(
     ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
@@ -207,7 +208,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_cpu_executable",
     srcs = ["parallel_cpu_executable.cc"],
     hdrs = [
@@ -236,7 +237,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_emitter",
     srcs = [
         "elemental_ir_emitter.cc",
@@ -285,7 +286,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_function",
     srcs = ["ir_function.cc"],
     hdrs = ["ir_function.h"],
@@ -303,7 +304,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_loop_emitter",
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
@@ -319,7 +320,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dot_op_emitter",
     srcs = ["dot_op_emitter.cc"],
     hdrs = ["dot_op_emitter.h"],
@@ -362,7 +363,7 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "disassembler",
     srcs = ["disassembler.cc"],
     hdrs = ["disassembler.h"],
@@ -382,7 +383,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compiler_functor",
     srcs = ["compiler_functor.cc"],
     hdrs = ["compiler_functor.h"],
@@ -410,7 +411,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_runtime_sse4_1",
     srcs = ["cpu_runtime_sse4_1.cc"],
     hdrs = ["cpu_runtime_sse4_1.h"],
@@ -422,7 +423,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_runtime_avx",
     srcs = ["cpu_runtime_avx.cc"],
     hdrs = ["cpu_runtime_avx.h"],
@@ -434,10 +435,11 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_runtime_neon",
     srcs = ["cpu_runtime_neon.cc"],
     hdrs = ["cpu_runtime_neon.h"],
+
     # runtime_copts() enables -mfpu=neon
     copts = ["-DEIGEN_AVOID_STL_ARRAY"] + runtime_copts(),
     visibility = ["//visibility:public"],
@@ -447,7 +449,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_runtime",
     srcs = [
         "cpu_runtime.cc",
@@ -468,7 +470,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "llvm_ir_runtime",
     srcs = [
         "llvm_ir_runtime.cc",
@@ -484,7 +486,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_conv2d",
     srcs = [
         "runtime_conv2d.cc",
@@ -501,7 +503,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_matvec",
     srcs = ["runtime_matvec.cc"],
     hdrs = ["runtime_matvec.h"],
@@ -512,7 +514,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_matmul",
     srcs = ["runtime_matmul.cc"],
     hdrs = ["runtime_matmul.h"],
@@ -526,7 +528,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_single_threaded_conv2d",
     srcs = [
         "runtime_conv2d_impl.h",
@@ -542,7 +544,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_single_threaded_matmul",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
@@ -555,7 +557,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "runtime_fork_join",
     srcs = ["runtime_fork_join.cc"],
     hdrs = ["runtime_fork_join.h"],
@@ -615,7 +617,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_instruction_fusion",
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
@@ -626,7 +628,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_parallelization_preparation",
     srcs = ["cpu_parallelization_preparation.cc"],
     hdrs = [
@@ -645,7 +647,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
@@ -658,7 +660,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_layout_assignment",
     srcs = ["cpu_layout_assignment.cc"],
     hdrs = ["cpu_layout_assignment.h"],
@@ -695,7 +697,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "conv_canonicalization",
     srcs = ["conv_canonicalization.cc"],
     hdrs = ["conv_canonicalization.h"],
@@ -725,7 +727,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_partition",
     srcs = ["shape_partition.cc"],
     hdrs = ["shape_partition.h"],
@@ -746,7 +748,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_task_assignment",
     srcs = ["parallel_task_assignment.cc"],
     hdrs = ["parallel_task_assignment.h"],
@@ -760,7 +762,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
     hdrs = ["cpu_options.h"],
@@ -770,7 +772,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "custom_call_target_registry",
     srcs = [
         "custom_call_target_registry.cc",
@@ -781,7 +783,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "orc_jit_memory_mapper",
     srcs = ["orc_jit_memory_mapper.cc"],
     hdrs = ["orc_jit_memory_mapper.h"],
@@ -791,7 +793,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_copy_insertion",
     srcs = ["cpu_copy_insertion.cc"],
     hdrs = ["cpu_copy_insertion.h"],

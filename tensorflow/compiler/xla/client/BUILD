@@ -22,8 +22,9 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
     hdrs = ["global_data.h"],
@@ -36,7 +37,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "padding",
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
@@ -58,7 +59,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "client",
     srcs = ["client.cc"],
     hdrs = ["client.h"],
@@ -80,7 +81,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
@@ -104,7 +105,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compile_only_client",
     srcs = ["compile_only_client.cc"],
     hdrs = ["compile_only_client.h"],
@@ -124,7 +125,7 @@ cc_library(
 
 # This target is used to instantiate the XLA service in-process and create
 # a client for it.
-cc_library(
+tf_cc_library(
     name = "client_library",
     srcs = ["client_library.cc"],
     hdrs = ["client_library.h"],
@@ -145,7 +146,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "computation",
     srcs = ["computation.cc"],
     hdrs = ["computation.h"],
@@ -161,7 +162,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "computation_builder",
     srcs = ["computation_builder.cc"],
     hdrs = ["computation_builder.h"],

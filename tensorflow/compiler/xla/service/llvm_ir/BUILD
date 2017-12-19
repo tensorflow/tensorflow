@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 package_group(
     name = "friends",
     includes = [
@@ -21,7 +23,7 @@ filegroup(
     ]),
 )
 
-cc_library(
+tf_cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
     hdrs = ["alias_analysis.h"],
@@ -37,7 +39,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
     hdrs = ["llvm_util.h"],
@@ -56,7 +58,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ir_array",
     srcs = ["ir_array.cc"],
     hdrs = ["ir_array.h"],
@@ -72,7 +74,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "llvm_loop",
     srcs = ["llvm_loop.cc"],
     hdrs = ["llvm_loop.h"],
@@ -87,7 +89,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "loop_emitter",
     srcs = ["loop_emitter.cc"],
     hdrs = ["loop_emitter.h"],
@@ -104,7 +106,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "fused_ir_emitter",
     srcs = ["fused_ir_emitter.cc"],
     hdrs = ["fused_ir_emitter.h"],
@@ -124,7 +126,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ops",
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
@@ -141,7 +143,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tuple_ops",
     srcs = ["tuple_ops.cc"],
     hdrs = ["tuple_ops.h"],
@@ -156,7 +158,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "vector_support_library",
     srcs = ["vector_support_library.cc"],
     hdrs = ["vector_support_library.h"],
@@ -168,7 +170,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "kernel_support_library",
     srcs = ["kernel_support_library.cc"],
     hdrs = ["kernel_support_library.h"],

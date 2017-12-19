@@ -4,14 +4,16 @@ package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "xla_ops",
     srcs = ["xla_ops.cc"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_check_op",
     srcs = ["parallel_check_op.cc"],
     deps = ["//tensorflow/core:framework"],

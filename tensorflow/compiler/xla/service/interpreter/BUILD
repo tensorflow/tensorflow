@@ -2,12 +2,13 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
 )
 
-cc_library(
+tf_cc_library(
     name = "interpreter_transfer_manager",
     srcs = ["interpreter_transfer_manager.cc"],
     hdrs = ["interpreter_transfer_manager.h"],
@@ -23,7 +24,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_library(
+tf_cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
@@ -59,7 +60,7 @@ cc_library(
     alwayslink = True,  # Contains compiler registration
 )
 
-cc_library(
+tf_cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
@@ -72,7 +73,7 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
@@ -98,7 +99,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "platform",
     srcs = ["platform.cc"],
     hdrs = ["platform.h"],
@@ -110,7 +111,7 @@ cc_library(
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
 
-cc_library(
+tf_cc_library(
     name = "executor",
     srcs = ["executor.cc"],
     hdrs = ["executor.h"],

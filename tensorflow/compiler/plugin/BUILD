@@ -34,7 +34,9 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "plugin",
     deps = [
         #"//tensorflow/compiler/plugin/example:example_lib",

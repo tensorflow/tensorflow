@@ -7,8 +7,9 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "graphcycles",
     srcs = ["graphcycles.cc"],
     hdrs = ["graphcycles.h"],

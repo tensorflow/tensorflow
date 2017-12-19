@@ -13,7 +13,7 @@ tf_gen_op_wrapper_cc(
     deps = ["//tensorflow/compiler/tf2xla/ops:functional_ops"],
 )
 
-cc_library(
+tf_cc_library(
     name = "functional_ops",
     srcs = ["ops/functional_ops.cc"],
     hdrs = ["ops/functional_ops.h"],
@@ -36,7 +36,7 @@ tf_gen_op_wrapper_cc(
     deps = ["//tensorflow/compiler/tf2xla/ops:sendrecv_ops"],
 )
 
-cc_library(
+tf_cc_library(
     name = "sendrecv_ops",
     srcs = ["ops/sendrecv_ops.cc"],
     hdrs = ["ops/sendrecv_ops.h"],

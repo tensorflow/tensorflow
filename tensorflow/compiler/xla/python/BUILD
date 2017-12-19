@@ -26,7 +26,7 @@ py_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "numpy_bridge",
     srcs = ["numpy_bridge.cc"],
     hdrs = ["numpy_bridge.h"],
@@ -39,7 +39,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "local_computation_builder",
     srcs = ["local_computation_builder.cc"],
     hdrs = ["local_computation_builder.h"],
