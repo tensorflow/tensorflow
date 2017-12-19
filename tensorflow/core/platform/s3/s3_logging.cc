@@ -24,45 +24,43 @@ limitations under the License.
 
 namespace tensorflow {
 
-S3LogSystem::S3LogSystem(Aws::Utils::Logging::LogLevel logLevel) :
-    m_logLevel(logLevel)
-{
+S3LogSystem::S3LogSystem(Aws::Utils::Logging::LogLevel logLevel)
+    : m_logLevel(logLevel) {}
+
+void S3LogSystem::Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag,
+                      const char* formatStr, ...) {
+  std::va_list args;
+  va_start(args, formatStr);
+
+  std::string s = strings::Printf(formatStr, args);
+  LOG(ERROR) << s;
+
+  va_end(args);
 }
 
-void S3LogSystem::Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag, const char* formatStr, ...)
-{
-    std::va_list args;
-    va_start(args, formatStr);
-
-    std::string s = strings::Printf(formatStr, args);
-    LOG(ERROR) << s;
- 
-    va_end(args);
+void S3LogSystem::LogStream(Aws::Utils::Logging::LogLevel logLevel,
+                            const char* tag,
+                            const Aws::OStringStream& message_stream) {
+  LOG(ERROR) << message_stream.rdbuf()->str();
 }
 
-void S3LogSystem::LogStream(Aws::Utils::Logging::LogLevel logLevel, const char* tag, const Aws::OStringStream &message_stream)
-{
-    LOG(ERROR) << message_stream.rdbuf()->str();
-}
-
-void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel logLevel, const std::string &message)
-{
-    switch(logLevel)
-    {
-        case Aws::Utils::Logging::LogLevel::Info:
-            LOG(INFO) << message;
-            break;
-        case Aws::Utils::Logging::LogLevel::Warn:
-            LOG(WARNING) << message;
-            break;
-        case Aws::Utils::Logging::LogLevel::Error:
-            LOG(ERROR) << message;
-            break;
-        case Aws::Utils::Logging::LogLevel::Fatal:
-            LOG(FATAL) << message;
-            break;
-        default:
-            break;
-    }
+void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel logLevel,
+                             const std::string& message) {
+  switch (logLevel) {
+    case Aws::Utils::Logging::LogLevel::Info:
+      LOG(INFO) << message;
+      break;
+    case Aws::Utils::Logging::LogLevel::Warn:
+      LOG(WARNING) << message;
+      break;
+    case Aws::Utils::Logging::LogLevel::Error:
+      LOG(ERROR) << message;
+      break;
+    case Aws::Utils::Logging::LogLevel::Fatal:
+      LOG(FATAL) << message;
+      break;
+    default:
+      break;
+  }
 }
 }  // namespace tensorflow

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_S3_S3_LOGGING_H_
 #define TENSORFLOW_CONTRIB_S3_S3_LOGGING_H_
 
-#include <aws/core/utils/logging/LogSystemInterface.h>
 #include <aws/core/utils/logging/LogLevel.h>
+#include <aws/core/utils/logging/LogSystemInterface.h>
 
 #include <atomic>
 
@@ -36,28 +36,36 @@ class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
   /**
    * Gets the currently configured log level.
    */
-  virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override { return m_logLevel; }
+  virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
+    return m_logLevel;
+  }
   /**
    * Set a new log level. This has the immediate effect of changing the log
    * output to the new level.
    */
-  void SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) { m_logLevel.store(logLevel); }
+  void SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) {
+    m_logLevel.store(logLevel);
+  }
 
   /**
    * Does a printf style output to ProcessFormattedStatement. Don't use this,
    * it's unsafe. See LogStream
    */
-  virtual void Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag, const char* formatStr, ...) override;
+  virtual void Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag,
+                   const char* formatStr, ...) override;
 
   /**
    * Writes the stream to ProcessFormattedStatement.
    */
-  virtual void LogStream(Aws::Utils::Logging::LogLevel logLevel, const char* tag, const Aws::OStringStream& messageStream) override;
+  virtual void LogStream(Aws::Utils::Logging::LogLevel logLevel,
+                         const char* tag,
+                         const Aws::OStringStream& messageStream) override;
 
  private:
   std::atomic<Aws::Utils::Logging::LogLevel> m_logLevel;
 
-  void LogMessage(Aws::Utils::Logging::LogLevel logLevel, const std::string &message);
+  void LogMessage(Aws::Utils::Logging::LogLevel logLevel,
+                  const std::string& message);
 };
 
 }  // namespace tensorflow
