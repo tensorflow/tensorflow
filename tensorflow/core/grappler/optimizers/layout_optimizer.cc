@@ -112,6 +112,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "GreaterEqual",
                                           "GuaranteeConst",
                                           "Identity",
+                                          "IdentityN",
                                           "Igamma",
                                           "Igammac",
                                           "Imag",
@@ -457,17 +458,19 @@ class NodeProcessor : public GraphProcessor {
 
   virtual void UpdateAttrShape() {
     if (node_->attr().find("_output_shapes") != node_->attr().end()) {
-      auto shape = node_->mutable_attr()
-                       ->at("_output_shapes")
-                       .mutable_list()
-                       ->mutable_shape(0);
-      if (shape->dim_size() == 4) {
-        int64 h = shape->dim(1).size();
-        int64 w = shape->dim(2).size();
-        int64 c = shape->dim(3).size();
-        shape->mutable_dim(1)->set_size(c);
-        shape->mutable_dim(2)->set_size(h);
-        shape->mutable_dim(3)->set_size(w);
+      for (const auto& pos : GetOutputPos()) {
+        auto shape = node_->mutable_attr()
+                         ->at("_output_shapes")
+                         .mutable_list()
+                         ->mutable_shape(pos);
+        if (shape->dim_size() == 4) {
+          int64 h = shape->dim(1).size();
+          int64 w = shape->dim(2).size();
+          int64 c = shape->dim(3).size();
+          shape->mutable_dim(1)->set_size(c);
+          shape->mutable_dim(2)->set_size(h);
+          shape->mutable_dim(3)->set_size(w);
+        }
       }
     }
   }
@@ -667,7 +670,8 @@ class NodeProcessor : public GraphProcessor {
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
               AddNodeTranspose(
                   added_node_name, input, const_name, dtype,
-                  node_->attr().at("_output_shapes").list().shape(0), false);
+                  node_->attr().at("_output_shapes").list().shape(input_port),
+                  false);
             } else if (op == "DataFormatVecPermute") {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kVecPermuteNCHWToNHWC, "-");
@@ -1052,10 +1056,10 @@ class AgnosticNodeProcessor : public NodeProcessor {
     if (IsConcatV1(node)) {
       return {1};
     }
-    if (IsBinaryOp(node)) {
+    if (IsBinaryOp(node) || IsUnaryGrad(node)) {
       return {0, 1};
     }
-    if (IsShapeN(node)) {
+    if (IsShapeN(node) || IsIdentityN(node)) {
       std::vector<int> pos;
       for (int i = 0; i < node.input_size(); i++) {
         pos.push_back(i);
@@ -1256,6 +1260,40 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   int axis_node_pos_;
 };
 
+class IdentityNProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos;
+    for (int i = 0; i < node_->input_size(); i++) {
+      auto input = node_map_->GetNode(node_->input(i));
+      int port;
+      ParseNodeName(node_->input(i), &port);
+      if (IsPortDimsFour(*input, port) &&
+          (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
+        input_pos.push_back(i);
+      }
+    }
+    return input_pos;
+  }
+
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos{};
+    for (const auto& input_pos : GetInputPos()) {
+      output_pos.insert(input_pos);
+    }
+    return output_pos;
+  }
+};
+
 class MergeProcessor : public AgnosticNodeProcessor {
  public:
   explicit MergeProcessor(const OptimizeContext& opt_cxt)
@@ -1420,12 +1458,15 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
   bool IsInputConvertible() const {
+    int input_port;
     auto input = node_map_->GetNode(node_->input(0));
+    ParseNodeName(node_->input(0), &input_port);
     if (IsNodeNCHWToNHWC(input->name())) {
       input = node_map_->GetNode(input->input(0));
+      ParseNodeName(input->input(0), &input_port);
     }
     if (input->attr().find("_output_shapes") != input->attr().end()) {
-      auto shape = input->attr().at("_output_shapes").list().shape(0);
+      auto shape = input->attr().at("_output_shapes").list().shape(input_port);
       if (shape.dim_size() != 4) {
         return false;
       }
@@ -1610,6 +1651,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
+          } else if (IsIdentityN(*node)) {
+            node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
             node_processor.reset(new MergeProcessor(opt_cxt));
           } else if (IsPad(*node)) {

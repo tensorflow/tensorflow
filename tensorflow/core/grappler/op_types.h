@@ -56,6 +56,7 @@ bool IsFusedBatchNormGradV1(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
+bool IsIdentityN(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);

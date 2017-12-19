@@ -132,6 +132,11 @@ bool IsIdentity(const NodeDef& node) {
   return op == "Identity" || op == "RefIdentity";
 }
 
+bool IsIdentityN(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "IdentityN";
+}
+
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
