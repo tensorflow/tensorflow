@@ -238,6 +238,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMerge)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
+    HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
     HANDLE_OPERATORTYPENAME_CASE(Stack)
@@ -267,6 +268,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMax)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     default:
       LOG(FATAL) << "Unhandled op type";
@@ -1138,11 +1140,16 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
         }
       }
     } else {
-      const auto& input_array_dims =
-          *input_array.mutable_shape()->mutable_dims();
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape().dims_size());
-      for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+      if (input_array_proto.has_shape()) {
+        // If an input shape was specified on the flags ensure that it matches
+        // the actual shape in the model.
+        const auto& input_array_dims =
+            *input_array.mutable_shape()->mutable_dims();
+        CHECK_EQ(input_array_dims.size(),
+                 input_array_proto.shape().dims_size());
+        for (int i = 0; i < input_array_dims.size(); i++) {
+          CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
       }
     }
 
@@ -1244,6 +1251,8 @@ int ElementSize(ArrayDataType data_type) {
       return 4;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt64:
+      return 8;
     default:
       LOG(FATAL) << "Should not get here.";
       return 0;

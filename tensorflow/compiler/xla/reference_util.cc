@@ -532,7 +532,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   HloEvaluator evaluator;
   std::unique_ptr<Literal> result_literal =
-      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
+      evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
 
   CHECK_EQ(ShapeUtil::Rank(result_literal->shape()), 4);
   auto result =

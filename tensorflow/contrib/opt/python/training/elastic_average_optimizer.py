@@ -81,7 +81,6 @@ class ElasticAverageCustomGetter(object):
         local_var = getter(name, trainable=True,
                            collections=[ops.GraphKeys.LOCAL_VARIABLES],
                            *args, **kwargs)
-
       global_center_variable = variable_scope.variable(
         name='%s/%s' %
              (GLOBAL_VARIABLE_NAME,

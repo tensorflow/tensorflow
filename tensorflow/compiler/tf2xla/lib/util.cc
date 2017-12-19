@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
-                                 xla::Shape& shape) {
+                                 const xla::Shape& shape) {
   return builder->Broadcast(
       builder->ConstantLiteral(xla::Literal::Zero(shape.element_type())),
       xla::AsInt64Slice(shape.dimensions()));

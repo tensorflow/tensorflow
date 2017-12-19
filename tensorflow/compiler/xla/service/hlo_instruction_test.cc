@@ -1149,7 +1149,9 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
 
-  EXPECT_EQ(dot->ToString(false, false),
+  auto options = HloPrintOptions().set_print_metadata(false);
+
+  EXPECT_EQ(dot->ToString(options),
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
             "%transpose), lhs_contracting_dims=1,rhs_contracting_dims=0");
 
@@ -1159,13 +1161,13 @@ TEST_F(HloInstructionTest, Stringification) {
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
   EXPECT_EQ(
-      fusion->ToString(false, false),
+      fusion->ToString(options),
       "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
       "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
-  EXPECT_EQ(loop->ToString(false, false),
+  EXPECT_EQ(loop->ToString(options),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
             "condition=%TransposeDot, body=%TransposeDot");
 
@@ -1174,7 +1176,7 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* conditional =
       builder.AddInstruction(HloInstruction::CreateConditional(
           sout, pred, x, computation, x, computation));
-  EXPECT_EQ(conditional->ToString(false, false),
+  EXPECT_EQ(conditional->ToString(options),
             "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
             "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
             "true_computation=%TransposeDot, false_computation=%TransposeDot");

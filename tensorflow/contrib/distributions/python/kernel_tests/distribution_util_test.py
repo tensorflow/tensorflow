@@ -395,5 +395,110 @@ class MixtureStddevTest(test.TestCase):
     self.assertAllClose(actual_devs, expected_devs)
 
 
+class _PadTest(object):
+
+  def testNegAxisCorrectness(self):
+    x_ = np.float32([[1., 2, 3],
+                     [4, 5, 6]])
+    value_ = np.float32(0.25)
+    count_ = np.int32(2)
+    with self.test_session() as sess:
+      x = array_ops.placeholder_with_default(
+          x_, shape=x_.shape if self.is_static_shape else None)
+      value = (constant_op.constant(value_) if self.is_static_shape
+               else array_ops.placeholder_with_default(value_, shape=None))
+      count = (constant_op.constant(count_) if self.is_static_shape
+               else array_ops.placeholder_with_default(count_, shape=None))
+
+      x0_front = distribution_util.pad(
+          x, axis=-2, value=value, count=count, front=True)
+      x0_back = distribution_util.pad(
+          x, axis=-2, count=count, back=True)
+      x0_both = distribution_util.pad(
+          x, axis=-2, value=value, front=True, back=True)
+
+      if self.is_static_shape:
+        self.assertAllEqual([4, 3], x0_front.shape)
+        self.assertAllEqual([4, 3], x0_back.shape)
+        self.assertAllEqual([4, 3], x0_both.shape)
+
+      [x0_front_, x0_back_, x0_both_] = sess.run([
+          x0_front, x0_back, x0_both])
+
+      self.assertAllClose(
+          np.float32([[value_]*3,
+                      [value_]*3,
+                      [1, 2, 3],
+                      [4, 5, 6]]),
+          x0_front_, atol=0., rtol=1e-6)
+      self.assertAllClose(
+          np.float32([[1, 2, 3],
+                      [4, 5, 6],
+                      [0.]*3,
+                      [0.]*3]),
+          x0_back_, atol=0., rtol=1e-6)
+      self.assertAllClose(
+          np.float32([[value_]*3,
+                      [1, 2, 3],
+                      [4, 5, 6],
+                      [value_]*3]),
+          x0_both_, atol=0., rtol=1e-6)
+
+  def testPosAxisCorrectness(self):
+    x_ = np.float32([[1., 2, 3],
+                     [4, 5, 6]])
+    value_ = np.float32(0.25)
+    count_ = np.int32(2)
+    with self.test_session() as sess:
+      x = array_ops.placeholder_with_default(
+          x_, shape=x_.shape if self.is_static_shape else None)
+      value = (constant_op.constant(value_) if self.is_static_shape
+               else array_ops.placeholder_with_default(value_, shape=None))
+      count = (constant_op.constant(count_) if self.is_static_shape
+               else array_ops.placeholder_with_default(count_, shape=None))
+
+      x1_front = distribution_util.pad(
+          x, axis=1, value=value, count=count, front=True)
+      x1_back = distribution_util.pad(
+          x, axis=1, count=count, back=True)
+      x1_both = distribution_util.pad(
+          x, axis=1, value=value, front=True, back=True)
+
+      if self.is_static_shape:
+        self.assertAllEqual([2, 5], x1_front.shape)
+        self.assertAllEqual([2, 5], x1_back.shape)
+        self.assertAllEqual([2, 5], x1_both.shape)
+
+      [x1_front_, x1_back_, x1_both_] = sess.run([
+          x1_front, x1_back, x1_both])
+
+      self.assertAllClose(
+          np.float32([[value_]*2 + [1, 2, 3],
+                      [value_]*2 + [4, 5, 6]]),
+          x1_front_, atol=0., rtol=1e-6)
+      self.assertAllClose(
+          np.float32([[1, 2, 3] + [0.]*2,
+                      [4, 5, 6] + [0.]*2]),
+          x1_back_, atol=0., rtol=1e-6)
+      self.assertAllClose(
+          np.float32([[value_, 1, 2, 3, value_],
+                      [value_, 4, 5, 6, value_]]),
+          x1_both_, atol=0., rtol=1e-6)
+
+
+class PadStaticTest(_PadTest, test.TestCase):
+
+  @property
+  def is_static_shape(self):
+    return True
+
+
+class PadDynamicTest(_PadTest, test.TestCase):
+
+  @property
+  def is_static_shape(self):
+    return False
+
+
 if __name__ == "__main__":
   test.main()

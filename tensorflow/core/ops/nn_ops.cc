@@ -776,11 +776,11 @@ REGISTER_OP("DataFormatVecPermute")
     .Attr("dst_format: string = 'NCHW'")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-Returns the permuted vector in the destination data format given the one in
-the source data format.
+Returns the permuted vector/tensor in the destination data format given the
+one in the source data format.
 
-x: Vector in source data format. Must be of size 4.
-y: Vector in destination data format. Must be of size 4.
+x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
+y: Vector of size 4 or Tensor of shape (4, 2) in destination data format.
 src_format: source data format.
 dst_format: destination data format.
 )doc");

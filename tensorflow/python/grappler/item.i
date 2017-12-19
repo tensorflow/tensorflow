@@ -45,6 +45,7 @@ struct GItem {
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -93,7 +94,8 @@ static GItem TF_NewItem(
   return GItem(item.release());
 }
 
-static std::vector<string> TF_IdentifyImportantOps(GItem item) {
+static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                                   TF_Status* status) {
   if (item.is_none()) {
     return {};
   }
@@ -109,8 +111,23 @@ static std::vector<string> TF_IdentifyImportantOps(GItem item) {
   }
 
   std::vector<string> ops;
-  for (const auto& op_name : op_names) {
-    ops.push_back(op_name);
+  if (sort_topologically) {
+    tensorflow::GraphDef subgraph;
+    for (const tensorflow::NodeDef& node : item->graph.node()) {
+      if (op_names.find(node.name()) != op_names.end()) {
+        *subgraph.add_node() = node;
+      }
+    }
+    tensorflow::Status s = tensorflow::grappler::TopologicalSort(&subgraph);
+    tensorflow::Set_TF_Status_from_Status(status, s);
+    for (const tensorflow::NodeDef& node : subgraph.node()) {
+      ops.push_back(node.name());
+    }
+  }
+  else {
+    for (const auto& op_name : op_names) {
+      ops.push_back(op_name);
+    }
   }
 
   return ops;
@@ -153,5 +170,6 @@ static PyObject* TF_GetOpProperties(GItem item) {
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status);
-static std::vector<string> TF_IdentifyImportantOps(GItem item);
+static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                                   TF_Status* status);
 static PyObject* TF_GetOpProperties(GItem item);

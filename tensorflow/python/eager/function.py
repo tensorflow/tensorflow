@@ -91,13 +91,24 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     is not enabled. A placeholder which will have the value of the
     tensor at runtime otherwise.
   """
+  del as_ref  # Unused.
+
   if context.in_eager_mode():
     return value
-  _ = as_ref
+
+  default_graph = ops.get_default_graph()
+  if not default_graph.building_function:
+    return value
+
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
     # Capturing is not enabled.
     return constant_op.constant(value.numpy())
+  if type(value) == ops.Tensor and value.graph is default_graph:
+    # The tensor has already been converted and captured. The type check
+    # is intentional: we are checking that value is a Tensor and not an
+    # EagerTensor.
+    return value
   return capture_value(tensor_map, value, dtype, name)
 
 
@@ -246,7 +257,8 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    _register(fn)
+    if context.in_eager_mode():
+      _register(fn)
     self.definition = function_def
     self.name = function_def.signature.name
     self.signature = function_def.signature
@@ -393,6 +405,32 @@ class GraphModeFunction(object):
 
     return self._build_call_outputs(real_outputs)
 
+  @property
+  def output_shapes(self):
+    # TODO(ebrevdo): Should we only keep the output shapes associated
+    # with len(self._returns) outputs?
+    return nest.pack_sequence_as(self._func_outputs, self._output_shapes)
+
+  @property
+  def output_dtypes(self):
+    return nest.map_structure(
+        lambda x: x.dtype if x is not None else None, self._func_outputs)
+
+  @property
+  def captured_inputs(self):
+    return self._extra_inputs
+
+  @property
+  def name(self):
+    return self._function_def.name
+
+  def add_to_graph(self, g):
+    if self._function_def.name not in g._functions:  # pylint: disable=protected-access
+      g._add_function(self._function_def)  # pylint: disable=protected-access
+    for f in self._graph._functions.values():  # pylint: disable=protected-access
+      if f.name not in g._functions:  # pylint: disable=protected-access
+        g._add_function(f)  # pylint: disable=protected-access
+
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
     for v in self._variables:
@@ -410,11 +448,7 @@ class GraphModeFunction(object):
     ctx = context.context()
     if ctx.in_graph_mode():
       g = ops.get_default_graph()
-      if self._function_def.name not in g._functions:  # pylint: disable=protected-access
-        g._add_function(self._function_def)  # pylint: disable=protected-access
-      for f in self._graph._functions.values():  # pylint: disable=protected-access
-        if f.name not in g._functions:  # pylint: disable=protected-access
-          g._add_function(f)  # pylint: disable=protected-access
+      self.add_to_graph(g)
       signature = self._function_def.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(
@@ -498,28 +532,37 @@ def _defun_internal(name, func, args, kwds):
           func_outputs = func(*func_inputs, **kwds)
         finally:
           variables = tape.pop_tape().watched_variables()
+
+        # Returning a closed-over tensor as an output does not trigger a
+        # call to convert_to_tensor, so we manually capture all such tensors.
+        outputs_list = nest.flatten(func_outputs)
+        func_def_outputs = [
+            _convert_to_graph_tensor(x) for x in outputs_list if x is not None
+        ]
+
       ids = list(sorted(captures.keys()))
       if ids:
         extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
       else:
         extra_inputs = []
         extra_placeholders = []
-      outputs_list = nest.flatten(func_outputs)
-      output_shapes = tuple(x.shape for x in outputs_list if x is not None)
+      output_shapes = tuple(
+          x.shape if isinstance(x, ops.Tensor) else None
+          for x in outputs_list)
 
   flat_inputs = [x for x in nest.flatten(func_inputs)
                  if isinstance(x, ops.Tensor)]
   all_inputs = flat_inputs + list(extra_placeholders)
   all_ignored_ops = frozenset(x.op for x in all_inputs)
-  func_def_outputs = [x for x in outputs_list if x is not None]
   fname = _inference_name(name)
   operations = tuple(x for x in tmp_graph.get_operations()
                      if x not in all_ignored_ops)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
-  for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    # TODO(ashankar): What about the gradient registry?
-    _register(f._c_func)  # pylint: disable=protected-access
+  if context.in_eager_mode():
+    for f in tmp_graph._functions.values():  # pylint: disable=protected-access
+      # TODO(ashankar): What about the gradient registry?
+      _register(f._c_func)  # pylint: disable=protected-access
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
       func_outputs, output_shapes, variables)
@@ -569,7 +612,7 @@ def named_defun(func, name):
     """Decorated version of func."""
     # Macroexpand on non-Tensor arguments
     cache_key = tuple(_cache_key(x) for x in args)
-    if not all(not isinstance(x, ops.EagerTensor) for x in kwds.values()):
+    if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
       raise ValueError("Tensor keyword arguments are not supported.")
     cache_key = (cache_key, tuple(kwds.items()))
 
@@ -633,3 +676,55 @@ def defun(func):
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
   return tf_decorator.make_decorator(func, named_defun(func, func.__name__))
+
+
+def make_defun_op(func, *args, **kwds):
+  """Compile func into graph_mode, assuming func arguments are *args, **kwargs.
+
+  `make_defun_op` converts a function that constructs a TensorFlow graph into
+  a function object and attaches it to the graph.  The resulting function
+  object can be queried for its properties, and called directly with different
+  inputs to execute.
+
+  More details on use cases and limitations are available in the
+  documentation for `defun`.
+
+  Example:
+  ```python
+  def f(x, y):
+    return tf.reduce_mean(tf.multiply(x ** 2, 3) + y)
+
+  def g(x, y):
+    return tf.reduce_mean(tf.multiply(x ** 2, 3) + y)
+
+  z = tf.constant([[0.0, 0.0]])
+  g_op = make_defun_op(g, z, z)
+
+  assert g_op.output_shapes == tf.TensorShape([])
+  assert g_op.output_types == tf.float32
+
+  x = tf.constant([[2.0, 3.0]])
+  y = tf.constant([[3.0, -2.0]])
+
+  # The plain function and defun-compiled function should return the same value.
+  assert f(x, y).numpy() == g_op(x, y).numpy()
+  ```
+
+  Args:
+    func: function to be compiled.
+    *args: List arguments to pass to `func` when attaching to the graph.
+    **kwds: Keyword arguments to pass to `func` when attaching to the graph.
+
+  Returns:
+     A wrapper object which can be queried for its output properties,
+     and which can be called directly the way a `@defun` wrapped function
+     can.
+
+  Raises:
+    ValueError: if any of the keyword arguments to `func` are `EagerTensor`
+      objects (not yet supported).
+  """
+  name = func.__name__
+  if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
+    raise ValueError("Tensor keyword arguments are not supported.")
+  return _defun_internal(name, func, args, kwds)

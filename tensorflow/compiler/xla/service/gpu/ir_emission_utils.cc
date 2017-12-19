@@ -110,6 +110,10 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
       return false;
     }
 
+    if (window_util::HasWindowReversal(hlo.window())) {
+      return false;
+    }
+
     return true;
   }
 

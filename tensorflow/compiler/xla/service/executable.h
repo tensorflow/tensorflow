@@ -61,16 +61,7 @@ class Executable {
   // If the hlo_execution_profile is provided as non-nullptr, profiling will be
   // enabled.
   //
-  // Returns the device memory region that a successful execution would
-  // populate.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
-
-  // Overload of ExecuteOnStream which returns and takes arguments as
-  // ShapedBuffers. Used for LocalService execution.
+  // Returns a shaped buffer containing the result of the computation.
   virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
@@ -78,21 +69,19 @@ class Executable {
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) = 0;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
-  ExecuteOnStreams(
+  virtual StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>> ExecuteOnStreams(
       tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
           run_options,
       tensorflow::gtl::ArraySlice<
-          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
+          tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
           arguments);
 
   // Populates `hlo_execution_profile` from `executor`. This is implicit in any
@@ -224,7 +213,7 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
     stream->ThenStopTimer(timer.get());
-    SE_CHECK_OK(stream->BlockHostUntilDone());
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     VLOG(1) << "done with block-host-until-done";
 
     // Merge in run-time profile information from execution_profile.

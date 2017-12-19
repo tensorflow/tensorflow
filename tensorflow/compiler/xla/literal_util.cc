@@ -404,6 +404,27 @@ std::unique_ptr<Literal> Literal::Relayout(
   return outer_result;
 }
 
+std::unique_ptr<Literal> Literal::Relayout(
+    const Shape& shape_with_layout) const {
+  CHECK(ShapeUtil::Compatible(shape_with_layout, shape()))
+      << "Given shape_with_layout " << ShapeUtil::HumanString(shape_with_layout)
+      << " not compatible with literal shape "
+      << ShapeUtil::HumanString(shape());
+  std::unique_ptr<Literal> result = CreateFromShape(shape_with_layout);
+  ShapeUtil::ForEachSubshape(
+      result->shape(),
+      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsArray(subshape)) {
+          DimensionVector base(ShapeUtil::Rank(subshape), 0);
+          DimensionVector copy_size(subshape.dimensions().begin(),
+                                    subshape.dimensions().end());
+          TF_CHECK_OK(result->GetSubliteral(index).Copy(GetSubliteral(index),
+                                                        base, base, copy_size));
+        }
+      });
+  return result;
+}
+
 StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
     tensorflow::gtl::ArraySlice<int64> dimensions) const {
   if (ShapeUtil::IsTuple(shape())) {

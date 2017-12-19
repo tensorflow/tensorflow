@@ -908,8 +908,8 @@ class DnnSupport {
   //    the running variance.
   //  reserve_space_1: saved mean, to be reused in the backward gradient
   //    computation.
-  //  reserve_space_2: saved variance, to be reused in the backward gradient
-  //    computation.
+  //  reserve_space_2: saved inv_var (1/sqrt(epsilon + variance), to be reused
+  //    in the backward gradient computation.
   //  is_training: Set to true for training, false for inference.
   //  var_to_inv_var: a function to convert the variance to inverted variance
   //    for cuDNN v4 forward inference.
@@ -957,6 +957,7 @@ class DnnSupport {
   //  y_backprop: gradient with regard to output y.
   //  x: input data.
   //  scale: scaling parameters.
+  //  inv_var: 1/sqrt(epsilon + variance) of x.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
   //    of the output.
   //  scale_offset_desc: dimensions of scale and offset.
@@ -967,7 +968,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
@@ -981,7 +982,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,

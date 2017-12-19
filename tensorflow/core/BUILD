@@ -575,6 +575,7 @@ cc_library(
 
 # Generates library per group of ops.
 tf_gen_op_libs(
+    is_external = False,
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
@@ -3164,6 +3165,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
     ],

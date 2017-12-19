@@ -50,6 +50,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/learn",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -127,5 +128,35 @@ py_library(
         "//tensorflow/contrib/boosted_trees:losses",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:math_ops",
+    ],
+)
+
+py_library(
+    name = "dnn_tree_combined_estimator",
+    srcs = ["dnn_tree_combined_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":trainer_hooks",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/boosted_trees:model_ops_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "dnn_tree_combined_estimator_test",
+    size = "small",
+    srcs = ["dnn_tree_combined_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dnn_tree_combined_estimator",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )

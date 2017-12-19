@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -144,9 +144,9 @@ tensorflow::Status OptimizeHloModule(
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddInvariantChecker<HloVerifier>(shape_size_function);
 
-      // TODO(b/62764704): Do not rewrite on GPU, use cuDNN's BatchNorm APIs
+      // TODO(b/62764704): Do not expand on GPU, use cuDNN's BatchNorm APIs
       // instead.
-      pass.AddPass<BatchNormRewriter>(
+      pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,

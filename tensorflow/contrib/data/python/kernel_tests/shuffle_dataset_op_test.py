@@ -158,13 +158,6 @@ class ShuffleDatasetTest(test.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
-  def testSeedNoneSeed2NonNone(self):
-    with self.assertRaises(ValueError):
-      dataset_ops.ShuffleDataset(dataset_ops.Dataset.range(5),
-                                 buffer_size=1,
-                                 seed=None,
-                                 seed2=10)
-
 
 class ShuffleDatasetSerializationTest(test.TestCase):
 
@@ -486,8 +479,8 @@ class ShuffleDatasetSerializationTest(test.TestCase):
 class ShuffleAndRepeatTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  def _build_ds(self, seed, count=5):
-    return dataset_ops.Dataset.range(20).apply(
+  def _build_ds(self, seed, count=5, num_elements=20):
+    return dataset_ops.Dataset.range(num_elements).apply(
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=count, seed=seed))
 
   def testCorrectOutput(self):
@@ -534,12 +527,19 @@ class ShuffleAndRepeatTest(
     self.assertEqual(sorted(output1), sorted(output2))
 
   def testInfiniteOutputs(self):
-    # Asserting that the iterator is exhausted after producing 100 items should
-    # fail.
+    # Asserting the iterator is exhausted after producing 100 items should fail.
     with self.assertRaises(AssertionError):
       self.gen_outputs(lambda: self._build_ds(10, count=None), [], 100)
     with self.assertRaises(AssertionError):
       self.gen_outputs(lambda: self._build_ds(10, count=-1), [], 100)
+
+  def testInfiniteEmpty(self):
+    with self.assertRaises(errors.OutOfRangeError):
+      self.gen_outputs(lambda: self._build_ds(10, count=None, num_elements=0),
+                       [], 100)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.gen_outputs(lambda: self._build_ds(10, count=-1, num_elements=0), [],
+                       100)
 
 
 class ShuffleAndRepeatSerializationTest(

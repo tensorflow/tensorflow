@@ -187,8 +187,9 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     node->clear_attr();
   }
 
-  // Remove NoOp nodes if their fan-in or fan-out is less than 2.
-  // The non-trivial rewrites take the following form:
+  // Remove NoOp nodes if the product of their fan-in and fan-out is less than
+  // or equal to the sum of the fan-in and fan-out. The non-trivial rewrites
+  // take the following form:
   //
   // Case a)
   //    x --^> +------+                x --^> +---+
@@ -201,8 +202,22 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   //    x --^> | NoOp | --^> b  ==>    | x | --^> b
   //           |      | ...            |   | ...
   //           +------+ --^> c         +---+ --^> c
+  // Case c)
+  //           +------+                x ---^> a
+  //    x --^> | NoOp | --^> a  ==>      \/
+  //    y --^> |      | --^> b           /\
+  //           +------+                y ---^> b
+  //
+  // We only apply this optimization if we don't increase the number of control
+  // edges across device boundaries, e.g. in cases a) and b) if NoOp and
+  // a and x, respectively, are on the same device. Control edges across device
+  // boundaries require inter-device communication (Send/Recv pairs to be
+  // inserted in the graph), which is very costly.
+
   if (node->op() == "NoOp") {
-    const auto output_nodes = node_map_->GetOutputs(node->name());
+    const auto& output_node_set = node_map_->GetOutputs(node->name());
+    const std::vector<NodeDef*> output_nodes(output_node_set.begin(),
+                                             output_node_set.end());
     const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
 
@@ -217,6 +232,32 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       input_nodes.push_back(tmp);
     }
 
+    // Make sure that we don't increase the number of control edges that cross
+    // device boundaries.
+    if ((num_inputs == 1 && num_outputs > 1 &&
+         input_nodes[0]->device() != node->device()) ||
+        (num_inputs > 1 && num_outputs == 1 &&
+         output_nodes[0]->device() != node->device())) {
+      return;
+    }
+    if (num_inputs == 2 && num_outputs == 2) {
+      const string& noop_dev = node->device();
+      const string& in0_dev = input_nodes[0]->device();
+      const string& in1_dev = input_nodes[1]->device();
+      const string& out0_dev = output_nodes[0]->device();
+      const string& out1_dev = output_nodes[1]->device();
+      const int num_cross_before = static_cast<int>(in0_dev != noop_dev) +
+                                   static_cast<int>(in1_dev != noop_dev) +
+                                   static_cast<int>(out0_dev != noop_dev) +
+                                   static_cast<int>(out1_dev != noop_dev);
+      const int num_cross_after = static_cast<int>(in0_dev != out0_dev) +
+                                  static_cast<int>(in0_dev != out1_dev) +
+                                  static_cast<int>(in1_dev != out0_dev) +
+                                  static_cast<int>(in1_dev != out1_dev);
+      if (num_cross_after > num_cross_before) {
+        return;
+      }
+    }
     for (auto consumer : output_nodes) {
       bool updated_consumer = false;
       VLOG(1) << "***** Considering consumer  " << consumer->name() << "\n"
