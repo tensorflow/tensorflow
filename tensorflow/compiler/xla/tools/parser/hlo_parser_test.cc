@@ -1107,6 +1107,83 @@ ENTRY %CustomCall () -> f32[1] {
                   "with that of its root instruction foo, f32[1,2,3]");
 }
 
+TEST_F(HloParserTest, EntryComputationWithLayout) {
+  const string original = R"(HloModule layout:
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
+  ASSERT_EQ(program_layout.parameter_count(), 1);
+  auto param_layout = program_layout.parameter_layout(0).layout();
+  auto result_layout = program_layout.result_layout().layout();
+  EXPECT_TRUE(
+      LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2}), param_layout))
+      << "actual layout of parameter(0) is "
+      << LayoutUtil::HumanString(param_layout);
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1}), result_layout))
+      << "actual layout of result is "
+      << LayoutUtil::HumanString(result_layout);
+}
+
+TEST_F(HloParserTest, NoEntry) {
+  const string original = R"(HloModule no_entry:
+c1 {
+  const1 = f32[1]{0} constant({12345})
+}
+c2 {
+  const2 = f32[1]{0} constant({67890})
+})";
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  EXPECT_EQ(module.ValueOrDie()->entry_computation()->name(), "c2");
+}
+
+TEST_F(HloParserTest, NoRoot) {
+  const string original = R"(HloModule no_root:
+ENTRY consts {
+  first = f32[1]{0} constant({12345})
+  last = f32[1]{0} constant({67890})
+})";
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  EXPECT_EQ(
+      module.ValueOrDie()->entry_computation()->root_instruction()->name(),
+      "last");
+}
+
+TEST_F(HloParserTest, MultipleEntries) {
+  const string original = R"(HloModule multiple_entries:
+ENTRY c1 {
+  const1 = f32[1]{0} constant({12345})
+}
+ENTRY c2 {
+  const2 = f32[1]{0} constant({67890})
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "expects only one ENTRY");
+}
+
+TEST_F(HloParserTest, MultipleRoots) {
+  const string original = R"(HloModule multiple_roots:
+ENTRY consts {
+  ROOT const1 = f32[1]{0} constant({12345})
+  ROOT const2 = f32[1]{0} constant({12345})
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "one computation should have only one ROOT");
+}
+
 }  // namespace
 }  // namespace tools
 }  // namespace xla

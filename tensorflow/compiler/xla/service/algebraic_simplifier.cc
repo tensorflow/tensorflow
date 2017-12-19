@@ -1322,6 +1322,27 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
                                             broadcast_one, lhs));
   }
+
+  VLOG(10) << "trying transform [pow(pow(A, X), Y) => pow(A, X*Y)]: "
+           << power->ToString();
+
+  // Don't perform this optimization if either of the exponents is complex; this
+  // identity is true only for real-valued exponents.  In addition, we cowardly
+  // refuse to do this transformation if the two expontents have different
+  // element types.
+  if (lhs->opcode() == HloOpcode::kPower &&
+      !ShapeUtil::ElementIsComplex(lhs->operand(1)->shape()) &&
+      !ShapeUtil::ElementIsComplex(rhs->shape()) &&
+      ShapeUtil::SameElementType(lhs->operand(1)->shape(), rhs->shape())) {
+    auto exponent_product =
+        computation_->AddInstruction(HloInstruction::CreateBinary(
+            rhs->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+    return ReplaceWithNewInstruction(
+        power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kPower,
+                                            lhs->mutable_operand(0),
+                                            exponent_product));
+  }
+
   return Status::OK();
 }
 
@@ -1375,7 +1396,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
         ShapeUtil::MakeShapeWithLayout(
             user->shape().element_type(),
             AsInt64Slice(operand->shape().dimensions()),
-            AsInt64Slice(operand->shape().layout().minor_to_major())),
+            LayoutUtil::MinorToMajor(operand->shape())),
         new_user_operands));
     VLOG(4) << "  new user: " << new_user->ToString();
     HloInstruction* new_reshape_or_broadcast = nullptr;
@@ -1385,8 +1406,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
               ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
                   AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
-                  AsInt64Slice(
-                      reshape_or_broadcast->shape().layout().minor_to_major())),
+                  LayoutUtil::MinorToMajor(reshape_or_broadcast->shape())),
               new_user));
     } else {
       TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
@@ -1395,8 +1415,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
               ShapeUtil::MakeShapeWithLayout(
                   user->shape().element_type(),
                   AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
-                  AsInt64Slice(
-                      reshape_or_broadcast->shape().layout().minor_to_major())),
+                  LayoutUtil::MinorToMajor(reshape_or_broadcast->shape())),
               new_user, reshape_or_broadcast->dimensions()));
     }
     VLOG(4) << "  new reshape/broadcast: "
@@ -1758,15 +1777,15 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // still convert Conv into more efficient Matmul with operand transposition
   // (such as the transposition flags in cuBLAS SGEMM).
   if (!LayoutUtil::Equal(input_shape.layout(), convolution_shape.layout()) ||
-      input_shape.layout().minor_to_major(0) !=
+      LayoutUtil::Minor(input_shape.layout(), 0) !=
           dnums.input_feature_dimension() ||
-      convolution_shape.layout().minor_to_major(0) !=
+      LayoutUtil::Minor(convolution_shape.layout(), 0) !=
           dnums.output_feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
-      (PositionInContainer(filter_shape.layout().minor_to_major(),
+      (PositionInContainer(LayoutUtil::MinorToMajor(filter_shape),
                            dnums.kernel_input_feature_dimension()) <
-       PositionInContainer(filter_shape.layout().minor_to_major(),
+       PositionInContainer(LayoutUtil::MinorToMajor(filter_shape),
                            dnums.kernel_output_feature_dimension()))) {
     return Status::OK();
   }

@@ -133,6 +133,93 @@ XLA_TEST_F(ConditionalOpTest, Parameters1) {
   ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
 }
 
+// Test conditional with two different computations in the true and false cases
+// that take in different arguments.
+XLA_TEST_F(ConditionalOpTest, DiffComputationsDiffArgs) {
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand1 = builder.ConstantR0<float>(56.4f);
+  auto operand2 = builder.ConstantR0<float>(12.6f);
+  auto result =
+      builder.Conditional(pred, operand1, CreateR0F32CeilComputation(),
+                          operand2, CreateR0F32FloorComputation());
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+// Test conditional with two different computations in the true and false cases
+// that take in the same arguments.
+XLA_TEST_F(ConditionalOpTest, DiffComputationsSameArg) {
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand = builder.ConstantR0<float>(12.6f);
+  auto result = builder.Conditional(pred, operand, CreateR0F32CeilComputation(),
+                                    operand, CreateR0F32FloorComputation());
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+// Test conditional with the same computation in the true and false cases but
+// take in different arguments.
+XLA_TEST_F(ConditionalOpTest, SameComputationDiffArgs) {
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand1 = builder.ConstantR0<float>(56.4f);
+  auto operand2 = builder.ConstantR0<float>(12.6f);
+  auto floor = CreateR0F32FloorComputation();
+  auto result = builder.Conditional(pred, operand1, floor, operand2, floor);
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+// Test conditional with the same computation in the true and false cases that
+// take in the same arguments.
+XLA_TEST_F(ConditionalOpTest, SameComputationSameArg) {
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand = builder.ConstantR0<float>(12.6f);
+  auto floor = CreateR0F32FloorComputation();
+  auto result = builder.Conditional(pred, operand, floor, operand, floor);
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+// Test conditional with different instances of the same computation in the true
+// and false cases.
+XLA_TEST_F(ConditionalOpTest, SameComputationDiffInstances) {
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand1 = builder.ConstantR0<float>(56.4f);
+  auto operand2 = builder.ConstantR0<float>(12.6f);
+  auto result =
+      builder.Conditional(pred, operand1, CreateR0F32FloorComputation(),
+                          operand2, CreateR0F32FloorComputation());
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
+// Test the case when a call invokes a computation that contains a conditional.
+XLA_TEST_F(ConditionalOpTest, ConditionalWithCall) {
+  Shape r0bool = ShapeUtil::MakeShape(PRED, {});
+  ComputationBuilder inner_builder(client_, TestName() + ".inner_conditional");
+  auto pred_cond = inner_builder.Parameter(0, r0bool, "param0");
+  auto true_operand = inner_builder.Parameter(1, r0f32_, "param1");
+  auto false_operand = inner_builder.Parameter(2, r0f32_, "param2");
+  inner_builder.Conditional(pred_cond, true_operand,
+                            CreateR0F32CeilComputation(), false_operand,
+                            CreateR0F32FloorComputation());
+  auto inner_builder_result = inner_builder.Build();
+
+  ComputationBuilder builder(client_, TestName());
+  auto pred = builder.ConstantR0<bool>(false);
+  auto operand1 = builder.ConstantR0<float>(56.4f);
+  auto operand2 = builder.ConstantR0<float>(12.6f);
+  builder.Call(inner_builder_result.ConsumeValueOrDie(),
+               {pred, operand1, operand2});
+
+  ComputeAndCompareR0<float>(&builder, 12.0f, {}, error_spec_);
+}
+
 // Test true and false computations that take in 2 parameters and predicate is
 // true.
 XLA_TEST_F(ConditionalOpTest, Parameters2TrueBranch) {

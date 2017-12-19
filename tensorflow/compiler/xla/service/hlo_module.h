@@ -98,6 +98,10 @@ class HloModule {
     return config_.mutable_entry_computation_layout();
   }
 
+  ComputationLayout entry_computation_layout() const {
+    return config_.entry_computation_layout();
+  }
+
   const VersionedComputationHandle& entry_computation_handle() const {
     return entry_computation_handle_;
   }
