@@ -1813,18 +1813,15 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
 
   // We already checked feature_dimension is most minor, so data in input_shape
   // and row-major {conv_width,input_channels} are bitwise identical.
-  const Shape new_input_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          input_shape.element_type(), {conv_width, input_channels});
+  const Shape new_input_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      input_shape.element_type(), {conv_width, input_channels});
   // We already checked input_feature_dimension is more major than
   // output_feature_dimension, so data in filter_shape and row-major
   // {input_channels,output_channels} are bitwise identical.
-  const Shape new_filter_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          filter_shape.element_type(), {input_channels, output_channels});
-  const Shape dot_output_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          convolution_shape.element_type(), {conv_width, output_channels});
+  const Shape new_filter_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      filter_shape.element_type(), {input_channels, output_channels});
+  const Shape dot_output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      convolution_shape.element_type(), {conv_width, output_channels});
 
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be

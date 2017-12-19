@@ -478,7 +478,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
     } else if (instruction->opcode() == HloOpcode::kCustomCall) {
       // Add constraints for kCustomCall instruction operands and instructions.
       // For now we only support major-first layouts for all inputs and outputs.
-      Shape result_shape = ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+      Shape result_shape = ShapeUtil::MakeShapeWithDescendingLayout(
           instruction->shape().element_type(),
           AsInt64Slice(instruction->shape().dimensions()));
       TF_RETURN_IF_ERROR(
@@ -491,7 +491,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
         }
 
         Shape row_major_operand_shape =
-            ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+            ShapeUtil::MakeShapeWithDescendingLayout(
                 operand_shape.element_type(),
                 AsInt64Slice(operand_shape.dimensions()));
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(

@@ -1236,7 +1236,7 @@ template <typename NativeT>
 /* static */ std::unique_ptr<Literal>
 Literal::CreateFullWithMonotonicDim0MajorLayout(
     tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
-  Shape this_shape = ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+  Shape this_shape = ShapeUtil::MakeShapeWithDescendingLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() = this_shape;

@@ -1309,7 +1309,7 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(F32, {2, 2, 2}),
+          0, ShapeUtil::MakeShapeWithDescendingLayout(F32, {2, 2, 2}),
           "param0"));
 
   HloInstruction* copy1 = builder.AddInstruction(HloInstruction::CreateUnary(
