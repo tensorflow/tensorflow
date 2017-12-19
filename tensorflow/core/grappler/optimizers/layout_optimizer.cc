@@ -86,6 +86,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Concat",
                                           "ConcatV2",
                                           "Digamma",
+                                          "Elu",
+                                          "EluGrad",
                                           "Erf",
                                           "Erfc",
                                           "Exp",
@@ -109,8 +111,11 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "ReciprocalGrad",
                                           "Relu",
                                           "Relu6",
+                                          "Relu6Grad",
                                           "ReluGrad",
                                           "Rint",
+                                          "Selu",
+                                          "SeluGrad",
                                           "Shape",
                                           "ShapeN",
                                           "Sigmoid",
@@ -119,6 +124,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Sin",
                                           "Sinh",
                                           "Slice",
+                                          "Softplus",
+                                          "SoftplusGrad",
                                           "Split",
                                           "Switch",
                                           "RefMerge",
@@ -178,6 +185,15 @@ bool IsConcatV1(const NodeDef& node) {
 bool IsMaxPoolGradV1(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPoolGrad";
+}
+
+bool IsUnaryGrad(const NodeDef& node) {
+  bool is_unary_grad =
+      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
+      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
+      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
+      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+  return is_unary_grad;
 }
 
 class GraphProcessor {
@@ -1241,9 +1257,9 @@ class SplitProcessor : public ConcatProcessor {
   }
 };
 
-class ReluGradProcessor : public AgnosticNodeProcessor {
+class UnaryGradProcessor : public AgnosticNodeProcessor {
  public:
-  explicit ReluGradProcessor(const OptimizeContext& opt_cxt)
+  explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
@@ -1524,8 +1540,6 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new MergeProcessor(opt_cxt));
           } else if (IsPad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
-          } else if (IsReluGrad(*node)) {
-            node_processor.reset(new ReluGradProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
@@ -1538,6 +1552,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsUnaryGrad(*node)) {
+            node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {
             node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
           }
