@@ -286,6 +286,10 @@ class Literal {
   std::unique_ptr<Literal> Relayout(const Layout& new_layout,
                                     const ShapeIndex& shape_index = {}) const;
 
+  // An overload of Relayout which changes the layout of the entire shape rather
+  // than being limited to a single array within the shape.
+  std::unique_ptr<Literal> Relayout(const Shape& shape_with_layout) const;
+
   // Creates a new literal by reshaping this literal to have the given
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.

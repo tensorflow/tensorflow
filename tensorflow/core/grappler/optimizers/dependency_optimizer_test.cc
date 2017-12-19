@@ -197,6 +197,40 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_EmptyInputOrOutput) {
   }
 }
 
+TEST_F(DependencyOptimizerTest, RemoveNoOps_DeviceBoundaries) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  // NoOp with a single input- and two output dependencies.
+  auto noop = ops::NoOp(s.WithControlDependencies(x).WithDevice("/CPU:1"));
+  // NoOp with a two input- and a single output dependency.
+  auto noop_1 = ops::NoOp(
+      s.WithControlDependencies(x).WithControlDependencies(y).WithDevice(
+          "/CPU:0"));
+  Output id = ops::Identity(
+      s.WithControlDependencies({noop.operation}).WithDevice("/CPU:1"), x);
+  Output id_1 = ops::Identity(
+      s.WithControlDependencies({noop.operation, noop_1.operation})
+          .WithDevice("/CPU:1"),
+      y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("Identity");
+  item.fetch.push_back("Identity_1");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The optimization should be disabled to prevent increasing the number of
+  // nodes crossing device boundaries.
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);

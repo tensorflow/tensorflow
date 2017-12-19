@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -207,6 +208,49 @@ class StatsDatasetTest(test.TestCase):
       # aggregators to unsubscribe).
       with self.assertRaises(errors.FailedPreconditionError):
         sess.run(stats_aggregator_1.subscribe(iterator))
+
+
+class StatsDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset_bytes_stats(self, num_elements):
+    return dataset_ops.Dataset.range(num_elements).map(
+        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
+            stats_ops.bytes_produced_stats("bytes_produced"))
+
+  def testBytesStatsDatasetSaveableCore(self):
+    num_outputs = 100
+    self.run_core_tests(
+        lambda: self._build_dataset_bytes_stats(num_outputs),
+        lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
+
+  def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag))
+
+  def _build_dataset_multiple_tags(self,
+                                   num_elements,
+                                   tag1="record_latency",
+                                   tag2="record_latency_2"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
+
+  def testLatencyStatsDatasetSaveableCore(self):
+    num_outputs = 100
+
+    self.run_core_tests(
+        lambda: self._build_dataset_latency_stats(num_outputs),
+        lambda: self._build_dataset_latency_stats(num_outputs // 10),
+        num_outputs)
+
+    self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
+                        None, num_outputs)
+
+    tag1 = "record_latency"
+    tag2 = "record_latency"
+    self.run_core_tests(
+        lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
+        None, num_outputs)
 
 
 if __name__ == "__main__":

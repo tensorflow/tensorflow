@@ -33,6 +33,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto* unary_op = unary_it->get();
   // Test for unary ops of types that we know how to resolve
   if (unary_op->type != OperatorType::kCast &&
+      unary_op->type != OperatorType::kNeg &&
       unary_op->type != OperatorType::kTensorFlowRsqrt &&
       unary_op->type != OperatorType::kTensorFlowSqrt &&
       unary_op->type != OperatorType::kTensorFlowSquare &&
@@ -168,7 +169,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       max = std::max(max, (*input_float_data)[i]);
     }
     output_float_data[0] = max;
-  } else if (unary_op->type == OperatorType::kTensorFlowRsqrt ||
+  } else if (unary_op->type == OperatorType::kNeg ||
+             unary_op->type == OperatorType::kTensorFlowRsqrt ||
              unary_op->type == OperatorType::kTensorFlowSqrt ||
              unary_op->type == OperatorType::kTensorFlowSquare) {
     // Element-wise ops. Should have perfectly matching sizes here.
@@ -179,7 +181,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_buffer_size; i++) {
       const float val = (*input_float_data)[i];
       float outval = 0.f;
-      if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
+      if (unary_op->type == OperatorType::kNeg) {
+        outval = -val;
+      } else if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
         outval = 1.0f / std::sqrt(val);
       } else if (unary_op->type == OperatorType::kTensorFlowSqrt) {
         outval = std::sqrt(val);

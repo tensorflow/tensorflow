@@ -87,6 +87,10 @@ MatchBackwardFilter(HloInstruction* conv) {
       VLOG(1) << "Padding low should be non-negative.";
       return no_match_result;
     }
+    if (window_dim.window_reversal()) {
+      VLOG(1) << "Window reversal field not supported";
+      return no_match_result;
+    }
     // Padding high will be checked in Step 3.
   }
   if (input_batch_dim == output_batch_dim &&
@@ -244,6 +248,10 @@ MatchBackwardInput(HloInstruction* conv) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have no window dilation.";
+      return no_match_result;
+    }
+    if (window_dim.window_reversal()) {
+      VLOG(1) << "Window reversal field not supported";
       return no_match_result;
     }
   }

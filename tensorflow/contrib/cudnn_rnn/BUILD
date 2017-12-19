@@ -146,10 +146,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_benchmark",
-    size = "large",
+    size = "small",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_benchmark.py"],
     additional_deps = [
-        ":cudnn_rnn_ops_py",
+        ":cudnn_rnn_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -164,7 +164,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "manual",
         "noasan",  # http://b/62067814
         "nomsan",
         "notsan",
