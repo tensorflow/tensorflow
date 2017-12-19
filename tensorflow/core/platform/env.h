@@ -218,6 +218,10 @@ class Env {
   /// Creates a local unique temporary file name. Returns true if success.
   bool LocalTempFilename(string* filename);
 
+  /// Create a unique file name starts with |prefix| and ends with |suffix|.
+  /// Returns true if success.
+  bool CreateTempFilename(string* prefix, const string& suffix);
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
@@ -279,7 +283,7 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
   virtual string FormatLibraryFileName(const string& name,
-      const string& version) = 0;
+                                       const string& version) = 0;
 
  private:
   // Returns a possible list of local temporary directories.
@@ -346,6 +350,7 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
  private:
   Env* target_;
 };
