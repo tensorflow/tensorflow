@@ -20,5 +20,13 @@ A scalar containing either (i) the empty string (no
 compression), (ii) "ZLIB", or (iii) "GZIP".
 END
   }
-  summary: "Decompress the bytes of a string to the output string."
+  summary: "Decompress strings."
+  description: <<END
+This op decompresses each element of the `bytes` input `Tensor`, which
+is assumed to be compressed using the given `compression_type`.
+
+The `output` is a string `Tensor` of the same shape as `bytes`,
+each element containing the decompressed data from the corresponding
+element in `bytes`.
+END
 }
