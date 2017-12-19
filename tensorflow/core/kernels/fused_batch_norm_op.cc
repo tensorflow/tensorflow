@@ -666,7 +666,7 @@ class FusedBatchNormGradOp : public OpKernel {
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
     FillZeros<Device>(placeholder_2);
 
-    // If there is nothing to compute, return.
+    // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
       f(context->eigen_device<Device>(), scale_backprop->flat<T>());

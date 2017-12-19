@@ -596,6 +596,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     if (filter_shape.num_elements() == 0) {
       return;
     }
+    // If input is empty, set gradients to zero.
     if (input.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
       f(context->eigen_device<Device>(), filter_backprop->flat<T>());
