@@ -50,8 +50,6 @@ def _stride_size(node, name_to_node):
     if not strides_input_name.endswith("/strides"):
       raise ValueError("Strides name does not end with '/strides'")
     strides_node = name_to_node[strides_input_name]
-    if strides_node.op != "Const":
-      raise ValueError("Strides op is not Const")
     value = strides_node.attr["value"]
     t = make_ndarray(value.tensor)
     stride_y = t[1]
@@ -174,8 +172,6 @@ def _pool_kernel_size(node, name_to_node):
     if not ksize_input_name.endswith("/ksize"):
       raise ValueError("Kernel size name does not end with '/ksize'")
     ksize_node = name_to_node[ksize_input_name]
-    if ksize_node.op != "Const":
-      raise ValueError("Kernel size op is not Const")
     value = ksize_node.attr["value"]
     t = make_ndarray(value.tensor)
     kernel_size_y = t[1]
