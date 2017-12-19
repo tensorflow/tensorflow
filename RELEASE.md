@@ -8,8 +8,10 @@
   This may break TF on older CPUs.
 
 ## Major Features And Improvements
-* Eager execution preview version is available under `tensorflow/contrib/eager/`.
-* TensorFlow Lite dev preview is now in `tensorflow/contrib/lite/`.
+* [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
+  preview version is now available.
+* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
+  dev preview is now available.
 * CUDA 9 and cuDNN 7 support.
 
 ## Bug Fixes and Other Changes
