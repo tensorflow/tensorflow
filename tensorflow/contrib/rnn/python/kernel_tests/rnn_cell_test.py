@@ -1213,11 +1213,11 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
                 h1.name: 0.1 * np.asarray([[6, 7]]),
             })
 
-        expected_h = np.array([[0.70230919, 0.72581059]])
-        expected_state0_c = np.array([[0.8020075, 0.89599884]])
-        expected_state0_h = np.array([[0.56668288, 0.60858738]])
-        expected_state1_c = np.array([[1.17500675, 1.26892781]])
-        expected_state1_h = np.array([[0.70230919, 0.72581059]])
+        expected_h = np.array([[ 0.56360819, 0.59142343]])
+        expected_state0_c = np.array([[ 0.65937076, 0.74983581]])
+        expected_state0_h = np.array([[ 0.44923618, 0.49362504]])
+        expected_state1_c = np.array([[ 0.96667446, 1.05597134]])
+        expected_state1_h = np.array([[ 0.56360819, 0.59142343]])
 
         actual_h = res[0]
         actual_state0_c = res[1][0].c
@@ -1241,15 +1241,14 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
-        res = sess.run(
-            [g, out_m], {
-                x.name: np.array([[1., 1., 1.]]),
-                c.name: 0.1 * np.asarray([[0, 1]]),
-                h.name: 0.1 * np.asarray([[2, 3]]),
-            })
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 1., 1.]]),
+          c.name: 0.1 * np.asarray([[0, 1]]),
+          h.name: 0.1 * np.asarray([[2, 3]]),
+        })
 
-        expected_h = np.array([[0.64121795, 0.68166804]])
-        expected_c = np.array([[0.88477188, 0.98103917]])
+        expected_h = np.array([[ 0.56668288, 0.60858742]])
+        expected_c = np.array([[ 0.80200753, 0.89599886]])
         self.assertEqual(len(res), 2)
         self.assertAllClose(res[0], expected_h, 1e-5)
         self.assertAllClose(res[1].c, expected_c, 1e-5)

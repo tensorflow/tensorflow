@@ -80,15 +80,16 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
-def _norm(g, b, inp, scope):
+def _norm(g, b, inp, scope, center=True):
   shape = inp.get_shape()[-1:]
   gamma_init = init_ops.constant_initializer(g)
   beta_init = init_ops.constant_initializer(b)
   with vs.variable_scope(scope):
     # Initialize beta and gamma for use by layer_norm.
     vs.get_variable("gamma", shape=shape, initializer=gamma_init)
-    vs.get_variable("beta", shape=shape, initializer=beta_init)
-  normalized = layers.layer_norm(inp, reuse=True, scope=scope)
+    if center:
+      vs.get_variable("beta", shape=shape, initializer=beta_init)
+  normalized = layers.layer_norm(inp, center=center, reuse=True, scope=scope)
   return normalized
 
 
@@ -1406,41 +1407,44 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   def output_size(self):
     return self._num_units
 
-  def _norm(self, inp, scope, dtype=dtypes.float32):
+  def _norm(self, inp, scope, center=True, dtype=dtypes.float32):
     shape = inp.get_shape()[-1:]
     gamma_init = init_ops.constant_initializer(self._norm_gain)
     beta_init = init_ops.constant_initializer(self._norm_shift)
     with vs.variable_scope(scope):
       # Initialize beta and gamma for use by layer_norm.
       vs.get_variable("gamma", shape=shape, initializer=gamma_init, dtype=dtype)
-      vs.get_variable("beta", shape=shape, initializer=beta_init, dtype=dtype)
-    normalized = layers.layer_norm(inp, reuse=True, scope=scope)
+      if center:
+        vs.get_variable("beta", shape=shape, initializer=beta_init, dtype=dtype)
+    normalized = layers.layer_norm(inp, center=center, reuse=True, scope=scope)
     return normalized
 
-  def _linear(self, args):
+  def _linear(self, inputs, h):
     out_size = 4 * self._num_units
-    proj_size = args.get_shape()[-1]
-    dtype = args.dtype
-    weights = vs.get_variable("kernel", [proj_size, out_size], dtype=dtype)
-    out = math_ops.matmul(args, weights)
-    if not self._layer_norm:
-      bias = vs.get_variable("bias", [out_size], dtype=dtype)
-      out = nn_ops.bias_add(out, bias)
+    in_size = inputs.get_shape()[-1]
+    h_size = h.get_shape()[-1]
+    dtype = h.dtype
+    in_weights = vs.get_variable("in_kernel", [in_size, out_size], dtype=dtype)
+    h_weights = vs.get_variable("h_kernel", [h_size, out_size], dtype=dtype)
+    in_out = math_ops.matmul(inputs, in_weights)
+    h_out = math_ops.matmul(h, h_weights)
+    if self._layer_norm:
+      # Don't add layer norm offset because we add a bias.
+      in_out = self._norm(in_out, "inputs", center=False, dtype=dtype)
+      h_out = self._norm(h_out, "hidden", center=False, dtype=dtype)
+    out = in_out + h_out
+    init = init_ops.constant_initializer(0.0, dtype=dtype)
+    bias = vs.get_variable("bias", [out_size], dtype=dtype, initializer=init)
+    out = nn_ops.bias_add(out, bias)
     return out
 
   def call(self, inputs, state):
     """LSTM cell with layer normalization and recurrent dropout."""
     c, h = state
-    args = array_ops.concat([inputs, h], 1)
-    concat = self._linear(args)
-    dtype = args.dtype
+    concat = self._linear(inputs, h)
+    dtype = h.dtype
 
     i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
-    if self._layer_norm:
-      i = self._norm(i, "input", dtype=dtype)
-      j = self._norm(j, "transform", dtype=dtype)
-      f = self._norm(f, "forget", dtype=dtype)
-      o = self._norm(o, "output", dtype=dtype)
 
     g = self._activation(j)
     if (not isinstance(self._keep_prob, float)) or self._keep_prob < 1:
@@ -2582,6 +2586,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     # Calculate the total size of arguments on dimension 1.
     total_arg_size = 0
     shapes = [a.get_shape() for a in args]
+    axis_sizes = [shape[1].value for shape in shapes]
     for shape in shapes:
       if shape.ndims != 2:
         raise ValueError("linear is expecting 2D arguments: %s" % shapes)
@@ -2596,14 +2601,19 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     # Now the computation.
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope) as outer_scope:
-      weights = vs.get_variable(
+      kernel = vs.get_variable(
           "kernel", [total_arg_size, output_size],
           dtype=dtype,
           initializer=kernel_initializer)
-      if len(args) == 1:
-        res = math_ops.matmul(args[0], weights)
+      if layer_norm:
+        weights = array_ops.split(kernel, axis_sizes)
+        res = [math_ops.matmul(arg, w) for arg, w in zip(args, weights)]
+        # Don't add layer norm offset because we add a bias.
+        res = [_norm(self._norm_gain, self._norm_shift, out,
+                     str(i), center=False) for i, out in enumerate(res)]
+        res = sum(res)
       else:
-        res = math_ops.matmul(array_ops.concat(args, 1), weights)
+        res = math_ops.matmul(array_ops.concat(args, 1), kernel)
       if not bias:
         return res
       with vs.variable_scope(outer_scope) as inner_scope:
@@ -2613,8 +2623,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         biases = vs.get_variable(
             "bias", [output_size], dtype=dtype, initializer=bias_initializer)
 
-    if not layer_norm:
-      res = nn_ops.bias_add(res, biases)
+    res = nn_ops.bias_add(res, biases)
 
     return res
 
@@ -2662,12 +2671,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
           layer_norm=self._layer_norm)
       i, j, f, o = array_ops.split(
           value=lstm_matrix, num_or_size_splits=4, axis=1)
-
-      if self._layer_norm:
-        i = _norm(self._norm_gain, self._norm_shift, i, "input")
-        j = _norm(self._norm_gain, self._norm_shift, j, "transform")
-        f = _norm(self._norm_gain, self._norm_shift, f, "forget")
-        o = _norm(self._norm_gain, self._norm_shift, o, "output")
 
       # Diagonal connections
       if self._use_peepholes:
