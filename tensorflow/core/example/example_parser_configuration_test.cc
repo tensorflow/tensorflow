@@ -43,9 +43,8 @@ class ExtractExampleParserConfigurationTest : public ::testing::Test {
  protected:
   void SetUp() override {
     string proto_string;
-    string filename =
-        io::JoinPath(testing::TensorFlowSrcRoot(),
-                     "core/example/testdata/parse_example_graph_def.pbtxt");
+    string filename = testing::RunFileRelocator::GetInstance().Relocate(
+        "core/example/testdata/parse_example_graph_def.pbtxt");
     ReadFileToStringOrDie(Env::Default(), filename, &proto_string);
     protobuf::TextFormat::ParseFromString(proto_string, &graph_def_);
     session_ = CreateSession();
