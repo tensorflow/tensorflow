@@ -26591,6 +26591,51 @@ op {
   summary: "Generate a glob pattern matching all sharded file names."
 }
 op {
+  name: "ShuffleAndRepeatDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The number of output elements to buffer in an iterator over\nthis dataset. Compare with the `min_after_dequeue` attr when creating a\n`RandomShuffleQueue`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    description: "A second scalar seed to avoid seed collision."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of times the underlying dataset\nshould be repeated. The default is `-1`, which results in infinite repetition."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that shuffles and repeats elements from `input_dataset`"
+  description: "pseudorandomly."
+}
+op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
@@ -26603,7 +26648,7 @@ op {
   }
   input_arg {
     name: "seed"
-    description: "A scalar seed for the random number generator. If either seed or\nseed2 is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
     type: DT_INT64
   }
   input_arg {
