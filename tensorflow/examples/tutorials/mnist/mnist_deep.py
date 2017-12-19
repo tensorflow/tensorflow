@@ -168,7 +168,7 @@ def main(_):
 
     # compute in batches to avoid OOM on GPUs 
     accuracy_l = []
-    for i in range(50):
+    for _ in range(20):
       batch = mnist.test.next_batch(500, shuffle=False)
       accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], y_: batch[1], keep_prob: 1.0}))
     print('test accuracy %g' % numpy.mean(accuracy_l))
