@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace java {
 
-/// \brief An enumeration of different modifiers commonly used in Java
+// An enumeration of different modifiers commonly used in Java
 enum Modifier {
   PUBLIC    = (1 << 0),
   PROTECTED = (1 << 1),
@@ -36,23 +36,44 @@ enum Modifier {
 
 class Annotation;
 
-/// \brief A definition of any kind of Java type (classes, interfaces...)
-///
-/// Note that most of the data fields of this class are only useful in specific
-/// contexts and are not required in many cases. For example, annotations and
-/// supertypes are only useful when declaring a type.
+// A definition of any kind of Java type (classes, interfaces...)
+//
+// Note that most of the data fields of this class are only useful in specific
+// contexts and are not required in many cases. For example, annotations and
+// supertypes are only useful when declaring a type.
 class Type {
  public:
   enum Kind {
     PRIMITIVE, CLASS, INTERFACE, ENUM, GENERIC, ANNOTATION
   };
-  struct Comparator {
-    bool operator() (const Type& type1, const Type& type2) {
-      return type1.name_ < type2.name_ || type1.package_ < type2.package_;
-    }
-  };
-  static Type Primitive(const string& name) {
-    return Type(Type::PRIMITIVE, name, "");
+  static const Type Byte() {
+    return Type(Type::PRIMITIVE, "byte");
+  }
+  static const Type Char() {
+    return Type(Type::PRIMITIVE, "char");
+  }
+  static const Type Short() {
+    return Type(Type::PRIMITIVE, "short");
+  }
+  static const Type Int() {
+    return Type(Type::PRIMITIVE, "int");
+  }
+  static const Type Long() {
+    return Type(Type::PRIMITIVE, "long");
+  }
+  static const Type Float() {
+    return Type(Type::PRIMITIVE, "float");
+  }
+  static const Type Double() {
+    return Type(Type::PRIMITIVE, "double");
+  }
+  static const Type Boolean() {
+    return Type(Type::PRIMITIVE, "boolean");
+  }
+  static const Type Void() {
+    // For simplicity, we consider 'void' as a primitive type, like the Java
+    // Reflection API does
+    return Type(Type::PRIMITIVE, "void");
   }
   static Type Class(const string& name, const string& package = "") {
     return Type(Type::CLASS, name, package);
@@ -63,38 +84,38 @@ class Type {
   static Type Enum(const string& name, const string& package = "") {
     return Type(Type::ENUM, name, package);
   }
-  static Type Generic(const string& name) {
-    return Type(Type::GENERIC, name, "");
-  }
-  static Type Wildcard() {
-    return Type(Type::GENERIC, "", "");
+  static Type Generic(const string& name = "") {
+    return Type(Type::GENERIC, name);
   }
   static Type ClassOf(const Type& type) {
-    return Class("Class").param(type);
+    return Class("Class").add_parameter(type);
   }
   static Type ListOf(const Type& type) {
-    return Interface("List", "java.util").param(type);
+    return Interface("List", "java.util").add_parameter(type);
   }
   static Type IterableOf(const Type& type) {
-    return Interface("Iterable").param(type);
+    return Interface("Iterable").add_parameter(type);
   }
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }
   const string& package() const { return package_; }
-  const string& descr() const { return descr_; }
-  Type& descr(const string& descr) { descr_ = descr; return *this; }
-  const std::vector<Type>& params() const { return params_; }
-  Type& param(const Type& param) {
-    params_.push_back(param);
+  const string& description() const { return description_; }
+  Type& description(const string& description) {
+    description_ = description;
+    return *this;
+  }
+  const std::vector<Type>& parameters() const { return parameters_; }
+  Type& add_parameter(const Type& parameter) {
+    parameters_.push_back(parameter);
     return *this;
   }
   const std::vector<Annotation>& annotations() const { return annotations_; }
-  Type& annotation(const Annotation& annotation) {
+  Type& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
   }
   const std::deque<Type>& supertypes() const { return supertypes_; }
-  Type& supertype(const Type& type) {
+  Type& add_supertype(const Type& type) {
     if (type.kind_ == CLASS) {
       supertypes_.push_front(type);  // keep superclass at the front of the list
     } else if (type.kind_ == INTERFACE) {
@@ -102,86 +123,88 @@ class Type {
     }
     return *this;
   }
-  /// Returns true if "type" is of a known collection type (only a few for now)
+  // Returns true if "type" is of a known collection type (only a few for now)
   bool IsCollection() const {
     return name_ == "List" || name_ == "Iterable";
   }
-  /// Returns true if this instance is a wildcard (<?>)
+  // Returns true if this instance is a wildcard (<?>)
   bool IsWildcard() const {
     return kind_ == GENERIC && name_.empty();
   }
-  bool operator==(const Type& type) const {
-      return name_ == type.name_ && package_ == type.package_;
-  }
-  bool operator!=(const Type& type) const { return !(*this == type); }
 
  protected:
-  Type(Kind kind, const string& name, const string& package)
+  Type(Kind kind, const string& name, const string& package = "")
     : kind_(kind), name_(name), package_(package) {}
 
  private:
   Kind kind_;
   string name_;
   string package_;
-  string descr_;
-  std::vector<Type> params_;
+  string description_;
+  std::vector<Type> parameters_;
   std::vector<Annotation> annotations_;
   std::deque<Type> supertypes_;
 };
 
-/// \brief Definition of a Java annotation
-///
-/// This class only defines the usage of an annotation in a specific context,
-/// giving optionally a set of attributes to initialize.
+// Definition of a Java annotation
+//
+// This class only defines the usage of an annotation in a specific context,
+// giving optionally a set of attributes to initialize.
 class Annotation : public Type {
  public:
-  static Annotation Of(const string& type_name, const string& package = "") {
-    return Annotation(type_name, package);
+  static Annotation Create(const string& type_name, const string& pkg = "") {
+    return Annotation(type_name, pkg);
   }
-  const string& attrs() const { return attrs_; }
-  Annotation& attrs(const string& attrs) { attrs_ = attrs; return *this; }
+  const string& attributes() const { return attributes_; }
+  Annotation& attributes(const string& attributes) {
+    attributes_ = attributes;
+    return *this;
+  }
 
  private:
-  string attrs_;
+  string attributes_;
 
   Annotation(const string& name, const string& package)
     : Type(Kind::ANNOTATION, name, package) {}
 };
 
-/// \brief A definition of a Java variable
-///
-/// This class defines an instance of a type, which could be documented.
+// A definition of a Java variable
+//
+// This class declares an instance of a type, such as a class field or a
+// method argument, which can be documented.
 class Variable {
  public:
-  static Variable Of(const string& name, const Type& type) {
+  static Variable Create(const string& name, const Type& type) {
     return Variable(name, type, false);
   }
-  static Variable VarArg(const string& name, const Type& type) {
+  static Variable Varargs(const string& name, const Type& type) {
     return Variable(name, type, true);
   }
   const string& name() const { return name_; }
   const Type& type() const { return type_; }
   bool variadic() const { return variadic_; }
-  const string& descr() const { return descr_; }
-  Variable& descr(const string& descr) { descr_ = descr; return *this; }
-
+  const string& description() const { return description_; }
+  Variable& description(const string& description) {
+    description_ = description;
+    return *this;
+  }
  private:
   string name_;
   Type type_;
   bool variadic_;
-  string descr_;
+  string description_;
 
   Variable(const string& name, const Type& type, bool variadic)
     : name_(name), type_(type), variadic_(variadic) {}
 };
 
-/// \brief A definition of a Java class method
-///
-/// This class defines the signature of a method, including its name, return
-/// type and arguments.
+// A definition of a Java class method
+//
+// This class defines the signature of a method, including its name, return
+// type and arguments.
 class Method {
  public:
-  static Method Of(const string& name, const Type& return_type) {
+  static Method Create(const string& name, const Type& return_type) {
     return Method(name, return_type, false);
   }
   static Method ConstructorFor(const Type& clazz) {
@@ -189,76 +212,60 @@ class Method {
   }
   bool constructor() const { return constructor_; }
   const string& name() const { return name_; }
-  const Type& ret_type() const { return ret_type_; }
-  const string& descr() const { return descr_; }
-  Method& descr(const string& descr) { descr_ = descr; return *this; }
-  const string& ret_descr() const { return ret_descr_; }
-  Method& ret_descr(const string& descr) { ret_descr_ = descr; return *this; }
-  const std::vector<Variable>& args() const { return args_; }
-  Method& args(const std::vector<Variable>& args) {
-    args_.insert(args_.cend(), args.cbegin(), args.cend());
+  const Type& return_type() const { return return_type_; }
+  const string& description() const { return description_; }
+  Method& description(const string& description) {
+    description_ = description;
     return *this;
   }
-  Method& arg(const Variable& var) { args_.push_back(var); return *this; }
+  const string& return_description() const { return return_description_; }
+  Method& return_description(const string& description) {
+    return_description_ = description;
+    return *this;
+  }
+  const std::vector<Variable>& arguments() const { return arguments_; }
+  Method& add_arguments(const std::vector<Variable>& args) {
+    arguments_.insert(arguments_.cend(), args.cbegin(), args.cend());
+    return *this;
+  }
+  Method& add_argument(const Variable& var) {
+    arguments_.push_back(var);
+    return *this;
+  }
   const std::vector<Annotation>& annotations() const { return annotations_; }
-  Method& annotation(const Annotation& annotation) {
+  Method& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
   }
 
  private:
   string name_;
-  Type ret_type_;
+  Type return_type_;
   bool constructor_;
-  string descr_;
-  string ret_descr_;
-  std::vector<Variable> args_;
+  string description_;
+  string return_description_;
+  std::vector<Variable> arguments_;
   std::vector<Annotation> annotations_;
 
-  Method(const string& name, const Type& ret_type, bool constructor)
-    : name_(name), ret_type_(ret_type), constructor_(constructor) {}
+  Method(const string& name, const Type& return_type, bool constructor)
+    : name_(name), return_type_(return_type), constructor_(constructor) {}
 };
 
-/// \brief A piece of code to read from a file.
+// A piece of code to read from a file.
 class Snippet {
  public:
-  explicit Snippet(const string& fname, Env* env = Env::Default()) {
-    TF_CHECK_OK(ReadFileToString(env, fname, &data_));
+  static Snippet Create(const string& fname, Env* env = Env::Default()) {
+    return Snippet(fname, env);
   }
   const string& data() const { return data_; }
 
  private:
   string data_;
+
+  Snippet(const string& fname, Env* env) {
+    TF_CHECK_OK(ReadFileToString(env, fname, &data_));
+  }
 };
-
-// Templates implementation
-
-template <typename TypeScanner>
-void ScanForTypes(const Type& type, TypeScanner* scanner) {
-  (*scanner)(type);
-  for (auto it = type.params().cbegin(); it != type.params().cend(); ++it) {
-    ScanForTypes(*it, scanner);
-  }
-  for (auto it = type.annotations().cbegin(); it != type.annotations().cend();
-      ++it) {
-    ScanForTypes(*it, scanner);
-  }
-  for (auto it = type.supertypes().cbegin(); it != type.supertypes().cend();
-      ++it) {
-    ScanForTypes(*it, scanner);
-  }
-}
-
-template <typename TypeScanner>
-void ScanForTypes(const Method& method, TypeScanner* scanner) {
-  if (!method.constructor()) {
-    ScanForTypes(method.ret_type(), scanner);
-  }
-  for (std::vector<Variable>::const_iterator arg = method.args().cbegin();
-      arg != method.args().cend(); ++arg) {
-    ScanForTypes(arg->type(), scanner);
-  }
-}
 
 }  // namespace java
 }  // namespace tensorflow
