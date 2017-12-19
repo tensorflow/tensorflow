@@ -476,7 +476,6 @@ class BaseLayerTest(test.TestCase):
 
   def testNameScopeIsConsistentWithVariableScope(self):
     # Github issue 13429.
-
     class MyLayer(base_layers.Layer):
 
       def build(self, input_shape):
@@ -494,7 +493,6 @@ class BaseLayerTest(test.TestCase):
     # unnamed layer
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, (), 'x')
-
       layer, op = _gen_layer(x)
       layer1, op1 = _gen_layer(op)
       layer2, op2 = _gen_layer(op1)
@@ -508,7 +506,6 @@ class BaseLayerTest(test.TestCase):
     # name starts from zero
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, (), 'x')
-
       layer, op = _gen_layer(x, name='name')
       layer1, op1 = _gen_layer(op, name='name_1')
       layer2, op2 = _gen_layer(op1, name='name_2')
@@ -522,7 +519,6 @@ class BaseLayerTest(test.TestCase):
     # name starts from one
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, (), 'x')
-
       layer, op = _gen_layer(x, name='name_1')
       layer1, op1 = _gen_layer(op, name='name_2')
       layer2, op2 = _gen_layer(op1, name='name_3')
