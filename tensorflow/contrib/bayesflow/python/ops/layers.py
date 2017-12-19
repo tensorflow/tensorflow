@@ -23,11 +23,25 @@ from __future__ import print_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.contrib.bayesflow.python.ops.layers_conv_variational import *
 from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational_impl import *
+from tensorflow.contrib.bayesflow.python.ops.layers_util import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    'Convolution1DVariational',
+    'Convolution2DVariational',
+    'Convolution3DVariational',
+    'Conv1DVariational',
+    'Conv2DVariational',
+    'Conv3DVariational',
+    'convolution1d_variational',
+    'convolution2d_variational',
+    'convolution3d_variational',
+    'conv1d_variational',
+    'conv2d_variational',
+    'conv3d_variational',
     'DenseReparameterization',
     'DenseLocalReparameterization',
     'DenseFlipout',

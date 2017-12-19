@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.bayesflow.python.ops import layers_dense_variational_impl as prob_layers_lib
+from tensorflow.contrib.bayesflow.python.ops import layers_util as prob_layers_util
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -127,7 +128,7 @@ class DenseVariational(test.TestCase):
     with self.test_session():
       layer = layer_class(
           units=2,
-          bias_posterior_fn=prob_layers_lib.default_mean_field_normal_fn(),
+          bias_posterior_fn=prob_layers_util.default_mean_field_normal_fn(),
           bias_prior_fn=_make_normal)
       inputs = random_ops.random_uniform([2, 3], seed=1)
 
@@ -345,7 +346,7 @@ class DenseVariational(test.TestCase):
           maxval=2,
           dtype=dtypes.int32,
           seed=distribution_util.gen_new_seed(
-              layer.seed, salt="conv_variational"))
+              layer.seed, salt="dense_flipout"))
       sign_output = math_ops.cast(2 * sign_output - 1, inputs.dtype)
       perturbed_inputs = math_ops.matmul(
           inputs * sign_input, expected_kernel_posterior_affine_tensor)
