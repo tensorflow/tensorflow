@@ -52,7 +52,7 @@ bool IsEqual(const NodeDef& node);
 bool IsExit(const NodeDef& node);
 bool IsFloorDiv(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);
-bool IsFusedBatchNormGradV1(const NodeDef& node);
+bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);

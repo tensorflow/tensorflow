@@ -119,8 +119,9 @@ bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
-bool IsFusedBatchNormGradV1(const NodeDef& node) {
-  return node.op() == "FusedBatchNormGrad";
+bool IsFusedBatchNormGrad(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }

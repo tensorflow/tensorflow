@@ -60,7 +60,9 @@ std::set<string> GetOpsFormatSupported() {
       "DepthwiseConv2dNativeBackpropInput",
       "DepthwiseConv2dNativeBackpropFilter",
       "FusedBatchNorm",
+      "FusedBatchNormV2",
       "FusedBatchNormGrad",
+      "FusedBatchNormGradV2",
       "FusedConv2DBiasActivation",
       "MaxPool",
       "MaxPoolGrad",
@@ -1619,7 +1621,7 @@ class DataLayoutOptimizer : GraphProcessor {
               new Conv2DBackpropFilterProcessor(opt_cxt, true));
         } else if (IsDepthwiseConv2dNativeBackpropInput(*node)) {
           node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
-        } else if (IsFusedBatchNormGradV1(*node)) {
+        } else if (IsFusedBatchNormGrad(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
         } else if (IsMaxPoolGradV1(*node)) {
           node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
