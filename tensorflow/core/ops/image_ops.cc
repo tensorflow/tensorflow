@@ -818,8 +818,8 @@ bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
-For example, if an image is 100 x 200 pixels (height x width) and the bounding 
-box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of 
+For example, if an image is 100 x 200 pixels (height x width) and the bounding
+box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
 the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
 
 Parts of the bounding box may fall outside the image.

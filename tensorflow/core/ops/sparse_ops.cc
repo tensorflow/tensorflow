@@ -190,7 +190,8 @@ REGISTER_OP("SerializeSparse")
     .Input("sparse_values: T")
     .Input("sparse_shape: int64")
     .Attr("T: type")
-    .Output("serialized_sparse: string")
+    .Output("serialized_sparse: out_type")
+    .Attr("out_type: {string, variant} = DT_STRING")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
@@ -200,11 +201,13 @@ REGISTER_OP("SerializeSparse")
       return Status::OK();
     })
     .Doc(R"doc(
-Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
+Serialize a `SparseTensor` into a `[3]` `Tensor` object.
 
 sparse_indices: 2-D.  The `indices` of the `SparseTensor`.
 sparse_values: 1-D.  The `values` of the `SparseTensor`.
 sparse_shape: 1-D.  The `shape` of the `SparseTensor`.
+out_type: The `dtype` to use for serialization; the supported types are `string`
+  (default) and `variant`.
 )doc");
 
 REGISTER_OP("SerializeManySparse")
@@ -212,7 +215,8 @@ REGISTER_OP("SerializeManySparse")
     .Input("sparse_values: T")
     .Input("sparse_shape: int64")
     .Attr("T: type")
-    .Output("serialized_sparse: string")
+    .Output("serialized_sparse: out_type")
+    .Attr("out_type: {string, variant} = DT_STRING")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
@@ -222,7 +226,7 @@ REGISTER_OP("SerializeManySparse")
       return Status::OK();
     })
     .Doc(R"doc(
-Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
+Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object.
 
 The `SparseTensor` must have rank `R` greater than 1, and the first dimension
 is treated as the minibatch dimension.  Elements of the `SparseTensor`
@@ -235,14 +239,17 @@ The minibatch size `N` is extracted from `sparse_shape[0]`.
 sparse_indices: 2-D.  The `indices` of the minibatch `SparseTensor`.
 sparse_values: 1-D.  The `values` of the minibatch `SparseTensor`.
 sparse_shape: 1-D.  The `shape` of the minibatch `SparseTensor`.
+out_type: The `dtype` to use for serialization; the supported types are `string`
+  (default) and `variant`.
 )doc");
 
 REGISTER_OP("DeserializeSparse")
-    .Input("serialized_sparse: string")
-    .Attr("dtype: type")
+    .Input("serialized_sparse: Tserialized")
     .Output("sparse_indices: int64")
     .Output("sparse_values: dtype")
     .Output("sparse_shape: int64")
+    .Attr("dtype: type")
+    .Attr("Tserialized: {string, variant} = DT_STRING")
     .SetShapeFn([](InferenceContext* c) {
       // serialized sparse is [?, ..., ?, 3] vector.
       DimensionHandle unused;
@@ -256,6 +263,48 @@ REGISTER_OP("DeserializeSparse")
     .Doc(R"doc(
 Deserialize `SparseTensor` objects.
 
+The input `serialized_sparse` must have the shape `[?, ?, ..., ?, 3]` where
+the last dimension stores serialized `SparseTensor` objects and the other N
+dimensions (N >= 0) correspond to a batch. The ranks of the original
+`SparseTensor` objects must all match. When the final `SparseTensor` is
+created, its rank is the rank of the incoming `SparseTensor` objects plus N;
+the sparse tensors have been concatenated along new dimensions, one for each
+batch.
+
+The output `SparseTensor` object's shape values for the original dimensions
+are the max across the input `SparseTensor` objects' shape values for the
+corresponding dimensions. The new dimensions match the size of the batch.
+
+The input `SparseTensor` objects' indices are assumed ordered in
+standard lexicographic order.  If this is not the case, after this
+step run `SparseReorder` to restore index ordering.
+
+For example, if the serialized input is a `[2 x 3]` matrix representing two
+original `SparseTensor` objects:
+
+    index = [ 0]
+            [10]
+            [20]
+    values = [1, 2, 3]
+    shape = [50]
+
+and
+
+    index = [ 2]
+            [10]
+    values = [4, 5]
+    shape = [30]
+
+then the final deserialized `SparseTensor` will be:
+
+    index = [0  0]
+            [0 10]
+            [0 20]
+            [1  2]
+            [1 10]
+    values = [1, 2, 3, 4, 5]
+    shape = [2 50]
+
 serialized_sparse: The serialized `SparseTensor` objects. The last dimension
   must have 3 columns.
 dtype: The `dtype` of the serialized `SparseTensor` objects.
@@ -263,10 +312,10 @@ dtype: The `dtype` of the serialized `SparseTensor` objects.
 
 REGISTER_OP("DeserializeManySparse")
     .Input("serialized_sparse: string")
-    .Attr("dtype: type")
     .Output("sparse_indices: int64")
     .Output("sparse_values: dtype")
     .Output("sparse_shape: int64")
+    .Attr("dtype: type")
     .SetShapeFn([](InferenceContext* c) {
       // serialized sparse is [?,3] matrix.
       ShapeHandle serialized_sparse;

@@ -40,6 +40,14 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunner::CreateModuleFromString(const tensorflow::StringPiece hlo_string,
+                                  const DebugOptions& debug_options) {
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  return tools::Parse(hlo_string, config);
+}
+
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
 HloRunner::ReadModuleFromHloProtoFile(const std::string& filename,
                                       const DebugOptions& debug_options) {
   HloProto proto;
@@ -104,17 +112,12 @@ HloRunner::HloRunner(se::Platform* platform) {
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
-HloRunner::~HloRunner() {
-  // Deallocate all the memory allocated during the tests.
-  for (auto& allocation : allocations_) {
-    backend().default_stream_executor()->Deallocate(&allocation);
-  }
-}
+HloRunner::~HloRunner() {}
 
-StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
+StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape, bool run_hlo_passes) {
+    const tensorflow::gtl::ArraySlice<Literal*> arguments,
+    bool run_hlo_passes) {
   if (run_hlo_passes) {
     TF_ASSIGN_OR_RETURN(
         module, backend().compiler()->RunHloPasses(
@@ -129,6 +132,7 @@ StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
   stream.Init();
 
   ExecutableRunOptions run_options;
+  run_options.set_device_ordinal(backend().default_device_ordinal());
   run_options.set_stream(&stream);
   run_options.set_allocator(backend().memory_allocator());
   run_options.set_inter_op_thread_pool(backend().inter_op_thread_pool());
@@ -138,73 +142,35 @@ StatusOr<se::DeviceMemoryBase> HloRunner::Execute(
   ServiceExecutableRunOptions service_run_options(
       run_options, backend().StreamBorrower(),
       backend().inter_op_thread_pool());
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase result,
-      executable->ExecuteOnStream(&service_run_options, arguments,
-                                  /*hlo_execution_profile=*/nullptr));
-  TF_RET_CHECK(stream.BlockHostUntilDone());
 
-  allocations_.push_back(result);
-
-  *result_shape = executable->result_shape();
-
-  if (ShapeUtil::IsTuple(*result_shape)) {
-    // We must record element buffers of tuples as well to avoid leaks.
-    DCHECK(!ShapeUtil::IsNestedTuple(*result_shape));
+  // Copy arguments to device.
+  std::vector<std::unique_ptr<ScopedShapedBuffer>> argument_buffers;
+  std::vector<ShapedBuffer*> argument_buffer_ptrs;
+  for (Literal* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::DeviceMemoryBase> element_buffers,
-        backend().transfer_manager()->ShallowCopyTupleFromDevice(
-            backend().default_stream_executor(), result, *result_shape));
-
-    // A tuple may contain the same buffer in more than one element. Keep track
-    // of the buffers already added to avoid duplicates in allocations_.
-    std::set<void*> added_opaques;
-    for (auto element_buffer : element_buffers) {
-      if (added_opaques.count(element_buffer.opaque()) == 0) {
-        CHECK(element_buffer.opaque() != nullptr);
-        added_opaques.insert(element_buffer.opaque());
-        allocations_.push_back(element_buffer);
-      }
-    }
+        std::unique_ptr<ScopedShapedBuffer> argument_buffer,
+        backend().transfer_manager()->AllocateScopedShapedBuffer(
+            argument->shape(), run_options.allocator(),
+            run_options.device_ordinal()));
+    TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+        stream.parent(), *argument, *argument_buffer));
+    argument_buffers.push_back(std::move(argument_buffer));
+    argument_buffer_ptrs.push_back(argument_buffers.back().get());
   }
 
-  return result;
-}
-
-StatusOr<se::DeviceMemoryBase> HloRunner::TransferToDevice(
-    const Literal& literal) {
-  // Allocate memory on the device using the stream executor.
-  int64 allocation_size =
-      backend().transfer_manager()->GetByteSizeRequirement(literal.shape());
-  se::DeviceMemoryBase allocation =
-      backend().default_stream_executor()->AllocateArray<uint8>(
-          allocation_size);
-  allocations_.push_back(allocation);
-
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      backend().default_stream_executor(), literal, &allocation));
-
-  return allocation;
-}
-
-StatusOr<std::unique_ptr<Literal>> HloRunner::TransferFromDevice(
-    const Shape& shape, se::DeviceMemoryBase device_base) {
-  auto literal = MakeUnique<Literal>();
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromDevice(
-      backend().default_stream_executor(), device_base, shape, shape,
-      literal.get()));
-  return std::move(literal);
-}
-
-StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    bool run_hlo_passes) {
-  Shape result_shape;
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase device_base,
-      Execute(std::move(module), arguments, &result_shape, run_hlo_passes));
-  return TransferFromDevice(result_shape, device_base);
+      std::unique_ptr<ShapedBuffer> result,
+      executable->ExecuteOnStream(&service_run_options, argument_buffer_ptrs,
+                                  /*hlo_execution_profile=*/nullptr));
+
+  // Create a ScopedShapedBuffer of the result to manage deallocation. This will
+  // deallocate all the device memory when it goes out of scope.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ScopedShapedBuffer> scoped_result,
+      ScopedShapedBuffer::MakeScoped(result.get(), run_options.allocator()));
+
+  return backend().transfer_manager()->TransferLiteralFromDevice(
+      stream.parent(), *scoped_result);
 }
 
 Backend& HloRunner::backend() {

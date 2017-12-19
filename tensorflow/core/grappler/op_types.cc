@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -24,13 +25,28 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool IsAdd(const NodeDef& node) { return node.op() == "Add"; }
+bool IsAdd(const NodeDef& node) {
+  if (node.op() == "AddV2" || node.op() == "Add") {
+    DataType type = node.attr().at("T").type();
+    return type != DT_STRING;
+  }
+  return false;
+}
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
+
+bool IsAnyDiv(const NodeDef& node) {
+  return node.op() == "RealDiv" || node.op() == "Div" ||
+         node.op() == "FloorDiv" || node.op() == "TruncateDiv";
+}
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
 bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
+
+bool IsBiasAdd(const NodeDef& node) {
+  return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
+}
 
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
@@ -67,6 +83,8 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
+
 bool IsEnter(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Enter" || op == "RefEnter";
@@ -88,8 +106,14 @@ bool IsIdentity(const NodeDef& node) {
   return op == "Identity" || op == "RefIdentity";
 }
 
+bool IsMatMul(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
+         op == "SparseMatMul";
+}
+
 bool IsMerge(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "Merge" || op == "RefMerge";
 }
 
@@ -105,7 +129,7 @@ bool IsNextIteration(const NodeDef& node) {
 bool IsPad(const NodeDef& node) { return node.op() == "Pad"; }
 
 bool IsPlaceholder(const NodeDef& node) {
-  const auto op = node.op();
+  const auto& op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
 }
@@ -131,7 +155,13 @@ bool IsRestore(const NodeDef& node) {
 
 bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
 
+bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
+
+bool IsShapeN(const NodeDef& node) { return node.op() == "ShapeN"; }
+
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
+
+bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
 bool IsSquaredDifference(const NodeDef& node) {
   return node.op() == "SquaredDifference";
@@ -161,6 +191,12 @@ bool IsVariable(const NodeDef& node) {
          op == "VarHandleOp" || op == "ReadVariableOp";
 }
 
+namespace {
+bool GetBoolAttr(const NodeDef& node, const string& name) {
+  return node.attr().count(name) > 0 && node.attr().at(name).b();
+}
+}  // namespace
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
@@ -179,6 +215,10 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     if (input.is_ref()) {
       return false;
     }
+  }
+  // Some nodes do in-place updates on regular tensor inputs.
+  if (GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace")) {
+    return false;
   }
   return true;
 }

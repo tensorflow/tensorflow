@@ -27,23 +27,31 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 
 using sparse::SparseTensor;
 
+template <typename T>
 class SerializeSparseOp : public OpKernel {
  public:
   explicit SerializeSparseOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
+  Status Initialize(Tensor* result);
+  Status Serialize(const Tensor& input, T* result);
+
   void Compute(OpKernelContext* context) override {
     const Tensor* input_indices;
     const Tensor* input_values;
     const Tensor* input_shape;
+
     OP_REQUIRES_OK(context, context->input("sparse_indices", &input_indices));
     OP_REQUIRES_OK(context, context->input("sparse_values", &input_values));
     OP_REQUIRES_OK(context, context->input("sparse_shape", &input_shape));
@@ -62,33 +70,74 @@ class SerializeSparseOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape->shape().DebugString()));
 
-    TensorProto proto_indices;
-    TensorProto proto_values;
-    TensorProto proto_shape;
+    Tensor serialized_sparse;
+    OP_REQUIRES_OK(context, Initialize(&serialized_sparse));
 
-    input_indices->AsProtoTensorContent(&proto_indices);
-    input_values->AsProtoTensorContent(&proto_values);
-    input_shape->AsProtoTensorContent(&proto_shape);
-
-    Tensor serialized_sparse(DT_STRING, TensorShape({3}));
-    auto serialized_sparse_t = serialized_sparse.vec<string>();
-
-    serialized_sparse_t(0) = proto_indices.SerializeAsString();
-    serialized_sparse_t(1) = proto_values.SerializeAsString();
-    serialized_sparse_t(2) = proto_shape.SerializeAsString();
+    auto serialized_sparse_t = serialized_sparse.vec<T>();
+    OP_REQUIRES_OK(context, Serialize(*input_indices, &serialized_sparse_t(0)));
+    OP_REQUIRES_OK(context, Serialize(*input_values, &serialized_sparse_t(1)));
+    OP_REQUIRES_OK(context, Serialize(*input_shape, &serialized_sparse_t(2)));
 
     context->set_output(0, serialized_sparse);
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("SerializeSparse").Device(DEVICE_CPU),
-                        SerializeSparseOp);
+template <>
+Status SerializeSparseOp<string>::Initialize(Tensor* result) {
+  *result = Tensor(DT_STRING, TensorShape({3}));
+  return Status::OK();
+}
+
+template <>
+Status SerializeSparseOp<string>::Serialize(const Tensor& input,
+                                            string* result) {
+  TensorProto proto;
+  input.AsProtoTensorContent(&proto);
+  *result = proto.SerializeAsString();
+  return Status::OK();
+}
+
+REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<string>("out_type"),
+                        SerializeSparseOp<string>);
+
+template <>
+Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
+  *result = Tensor(DT_VARIANT, TensorShape({3}));
+  return Status::OK();
+}
+
+template <>
+Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
+                                             Variant* result) {
+  *result = input;
+  return Status::OK();
+}
+
+REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<Variant>("out_type"),
+                        SerializeSparseOp<Variant>);
 
 template <typename T>
-class SerializeManySparseOp : public OpKernel {
+class SerializeManySparseOpBase : public OpKernel {
+ public:
+  explicit SerializeManySparseOpBase(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {}
+
+ protected:
+  Status Initialize(const int64 n, Tensor* result);
+  Status Serialize(const Tensor& input, T* result);
+};
+
+template <typename T, typename U>
+class SerializeManySparseOp : public SerializeManySparseOpBase<U> {
  public:
   explicit SerializeManySparseOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : SerializeManySparseOpBase<U>(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor* input_indices;
@@ -127,37 +176,31 @@ class SerializeManySparseOp : public OpKernel {
 
     auto input_shape_t = input_shape->vec<int64>();
     const int64 N = input_shape_t(0);
-
-    Tensor serialized_sparse(DT_STRING, TensorShape({N, 3}));
-    auto serialized_sparse_t = serialized_sparse.matrix<string>();
+    Tensor serialized_sparse;
+    OP_REQUIRES_OK(context, this->Initialize(N, &serialized_sparse));
+    auto serialized_sparse_t = serialized_sparse.matrix<U>();
 
     OP_REQUIRES_OK(context, input_st.IndicesValid());
 
-    // We can generate the output shape proto string now, for all
-    // minibatch entries.
+    // Initialize output with empty values and the proper shapes.
+    Tensor output_blank_indices(DT_INT64, {0, rank - 1});
+    U serialized_indices;
+    OP_REQUIRES_OK(context,
+                   this->Serialize(output_blank_indices, &serialized_indices));
+    serialized_sparse_t.template chip<1>(0).setConstant(serialized_indices);
+
+    Tensor output_blank_values(DataTypeToEnum<T>::value, {0});
+    U serialized_values;
+    OP_REQUIRES_OK(context,
+                   this->Serialize(output_blank_values, &serialized_values));
+    serialized_sparse_t.template chip<1>(1).setConstant(serialized_values);
+
     Tensor output_shape(DT_INT64, {rank - 1});
     auto output_shape_t = output_shape.vec<int64>();
     for (int d = 1; d < rank; d++) output_shape_t(d - 1) = input_shape_t(d);
-    TensorProto proto_shape;
-    output_shape.AsProtoTensorContent(&proto_shape);
-    const string proto_shape_string = proto_shape.SerializeAsString();
-
-    Tensor output_blank_indices(DT_INT64, {0, rank - 1});
-    Tensor output_blank_values(DataTypeToEnum<T>::value, {0});
-    TensorProto proto_blank_indices;
-    TensorProto proto_blank_values;
-    output_blank_indices.AsProtoTensorContent(&proto_blank_indices);
-    output_blank_values.AsProtoTensorContent(&proto_blank_values);
-
-    const string proto_blank_indices_string =
-        proto_blank_indices.SerializeAsString();
-    const string proto_blank_values_string =
-        proto_blank_values.SerializeAsString();
-
-    // Initialize output with empty values and the proper shapes.
-    serialized_sparse_t.chip<1>(0).setConstant(proto_blank_indices_string);
-    serialized_sparse_t.chip<1>(1).setConstant(proto_blank_values_string);
-    serialized_sparse_t.chip<1>(2).setConstant(proto_shape_string);
+    U serialized_shape;
+    OP_REQUIRES_OK(context, this->Serialize(output_shape, &serialized_shape));
+    serialized_sparse_t.template chip<1>(2).setConstant(serialized_shape);
 
     // Get groups by minibatch dimension
     sparse::GroupIterable minibatch = input_st.group({0});
@@ -186,24 +229,62 @@ class SerializeManySparseOp : public OpKernel {
         output_values_t(i) = values(i);
       }
 
-      TensorProto proto_indices;
-      TensorProto proto_values;
-      output_indices.AsProtoTensorContent(&proto_indices);
-      output_values.AsProtoTensorContent(&proto_values);
-
-      serialized_sparse_t(b, 0) = proto_indices.SerializeAsString();
-      serialized_sparse_t(b, 1) = proto_values.SerializeAsString();
+      OP_REQUIRES_OK(
+          context, this->Serialize(output_indices, &serialized_sparse_t(b, 0)));
+      OP_REQUIRES_OK(
+          context, this->Serialize(output_values, &serialized_sparse_t(b, 1)));
     }
 
     context->set_output(0, serialized_sparse);
   }
 };
 
-#define REGISTER_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")     \
-                              .Device(DEVICE_CPU)         \
-                              .TypeConstraint<type>("T"), \
-                          SerializeManySparseOp<type>)
+template <>
+Status SerializeManySparseOpBase<string>::Initialize(const int64 n,
+                                                     Tensor* result) {
+  *result = Tensor(DT_STRING, TensorShape({n, 3}));
+  return Status::OK();
+}
+
+template <>
+Status SerializeManySparseOpBase<string>::Serialize(const Tensor& input,
+                                                    string* result) {
+  TensorProto proto;
+  input.AsProtoTensorContent(&proto);
+  *result = proto.SerializeAsString();
+  return Status::OK();
+}
+
+#define REGISTER_KERNELS(type)                                     \
+  REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")              \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<string>("out_type"), \
+                          SerializeManySparseOp<type, string>)
+
+TF_CALL_ALL_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+template <>
+Status SerializeManySparseOpBase<Variant>::Initialize(const int64 n,
+                                                      Tensor* result) {
+  *result = Tensor(DT_VARIANT, TensorShape({n, 3}));
+  return Status::OK();
+}
+
+template <>
+Status SerializeManySparseOpBase<Variant>::Serialize(const Tensor& input,
+                                                     Variant* result) {
+  *result = input;
+  return Status::OK();
+}
+
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")               \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<Variant>("out_type"), \
+                          SerializeManySparseOp<type, Variant>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
@@ -212,7 +293,9 @@ template <typename T>
 class DeserializeSparseOp : public OpKernel {
  public:
   explicit DeserializeSparseOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& serialized_sparse = context->input(0);
@@ -240,86 +323,43 @@ class DeserializeSparseOp : public OpKernel {
             "but has a zero dimension ",
             serialized_sparse.shape().DebugString()));
 
+    if (num_sparse_tensors == 0 && serialized_sparse.shape().dims() == 1) {
+      // Special case with a single sparse tensor. We can avoid data
+      // motion in the Concat and Reshape.
+      const auto& serialized_sparse_t = serialized_sparse.vec<T>();
+
+      Tensor output_indices;
+      Tensor output_values;
+      Tensor output_shape;
+      OP_REQUIRES_OK(context,
+                     this->GetAndValidateSparseTensor(
+                         serialized_sparse_t(0), serialized_sparse_t(1),
+                         serialized_sparse_t(2), dtype_, 0 /* index */,
+                         &output_indices, &output_values, &output_shape));
+      context->set_output(0, output_indices);
+      context->set_output(1, output_values);
+      context->set_output(2, output_shape);
+      return;
+    }
+
     std::vector<Tensor> indices;
     std::vector<Tensor> values;
     TensorShape shape;
     indices.reserve(num_sparse_tensors);
     values.reserve(num_sparse_tensors);
 
-    const auto& serialized_sparse_t =
-        serialized_sparse.flat_inner_dims<string, 2>();
-
+    const auto& serialized_sparse_t = serialized_sparse.flat_inner_dims<T, 2>();
     for (int i = 0; i < num_sparse_tensors; ++i) {
-      Tensor output_indices(DT_INT64);
-      Tensor output_values(DataTypeToEnum<T>::value);
-      Tensor output_shape(DT_INT64);
-      TensorProto proto_indices;
-      TensorProto proto_values;
-      TensorProto proto_shape;
-
-      OP_REQUIRES(
-          context,
-          ParseProtoUnlimited(&proto_indices, serialized_sparse_t(i, 0)),
-          errors::InvalidArgument("Could not parse serialized_sparse[", i,
-                                  ", 0]"));
-      OP_REQUIRES(context,
-                  ParseProtoUnlimited(&proto_values, serialized_sparse_t(i, 1)),
-                  errors::InvalidArgument("Could not parse serialized_sparse[",
-                                          i, ", 1]"));
-      OP_REQUIRES(context,
-                  ParseProtoUnlimited(&proto_shape, serialized_sparse_t(i, 2)),
-                  errors::InvalidArgument("Could not parse serialized_sparse[",
-                                          i, ", 2]"));
-
-      OP_REQUIRES(context, output_indices.FromProto(proto_indices),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 0] (indices)"));
-      OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
-                  errors::InvalidArgument(
-                      "Expected serialized_sparse[", i,
-                      ", 0] to represent an index matrix but received shape ",
-                      output_indices.shape().DebugString()));
-      OP_REQUIRES(context, output_values.FromProto(proto_values),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 1] (values)"));
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(output_values.shape()),
-                  errors::InvalidArgument(
-                      "Expected serialized_sparse[", i,
-                      ", 1] to represent a values vector but received shape ",
-                      output_values.shape().DebugString()));
-      OP_REQUIRES(context, output_shape.FromProto(proto_shape),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 2] (shape)"));
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsVector(output_shape.shape()),
-          errors::InvalidArgument("Expected serialized_sparse[", i,
-                                  ", 1] to be a shape vector but its shape is ",
-                                  output_shape.shape().DebugString()));
-
-      OP_REQUIRES(
-          context, DataTypeToEnum<T>::value == output_values.dtype(),
-          errors::InvalidArgument(
-              "Requested SparseTensor of type ",
-              DataTypeString(DataTypeToEnum<T>::value), " but SparseTensor[", i,
-              "].values.dtype() == ", DataTypeString(output_values.dtype())));
-
+      Tensor output_indices;
+      Tensor output_values;
+      Tensor output_shape;
+      OP_REQUIRES_OK(context,
+                     this->GetAndValidateSparseTensor(
+                         serialized_sparse_t(i, 0), serialized_sparse_t(i, 1),
+                         serialized_sparse_t(i, 2), dtype_, i, &output_indices,
+                         &output_values, &output_shape));
       int64 num_entries = output_indices.dim_size(0);
-      OP_REQUIRES(context, num_entries == output_values.dim_size(0),
-                  errors::InvalidArgument(
-                      "Expected row counts of SparseTensor[", i,
-                      "].indices and SparseTensor[", i,
-                      "].values to match but they do not: ", num_entries,
-                      " vs. ", output_values.dim_size(0)));
       int rank = output_indices.dim_size(1);
-      OP_REQUIRES(
-          context, rank == output_shape.dim_size(0),
-          errors::InvalidArgument("Expected column counts of SparseTensor[", i,
-                                  "].indices to match size of SparseTensor[", i,
-                                  "].shape but they do not: ", rank, " vs. ",
-                                  output_shape.dim_size(0)));
 
       // Now we expand each SparseTensors' indices and shape by
       // prefixing a dimension
@@ -376,7 +416,25 @@ class DeserializeSparseOp : public OpKernel {
       tensors.emplace_back(indices[i], values[i], shape, std_order);
     }
 
-    SparseTensor output = SparseTensor::Concat<T>(tensors);
+    gtl::optional<SparseTensor> maybe_output;
+#define HANDLE_TYPE(T)                               \
+  case DataTypeToEnum<T>::value: {                   \
+    maybe_output = SparseTensor::Concat<T>(tensors); \
+    break;                                           \
+  }
+
+    switch (dtype_) {
+      TF_CALL_ALL_TYPES(HANDLE_TYPE);
+      TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+      TF_CALL_variant(HANDLE_TYPE);
+#undef HANDLE_TYPE
+      default:
+        OP_REQUIRES(context, false,
+                    errors::Unimplemented(
+                        "DeserializeSparse Unhandled data type: ", dtype_));
+    }
+    DCHECK(maybe_output);
+    SparseTensor& output = maybe_output.value();
 
     // Compute the input shape for the reshape operation.
     Tensor input_shape(DT_INT64, TensorShape({output.dims()}));
@@ -398,198 +456,101 @@ class DeserializeSparseOp : public OpKernel {
             0 /* output indices index */, 2 /* output shape index */);
     context->set_output(1, output.values());
   }
-};
 
-#define REGISTER_KERNELS(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")           \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("dtype"), \
-                          DeserializeSparseOp<type>)
+ protected:
+  Status Deserialize(const T& serialized, Tensor* result);
 
-TF_CALL_ALL_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS
+  Status GetAndValidateSparseTensor(
+      const T& serialized_indices, const T& serialized_values,
+      const T& serialized_shape, DataType values_dtype, int index,
+      Tensor* output_indices, Tensor* output_values, Tensor* output_shape) {
+    // Deserialize and validate the indices.
+    TF_RETURN_IF_ERROR(this->Deserialize(serialized_indices, output_indices));
+    if (!TensorShapeUtils::IsMatrix(output_indices->shape())) {
+      return errors::InvalidArgument(
+          "Expected serialized_sparse[", index,
+          ", 0] to represent an index matrix but received shape ",
+          output_indices->shape().DebugString());
+    }
+    int64 num_entries = output_indices->dim_size(0);
+    int rank = output_indices->dim_size(1);
 
-template <typename T>
-class DeserializeManySparseOp : public OpKernel {
- public:
-  explicit DeserializeManySparseOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& serialized_sparse = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(serialized_sparse.shape()),
-                errors::InvalidArgument(
-                    "Serialized sparse should be a matrix but received shape ",
-                    serialized_sparse.shape().DebugString()));
-    OP_REQUIRES(
-        context, serialized_sparse.shape().dim_size(1) == 3,
-        errors::InvalidArgument(
-            "Serialized sparse should have 3 columns but received shape ",
-            serialized_sparse.shape().DebugString()));
-
-    int num_sparse_tensors = serialized_sparse.shape().dim_size(0);
-
-    OP_REQUIRES(
-        context, num_sparse_tensors > 0,
-        errors::InvalidArgument("Must have at least 1 serialized SparseTensor, "
-                                "but input matrix has 0 rows"));
-
-    std::vector<Tensor> indices_to_concat;
-    std::vector<Tensor> values_to_concat;
-    std::vector<TensorShape> shapes_to_concat;
-
-    const auto& serialized_sparse_t = serialized_sparse.matrix<string>();
-
-    for (int i = 0; i < num_sparse_tensors; ++i) {
-      Tensor output_indices(DT_INT64);
-      Tensor output_values(DataTypeToEnum<T>::value);
-      Tensor output_shape(DT_INT64);
-      TensorProto proto_indices;
-      TensorProto proto_values;
-      TensorProto proto_shape;
-
-      OP_REQUIRES(
-          context,
-          ParseProtoUnlimited(&proto_indices, serialized_sparse_t(i, 0)),
-          errors::InvalidArgument("Could not parse serialized_sparse[", i,
-                                  ", 0]"));
-      OP_REQUIRES(context,
-                  ParseProtoUnlimited(&proto_values, serialized_sparse_t(i, 1)),
-                  errors::InvalidArgument("Could not parse serialized_sparse[",
-                                          i, ", 1]"));
-      OP_REQUIRES(context,
-                  ParseProtoUnlimited(&proto_shape, serialized_sparse_t(i, 2)),
-                  errors::InvalidArgument("Could not parse serialized_sparse[",
-                                          i, ", 2]"));
-
-      OP_REQUIRES(context, output_indices.FromProto(proto_indices),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 0] (indices)"));
-      OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
-                  errors::InvalidArgument(
-                      "Expected serialized_sparse[", i,
-                      ", 0] to represent an index matrix but received shape ",
-                      output_indices.shape().DebugString()));
-      OP_REQUIRES(context, output_values.FromProto(proto_values),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 1] (values)"));
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(output_values.shape()),
-                  errors::InvalidArgument(
-                      "Expected serialized_sparse[", i,
-                      ", 1] to represent a values vector but received shape ",
-                      output_values.shape().DebugString()));
-      OP_REQUIRES(context, output_shape.FromProto(proto_shape),
-                  errors::InvalidArgument(
-                      "Could not construct Tensor serialized_sparse[", i,
-                      ", 2] (shape)"));
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsVector(output_shape.shape()),
-          errors::InvalidArgument("Expected serialized_sparse[", i,
-                                  ", 1] to be a shape vector but its shape is ",
-                                  output_shape.shape().DebugString()));
-
-      OP_REQUIRES(
-          context, DataTypeToEnum<T>::value == output_values.dtype(),
-          errors::InvalidArgument(
-              "Requested SparseTensor of type ",
-              DataTypeString(DataTypeToEnum<T>::value), " but SparseTensor[", i,
-              "].values.dtype() == ", DataTypeString(output_values.dtype())));
-
-      int64 num_entries = output_indices.dim_size(0);
-      OP_REQUIRES(context, num_entries == output_values.dim_size(0),
-                  errors::InvalidArgument(
-                      "Expected row counts of SparseTensor[", i,
-                      "].indices and SparseTensor[", i,
-                      "].values to match but they do not: ", num_entries,
-                      " vs. ", output_values.dim_size(0)));
-      int rank = output_indices.dim_size(1);
-      OP_REQUIRES(
-          context, rank == output_shape.dim_size(0),
-          errors::InvalidArgument("Expected column counts of SparseTensor[", i,
-                                  "].indices to match size of SparseTensor[", i,
-                                  "].shape "
-                                  "but they do not: ",
-                                  rank, " vs. ", output_shape.dim_size(0)));
-
-      // Now we expand each SparseTensors' indices and shape by
-      // prefixing a dimension
-      Tensor expanded_indices(
-          DT_INT64, TensorShape({num_entries, 1 + output_indices.dim_size(1)}));
-      Tensor expanded_shape(DT_INT64,
-                            TensorShape({1 + output_shape.dim_size(0)}));
-      const auto& output_indices_t = output_indices.matrix<int64>();
-      const auto& output_shape_t = output_shape.vec<int64>();
-      auto expanded_indices_t = expanded_indices.matrix<int64>();
-      auto expanded_shape_t = expanded_shape.vec<int64>();
-      expanded_indices_t.chip<1>(0).setZero();
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_start(0, 1);
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_sizes(num_entries, rank);
-      expanded_indices_t.slice(indices_start, indices_sizes) = output_indices_t;
-      expanded_shape_t(0) = 1;
-      std::copy_n(&output_shape_t(0), rank, &expanded_shape_t(1));
-
-      TensorShape expanded_tensor_shape(expanded_shape.vec<int64>());
-
-      indices_to_concat.push_back(expanded_indices);
-      values_to_concat.push_back(output_values);
-      shapes_to_concat.push_back(expanded_tensor_shape);
+    // Deserialize and validate the values.
+    TF_RETURN_IF_ERROR(this->Deserialize(serialized_values, output_values));
+    if (!TensorShapeUtils::IsVector(output_values->shape())) {
+      return errors::InvalidArgument(
+          "Expected serialized_sparse[", index,
+          ", 1] to represent a values vector but received shape ",
+          output_values->shape().DebugString());
+    }
+    if (values_dtype != output_values->dtype()) {
+      return errors::InvalidArgument(
+          "Requested SparseTensor of type ", DataTypeString(values_dtype),
+          " but SparseTensor[", index,
+          "].values.dtype() == ", DataTypeString(output_values->dtype()));
+    }
+    if (num_entries != output_values->dim_size(0)) {
+      return errors::InvalidArgument(
+          "Expected row counts of SparseTensor[", index,
+          "].indices and SparseTensor[", index,
+          "].values to match but they do not: ", num_entries, " vs. ",
+          output_values->dim_size(0));
     }
 
-    int rank = -1;
-    for (int i = 0; i < num_sparse_tensors; ++i) {
-      if (rank < 0) rank = shapes_to_concat[i].dims();
-      OP_REQUIRES(context, rank == shapes_to_concat[i].dims(),
-                  errors::InvalidArgument(
-                      "Inconsistent rank across SparseTensors: rank prior to "
-                      "SparseTensor[",
-                      i, "] was: ", rank, " but rank of SparseTensor[", i,
-                      "] is: ", shapes_to_concat[i].dims()));
+    // Deserialize and validate the shape.
+    TF_RETURN_IF_ERROR(this->Deserialize(serialized_shape, output_shape));
+    if (!TensorShapeUtils::IsVector(output_shape->shape())) {
+      return errors::InvalidArgument(
+          "Expected serialized_sparse[", index,
+          ", 1] to be a shape vector but its shape is ",
+          output_shape->shape().DebugString());
     }
-
-    // SparseTensor::Concat requires consistent shape for all but the
-    // primary order dimension (dimension 0 in this case).  So we get
-    // the maximum value across all the input SparseTensors for each
-    // dimension and use that.
-    TensorShape preconcat_shape(shapes_to_concat[0]);
-    for (int i = 0; i < num_sparse_tensors; ++i) {
-      for (int d = 0; d < rank; ++d) {
-        preconcat_shape.set_dim(d, std::max(preconcat_shape.dim_size(d),
-                                            shapes_to_concat[i].dim_size(d)));
-      }
+    if (rank != output_shape->dim_size(0)) {
+      return errors::InvalidArgument("Expected column counts of SparseTensor[",
+                                     index,
+                                     "].indices to match size of SparseTensor[",
+                                     index, "].shape but they do not: ", rank,
+                                     " vs. ", output_shape->dim_size(0));
     }
-
-    // Dimension 0 is the primary dimension.
-    gtl::InlinedVector<int64, 8> std_order(rank);
-    std::iota(std_order.begin(), std_order.end(), 0);
-
-    std::vector<SparseTensor> tensors_to_concat;
-    tensors_to_concat.reserve(num_sparse_tensors);
-    for (int i = 0; i < num_sparse_tensors; ++i) {
-      tensors_to_concat.emplace_back(indices_to_concat[i], values_to_concat[i],
-                                     preconcat_shape, std_order);
-    }
-
-    SparseTensor output = SparseTensor::Concat<T>(tensors_to_concat);
-
-    Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
-
-    std::copy_n(output.shape().data(), output.dims(),
-                final_output_shape.vec<int64>().data());
-
-    context->set_output(0, output.indices());
-    context->set_output(1, output.values());
-    context->set_output(2, final_output_shape);
+    return Status::OK();
   }
+
+  DataType dtype_;
 };
 
-#define REGISTER_KERNELS(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("DeserializeManySparse")       \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("dtype"), \
-                          DeserializeManySparseOp<type>)
+template <>
+Status DeserializeSparseOp<string>::Deserialize(const string& serialized,
+                                                Tensor* result) {
+  TensorProto proto;
+  if (!ParseProtoUnlimited(&proto, serialized)) {
+    return errors::InvalidArgument("Could not parse serialized proto");
+  }
+  Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    return errors::InvalidArgument("Could not construct tensor from proto");
+  }
+  *result = tensor;
+  return Status::OK();
+}
 
-TF_CALL_ALL_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<string>("Tserialized"),
+                        DeserializeSparseOp<string>)
+
+REGISTER_KERNEL_BUILDER(Name("DeserializeManySparse").Device(DEVICE_CPU),
+                        DeserializeSparseOp<string>)
+
+template <>
+Status DeserializeSparseOp<Variant>::Deserialize(const Variant& serialized,
+                                                 Tensor* result) {
+  *result = *serialized.get<Tensor>();
+  return Status::OK();
+}
+
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<Variant>("Tserialized"),
+                        DeserializeSparseOp<Variant>)
+
 }  // namespace tensorflow

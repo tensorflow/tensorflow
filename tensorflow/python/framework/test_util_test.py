@@ -339,6 +339,16 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       self.assertEqual(2, self.evaluate(model))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
@@ -362,6 +372,26 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       ReferenceCycleTest().test_has_cycle()
 
     ReferenceCycleTest().test_has_no_cycle()
+
+  def test_no_leaked_tensor_decorator(self):
+
+    class LeakedTensorTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.])
+
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.])
+
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
 
 
 @test_util.with_c_api

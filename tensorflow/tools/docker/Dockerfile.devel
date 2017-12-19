@@ -69,11 +69,8 @@ RUN mkdir /bazel && \
     rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
 # Download and build TensorFlow.
-
-RUN git clone https://github.com/tensorflow/tensorflow.git && \
-    cd tensorflow && \
-    git checkout r1.4
 WORKDIR /tensorflow
+RUN git clone --branch=r1.4 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # TODO(craigcitro): Don't install the pip package, since it makes it
 # more difficult to experiment with local changes. Instead, just add

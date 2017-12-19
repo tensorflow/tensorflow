@@ -24,7 +24,21 @@ namespace batch_util {
 
 namespace {
 
-// Copies element into the index^th slice of parent (in the 0th dimension).
+Status ValidateInput(const Tensor& parent, const Tensor& element, int64 index) {
+  DCHECK_NE(parent.dim_size(0), 0);
+  DCHECK_GE(index, 0);
+  if (element.NumElements() != (parent.NumElements() / parent.dim_size(0))) {
+    TensorShape chip_shape = parent.shape();
+    chip_shape.RemoveDim(0);
+    return errors::Internal(
+        "ValidateInput Cannot perform copy: number of elements does not match. "
+        " Shapes are: [element]: ",
+        element.shape().DebugString(),
+        ", [parent slice]: ", chip_shape.DebugString());
+  }
+  return Status::OK();
+}
+
 template <typename T>
 Status HandleElementToSlice(Tensor element, Tensor* parent, int64 index,
                             bool /* can_move */) {
@@ -47,18 +61,22 @@ Status HandleElementToSlice<string>(Tensor element, Tensor* parent, int64 index,
   return Status::OK();
 }
 
+// TODO(jsimsa): Add HandleElementToSlice<variant> specialization that moves
+// the data when possible.
+
+template <typename T>
+static Status HandleSliceToElement(const Tensor& parent, Tensor* element,
+                                   int64 index) {
+  element->flat<T>() = parent.flat_outer_dims<T>().chip(index, 0);
+  return Status::OK();
+}
+
 }  // namespace
 
+// Copies element into the index^th slice of parent (in the 0th dimension).
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
-  if (element.NumElements() != (parent->NumElements() / parent->dim_size(0))) {
-    TensorShape chip_shape = parent->shape();
-    chip_shape.RemoveDim(0);
-    return errors::InvalidArgument(
-        "HandleElementToSlice Cannot copy slice: number of elements does "
-        "not match. Shapes are: [element]: ",
-        element.shape().DebugString(),
-        ", [parent slice]: ", chip_shape.DebugString());
-  }
+  TF_RETURN_IF_ERROR(ValidateInput(*parent, element, index));
+
   bool can_move = element.RefCountIsOne();
 #define HANDLE_TYPE(T)                                                \
   case DataTypeToEnum<T>::value: {                                    \
@@ -69,10 +87,31 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
   switch (element.dtype()) {
     TF_CALL_ALL_TYPES(HANDLE_TYPE);
     TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+    TF_CALL_variant(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
       return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
                                    element.dtype());
+  }
+}
+
+// Copies the index^th slice of parent (in the 0th dimension) into element.
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
+  TF_RETURN_IF_ERROR(ValidateInput(parent, *element, index));
+
+#define HANDLE_TYPE(T)                                      \
+  case DataTypeToEnum<T>::value: {                          \
+    return HandleSliceToElement<T>(parent, element, index); \
+  }
+
+  switch (parent.dtype()) {
+    TF_CALL_ALL_TYPES(HANDLE_TYPE);
+    TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
+    TF_CALL_variant(HANDLE_TYPE);
+#undef HANDLE_TYPE
+    default:
+      return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
+                                   element->dtype());
   }
 }
 

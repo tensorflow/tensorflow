@@ -73,12 +73,14 @@ REGISTER(quint16)
 REGISTER(qint16)
 REGISTER(qint32)
 REGISTER(bfloat16)
+TF_CALL_variant(REGISTER)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
-// Primarily used for SavedModel support on mobile. Registering it here only if
-// __ANDROID_TYPES_FULL__ is not defined, as that already register strings
-REGISTER(string);
+    // Primarily used for SavedModel support on mobile. Registering it here only
+    // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
+    // to avoid duplicate registration.
+    REGISTER(string);
 #endif  // defined(IS_MOBILE_PLATFORM) &&
         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
         // !defined(__ANDROID_TYPES_FULL__)

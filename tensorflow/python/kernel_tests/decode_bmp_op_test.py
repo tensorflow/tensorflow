@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
@@ -67,28 +68,68 @@ class DecodeBmpOpTest(test.TestCase):
   def testGrayscale(self):
     img_bytes = [[[255], [0]], [[255], [0]]]
     encoded_bytes = [
-        0x42, 0x40,
-        0x3d, 0, 0, 0,
-        0, 0,
-        0, 0,
-        0x36, 0, 0, 0,
-        0x28, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x1, 0,
-        0x8, 0,
-        0, 0, 0, 0,
-        0x10, 0, 0, 0,
-        0x13, 0xb, 0, 0,
-        0x13, 0xb, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
+        0x42,
+        0x40,
+        0x3d,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0x36,
+        0,
+        0,
+        0,
+        0x28,
+        0,
+        0,
+        0,
+        0x2,
+        0,
+        0,
+        0,
+        0x2,
+        0,
+        0,
+        0,
+        0x1,
+        0,
+        0x8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0x10,
+        0,
+        0,
+        0,
+        0x13,
+        0xb,
+        0,
+        0,
+        0x13,
+        0xb,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         0xff,
         0,
-        0, 0,
+        0,
+        0,
         0xff,
         0,
-        0, 0,
+        0,
+        0,
     ]
 
     byte_string = bytes(bytearray(encoded_bytes))
@@ -98,6 +139,7 @@ class DecodeBmpOpTest(test.TestCase):
     with self.test_session():
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
+
 
 if __name__ == "__main__":
   test.main()

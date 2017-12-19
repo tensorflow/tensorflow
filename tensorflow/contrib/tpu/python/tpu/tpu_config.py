@@ -31,6 +31,7 @@ class TPUConfig(
         'num_shards',
         'per_host_input_for_training',
         'tpu_job_name',
+        'initial_infeed_sleep_secs',
     ])):
   """TPU related configuration required by `TPUEstimator`.
 
@@ -50,13 +51,17 @@ class TPUConfig(
       within TPUEstimator, however when using ClusterSpec propagation in more
       esoteric cluster configurations, you may need to specify the job name as a
       string.
+    initial_infeed_sleep_secs: The number of seconds the infeed thread should
+      wait before enqueueing the first batch. This helps avoid timeouts for
+      models that require a long compilation time.
   """
 
   def __new__(cls,
               iterations_per_loop=2,
               num_shards=2,
               per_host_input_for_training=True,
-              tpu_job_name=None):
+              tpu_job_name=None,
+              initial_infeed_sleep_secs=None):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
@@ -64,12 +69,18 @@ class TPUConfig(
 
     # Check num_shards.
     util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
+
+    # Check initial_infeed_sleep_secs.
+    if initial_infeed_sleep_secs:
+      util_lib.check_positive_integer(initial_infeed_sleep_secs,
+                                      'TPUConfig initial_infeed_sleep_secs')
     return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards,
         per_host_input_for_training=per_host_input_for_training,
-        tpu_job_name=tpu_job_name)
+        tpu_job_name=tpu_job_name,
+        initial_infeed_sleep_secs=initial_infeed_sleep_secs)
 
 
 class RunConfig(run_config_lib.RunConfig):

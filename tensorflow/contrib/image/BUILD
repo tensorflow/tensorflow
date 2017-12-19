@@ -9,6 +9,7 @@ package(default_visibility = ["//visibility:public"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
@@ -106,10 +107,33 @@ tf_custom_op_library(
     name = "python/ops/_distort_image_ops.so",
     srcs = [
         "kernels/adjust_hsv_in_yiq_op.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
         "ops/distort_image_ops.cc",
     ],
+    gpu_srcs = [
+        "kernels/adjust_hsv_in_yiq_op_gpu.cu.cc",
+        "kernels/adjust_hsv_in_yiq_op.h",
+    ],
     deps = [
-        "@protobuf_archive//:protobuf",
+        "//tensorflow/core/kernels:gpu_util_hdrs",
+    ],
+)
+
+tf_cc_test(
+    name = "adjust_hsv_in_yiq_op_test",
+    size = "small",
+    srcs = [
+        "kernels/adjust_hsv_in_yiq_op.h",
+        "kernels/adjust_hsv_in_yiq_op_test.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
     ],
 )
 
@@ -120,19 +144,6 @@ tf_gen_op_libs(
 tf_gen_op_wrapper_py(
     name = "distort_image_ops",
     deps = [":distort_image_ops_op_lib"],
-)
-
-cc_library(
-    name = "distort_image_ops_cc",
-    srcs = [
-        "kernels/adjust_hsv_in_yiq_op.cc",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
 )
 
 py_library(

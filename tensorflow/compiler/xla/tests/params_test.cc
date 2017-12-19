@@ -334,6 +334,106 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   ComputeAndCompareTuple(&builder, *Literal::MakeTuple(ptrs), param_data);
 }
 
+// Test large number of parameters flowing into a while-loop.
+// Construct conceptually the following HLO graph:
+//
+// p0 = parameter(0)
+// p1 = parameter(1)
+// ...
+// pN = parameter(N)
+// result = while (false) {
+//   p0 += (1, 1);
+//   p1 += (1, 1);
+//   ...
+//   pN += (1, 1)
+// }
+// result = {p0, p1, ..., pN}
+//
+// TODO(b/70173746): Times out during compilation on GPU and CPU backends as of
+// 2017-12-12.
+XLA_TEST_F(ParamsTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(ManyParametersIntoWhileLoop))) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::vector<std::unique_ptr<GlobalData>> param_data_owner;
+  constexpr int kParamCount = 1900;
+  std::vector<ComputationDataHandle> params;
+  std::vector<Shape> parameter_shapes;
+  for (int i = 0; i < kParamCount; ++i) {
+    std::unique_ptr<Literal> literal = Literal::CreateR1<int32>({i, i});
+    param_data_owner.push_back(
+        std::move(client_->TransferToServer(*literal)).ValueOrDie());
+    ComputationDataHandle param =
+        builder.Parameter(i, literal->shape(), "param");
+    params.push_back(param);
+    parameter_shapes.push_back(literal->shape());
+  }
+
+  // Add bool parameter for the loop condition. Use a parameter HLO instead of a
+  // constant because DCE may eliminate the while-body otherwise.
+  std::unique_ptr<Literal> bool_literal = Literal::CreateR0<bool>(false);
+  param_data_owner.push_back(
+      std::move(client_->TransferToServer(*bool_literal)).ValueOrDie());
+  ComputationDataHandle bool_param =
+      builder.Parameter(kParamCount, bool_literal->shape(), "bool_param");
+  params.push_back(bool_param);
+  parameter_shapes.push_back(bool_literal->shape());
+
+  auto init = builder.Tuple(params);
+
+  // Create a computation for the condition: while(bool_param).
+  Shape while_shape = ShapeUtil::MakeTupleShape(parameter_shapes);
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto condition_parameter =
+        builder.Parameter(0, while_shape, "condition_parameter");
+    builder.GetTupleElement(condition_parameter, kParamCount);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add {1, 1} to the each tuple element.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto body_parameter = builder.Parameter(0, while_shape, "body_parameter");
+    std::vector<ComputationDataHandle> updates;
+    for (int i = 0; i < kParamCount; ++i) {
+      auto add = builder.Add(builder.GetTupleElement(body_parameter, i),
+                             builder.ConstantR1<int32>({1, 1}));
+      updates.push_back(add);
+    }
+    // Add bool parameter.
+    updates.push_back(builder.GetTupleElement(body_parameter, kParamCount));
+
+    builder.Tuple(updates);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  auto loop = builder.While(condition, body, init);
+
+  std::vector<ComputationDataHandle> outputs;
+  for (int i = 0; i < kParamCount; ++i) {
+    outputs.push_back(builder.GetTupleElement(loop, i));
+  }
+  builder.Tuple(outputs);
+
+  std::vector<GlobalData*> param_data;
+  param_data.reserve(param_data_owner.size());
+  for (const std::unique_ptr<GlobalData>& data : param_data_owner) {
+    param_data.push_back(data.get());
+  }
+
+  std::vector<std::unique_ptr<Literal>> elements;
+  std::vector<const Literal*> ptrs;
+  for (int i = 0; i < kParamCount; ++i) {
+    elements.push_back(Literal::CreateR1<int32>({i, i}));
+    ptrs.push_back(elements.back().get());
+  }
+  ComputeAndCompareTuple(&builder, *Literal::MakeTuple(ptrs), param_data);
+}
+
 #endif
 
 XLA_TEST_F(ParamsTest,

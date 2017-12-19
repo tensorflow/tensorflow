@@ -142,6 +142,13 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
+    case BF16:
+      // For BF16 we just need some type that is 16 bits wide so that it will
+      // take up the right amount of space in memory. LLVM does not have a BF16
+      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
+      // we can't map it directly to an LLVM type. We will not map a BF16
+      // addition to an addition on this type (int16) - this is just the type
+      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case S32:
     case U32:
@@ -279,6 +286,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
       case F32:
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<float>(*multi_index));
+        break;
+      case BF16:
+        value = llvm::ConstantInt::get(
+            ir_element_type,
+            tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
         break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
@@ -674,6 +686,33 @@ Status DumpIRToDirectory(const string& directory_name,
       tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
   return f->Close();
+}
+
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module) {
+  llvm::Function* function =
+      llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
+  function->setCallingConv(llvm::CallingConv::C);
+  function->addFnAttr("no-frame-pointer-elim", "false");
+
+  if (enable_fast_math) {
+    function->addFnAttr("unsafe-fp-math", "true");
+    function->addFnAttr("no-infs-fp-math", "true");
+    function->addFnAttr("no-nans-fp-math", "true");
+    function->addFnAttr("no-signed-zeros-fp-math", "true");
+  }
+
+  // Add the optize attribute to the function if optimizing for size. This
+  // controls internal behavior of some optimization passes (e.g. loop
+  // unrolling).
+  if (optimize_for_size) {
+    function->addFnAttr(llvm::Attribute::OptimizeForSize);
+  }
+
+  return function;
 }
 
 }  // namespace llvm_ir

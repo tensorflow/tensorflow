@@ -91,6 +91,9 @@ tensorflow::ImportNumpy();
 // _GLIBCXX_USE_CXX11_ABI flag value
 %constant const int __cxx11_abi_flag__ = tf_cxx11_abi_flag();
 
+// Flag indicating whether the build is monolithic
+%constant const int __monolithic_build__ = tf_monolithic_build();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
@@ -145,6 +148,25 @@ tensorflow::ImportNumpy();
   }
 }
 
+%ignore TF_OperationOutputConsumers;
+%unignore TF_OperationOutputConsumers_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetOutputConsumers_wrapper;
+
+// Build a Python list of unicode strings and return it. (Operation names are
+// always represented as unicode.)
+%typemap(out) std::vector<const char*>
+tensorflow::TF_OperationOutputConsumers_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyUnicode_FromString($1[i]));
+  }
+}
+
 %unignore GetOperationInputs;
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception GetOperationInputs;
@@ -157,13 +179,30 @@ tensorflow::ImportNumpy();
     SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
   }
 
-  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>> via &
-  std::vector<TF_Output>* tf_outputs = &$1;
-  for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, CreateWrappedTFOutput((*tf_outputs)[i]));
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
   }
 }
 
+%ignore TF_ImportGraphDefResultsMissingUnusedInputMappings;
+%unignore TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+
+%typemap(out) std::vector<string>
+TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+  for (size_t i = 0; i < $1.size(); ++i) {
+    const string& input_str = $1[i];
+    PyList_SET_ITEM($result, i, PyBytes_FromStringAndSize(input_str.data(),
+                                                          input_str.size()));
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
@@ -494,6 +533,84 @@ def TF_Reset(target, containers=None, config=None):
     $1 = &opers;
   } else {
     $1 = nullptr;
+  }
+}
+
+// Typemaps for TF_GraphGetTensorShapeHelper.
+
+// Convert from C++ integer vector to Python list of ints.
+%typemap(out) tensorflow::gtl::InlinedVector<int64_t, 6>
+     tensorflow::TF_GraphGetTensorShapeHelper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+  }
+}
+
+%typemap(in, numinputs=0) bool* unknown_shape (bool temp) {
+  $1=&temp;
+}
+
+// Returns a (list(int), bool) tuple.
+%typemap(argout) bool* unknown_shape {
+  PyObject* new_result = PyTuple_New(2);
+  if (!new_result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create tuple");
+  }
+  // Steals $result reference
+  PyTuple_SET_ITEM(new_result, 0, $result);
+  PyTuple_SET_ITEM(new_result, 1, PyBool_FromLong(*$1));
+  $result = new_result;
+}
+
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShapeHelper;
+%ignore TF_GraphGetTensorShape;
+
+// We use TF_GraphSetTensorShape_wrapper instead of
+// TF_GraphSetTensorShape
+%ignore TF_GraphSetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphSetTensorShape_wrapper;
+
+// $input is a Python list of ints to a vector<int> for TF_GraphSetTensorShape_wrapper
+%typemap(in) (const std::vector<int64_t>& dims)
+    (std::vector<int64_t> dims_local){
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, tensorflow::strings::Printf(
+              "$symname: expected list but got %s ", Py_TYPE($input)->tp_name).c_str());
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      dims_local.push_back(PyInt_AsLong(item));
+    }
+    $1 = &dims_local;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// We use TF_GraphGetTensorShape_wrapper instead of
+// TF_GraphGetTensorShape
+%ignore TF_GraphGetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShape_wrapper;
+
+// Build a Python list of ints and return it.
+%typemap(out) std::vector<int64_t> tensorflow::TF_GraphGetTensorShape_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
   }
 }
 

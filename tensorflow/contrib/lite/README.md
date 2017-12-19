@@ -4,7 +4,7 @@ TensorFlow Lite is TensorFlow's lightweight solution for mobile and embedded dev
 TensorFlow Lite uses many techniques for achieving low latency like optimizing the kernels for specific mobile apps, pre-fused activations, quantized kernels that allow smaller and faster (fixed-point math) models, and in the future, leverage specialized machine learning hardware to get the best possible performance for a particular model on a particular device.
 
 ![image](g3doc/TFLite-Architecture.jpg)
-# Getting Started with a Demo App
+# Getting Started with an Android Demo App
 
 This section contains an example application using TensorFlow Lite for Android devices. The demo is a sample camera app that classifies images continuously using a quantized Mobilenet model. A device running Android 5.0 ( API 21) or higher is required to run the demo.
 
@@ -17,7 +17,7 @@ There are 3 ways to get the demo app to your device
 In the demo app, inference is done using the TensorFlow Lite Java API. The demo app classifies frames in real-time, displaying the top most probable classifications. It also displays the time taken to detect the object.
 
 ## Downloading the pre-built binary
-The  fastest path to trying the demo, is to download the pre-built binary
+The fastest path to trying the demo, is to download the pre-built binary
 [TfLiteCameraDemo.apk](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk)
 
 Once the apk is installed, click the app icon to start the app. The first-time the app is opened, the app asks for runtime permissions to access the device camera. The demo app opens the back-camera of the device and recognizes the objects in the camera's field of view. At the bottom of the image (or at the left of the image if the device is in landscape mode), it shows the latency of classification and the top three objects classified.
@@ -69,7 +69,7 @@ android_ndk_repository(
 
 Additional details on building with Android can be found [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md).
 
-### Build the  source code
+### Build the source code
 Run bazel with the following command to build the demo.
 
 Build the demo app:
@@ -85,6 +85,17 @@ environment (due to a Bazel bug).
 
 ### More about the demo
 The demo is resizing each camera image frame to (224 width * 224 height) to match the  quantized Mobilenet model being used. The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch 224 * 224 is the width and height of the image 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. The Mobilenet model has 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The Mobilenet quantized model is bundled within the assets directory of the app.
+
+# iOS Demo App
+
+Similar to the Android demo app, there's an iOS camera app that uses exactly the same model (224 * 224 quantized Mobilenet).
+
+This demo app requires a camera so it doesn't work with simulators. It need to be executed on a real iOS device. Follow the instructions to build and run the demo app:
+
+1.   Follow the Building section [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md#building) to build the universal iOS library for TensorFlow Lite.
+1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
+1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the workspace file.
+1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
 
 # TensorFlow Lite Quick Start
 
@@ -156,6 +167,7 @@ graphviz, or [in tensorboard](https://codelabs.developers.google.com/codelabs/te
 This frozen Graphdef is now ready to be converted to flatbuffer format (.lite) for use on Android or iOS.  On Android users have the flexibility to use either the float or quantized versions of the frozen graphdef, if available, using the Tensorflow Optimizing Converter tool.
 
 Here is a sample command line to convert the frozen Graphdef to '.lite' format for  The Tensorflow Optimizing Converter supports both float and quantized models, however, different configuration parameters are needed depending on whether a FLOAT or QUANTIZED mode is being used.
+(Here is a link to the pb [file](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz)).
 
 ```
 bazel build tensorflow/contrib/lite/toco:toco
@@ -174,7 +186,7 @@ bazel-bin/tensorflow/contrib/lite/toco/toco -- \
 - Setting the input_array, output_array and input_shape arguments are a bit trickier. The easiest way to find these values is to explore the graph in tensorboard .  The user should reuse the arguments that were used for specifying the output nodes for inference in the `freeze_graph`step.
 
 Note, it is also possible to use the Tensorflow Optimizing Converter through protos either from Python or from the command line see the
-documentation [here](https://github.com/tensorflow/tensorflow/tree/mastertensorflow/contrib/lite/python:toco_from_protos target) A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
+documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/python/toco_from_protos.py). A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
 
 ```
 import tensorflow as tf
@@ -204,3 +216,7 @@ Note that you'd need to follow instructions for installing TensorFlow on Android
 
 ### For iOS
 Follow the documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/ios.md) to get integrate a TFLite model into your app.
+
+## Core ML support
+
+Core ML is a machine learning framework used across Apple products. In addition to using Tensorflow Lite models directly in their applications, developers have the option to convert their trained Tensorflow models to the [CoreML](https://developer.apple.com/machine-learning/) format for use on Apple devices. For information on how to use the converter please refer to the [Tensorflow-CoreML converter documentation](https://github.com/tf-coreml/tf-coreml).

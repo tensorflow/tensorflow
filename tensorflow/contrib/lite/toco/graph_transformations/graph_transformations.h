@@ -112,6 +112,7 @@ void RunGraphTransformations(Model* model, const string& message,
   };
 
 // List of all graph transformations
+DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
 DECLARE_GRAPH_TRANSFORMATION(EnsureBiasVectors)
 DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
@@ -151,6 +152,7 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(DropFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(UnfuseActivationFunctions)
+DECLARE_GRAPH_TRANSFORMATION(ResolveBatchToSpaceNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolvePadAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSliceAttributes)

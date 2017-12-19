@@ -78,7 +78,7 @@ class HDF5Matrix(object):
   def __len__(self):
     return self.end - self.start
 
-  def  __del__(self):
+  def __del__(self):
     self._f.close()
 
   def __getitem__(self, key):

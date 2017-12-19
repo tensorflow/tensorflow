@@ -42,9 +42,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Precondition: The indices of arg_literals correspond to the parameter
   // numbers of the HLO parameters in the computation. See comment below for an
   // example.
+  // `LiteralPtr` accepts either std::unique_ptr<Literal> or const Literal*
+  // type.
+  template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
       const HloModule& module,
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
 
   // Evaluates an HLO computation and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
@@ -62,9 +65,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // where Parameter0 has parameter_number 0 and Parameter1 has parameter_number
   // 1 in this computation. The input literals array will then have its first
   // literal map to Parameter0 and the second map to Parameter1.
+  // `LiteralPtr` accepts either std::unique_ptr<Literal> or const Literal*
+  // type.
+  template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
       const HloComputation& computation,
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
 
   // Evaluates a single HLO instruction and an array of pointers to literals.
   // Return the evaluated result as literal if successful.
@@ -72,10 +78,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // 1. argument literals correspond to the input instruction's parameters in
   // their post-ordering.
   // 2. the instruction's operands must be of either Parameter or Constant type.
-  // TODO(b/35950897): implement more ops other than element-wise ops.
+  // `LiteralPtr` accepts either std::unique_ptr<Literal> or const Literal*
+  // type.
+  template <typename LiteralPtr>
   StatusOr<std::unique_ptr<Literal>> Evaluate(
       HloInstruction* instruction,
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+      tensorflow::gtl::ArraySlice<LiteralPtr> arg_literals);
 
   // Evaluates a single HLO instruction with constant operands.
   // Returns the evaluated result as literal if successful.
@@ -100,12 +108,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
   // literal type of each evaluated Handle* method of a TypedVisitor.
-  // There are however a few notable exceptions to this is rule, notably:
+  // There are however a few notable exceptions to this rule, notably:
   // - HandleCompare and HandleIsFinite: where the resulting literal type is
   // always boolean.
   // These operations are handled outside of the parent HloEvaluator handlers
   // instead of from within TypedVisitor.
-  template <typename ReturnT>
+  //
+  // Type params:
+  //   - ReturnT: The type of input and output of each operation.
+  //   - ElementwiseT: The type in which internal computation are done.
+  template <typename ReturnT, typename ElementwiseT = ReturnT>
   class TypedVisitor;
 
   // Wraps around instruction handling to infer types before dispatching to
@@ -134,6 +146,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleIsFinite(HloInstruction* is_finite) override;
 
   Status HandleCompare(HloInstruction* compare) override;
+
   Status HandleTuple(HloInstruction* tuple) override;
 
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
@@ -167,13 +180,15 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
   // post-orderring.
+  // Must be cleared for each evaluation.
   tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<Literal>>
       evaluated_;
 
-  // Stores input literals, assuming they are in post-order. Literals are not
-  // owned by this class, and they must outlive the lifetime of the instance of
-  // this class.
-  tensorflow::gtl::ArraySlice<const Literal*> arg_literals_;
+  // Caches pointers to input literals, assuming they are in post-order.
+  // Literals are not owned by this class, and they must outlive the lifetime of
+  // each invocation to the Evaluate* method.
+  // Must be cleared for each evaluation.
+  std::vector<const Literal*> arg_literals_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };

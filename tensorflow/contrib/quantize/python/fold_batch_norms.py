@@ -66,23 +66,26 @@ def _FoldFusedBatchNorms(graph):
     # `scope`.
     with graph.as_default(), graph.name_scope(scope + sep), ops.device(
         match.bn_op.device):
-      # new weights = old weights * gamma / sqrt(variance + epsilon)
-      # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
-      multiplier_tensor = match.gamma_tensor * math_ops.rsqrt(
-          match.variance_tensor + match.bn_op.get_attr('epsilon'))
-      bias_tensor = math_ops.subtract(
-          match.beta_tensor, match.mean_tensor * multiplier_tensor, name='bias')
+      with graph.name_scope(scope + sep + 'BatchNorm_Fold' + sep):
+        # new weights = old weights * gamma / sqrt(variance + epsilon)
+        # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
+        multiplier_tensor = match.gamma_tensor * math_ops.rsqrt(
+            match.variance_tensor + match.bn_op.get_attr('epsilon'))
+        bias_tensor = math_ops.subtract(
+            match.beta_tensor,
+            match.mean_tensor * multiplier_tensor,
+            name='bias')
 
-      # The shape of depthwise weights is different, so we need to reshape the
-      # multiplier_tensor to ensure that the scaled_weight_tensor has the
-      # expected shape.
-      if match.layer_op.type == 'DepthwiseConv2dNative':
-        new_shape = [
-            match.weight_tensor.get_shape().as_list()[2],
-            match.weight_tensor.get_shape().as_list()[3]
-        ]
-        multiplier_tensor = array_ops.reshape(
-            multiplier_tensor, new_shape, name='scale_reshape')
+        # The shape of depthwise weights is different, so we need to reshape the
+        # multiplier_tensor to ensure that the scaled_weight_tensor has the
+        # expected shape.
+        if match.layer_op.type == 'DepthwiseConv2dNative':
+          new_shape = [
+              match.weight_tensor.get_shape().as_list()[2],
+              match.weight_tensor.get_shape().as_list()[3]
+          ]
+          multiplier_tensor = array_ops.reshape(
+              multiplier_tensor, new_shape, name='scale_reshape')
 
       # TODO(suharshs): This naming of the following ops needs to carefully
       # follow the naming expected by quantize.py. Generalize the quantize code

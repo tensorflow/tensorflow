@@ -30,64 +30,92 @@ from logging import ERROR
 from logging import FATAL
 from logging import INFO
 from logging import WARN
+import threading
 
 import six
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-# Determine whether we are in an interactive environment
-_interactive = False
-try:
-  # This is only defined in interactive shells
-  if _sys.ps1: _interactive = True
-except AttributeError:
-  # Even now, we may be in an interactive shell with `python -i`.
-  _interactive = _sys.flags.interactive
+# Don't use this directly. Use _get_logger() instead.
+_logger = None
+_logger_lock = threading.Lock()
 
-# Scope the tensorflow logger to not conflict with users' loggers
-_logger = _logging.getLogger('tensorflow')
 
-# If we are in an interactive environment (like jupyter), set loglevel to info
-# and pipe the output to stdout
-if _interactive:
-  _logger.setLevel(INFO)
-  _logging_target = _sys.stdout
-else:
-  _logging_target = _sys.stderr
+def _get_logger():
+  global _logger
 
-# Add the output handler
-_handler = _logging.StreamHandler(_logging_target)
-_handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
-_logger.addHandler(_handler)
+  # Use double-checked locking to avoid taking lock unnecessarily.
+  if _logger:
+    return _logger
+
+  _logger_lock.acquire()
+
+  try:
+    if _logger:
+      return _logger
+
+    # Scope the TensorFlow logger to not conflict with users' loggers.
+    logger = _logging.getLogger('tensorflow')
+
+    # Don't further configure the TensorFlow logger if the root logger is
+    # already configured. This prevents double logging in those cases.
+    if not _logging.getLogger().handlers:
+      # Determine whether we are in an interactive environment
+      _interactive = False
+      try:
+        # This is only defined in interactive shells.
+        if _sys.ps1: _interactive = True
+      except AttributeError:
+        # Even now, we may be in an interactive shell with `python -i`.
+        _interactive = _sys.flags.interactive
+
+      # If we are in an interactive environment (like Jupyter), set loglevel
+      # to INFO and pipe the output to stdout.
+      if _interactive:
+        logger.setLevel(INFO)
+        _logging_target = _sys.stdout
+      else:
+        _logging_target = _sys.stderr
+
+      # Add the output handler.
+      _handler = _logging.StreamHandler(_logging_target)
+      _handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
+      logger.addHandler(_handler)
+
+    _logger = logger
+    return _logger
+
+  finally:
+    _logger_lock.release()
 
 
 def log(level, msg, *args, **kwargs):
-  _logger.log(level, msg, *args, **kwargs)
+  _get_logger().log(level, msg, *args, **kwargs)
 
 
 def debug(msg, *args, **kwargs):
-  _logger.debug(msg, *args, **kwargs)
+  _get_logger().debug(msg, *args, **kwargs)
 
 
 def error(msg, *args, **kwargs):
-  _logger.error(msg, *args, **kwargs)
+  _get_logger().error(msg, *args, **kwargs)
 
 
 def fatal(msg, *args, **kwargs):
-  _logger.fatal(msg, *args, **kwargs)
+  _get_logger().fatal(msg, *args, **kwargs)
 
 
 def info(msg, *args, **kwargs):
-  _logger.info(msg, *args, **kwargs)
+  _get_logger().info(msg, *args, **kwargs)
 
 
 def warn(msg, *args, **kwargs):
-  _logger.warn(msg, *args, **kwargs)
+  _get_logger().warn(msg, *args, **kwargs)
 
 
 def warning(msg, *args, **kwargs):
-  _logger.warning(msg, *args, **kwargs)
+  _get_logger().warning(msg, *args, **kwargs)
 
 
 _level_names = {
@@ -118,7 +146,7 @@ def flush():
 
 # Code below is taken from pyglib/logging
 def vlog(level, msg, *args, **kwargs):
-  _logger.log(level, msg, *args, **kwargs)
+  _get_logger().log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -225,12 +253,12 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
 
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return _logger.getEffectiveLevel()
+  return _get_logger().getEffectiveLevel()
 
 
 def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _logger.setLevel(v)
+  _get_logger().setLevel(v)
 
 
 def _get_thread_id():

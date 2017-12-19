@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
@@ -419,9 +422,6 @@ RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
                       0);
   CHECK(cq_) << "Failed to create completion queue";
   CHECK(!ibv_req_notify_cq(cq_, 0)) << "Failed to request CQ notification";
-  polling_thread_.reset(Env::Default()->StartThread(
-      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
-  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 RdmaAdapter::~RdmaAdapter() {
@@ -431,6 +431,12 @@ RdmaAdapter::~RdmaAdapter() {
       << "Failed to destroy channel";
   CHECK(!ibv_dealloc_pd(pd_)) << "Failed to deallocate PD";
   CHECK(!ibv_close_device(context_)) << "Failed to release context";
+}
+
+void RdmaAdapter::StartPolling() {
+  polling_thread_.reset(Env::Default()->StartThread(
+      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
+  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 string RdmaAdapter::name() const { return string(context_->device->name); }
@@ -558,9 +564,44 @@ void RdmaAdapter::Process_CQ() {
   }
 }
 
+int RdmaChannel::PingPostRecv() {
+  struct ibv_recv_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.sg_list = &ping_sge_list_;
+  wr.num_sge = 1;
+  wr.wr_id = kPingRecvWrid;
+
+  return ibv_post_recv(qp_, &wr, &bad_wr);
+}
+
+int RdmaChannel::PingPostSend() {
+  struct ibv_send_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.wr_id = (uint64_t) this;
+  wr.sg_list = &ping_sge_list_;
+  wr.num_sge = 1;
+  wr.opcode = IBV_WR_SEND;
+  wr.send_flags = IBV_SEND_SIGNALED;
+
+  return ibv_post_send(qp_, &wr, &bad_wr);
+}
+
 RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
                          const string remote_name)
     : adapter_(adapter), local_name_(local_name), remote_name_(remote_name) {
+
+  struct ibv_sge list;
+
+  mr_ = ibv_reg_mr(adapter_->pd_, ping_buff_, kPingBuffSize,
+                   IBV_ACCESS_LOCAL_WRITE);
+  CHECK(mr_) << "Failed to register memory region";
+
+  memset(&list, 0, sizeof(list));
+  list.addr = (uintptr_t)ping_buff_;
+  list.length = kPingBuffSize;
+  list.lkey = mr_->lkey;
+
+  ping_sge_list_ = list;
   // Create queue pair
   {
     struct ibv_qp_init_attr attr;
@@ -633,15 +674,13 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
       buffer_index_name_table_.insert({index, buffer_names[i]});
       buffer_name_index_table_.insert({buffer_names[i], index});
     }
-
-    // Initiate recv
-    for (int i = 0; i < 100; i++) {
-      Recv();
-    }
   }
+  CHECK(PingPostRecv() == 0) << "Couldn't post receive from " << remote_name_
+                             << " with error " << std::strerror(errno);
 }
 
 RdmaChannel::~RdmaChannel() {
+  ibv_dereg_mr(mr_);
   CHECK(!ibv_destroy_qp(qp_)) << "Failed to destroy QP";
   delete tx_message_buffer_;
   delete rx_message_buffer_;
@@ -1026,6 +1065,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
     TensorProto proto;
     if (src_dev->tensorflow_gpu_device_info() &&
         (!send_args.alloc_attrs.on_host())) {
+#if GOOGLE_CUDA
       CHECK(send_args.device_context) << "send dev name: " << src_dev->name()
                                       << " gpu_info: "
                                       << src_dev->tensorflow_gpu_device_info();
@@ -1064,6 +1104,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
                                  &proto, NULL, send_args, recv_args);
             });
       }
+#endif  // GOOGLE_CUDA
     } else {
       // tensor is in CPU memory.
       StringPiece copy_buf;

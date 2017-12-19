@@ -52,6 +52,12 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
 /* static */ StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
+  if (proto.replica_count() <= 0 || proto.computation_count() <= 0) {
+    return InvalidArgument(
+        "Invalid device assignment topology: replica_count=%d, "
+        "computation_count=%d",
+        proto.replica_count(), proto.computation_count());
+  }
   auto assignment = MakeUnique<DeviceAssignment>(proto.replica_count(),
                                                  proto.computation_count());
   for (int computation = 0; computation < proto.computation_count();

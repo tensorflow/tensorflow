@@ -77,6 +77,7 @@ class GraphConstructor {
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
+          uniquify_prefix(in.uniquify_prefix),
           input_map(in.input_map),
           skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
@@ -90,6 +91,7 @@ class GraphConstructor {
 
     string prefix;
     bool uniquify_names;
+    bool uniquify_prefix;
     std::map<TensorId, TensorId> input_map;
     bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
@@ -111,20 +113,20 @@ class GraphConstructor {
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
 
   // versions and library may be nullptr
-  static Status Construct(const Options& opts, NodeDefSlice node_defs,
-                          const VersionDef* versions,
-                          const FunctionDefLibrary* library, Graph* g,
-                          ShapeRefiner* refiner,
-                          std::vector<std::pair<Node*, int>>* return_tensors,
-                          std::vector<Node*>* return_nodes,
-                          std::vector<TensorId>* unused_input_map_keys) {
+  static Status Construct(
+      const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
+      const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
+      std::vector<std::pair<Node*, int>>* return_tensors,
+      std::vector<Node*>* return_nodes,
+      std::vector<TensorId>* missing_unused_input_map_keys) {
     if (versions) {
       TF_RETURN_IF_ERROR(CheckVersions(*versions, TF_GRAPH_DEF_VERSION,
                                        TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                        "GraphDef", "graph"));
     }
     GraphConstructor c(opts, node_defs, versions, library, g, refiner,
-                       return_tensors, return_nodes, unused_input_map_keys);
+                       return_tensors, return_nodes,
+                       missing_unused_input_map_keys);
     const Status s = c.TryImport();
     if (!s.ok()) c.Undo();
     return s;
@@ -137,17 +139,18 @@ class GraphConstructor {
                    ShapeRefiner* refiner,
                    std::vector<std::pair<Node*, int>>* return_tensors,
                    std::vector<Node*>* return_nodes,
-                   std::vector<TensorId>* unused_input_map_keys)
+                   std::vector<TensorId>* missing_unused_input_map_keys)
       : opts_(opts),
         node_defs_(node_defs),
         versions_(versions),
         library_(library),
         g_(g),
         original_versions_(g->versions()),
+        prefix_(opts.prefix),
         refiner_(refiner),
         return_tensors_(return_tensors),
         return_nodes_(return_nodes),
-        unused_input_map_keys_(unused_input_map_keys) {}
+        missing_unused_input_map_keys_(missing_unused_input_map_keys) {}
 
   Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
@@ -159,6 +162,8 @@ class GraphConstructor {
     TF_RETURN_IF_ERROR(UpdateVersionDef());
     TF_RETURN_IF_ERROR(PopulateReturnTensors());
     TF_RETURN_IF_ERROR(PopulateReturnNodes());
+    TF_RETURN_IF_ERROR(PopulateMissingUnusedInputMapKeys());
+    UpdateUniquifiedColocationNames();
     FixupSourceAndSinkEdges(g_);
     return Status::OK();
   }
@@ -172,6 +177,7 @@ class GraphConstructor {
   Status UpdateVersionDef();
   Status PopulateReturnTensors();
   Status PopulateReturnNodes();
+  Status PopulateMissingUnusedInputMapKeys();
 
   void Undo();
 
@@ -201,9 +207,18 @@ class GraphConstructor {
   void UniquifyNames(const std::vector<bool>& input_already_exists,
                      NodeDef* node_def);
 
+  // Updates any constructed nodes' colocation group names if the name has been
+  // updated by UniquifyNames. This is called after all the nodes have been
+  // constructed so all the names have been uniquified if necessary.
+  void UpdateUniquifiedColocationNames();
+
   // Returns true if `name` already exists in `g_` (either as a node name or
   // prefix).
-  bool NameExists(StringPiece name);
+  bool NameExistsInGraph(StringPiece name);
+
+  // Returns true if `name` already exists in the GraphDef being imported
+  // (either as a node name or prefix).
+  bool NameExistsInGraphDef(StringPiece name);
 
   // Returns a unique version of `original_name`, or `original_name` if it's
   // already unique in the graph.
@@ -217,6 +232,9 @@ class GraphConstructor {
   Graph* g_;
   const VersionDef original_versions_;
 
+  // A copy of opts_.prefix, possibly uniquified.
+  string prefix_;
+
   ShapeRefiner* refiner_;
 
   // May be null. Not owned.
@@ -226,9 +244,10 @@ class GraphConstructor {
   std::vector<Node*>* return_nodes_;
 
   // May be null. Not owned.
-  std::vector<TensorId>* unused_input_map_keys_;
+  std::vector<TensorId>* missing_unused_input_map_keys_;
 
-  // Intermediate datastructure used to populate `unused_input_map_keys_`.
+  // Intermediate datastructure used to populate
+  // `missing_unused_input_map_keys_`.
   std::set<TensorId> used_input_map_keys_;
 
   // Mapping from node name to the index within node_defs_.
@@ -242,6 +261,9 @@ class GraphConstructor {
   // TODO(vrv): Profile this data structure to see if we should use an
   // alternative implementation of std::unordered_map.
   std::unordered_map<StringPiece, NodeInfo, StringPieceHasher> gdef_nodes_;
+
+  // Prefixes already used in the GraphDef being imported.
+  std::unordered_set<StringPiece, StringPieceHasher> gdef_prefixes_;
 
   // Mapping from node name to the existing node in g_.
   std::unordered_map<StringPiece, Node*, StringPieceHasher> existing_nodes_;
@@ -305,6 +327,16 @@ bool NodeNameInValues(const std::vector<string>& control_dependencies,
                    node_name) != control_dependencies.end();
 }
 
+// Adds any prefixes of `node_name` (not including the full name itself) to
+// `prefixes`.
+void AddPrefixes(StringPiece node_name,
+                 std::unordered_set<StringPiece, StringPieceHasher>* prefixes) {
+  size_t idx = -1;
+  while ((idx = node_name.find('/', idx + 1)) != StringPiece::npos) {
+    prefixes->insert(node_name.substr(0, idx));
+  }
+}
+
 Status GraphConstructor::EnsureNoNameCollisions() {
   existing_nodes_.reserve(g_->num_nodes());
   // Populate existing_nodes_ and existing_prefixes_.
@@ -323,34 +355,32 @@ Status GraphConstructor::EnsureNoNameCollisions() {
             n->name(), "'");
       }
     }
-    // Add all of node's prefixes to existing_prefixes_ (if it has any).
-    size_t idx = -1;
-    while ((idx = n->name().find('/', idx + 1)) != string::npos) {
-      StringPiece name(n->name());
-      existing_prefixes_.insert(name.substr(0, idx));
-    }
+    AddPrefixes(n->name(), &existing_prefixes_);
   }
-  if (opts_.prefix.empty() && opts_.importing && !opts_.uniquify_names) {
+  if (prefix_.empty() && opts_.importing && !opts_.uniquify_names) {
     for (const NodeDef* n : node_defs_) {
       const string& name = n->name();
-      if (NameExists(name)) {
+      if (NameExistsInGraph(name)) {
         return errors::InvalidArgument("Node name '", name,
                                        "' already exists in the Graph");
       }
     }
-  } else if (!opts_.prefix.empty()) {
-    StringPiece prefix_no_slash(opts_.prefix);
+  } else if (!prefix_.empty()) {
+    StringPiece prefix_no_slash(prefix_);
     prefix_no_slash.remove_suffix(1);
     if (!IsValidNodeName(prefix_no_slash, false)) {
-      return errors::InvalidArgument("Imported node name prefix '",
-                                     opts_.prefix,
+      return errors::InvalidArgument("Imported node name prefix '", prefix_,
                                      "' would lead to invalid node names");
     }
-    if (NameExists(prefix_no_slash)) {
-      return errors::InvalidArgument("Import node name prefix '",
-                                     prefix_no_slash,
-                                     "' conflicts with "
-                                     "name already used in the graph");
+    if (NameExistsInGraph(prefix_no_slash)) {
+      if (opts_.uniquify_prefix) {
+        prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
+      } else {
+        return errors::InvalidArgument("Import node name prefix '",
+                                       prefix_no_slash,
+                                       "' conflicts with "
+                                       "name already used in the graph");
+      }
     }
   }
   return Status::OK();
@@ -384,7 +414,7 @@ Status GraphConstructor::ValidateInputMapAndControlDependencies() {
 }
 
 Status GraphConstructor::BuildNodeIndex() {
-  // Validate the node names and add them to gdef_nodes_.
+  // Validate the node names and add them to gdef_nodes_ and gdef_prefixes_.
   for (int n = 0; n < node_defs_.size(); ++n) {
     const NodeDef& node_def = *node_defs_[n];
     if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
@@ -419,6 +449,8 @@ Status GraphConstructor::BuildNodeIndex() {
             "': Control dependencies must come after regular dependencies");
       }
     }
+    // Update gdef_prefixes_.
+    AddPrefixes(node_def.name(), &gdef_prefixes_);
   }
   return Status::OK();
 }
@@ -720,8 +752,8 @@ void GraphConstructor::AddControlDependencies(
 
 void GraphConstructor::AddPrefixToNodeDef(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
-  if (opts_.prefix.empty()) return;
-  node_def->set_name(strings::StrCat(opts_.prefix, node_def->name()));
+  if (prefix_.empty()) return;
+  node_def->set_name(strings::StrCat(prefix_, node_def->name()));
   // Update names of input nodes
   for (int i = 0; i < node_def->input_size(); ++i) {
     StringPiece input(node_def->input(i));
@@ -729,9 +761,9 @@ void GraphConstructor::AddPrefixToNodeDef(
     // imported).
     if (input_already_exists[i]) continue;
     if (input.Consume("^")) {
-      node_def->set_input(i, strings::StrCat("^", opts_.prefix, input));
+      node_def->set_input(i, strings::StrCat("^", prefix_, input));
     } else {
-      node_def->set_input(i, strings::StrCat(opts_.prefix, input));
+      node_def->set_input(i, strings::StrCat(prefix_, input));
     }
   }
   // Update names of colocation groups
@@ -741,8 +773,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     for (int i = 0; i < list->s_size(); ++i) {
       StringPiece v(list->s(i));
       if (v.Consume(kColocationGroupPrefix)) {
-        list->set_s(i,
-                    strings::StrCat(kColocationGroupPrefix, opts_.prefix, v));
+        list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
       }
     }
   }
@@ -750,10 +781,13 @@ void GraphConstructor::AddPrefixToNodeDef(
 
 void GraphConstructor::UniquifyNames(
     const std::vector<bool>& input_already_exists, NodeDef* node_def) {
-  if (NameExists(node_def->name())) {
+  if (NameExistsInGraph(node_def->name())) {
     string old_name = node_def->name();
     node_def->set_name(FindUniqueName(node_def->name()));
     uniquified_names_[old_name] = node_def->name();
+    // Note that we don't have to update gdef_nodes_ or gdef_prefixes_ with
+    // `name` because we guarantee the original NodeDef names are unique,
+    // meaning we won't generate this name again.
   }
   for (int i = 0; i < node_def->input_size(); ++i) {
     // Skip remapped inputs (which already exist in g_ and are not being
@@ -768,31 +802,52 @@ void GraphConstructor::UniquifyNames(
     id.first = iter->second;
     node_def->set_input(i, id.ToString());
   }
-  // Update names of colocation groups
-  if (node_def->attr().find(kColocationAttrName) != node_def->attr().end()) {
-    auto* list =
-        node_def->mutable_attr()->at(kColocationAttrName).mutable_list();
-    for (int i = 0; i < list->s_size(); ++i) {
-      StringPiece v(list->s(i));
-      if (v.Consume(kColocationGroupPrefix)) {
-        auto iter = uniquified_names_.find(v.ToString());
-        if (iter == uniquified_names_.end()) continue;
-        list->set_s(i, strings::StrCat(kColocationGroupPrefix, iter->second));
+}
+
+void GraphConstructor::UpdateUniquifiedColocationNames() {
+  for (const auto& pair : gdef_nodes_) {
+    Node* node = pair.second.node;
+    if (node == nullptr) continue;
+    std::vector<string> coloc_values;
+    Status status =
+        GetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values);
+    if (!status.ok()) continue;
+    bool updated = false;
+    for (int i = 0; i < coloc_values.size(); ++i) {
+      StringPiece val(coloc_values[i]);
+      if (val.Consume(kColocationGroupPrefix)) {
+        const auto& name_pair = uniquified_names_.find(val.ToString());
+        if (name_pair == uniquified_names_.end()) continue;
+        updated = true;
+        coloc_values[i] =
+            strings::StrCat(kColocationGroupPrefix, name_pair->second);
       }
+    }
+    if (updated) {
+      node->AddAttr(kColocationAttrName, coloc_values);
     }
   }
 }
 
-bool GraphConstructor::NameExists(StringPiece name) {
+bool GraphConstructor::NameExistsInGraph(StringPiece name) {
   if (existing_nodes_.find(name) != existing_nodes_.end()) return true;
-  return existing_prefixes_.find(name) != existing_prefixes_.end();
+  if (existing_prefixes_.find(name) != existing_prefixes_.end()) return true;
+  return false;
+}
+
+bool GraphConstructor::NameExistsInGraphDef(StringPiece name) {
+  if (gdef_nodes_.find(name) != gdef_nodes_.end()) return true;
+  if (gdef_prefixes_.find(name) != gdef_prefixes_.end()) return true;
+  return false;
 }
 
 string GraphConstructor::FindUniqueName(StringPiece original_name) {
   string name = original_name.ToString();
-  int count = 1;
-  while (NameExists(name)) {
-    name = strings::StrCat(original_name, "_", count++);
+  int count = 0;
+  // Check that any generated names don't collide with imported NodeDefs (as
+  // well as nodes in g_).
+  while (NameExistsInGraph(name) || (count > 0 && NameExistsInGraphDef(name))) {
+    name = strings::StrCat(original_name, "_", ++count);
   }
   return name;
 }
@@ -931,7 +986,7 @@ Status GraphConstructor::Convert() {
 
     Node* node;
     if (opts_.importing) {
-      if (!opts_.prefix.empty()) {
+      if (!prefix_.empty()) {
         AddPrefixToNodeDef(input_already_exists, &imported_node_def);
       } else if (opts_.uniquify_names) {
         UniquifyNames(input_already_exists, &imported_node_def);
@@ -970,15 +1025,6 @@ Status GraphConstructor::Convert() {
   if (processed < node_defs_.size()) {
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
-  }
-
-  // Update unused_input_map_keys_
-  if (unused_input_map_keys_ != nullptr) {
-    for (const auto& pair : opts_.input_map) {
-      if (used_input_map_keys_.find(pair.first) == used_input_map_keys_.end()) {
-        unused_input_map_keys_->push_back(pair.first);
-      }
-    }
   }
 
   return Status::OK();
@@ -1070,6 +1116,33 @@ Status GraphConstructor::PopulateReturnNodes() {
   return Status::OK();
 }
 
+Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
+  if (missing_unused_input_map_keys_ == nullptr) return Status::OK();
+  for (const auto& input_map_pair : opts_.input_map) {
+    TensorId key = input_map_pair.first;
+    if (used_input_map_keys_.count(key) > 0) continue;
+
+    auto pair = gdef_nodes_.find(key.first);
+    if (pair == gdef_nodes_.end()) {
+      // key's node doesn't exist in GraphDef
+      missing_unused_input_map_keys_->push_back(key);
+      continue;
+    }
+
+    // Check that key's index is in bounds. Get the number of outputs from the
+    // NodeDef, rather than the imported Node, since the Node may not exist if
+    // opts_.skip_mapped_nodes is true.
+    const NodeDef* node_def = node_defs_[pair->second.gdef_index];
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def->op(), &op_def));
+    if (key.second >= op_def->output_arg_size()) {
+      // key's index out of bounds
+      missing_unused_input_map_keys_->push_back(key);
+    }
+  }
+  return Status::OK();
+}
+
 void GraphConstructor::Undo() {
   for (const auto& iter : gdef_nodes_) {
     if (iter.second.node != nullptr) {
@@ -1101,7 +1174,7 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
   return GraphConstructor::Construct(
       opts, gdef.node(), &gdef.versions(), &gdef.library(), g, &refiner,
       /*return_tensors=*/nullptr, /*return_nodes=*/nullptr,
-      /*unused_input_map_keys=*/nullptr);
+      /*missing_unused_input_map_keys=*/nullptr);
 }
 
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
@@ -1115,7 +1188,7 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
   return GraphConstructor::Construct(opts, node_defs, nullptr, nullptr, g,
                                      &refiner, /*return_tensors=*/nullptr,
                                      /*return_nodes=*/nullptr,
-                                     /*unused_input_map_keys=*/nullptr);
+                                     /*missing_unused_input_map_keys=*/nullptr);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
@@ -1144,7 +1217,7 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 
   if (results != nullptr) {
     if (!results->return_tensors.empty() || !results->return_nodes.empty() ||
-        !results->unused_input_map_keys.empty()) {
+        !results->missing_unused_input_map_keys.empty()) {
       return errors::InvalidArgument(
           "All fields in results argument to ImportGraphDef() must be empty.");
     }
@@ -1187,7 +1260,7 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
     return GraphConstructor::Construct(
         opts, gdef.node(), &gdef.versions(), &gdef.library(), g, refiner,
         &results->return_tensors, &results->return_nodes,
-        &results->unused_input_map_keys);
+        &results->missing_unused_input_map_keys);
   }
 }
 

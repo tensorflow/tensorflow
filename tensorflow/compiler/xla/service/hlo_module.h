@@ -143,7 +143,12 @@ class HloModule {
 
   const HloModuleConfig& config() const { return config_; }
 
-  string ToString(bool include_large_constants = false) const;
+  // Return a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;

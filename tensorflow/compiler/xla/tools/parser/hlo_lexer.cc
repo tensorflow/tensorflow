@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -153,15 +152,15 @@ TokKind HloLexer::LexToken() {
   }
 }
 
-// Lex a shape, name, keyword, opcode, attribute name, or the dim labels
-// pattern.
+// Lex a shape, name, keyword, attribute name, the dim labels pattern, and
+// other identifiers.
 //
 // shape    ::= ([a-zA-Z0-9_]*[0-9]*)\[([0-9,]*)\](?:\s*{([0-9,]*)})?
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
-// opcode   ::= add, greater-than, ...
 // attribute_name ::= condition, body, dimensions, ...
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
@@ -220,20 +219,6 @@ TokKind HloLexer::LexIdentifier() {
 
 #undef KEYWORD
 
-  // See if this is an opcode.
-  auto opcode = StringToHloOpcode(identifier.ToString());
-  if (opcode.ok()) {
-    opcode_val_ = opcode.ValueOrDie();
-    return TokKind::kOpcode;
-  }
-
-  // See if this is an fusion kind.
-  auto kind = xla::StringToFusionKind(identifier.ToString());
-  if (kind.ok()) {
-    fusion_kind_val_ = kind.ValueOrDie();
-    return TokKind::kFusionKind;
-  }
-
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     static LazyRE2 dim_labels_pattern = {
@@ -244,8 +229,9 @@ TokKind HloLexer::LexIdentifier() {
       return TokKind::kDimLabels;
     }
   }
-  current_ptr_ = token_start_ + 1;
-  return TokKind::kError;
+
+  str_val_ = identifier.ToString();
+  return TokKind::kIdent;
 }
 
 // Lex names after a % character.
@@ -271,7 +257,8 @@ TokKind HloLexer::LexPercent() {
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
-// pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+// pad_pattern ::=
+//   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
@@ -289,7 +276,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
-      R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
+      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
 
   if (RE2::Consume(&consumable, *dim_labels_pattern)) {
     current_ptr_ = consumable.begin();
@@ -326,18 +313,43 @@ TokKind HloLexer::LexNumberOrPattern() {
   return TokKind::kError;
 }
 
-StringPiece HloLexer::GetCurrentLine() const {
-  const char* start = token_start_;
-  const char* end = current_ptr_;
-  if (!CanDereference(start) || !CanDereference(end)) {
+std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
+  unsigned line_no = 1;
+  const char* start = buf_.begin();
+  const char* ptr = start;
+  if (line_no_cache_.last_query && CanDereference(line_no_cache_.last_query) &&
+      line_no_cache_.last_query <= location) {
+    ptr = line_no_cache_.last_query;
+    line_no = line_no_cache_.line_no_of_query;
+  }
+  for (; ptr != location; ptr++) {
+    if (*ptr == '\n') {
+      line_no++;
+    }
+  }
+
+  // Update the line number cache.
+  line_no_cache_.last_query = ptr;
+  line_no_cache_.line_no_of_query = line_no;
+  size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
+  if (line_offset == StringPiece::npos) {
+    line_offset = 0;
+  }
+  return {line_no, ptr - start - line_offset};
+}
+
+StringPiece HloLexer::GetLine(LocTy loc) const {
+  if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
-  while (start > buf_.begin() && *start != '\n') {
-    start--;
-  }
-  while (end < buf_.end() && *end != '\n') {
-    end++;
-  }
+  size_t line_start =
+      StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
+  const char* start = line_start == StringPiece::npos
+                          ? buf_.begin()
+                          : buf_.begin() + line_start + 1;
+  size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
+  const char* end = line_end == StringPiece::npos ? buf_.end() : loc + line_end;
+
   return StringPieceFromPointers(start, end);
 }
 
@@ -428,14 +440,12 @@ string TokKindToString(TokKind kind) {
       return "kDxD";
     case TokKind::kPad:
       return "kPad";
+    case TokKind::kIdent:
+      return "kIdent";
     case TokKind::kString:
       return "kString";
     case TokKind::kShape:
       return "kShape";
-    case TokKind::kOpcode:
-      return "kOpcode";
-    case TokKind::kFusionKind:
-      return "kFusionKind";
     case TokKind::kInt:
       return "kInt";
     case TokKind::kDecimal:

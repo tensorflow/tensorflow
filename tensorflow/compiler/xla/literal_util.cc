@@ -252,6 +252,10 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<int32>(1);
     case S64:
       return *Literal::CreateR0<int64>(1);
+    case F16:
+      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(static_cast<bfloat16>(1.0f));
     case F32:
       return *Literal::CreateR0<float>(1);
     case F64:
@@ -263,8 +267,6 @@ Status Literal::Copy(const Literal& src_literal,
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -400,6 +402,27 @@ std::unique_ptr<Literal> Literal::Relayout(
   *copy_to->mutable_shape()->mutable_layout() = new_layout;
   TF_CHECK_OK(copy_to->Copy(*copy_from, base, base, copy_size));
   return outer_result;
+}
+
+std::unique_ptr<Literal> Literal::Relayout(
+    const Shape& shape_with_layout) const {
+  CHECK(ShapeUtil::Compatible(shape_with_layout, shape()))
+      << "Given shape_with_layout " << ShapeUtil::HumanString(shape_with_layout)
+      << " not compatible with literal shape "
+      << ShapeUtil::HumanString(shape());
+  std::unique_ptr<Literal> result = CreateFromShape(shape_with_layout);
+  ShapeUtil::ForEachSubshape(
+      result->shape(),
+      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsArray(subshape)) {
+          DimensionVector base(ShapeUtil::Rank(subshape), 0);
+          DimensionVector copy_size(subshape.dimensions().begin(),
+                                    subshape.dimensions().end());
+          TF_CHECK_OK(result->GetSubliteral(index).Copy(GetSubliteral(index),
+                                                        base, base, copy_size));
+        }
+      });
+  return result;
 }
 
 StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
@@ -713,7 +736,13 @@ string Literal::ToString(bool print_layout) const {
     pieces.push_back("}");
   } else {
     pieces.push_back(shape_to_string(shape()));
-    pieces.push_back(" {...}");
+    pieces.push_back(" {");
+    EachCellAsString(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+          pieces.push_back(" ");
+          pieces.push_back(value);
+        });
+    pieces.push_back("}");
   }
 
   return tensorflow::str_util::Join(pieces, "");

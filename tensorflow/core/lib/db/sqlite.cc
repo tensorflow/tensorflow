@@ -18,15 +18,36 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
+
+void ExecuteOrLog(Sqlite* db, const char* sql) {
+  Status s = db->Prepare(sql).StepAndReset();
+  if (!s.ok()) {
+    LOG(WARNING) << s.ToString();
+  }
+}
+
+string ExecuteOrEmpty(Sqlite* db, const char* sql) {
+  auto stmt = db->Prepare(sql);
+  bool is_done = false;
+  if (stmt.Step(&is_done).ok() && !is_done) {
+    return stmt.ColumnString(0);
+  }
+  return "";
+}
+
+}  // namespace
 
 /* static */
 xla::StatusOr<std::shared_ptr<Sqlite>> Sqlite::Open(const string& uri) {
   sqlite3* sqlite = nullptr;
-  Status s = MakeStatus(sqlite3_open(uri.c_str(), &sqlite));
-  if (s.ok()) {
-    return std::shared_ptr<Sqlite>(new Sqlite(sqlite));
-  }
-  return s;
+  TF_RETURN_IF_ERROR(MakeStatus(sqlite3_open(uri.c_str(), &sqlite)));
+  Sqlite* db = new Sqlite(sqlite, uri);
+  // This is the SQLite default since 2016. However it's good to set
+  // this anyway, since we might get linked against an older version of
+  // the library, and it's pretty much impossible to change later.
+  ExecuteOrLog(db, "PRAGMA page_size=4096");
+  return std::shared_ptr<Sqlite>(db);
 }
 
 /* static */ Status Sqlite::MakeStatus(int resultCode) {
@@ -75,7 +96,7 @@ xla::StatusOr<std::shared_ptr<Sqlite>> Sqlite::Open(const string& uri) {
   }
 }
 
-Sqlite::Sqlite(sqlite3* db) : db_(db) {}
+Sqlite::Sqlite(sqlite3* db, const string& uri) : db_(db), uri_(uri) {}
 
 Sqlite::~Sqlite() {
   // close_v2 doesn't care if a stmt hasn't been GC'd yet
@@ -95,6 +116,30 @@ Status Sqlite::Close() {
     db_ = nullptr;
   }
   return s;
+}
+
+void Sqlite::UseWriteAheadLogWithReducedDurabilityIfPossible() {
+  // TensorFlow summaries are intensively write-heavy, cf. most apps.
+  // This pragma loves writes and means that TensorBoard can read the
+  // database even as the training job inserts stuff. In other words,
+  // this makes SQLite almost as powerful as MySQL or PostgreSQL.
+  // https://www.sqlite.org/wal.html
+  string journal = ExecuteOrEmpty(this, "PRAGMA journal_mode=wal");
+  if (journal != "wal") {
+    LOG(WARNING) << "Failed to set journal_mode=wal because SQLite wants "
+                 << uri_ << " to be in '" << journal << "' mode, which might "
+                 << "be bad since WAL is important for the performance of "
+                 << "write-intensive apps. This might only happen for memory "
+                 << "databases or old versions of SQLite, but is definitely "
+                 << "worth fixing if that's not the case";
+  } else {
+    // This setting means we might lose transactions due to power loss,
+    // but the database can't become corrupted. In exchange, we get the
+    // the performance of a NoSQL database. This is a trade-off most data
+    // scientists would consider acceptable.
+    // https://www.sqlite.org/pragma.html#pragma_synchronous
+    ExecuteOrLog(this, "PRAGMA synchronous=NORMAL");
+  }
 }
 
 SqliteStatement Sqlite::Prepare(const string& sql) {

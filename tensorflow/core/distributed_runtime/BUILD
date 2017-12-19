@@ -140,6 +140,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     deps = [
         ":graph_mgr",
+        ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -264,6 +265,16 @@ cc_library(
 )
 
 cc_library(
+    name = "worker_cache_wrapper",
+    hdrs = ["worker_cache_wrapper.h"],
+    deps = [
+        ":worker_cache",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "remote_device",
     srcs = ["remote_device.cc"],
     hdrs = ["remote_device.h"],
@@ -323,6 +334,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
@@ -360,6 +372,7 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:tensorflow_opensource",
     ],
 )
@@ -403,6 +416,7 @@ cc_library(
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

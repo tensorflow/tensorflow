@@ -21,7 +21,6 @@ from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import enumerate_ops
 from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import grouping
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.ops import gen_dataset_ops

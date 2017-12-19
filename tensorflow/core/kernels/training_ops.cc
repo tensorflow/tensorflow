@@ -76,9 +76,9 @@ struct ApplyAdadelta<CPUDevice, T> {
         accum * rho() + grad.square() * (static_cast<T>(1) - rho());
     const auto update =
         (accum_update + epsilon()).sqrt() * (accum + epsilon()).rsqrt() * grad;
+    var.device(d) -= update * lr();
     accum_update.device(d) =
         accum_update * rho() + update.square() * (static_cast<T>(1) - rho());
-    var.device(d) -= update * lr();
   }
 };
 
@@ -536,8 +536,9 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    if (use_exclusive_lock_) {
-      mutex_lock l1(*GetTrainingVariableMutex(ctx, 0));
+    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    if (use_exclusive_lock_ && mu != nullptr) {
+      mutex_lock l1(*mu);
       // Don't try to acquire a lock on the second ref as they share the same
       // mutex.
       //
@@ -682,15 +683,21 @@ class SparseApplyAdadeltaOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    mutex* mu_var = GetTrainingVariableMutex(ctx, 0);
+  void Compute(OpKernelContext* ctx) override {
+    mutex* mu = GetTrainingVariableMutex(ctx, 0);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
     //
     // mutex* mu_accum = ctx->input_ref_mutex(1);
-    if (use_exclusive_lock_) {
-      mu_var->lock();
+    if (use_exclusive_lock_ && mu != nullptr) {
+      mutex_lock ml(*mu);
+      DoCompute(ctx);
+    } else {
+      DoCompute(ctx);
     }
+  }
+
+  void DoCompute(OpKernelContext* ctx) {
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
                             ctx, 0, use_exclusive_lock_, true, &var));
@@ -784,15 +791,12 @@ class SparseApplyAdadeltaOp : public OpKernel {
         const auto update =
             (accum_update_ + accum_update_.constant(epsilon_scalar)).sqrt() *
             (accum_ + accum_.constant(epsilon_scalar)).rsqrt() * grad_;
+        auto v = var_flat.template chip<0>(index);
+        v -= update * update.constant(lr_scalar);
         accum_update_ =
             accum_update_ * accum_update_.constant(rho_scalar) +
             update.square() * update.constant(static_cast<T>(1) - rho_scalar);
-        auto v = var_flat.template chip<0>(index);
-        v -= update * update.constant(lr_scalar);
       }
-    }
-    if (use_exclusive_lock_) {
-      mu_var->unlock();
     }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);

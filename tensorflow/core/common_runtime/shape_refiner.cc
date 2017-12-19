@@ -127,7 +127,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
 //
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
-// other maintanabilty issues.
+// other maintainability issues.
 Status ShapeRefiner::InferShapesForFunction(
     const tensorflow::FunctionDef* function_def, bool keep_nested_shapes,
     ExtendedInferenceContext* outer_context) {
@@ -707,6 +707,8 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
     *result = target_context->Scalar();
   } else if (src_op == "Shape") {
     *result = src_context->input(0);
+  } else if (src_op == "ShapeN") {
+    *result = src_context->input(input_edge->src_output());
   } else if (src_op == "Pack") {
     std::vector<DimensionHandle> dims;
     // Pack is concatenating its input scalars to form the shape tensor vector.

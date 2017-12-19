@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import codecs
 import marshal
 import os
 import sys
@@ -197,10 +198,11 @@ def func_dump(func):
       A tuple `(code, defaults, closure)`.
   """
   if os.name == 'nt':
-    code = marshal.dumps(
-        func.__code__).replace(b'\\', b'/').decode('raw_unicode_escape')
+    raw_code = marshal.dumps(func.__code__).replace(b'\\', b'/')
+    code = codecs.encode(raw_code, 'base64').decode('ascii')
   else:
-    code = marshal.dumps(func.__code__).decode('raw_unicode_escape')
+    raw_code = marshal.dumps(func.__code__)
+    code = codecs.encode(raw_code, 'base64').decode('ascii')
   defaults = func.__defaults__
   if func.__closure__:
     closure = tuple(c.cell_contents for c in func.__closure__)
@@ -225,7 +227,30 @@ def func_load(code, defaults=None, closure=None, globs=None):
     code, defaults, closure = code
     if isinstance(defaults, list):
       defaults = tuple(defaults)
-  code = marshal.loads(code.encode('raw_unicode_escape'))
+
+  def ensure_value_to_cell(value):
+    """Ensures that a value is converted to a python cell object.
+
+    Arguments:
+        value: Any value that needs to be casted to the cell type
+
+    Returns:
+        A value wrapped as a cell object (see function "func_load")
+    """
+    def dummy_fn():
+      # pylint: disable=pointless-statement
+      value  # just access it so it gets captured in .__closure__
+
+    cell_value = dummy_fn.__closure__[0]
+    if not isinstance(value, type(cell_value)):
+      return cell_value
+    else:
+      return value
+
+  if closure is not None:
+    closure = tuple(ensure_value_to_cell(_) for _ in closure)
+  raw_code = codecs.decode(code.encode('ascii'), 'base64')
+  code = marshal.loads(raw_code)
   if globs is None:
     globs = globals()
   return python_types.FunctionType(

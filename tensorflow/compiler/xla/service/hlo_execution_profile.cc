@@ -76,8 +76,8 @@ std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
       HloProfilePrinter::HloInstructionInfo* instruction_info =
           &computation_info->instructions[instruction_index_in_static_data++];
       instruction_info->long_name = strdup(hlo->ToString().c_str());
-      instruction_info->short_name =
-          strdup(hlo->ToString(/*compact_operands=*/true).c_str());
+      instruction_info->short_name = strdup(
+          hlo->ToString(HloPrintOptions().set_compact_operands(true)).c_str());
       instruction_info->category = strdup(hlo->ToCategory().c_str());
       instruction_info->flop_count = cost_analysis.flop_count(*hlo);
       instruction_info->transcendental_count =
@@ -109,7 +109,8 @@ std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
   };
 
   return MakeUnique<HloProfilePrinter>(
-      computation_infos, hlo_profile_index_map.computation_count(), deleter);
+      computation_infos, hlo_profile_index_map.computation_count(),
+      /*profile_counters_size=*/max_profile_index, deleter);
 }
 
 HloExecutionProfile::HloExecutionProfile(

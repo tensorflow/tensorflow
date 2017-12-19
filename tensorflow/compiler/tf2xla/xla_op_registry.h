@@ -45,11 +45,11 @@ extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 extern const char* const DEVICE_XLA_CPU;
 extern const char* const DEVICE_XLA_GPU;
 
-constexpr std::array<DataType, 3> kFloatTypes = {
-    {DT_HALF, DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 8> kNumericTypes = {
+constexpr std::array<DataType, 4> kFloatTypes = {
+    {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
+constexpr std::array<DataType, 9> kNumericTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
-     DT_COMPLEX64}};
+     DT_COMPLEX64, DT_BFLOAT16}};
 
 constexpr std::array<DataType, 8> kCpuAllTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE,
@@ -97,6 +97,12 @@ class XlaOpRegistry {
                               gtl::ArraySlice<DataType> supported_types,
                               BackendOpFilter op_filter);
 
+  // Returns the names of the registered backends.
+  static std::vector<string> BackendNames();
+
+  // Returns true iff a backend with the given name is registered.
+  static bool IsBackendRegistered(const string& name);
+
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
   static void RegisterCompilationDevice(const string& device_name,
@@ -116,8 +122,8 @@ class XlaOpRegistry {
   static void RegisterCompilationKernels();
 
   // Returns KernelDefs for compilation ops registered on
-  // 'compilation_device_name'.
-  // Does not include kernels registered as CompilationOnly.
+  // 'compilation_device_name'.  Does not include kernels registered as
+  // CompilationOnly, iff include_compilation_only_kernels=false.
   static std::vector<const KernelDef*> DeviceKernels(
       const string& compilation_device_name,
       bool include_compilation_only_kernels);

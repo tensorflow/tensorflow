@@ -41,20 +41,25 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import training_util
 
 
-def replicate_model_fn(model_fn, optimizer_fn, devices=None):
+def replicate_model_fn(model_fn,
+                       optimizer_fn,
+                       loss_reduction=losses.Reduction.SUM,
+                       devices=None):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
   such a model over GPUs, each GPU gets its own instance of the forward pass
   (a.k.a. a tower).  The input features and labels get sharded into the chunks
-  that correspond to the number of GPUs.  Each tower computes its own loss based
+  that correspond to the number of GPUs.  Each tower computes a loss based
   on its input.  For each such loss, gradients are computed.  After that, the
-  available losses are summed to form aggregated loss.  The available
-  gradients are summed too.  Then, they update weights using the specified
+  available losses are aggregated to form aggregated loss.  Available
+  gradients are summed.  Then, they update weights using the specified
   optimizer.
 
   If `devices` are `None`, then all available GPUs are going to be used for
@@ -101,7 +106,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   On reduction algorithms:
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
-    - Losses from all towers are reduced using sum.
+    - Losses from all towers are reduced according to `loss_reduction`.
     - Gradients are reduced using sum for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
@@ -109,7 +114,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     - For all other fields of `EstimatorSpec` the values of the first tower
       are taken.
 
-  On replication of variables:
+  On distribution of variables:
   Variables are not duplicated between towers.  Instead, they are placed on a
   single device as defined above and shared across towers.
 
@@ -123,6 +128,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     optimizer_fn: a function that returns an optimizer instance.  The function
       may accept one `params` argument.  This is the `params` argument as
       defined by `Estimator`.  See  the `Estimator` documentation for details.
+    loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
@@ -133,39 +139,91 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
       conforms to the requirements of `Estimator`'s `model_fn` and can be used
       instead of the supplied `model_fn`.
   """
+  return _replicate_model_fn_with_mode(
+      model_fn,
+      optimizer_fn,
+      loss_reduction,
+      devices,
+      # TODO(isaprykin): Query the system configuration to choose modes other
+      # than `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often
+      # appropriate.
+      mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER)
+
+
+class _VariableDistributionMode(object):
+  """Modes for variable distribution used for forcing a particular one.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
+
+  SHARED_LOCAL_PARAMETER_SERVER = 1
+  """Variables are placed on a single device and shared across all devices.
+
+  Two ways to achieve this distribution over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
+  """
+
+  SHARED_ROUND_ROBIN = 2
+  """Variables are placed on all devices in a round-robin fashion.
+
+  Every subsequent variable is placed on the next device.  There is only one
+  copy of each variable that is shared across all devices.
+  """
+
+
+def _replicate_model_fn_with_mode(
+    model_fn,
+    optimizer_fn,
+    loss_reduction=losses.Reduction.SUM,
+    devices=None,
+    mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
+  """A version of `replicate_model_fn` that allows to specify a `mode`."""
+  if loss_reduction == losses.Reduction.NONE:
+    raise ValueError('Tower losses need to be reduced in some way, yet {} '
+                     'reduction is specified.'.format(loss_reduction))
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
   is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
-  local_ps_device = '/{}:0'.format('GPU' if is_a_single_gpu_case else 'CPU')
+  consolidation_device = '/{}:0'.format('GPU'
+                                        if is_a_single_gpu_case else 'CPU')
 
-  tf_logging.info('Replicating the `model_fn` across {}.  Local parameter '
-                  'server device is going to be {}.'.format(
-                      devices, local_ps_device))
+  ps_devices = [consolidation_device]
+  if mode == _VariableDistributionMode.SHARED_ROUND_ROBIN:
+    ps_devices = devices
+
+  tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '
+                  'to be placed on {}.  Consolidation device is going to be {}.'
+                  .format(devices, ps_devices, consolidation_device))
 
   def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
-        features, labels, len(devices), device=local_ps_device)
+        features, labels, len(devices), device=consolidation_device)
     tower_specs = _get_loss_towers(
         model_fn=model_fn,
         mode=mode,
         features=feature_shards,
         labels=label_shards,
         params=params,
+        loss_reduction=loss_reduction,
         config=config,
         devices=devices,
-        local_ps_device=local_ps_device)
+        local_ps_devices=ps_devices)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       train_op = _minimize_towers(tower_specs,
                                   _call_optimizer_fn(optimizer_fn, params))
       return _train_spec(
-          tower_specs, train_op, aggregation_device=local_ps_device)
+          tower_specs, train_op, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.EVAL:
-      return _eval_spec(tower_specs, aggregation_device=local_ps_device)
+      return _eval_spec(tower_specs, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.PREDICT:
-      return _predict_spec(tower_specs, aggregation_device=local_ps_device)
+      return _predict_spec(tower_specs, aggregation_device=consolidation_device)
 
   return replicated_model_fn
 
@@ -222,7 +280,8 @@ def _get_loss_towers(model_fn,
                      params,
                      config,
                      devices,
-                     local_ps_device,
+                     local_ps_devices,
+                     loss_reduction=losses.Reduction.SUM,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -234,15 +293,22 @@ def _get_loss_towers(model_fn,
   if 'config' in model_fn_args:
     optional_params['config'] = copy.deepcopy(config)
 
+  # pylint: disable=protected-access
+  round_robin_strategy = device_setter_lib._RoundRobinStrategy(
+      num_tasks=len(local_ps_devices))
+  # pylint: enable=protected-access
+
   for i, device in enumerate(devices):
     is_the_first_tower = (i == 0)
 
     device_setter = _local_device_setter(
-        worker_device=device, ps_device=local_ps_device)
+        worker_device=device,
+        ps_devices=local_ps_devices,
+        ps_strategy=round_robin_strategy)
 
-    # We would like to preserve the names of the variables and ops that a user
-    # might be relying on. Names with prefix are going to resolve to variables
-    # and ops of the first tower.
+    # We would like to preserve the names of the variables and ops that the user
+    # might be relying on. Names without a prefix are going to resolve to
+    # variables and ops of the first tower.
     name_scope = name_scope_pattern
     if is_the_first_tower:
       name_scope = ''
@@ -254,16 +320,19 @@ def _get_loss_towers(model_fn,
           if labels:
             labels_shard = labels[i]
 
-          tower_specs.append(
-              model_fn(
-                  mode=mode,
-                  features=features[i],
-                  labels=labels_shard,
-                  **optional_params))
+          tower_spec = model_fn(
+              mode=mode,
+              features=features[i],
+              labels=labels_shard,
+              **optional_params)
+          if loss_reduction != losses.Reduction.SUM:
+            tower_spec = _scale_tower_loss(
+                tower_spec, number_of_towers=len(devices))
+          tower_specs.append(tower_spec)
   return tower_specs
 
 
-def _local_device_setter(ps_device, worker_device):
+def _local_device_setter(worker_device, ps_devices, ps_strategy):
   """A device setter that puts distributes Var/Ops to PS/workers."""
   ps_ops = ['Variable', 'VariableV2', 'VarHandleOp']
 
@@ -273,7 +342,7 @@ def _local_device_setter(ps_device, worker_device):
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
     if node_def.op in ps_ops:
       ps_device_spec = framework_device.DeviceSpec.from_string(
-          '{}'.format(ps_device))
+          '{}'.format(ps_devices[ps_strategy(op)]))
 
       ps_device_spec.merge_from(current_device)
       return ps_device_spec.to_string()
@@ -284,6 +353,17 @@ def _local_device_setter(ps_device, worker_device):
       return worker_device_spec.to_string()
 
   return local_device_chooser
+
+
+def _scale_tower_loss(tower_spec, number_of_towers):
+  """Scale down the loss for arriving at the average loss by summing."""
+  if tower_spec.loss is None:
+    return tower_spec
+
+  estimator_spec = _asdict(tower_spec)
+  estimator_spec['loss'] = math_ops.div(
+      tower_spec.loss, 1.0 * number_of_towers, name='averaged_loss')
+  return model_fn_lib.EstimatorSpec(**estimator_spec)
 
 
 def _minimize_towers(tower_specs, optimizer):
@@ -335,7 +415,7 @@ def _train_spec(tower_specs,
                 aggregation_device,
                 aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.TRAIN`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.TRAIN
   estimator_spec['train_op'] = train_op
   estimator_spec['loss'] = _compute_sum_on_device(
@@ -346,7 +426,7 @@ def _train_spec(tower_specs,
 
 def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.EVAL`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.EVAL
   estimator_spec['loss'] = _compute_sum_on_device(
       [spec.loss for spec in tower_specs], aggregation_device,
@@ -414,7 +494,7 @@ def _reduce_metric_variables(number_of_towers):
 
 def _predict_spec(tower_specs, aggregation_device):
   """Populate replicated EstimatorSpec for `GraphKeys.PREDICT`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.PREDICT
 
   with ops_lib.device(aggregation_device):
@@ -474,3 +554,19 @@ def _dict_concat(*dicts):
     for k, v in six.iteritems(d):
       list_dict.setdefault(k, []).append(v)
   return list_dict
+
+
+def _asdict(namedtuple):
+  """Returns a namedtuple as a dictionary.
+
+  This is required because `_asdict()` in Python 3.x.x is broken in classes
+  that inherit from `collections.namedtuple`. See
+  https://bugs.python.org/issue24931 for more details.
+
+  Args:
+    namedtuple: An object that inherits from `collections.namedtuple`.
+
+  Returns:
+    A dictionary version of the tuple.
+  """
+  return {k: getattr(namedtuple, k) for k in namedtuple._fields}

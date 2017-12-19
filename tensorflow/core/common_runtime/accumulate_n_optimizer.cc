@@ -35,7 +35,7 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // Replaces occurrences of the "AccumulateNV2" stub operator with a graph of
 // lower-level ops. The graph is equivalent (modulo certain corner cases)
 // to the semantics of the original accumulate_n() Python op in math_ops.py.
-// Implementing the op with a rewrite allows this new variant of accumulate_n 
+// Implementing the op with a rewrite allows this new variant of accumulate_n
 // to be differentiable.
 //
 // The binary code that generates AccumulateNV2 stub ops is located in a

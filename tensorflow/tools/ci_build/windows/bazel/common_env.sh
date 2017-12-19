@@ -36,12 +36,6 @@ export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python.exe"
 export PYTHON_LIB_PATH="C:/Program Files/Anaconda3/lib/site-packages"
 
-# Set Python path for cc_configure.bzl
-export BAZEL_PYTHON="C:/Program Files/Anaconda3/python.exe"
-
-# Set Visual Studio path
-export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
-
 # Add python into PATH, it's needed because gen_git_source.py uses
 # '/usr/bin/env python' as a shebang
 export PATH="/c/Program Files/Anaconda3:$PATH"
@@ -53,13 +47,3 @@ export PATH="/c/Program Files/Anaconda3/Scripts:$PATH"
 export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/bin:$PATH"
 export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPTI/libx64:$PATH"
 export PATH="/c/tools/cuda/bin:$PATH"
-
-# Set the common build options on Windows
-export BUILD_OPTS='--config=monolithic --copt=-w --host_copt=-w --verbose_failures --experimental_ui'
-
-# Build TF with wrapper-less CROSSTOOL
-# TODO(pcloudy): Remove this after wrapper-less CROSSTOOL becomes default
-export NO_MSVC_WRAPPER=1
-
-export USE_DYNAMIC_CRT=1
-
