@@ -75,52 +75,76 @@ std::set<string> GetOpsFormatAgnostic() {
   std::set<string> ops_format_agnostic = {"Abs",
                                           "Add",
                                           "AddN",
+                                          "AddV2",
                                           "Acos",
                                           "Acosh",
                                           "Angle",
+                                          "ApproximateEqual",
                                           "Asin",
                                           "Asinh",
                                           "Atan",
+                                          "Atan2",
                                           "Atanh",
                                           "Bitcast",
                                           "Cast",
                                           "Ceil",
                                           "CheckNumerics",
-                                          "Cos",
-                                          "Cosh",
+                                          "Complex",
                                           "ComplexAbs",
                                           "Concat",
                                           "ConcatV2",
                                           "Conj",
+                                          "Cos",
+                                          "Cosh",
                                           "Digamma",
+                                          "Div",
                                           "Elu",
                                           "EluGrad",
+                                          "Equal",
                                           "Erf",
                                           "Erfc",
                                           "Exp",
                                           "Expm1",
                                           "Floor",
+                                          "FloorDiv",
+                                          "FloorMod",
+                                          "Greater",
+                                          "GreaterEqual",
                                           "GuaranteeConst",
                                           "Identity",
+                                          "Igamma",
+                                          "Igammac",
                                           "Imag",
                                           "Inv",
                                           "InvGrad",
                                           "IsFinite",
                                           "IsInf",
                                           "IsNan",
+                                          "Less",
+                                          "LessEqual",
                                           "Lgamma",
                                           "Log",
+                                          "LogicalAnd",
+                                          "LogicalNot",
+                                          "LogicalOr",
                                           "Log1p",
+                                          "Maximum",
                                           "Merge",
+                                          "Minimum",
+                                          "Mod",
                                           "Mul",
                                           "Neg",
+                                          "NotEqual",
                                           "OnesLike",
                                           "Pad",
                                           "PreventGradient",
+                                          "Polygamma",
+                                          "Pow",
                                           "Real",
                                           "RealDiv",
                                           "Reciprocal",
                                           "ReciprocalGrad",
+                                          "RefIdentity",
                                           "Relu",
                                           "Relu6",
                                           "Relu6Grad",
@@ -141,7 +165,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SoftplusGrad",
                                           "Split",
                                           "Switch",
-                                          "RefIdentity",
+                                          "TruncateDiv",
+                                          "TruncateMod",
                                           "RefMerge",
                                           "RefSwitch",
                                           "Round",
@@ -157,7 +182,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Tan",
                                           "Tanh",
                                           "TanhGrad",
-                                          "ZerosLike"};
+                                          "ZerosLike",
+                                          "Zeta"};
   return ops_format_agnostic;
 }
 
@@ -210,6 +236,28 @@ bool IsUnaryGrad(const NodeDef& node) {
       IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
       IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
   return is_unary_grad;
+}
+
+bool IsComparisonOp(const NodeDef& node) {
+  bool is_compare = IsApproximateEqual(node) || IsEqual(node) ||
+                    IsGreater(node) || IsGreaterEqual(node) || IsLess(node) ||
+                    IsLessEqual(node) || IsNotEqual(node);
+  return is_compare;
+}
+
+bool IsLogicalOp(const NodeDef& node) {
+  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
+}
+
+bool IsBinaryOp(const NodeDef& node) {
+  bool is_binary =
+      IsAdd(node) || IsAtan2(node) || IsComparisonOp(node) || IsComplex(node) ||
+      IsDiv(node) || IsFloorDiv(node) || IsIgamma(node) || IsIgammac(node) ||
+      IsLogicalAnd(node) || IsLogicalOr(node) || IsMaximum(node) ||
+      IsMinimum(node) || IsMod(node) || IsMul(node) || IsPolygamma(node) ||
+      IsPow(node) || IsRealDiv(node) || IsSquaredDifference(node) ||
+      IsSub(node) || IsTruncateDiv(node) || IsTruncateMod(node) || IsZeta(node);
+  return is_binary;
 }
 
 class GraphProcessor {
@@ -603,13 +651,15 @@ class NodeProcessor : public GraphProcessor {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kTransposeNCHWToNHWC, "-");
               DataType dtype;
-              if (op == "Imag" || op == "Real" || op == "Angle" ||
-                  op == "Conj" || op == "ComplexAbs") {
+              if (IsAngle(*node_) || IsComplex(*node_) ||
+                  IsComplexAbs(*node_) || IsImag(*node_) || IsReal(*node_)) {
                 TF_RETURN_IF_ERROR(HasAttribute(*node_, "Tout"));
                 dtype = node_->attr().at("Tout").type();
-              } else if (op == "Bitcast") {
+              } else if (IsBitcast(*node_)) {
                 TF_RETURN_IF_ERROR(HasAttribute(*node_, "type"));
                 dtype = node_->attr().at("type").type();
+              } else if (IsLogicalOp(*node_) || IsComparisonOp(*node_)) {
+                dtype = DT_BOOL;
               } else {
                 TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
                 dtype = node_->attr().at("T").type();
@@ -1002,8 +1052,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
     if (IsConcatV1(node)) {
       return {1};
     }
-    if (IsAdd(node) || IsMul(node) || IsRealDiv(node) ||
-        IsSquaredDifference(node) || IsSub(node)) {
+    if (IsBinaryOp(node)) {
       return {0, 1};
     }
     if (IsShapeN(node)) {
@@ -1557,8 +1606,7 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (IsAdd(*node) || IsMul(*node) || IsRealDiv(*node) ||
-                     IsSquaredDifference(*node) || IsSub(*node)) {
+          } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
