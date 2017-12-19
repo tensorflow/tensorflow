@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
 #define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
 
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -130,12 +131,25 @@ class FakeHttpRequest : public CurlHttpRequest {
     buffer_ = buffer;
     return Status::OK();
   }
+  Status SetResultBufferDirect(char* buffer, size_t size) override {
+    direct_result_buffer_ = buffer;
+    direct_result_buffer_size_ = size;
+    return Status::OK();
+  }
+  size_t GetResultBufferDirectBytesTransferred() override {
+    return direct_result_bytes_transferred_;
+  }
   Status Send() override {
     EXPECT_EQ(expected_request_, actual_request())
         << "Unexpected HTTP request.";
     if (buffer_) {
-      buffer_->insert(buffer_->begin(), response_.c_str(),
-                      response_.c_str() + response_.size());
+      buffer_->insert(buffer_->begin(), response_.data(),
+                      response_.data() + response_.size());
+    } else if (direct_result_buffer_ != nullptr) {
+      size_t bytes_to_copy =
+          std::min<size_t>(direct_result_buffer_size_, response_.size());
+      memcpy(direct_result_buffer_, response_.data(), bytes_to_copy);
+      direct_result_bytes_transferred_ += bytes_to_copy;
     }
     return response_status_;
   }
@@ -178,6 +192,9 @@ class FakeHttpRequest : public CurlHttpRequest {
   }
 
   std::vector<char>* buffer_ = nullptr;
+  char* direct_result_buffer_ = nullptr;
+  size_t direct_result_buffer_size_ = 0;
+  size_t direct_result_bytes_transferred_ = 0;
   string expected_request_;
   string actual_uri_;
   string actual_request_;
