@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/s3/s3_crypto.h"
+#include "tensorflow/core/platform/s3/s3_logging.h"
 
 #include <aws/core/Aws.h>
+#include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/FileSystemUtils.h>
+#include <aws/core/utils/logging/LogSystemInterface.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>
@@ -32,6 +35,8 @@ limitations under the License.
 #include <cstdlib>
 
 namespace tensorflow {
+
+static const char* kS3FileSystemLoggingTag = "S3FileSystemLogging";
 
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
@@ -81,6 +86,44 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
 
   return cfg;
 };
+
+Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
+  Aws::Utils::Logging::LogLevel logLevel = Aws::Utils::Logging::LogLevel::Info;
+
+  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
+  if (tf_env_var_val == nullptr) {
+    return logLevel;
+  }
+
+  std::string min_log_level(tf_env_var_val);
+  std::istringstream ss(min_log_level);
+  int64_t level;
+  if (!(ss >> level)) {
+    // Invalid vlog level setting, set level to default (0)
+    level = 0;
+  }
+
+  switch(level)
+  {
+    case INFO:
+      logLevel = Aws::Utils::Logging::LogLevel::Info;
+      break;
+    case WARNING:
+      logLevel = Aws::Utils::Logging::LogLevel::Warn;
+      break;
+    case ERROR:
+      logLevel = Aws::Utils::Logging::LogLevel::Error;
+      break;
+    case FATAL:
+      logLevel = Aws::Utils::Logging::LogLevel::Fatal;
+      break;
+    default:
+      logLevel = Aws::Utils::Logging::LogLevel::Info;
+      break;
+  }
+
+  return logLevel;
+}
 
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
                    string* object) {
@@ -227,6 +270,9 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 };
 
 S3FileSystem::S3FileSystem() {
+  Aws::Utils::Logging::InitializeAWSLogging(
+    Aws::MakeShared<S3LogSystem>(kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
+
   Aws::SDKOptions options;
   options.cryptoOptions.sha256Factory_create_fn = []() {
     return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
@@ -240,6 +286,8 @@ S3FileSystem::S3FileSystem() {
 S3FileSystem::~S3FileSystem() {
   Aws::SDKOptions options;
   Aws::ShutdownAPI(options);
+
+  Aws::Utils::Logging::ShutdownAWSLogging();
 }
 
 Status S3FileSystem::NewRandomAccessFile(
