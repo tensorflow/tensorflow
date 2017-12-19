@@ -132,6 +132,9 @@ bool IsInvolution(const NodeDef& node);
 // function returns true if the op commutes with all element-wise operations.
 bool IsValuePreserving(const NodeDef& node);
 
+// Returns true if we can find an opdef corresponding to the op of the node.
+bool HasOpDef(const NodeDef& node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

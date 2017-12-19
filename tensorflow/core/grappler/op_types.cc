@@ -349,5 +349,10 @@ bool IsValuePreserving(const NodeDef& node) {
   return value_preserving_ops.count(node.op()) > 0;
 }
 
+bool HasOpDef(const NodeDef& node) {
+  const OpDef* op_def = nullptr;
+  return OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok();
+}
+
 }  // namespace grappler
 }  // end namespace tensorflow
