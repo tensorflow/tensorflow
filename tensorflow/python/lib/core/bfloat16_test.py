@@ -172,6 +172,24 @@ class Bfloat16NumPyTest(test.TestCase):
     self.assertEqual("[[bfloat16(1) bfloat16(2) bfloat16(3)]]", str(x))
     self.assertAllEqual(x, x)
     self.assertAllClose(x, x)
+    self.assertTrue((x == x).all())
+
+  def testComparisons(self):
+    x = np.array([401408, 7, -32], dtype=np.float32)
+    bx = x.astype(bfloat16)
+    y = np.array([82432, 7, 0], dtype=np.float32)
+    by = y.astype(bfloat16)
+    self.assertAllEqual(x == y, bx == by)
+    self.assertAllEqual(x != y, bx != by)
+    self.assertAllEqual(x < y, bx < by)
+    self.assertAllEqual(x > y, bx > by)
+    self.assertAllEqual(x <= y, bx <= by)
+    self.assertAllEqual(x >= y, bx >= by)
+
+  def testEqual2(self):
+    a = np.array([401408], bfloat16)
+    b = np.array([82432], bfloat16)
+    self.assertFalse(a.__eq__(b))
 
   def testCasts(self):
     for dtype in [
