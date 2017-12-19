@@ -9,6 +9,7 @@ load(
     "tf_gen_op_wrapper_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -20,8 +21,9 @@ package(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
+    is_external = True,
     deps = [
         ":cross_replica_ops_op_lib",
         ":infeed_ops_op_lib",

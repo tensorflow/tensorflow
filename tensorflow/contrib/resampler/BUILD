@@ -40,6 +40,7 @@ tf_custom_op_py_library(
 
 tf_kernel_library(
     name = "resampler_ops_kernels",
+    is_external = True,
     prefix = "resampler_ops",
     deps = [
         "//tensorflow/core:framework",

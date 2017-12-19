@@ -15,6 +15,7 @@ load(
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
+    "tf_cc_library",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
@@ -57,6 +58,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "skip_gram_kernels",
     srcs = ["kernels/skip_gram_kernels.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -65,8 +67,9 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "all_kernels",
+    is_external = True,
     deps = [":skip_gram_kernels"],
 )
 
@@ -82,8 +85,9 @@ tf_gen_op_libs(
     op_lib_names = ["skip_gram_ops"],
 )
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
+    is_external = True,
     deps = [":skip_gram_ops_op_lib"],
 )
 

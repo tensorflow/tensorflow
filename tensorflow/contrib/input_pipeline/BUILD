@@ -45,6 +45,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "input_pipeline_ops_kernels",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/input_pipeline/kernels:input_pipeline_kernels",
         "//tensorflow/core:framework",

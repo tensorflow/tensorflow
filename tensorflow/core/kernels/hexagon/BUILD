@@ -11,6 +11,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+    "tf_cc_library",
 )
 
 filegroup(
@@ -84,7 +85,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hexagon_rewriter_transform",
     srcs = [
         "hexagon_rewriter_transform.cc",
@@ -118,7 +119,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hexagon_remote_fused_graph_executor_build",
     srcs = [
         "hexagon_remote_fused_graph_executor_build.cc",

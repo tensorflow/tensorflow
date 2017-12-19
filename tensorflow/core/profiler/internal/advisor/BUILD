@@ -5,8 +5,9 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "checker",
     hdrs = ["checker.h"],
     deps = [
@@ -16,7 +17,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "internal_checker_runner_dummy",
     srcs = ["internal_checker_runner_dummy.cc"],
     hdrs = ["internal_checker_runner.h"],
@@ -26,7 +27,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "accelerator_utilization_checker",
     hdrs = ["accelerator_utilization_checker.h"],
     deps = [
@@ -34,7 +35,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "operation_checker",
     hdrs = ["operation_checker.h"],
     deps = [
@@ -42,7 +43,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "expensive_operation_checker",
     hdrs = ["expensive_operation_checker.h"],
     deps = [
@@ -50,7 +51,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_advisor",
     hdrs = ["tfprof_advisor.h"],
     deps = [

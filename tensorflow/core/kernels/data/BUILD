@@ -10,6 +10,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
+    "tf_cc_library",
 )
 
 filegroup(
@@ -24,7 +25,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "stats_aggregator",
     hdrs = ["stats_aggregator.h"],
     deps = [
@@ -44,7 +45,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
@@ -57,7 +58,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],
@@ -70,7 +71,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
     hdrs = ["captured_function.h"],
@@ -87,7 +88,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "window_dataset",
     srcs = ["window_dataset.cc"],
     hdrs = ["window_dataset.h"],

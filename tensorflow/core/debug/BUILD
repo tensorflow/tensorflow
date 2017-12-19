@@ -24,6 +24,7 @@ load(
     "tf_copts",
     "tf_cc_test",
     "tf_cuda_library",
+    "tf_cc_library",
 )
 
 # For platform specific build config
@@ -67,7 +68,7 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
-cc_library(
+tf_cc_library(
     name = "debug",
     srcs = ["debug.cc"],
     copts = tf_copts(),
@@ -309,7 +310,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "debug_callback_registry",
     srcs = ["debug_callback_registry.cc"],
     hdrs = ["debug_callback_registry.h"],

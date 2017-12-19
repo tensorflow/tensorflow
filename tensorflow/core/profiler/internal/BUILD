@@ -6,8 +6,9 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "tfprof_stats",
     srcs = ["tfprof_stats.cc"],
     hdrs = ["tfprof_stats.h"],
@@ -29,7 +30,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_timeline",
     srcs = ["tfprof_timeline.cc"],
     hdrs = ["tfprof_timeline.h"],
@@ -42,7 +43,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_node",
     srcs = ["tfprof_node.cc"],
     hdrs = ["tfprof_node.h"],
@@ -56,7 +57,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_scope",
     srcs = ["tfprof_scope.cc"],
     hdrs = ["tfprof_scope.h"],
@@ -77,7 +78,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_op",
     srcs = ["tfprof_op.cc"],
     hdrs = ["tfprof_op.h"],
@@ -97,7 +98,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_code",
     srcs = ["tfprof_code.cc"],
     hdrs = ["tfprof_code.h"],
@@ -119,7 +120,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_graph",
     srcs = ["tfprof_graph.cc"],
     hdrs = ["tfprof_graph.h"],
@@ -138,7 +139,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_node_show",
     srcs = ["tfprof_node_show.cc"],
     hdrs = ["tfprof_node_show.h"],
@@ -153,7 +154,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_show",
     srcs = ["tfprof_show.cc"],
     hdrs = ["tfprof_show.h"],
@@ -173,7 +174,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_show_multi",
     srcs = ["tfprof_show_multi.cc"],
     hdrs = ["tfprof_show_multi.h"],
@@ -244,7 +245,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_utils",
     srcs = ["tfprof_utils.cc"],
     hdrs = ["tfprof_utils.h"],
@@ -257,7 +258,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_options",
     srcs = ["tfprof_options.cc"],
     hdrs = ["tfprof_options.h"],
@@ -268,13 +269,13 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "print_model_analysis_hdr",
     hdrs = ["print_model_analysis.h"],
     deps = ["//tensorflow/core:framework"],
 )
 
-cc_library(
+tf_cc_library(
     name = "print_model_analysis",
     srcs = ["print_model_analysis.cc"],
     hdrs = ["print_model_analysis.h"],
@@ -317,7 +318,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_tensor",
     srcs = ["tfprof_tensor.cc"],
     hdrs = ["tfprof_tensor.h"],
@@ -352,12 +353,12 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_constants",
     hdrs = ["tfprof_constants.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_tf_testlib",
     testonly = 1,
     deps = [
@@ -368,7 +369,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tfprof_tf_lib",
     deps = [
         "//tensorflow/core:lib",

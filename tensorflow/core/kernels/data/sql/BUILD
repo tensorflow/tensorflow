@@ -7,6 +7,8 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -19,7 +21,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "sql",
     srcs = [
         "driver_manager.cc",

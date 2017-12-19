@@ -31,6 +31,7 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_cc_binary",
+    "tf_cc_library",
     "tf_copts",
     "tf_cuda_library",
     "tf_opts_nortti_if_android",
@@ -75,7 +76,7 @@ config_setting(
 
 # Public support libraries ----------------------------------------------------
 
-cc_library(
+tf_cc_library(
     name = "assign_op",
     hdrs = ["assign_op.h"],
     deps = [
@@ -143,7 +144,7 @@ tf_kernel_library(
     alwayslink = 0,
 )
 
-cc_library(
+tf_cc_library(
     name = "concat_lib_hdrs",
     hdrs = [
         "concat_lib.h",
@@ -152,7 +153,7 @@ cc_library(
     deps = ["//third_party/eigen3"],
 )
 
-cc_library(
+tf_cc_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
     deps = [
@@ -163,7 +164,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
     deps = [
@@ -185,7 +186,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "conv_3d",
     hdrs = ["conv_3d.h"],
     deps = [
@@ -194,7 +195,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "fill_functor",
     srcs = ["fill_functor.cc"],
     hdrs = ["fill_functor.h"],
@@ -204,7 +205,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "initializable_lookup_table",
     srcs = ["initializable_lookup_table.cc"],
     hdrs = ["initializable_lookup_table.h"],
@@ -214,7 +215,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "lookup_util",
     srcs = ["lookup_util.cc"],
     hdrs = ["lookup_util.h"],
@@ -247,7 +248,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
@@ -260,18 +261,18 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = ["//third_party/eigen3"],
 )
 
-cc_library(
+tf_cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_util_hdrs",
     hdrs = ["gpu_utils.h"],
 )
@@ -289,7 +290,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "reshape_util",
     srcs = ["reshape_util.cc"],
     hdrs = ["reshape_util.h"],
@@ -333,7 +334,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
@@ -345,7 +346,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "queue_op",
     hdrs = ["queue_op.h"],
     deps = [
@@ -355,7 +356,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "priority_queue",
     srcs = ["priority_queue.cc"],
     hdrs = ["priority_queue.h"],
@@ -382,7 +383,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
@@ -411,7 +412,7 @@ tf_kernel_library(
     alwayslink = 0,
 )
 
-cc_library(
+tf_cc_library(
     name = "split_lib_hdrs",
     hdrs = [
         "split_lib.h",
@@ -422,7 +423,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
     deps = [
@@ -431,7 +432,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "training_op_helpers",
     srcs = ["training_op_helpers.cc"],
     hdrs = ["training_op_helpers.h"],
@@ -444,7 +445,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
     visibility = [":friends"],
@@ -454,7 +455,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "warn_about_ints",
     srcs = ["warn_about_ints.cc"],
     hdrs = ["warn_about_ints.h"],
@@ -471,7 +472,7 @@ cc_header_only_library(
     deps = [":bounds_check"],
 )
 
-cc_library(
+tf_cc_library(
     name = "cuda_device_array",
     hdrs = [
         "cuda_device_array.h",
@@ -485,7 +486,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "eigen_helpers",
     hdrs = [
         "eigen_activations.h",
@@ -503,7 +504,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "image_resizer_state",
     hdrs = ["image_resizer_state.h"],
     visibility = ["//visibility:private"],
@@ -540,7 +541,7 @@ ARRAY_DEPS = [
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
-cc_library(
+tf_cc_library(
     name = "array_not_windows",
     deps = [
         ":immutable_constant_op",
@@ -573,7 +574,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array",
     deps = [
         ":batch_space_ops",
@@ -1148,7 +1149,7 @@ tf_kernel_library(
 )
 
 # Unlike gather_functor library, this does not include the CUDA code and deps.
-cc_library(
+tf_cc_library(
     name = "gather_functor_hdr",
     hdrs = ["gather_functor.h"],
 )
@@ -1453,7 +1454,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "range_sampler",
     srcs = ["range_sampler.cc"],
     hdrs = ["range_sampler.h"],
@@ -1517,7 +1518,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "data_flow",
     deps = [
         ":barrier_ops",
@@ -1542,7 +1543,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "lookup",
     deps = [
         ":lookup_table_init_op",
@@ -1706,7 +1707,7 @@ tf_kernel_library(
     deps = LOOKUP_DEPS,
 )
 
-cc_library(
+tf_cc_library(
     name = "checkpoint_ops",
     deps = [
         ":generate_vocab_remapping_op",
@@ -1776,7 +1777,7 @@ tf_kernel_library(
     alwayslink = 0,
 )
 
-cc_library(
+tf_cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
     hdrs = ["fifo_queue.h"],
@@ -1791,7 +1792,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "padding_fifo_queue",
     srcs = ["padding_fifo_queue.cc"],
     hdrs = ["padding_fifo_queue.h"],
@@ -1807,7 +1808,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "conditional_accumulator_base",
     srcs = ["conditional_accumulator_base.cc"],
     hdrs = [
@@ -1820,7 +1821,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "typed_conditional_accumulator_base",
     hdrs = ["typed_conditional_accumulator_base.h"],
     deps = [
@@ -1828,7 +1829,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "conditional_accumulator",
     hdrs = [
         "conditional_accumulator.h",
@@ -1841,7 +1842,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "sparse_conditional_accumulator",
     hdrs = ["sparse_conditional_accumulator.h"],
     deps = [
@@ -1901,7 +1902,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "image",
     deps = [
         ":adjust_contrast_op",
@@ -1946,7 +1947,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS,
 )
 
-cc_library(
+tf_cc_library(
     name = "adjust_hsv_gpu_lib",
     hdrs = ["adjust_hsv_gpu.cu.h"],
     deps = ["//tensorflow/core:framework"],
@@ -2187,7 +2188,7 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "io",
     deps = [
         ":fixed_length_record_reader_op",
@@ -2321,7 +2322,7 @@ tf_cc_tests(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "linalg",
     deps = [
         ":cholesky_grad",
@@ -2457,7 +2458,7 @@ tf_kernel_library(
     deps = LINALG_DEPS,
 )
 
-cc_library(
+tf_cc_library(
     name = "linalg_ops_common",
     srcs = ["linalg_ops_common.cc"],
     hdrs = ["linalg_ops_common.h"],
@@ -2469,7 +2470,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "logging",
     deps = [
         ":logging_ops",
@@ -2553,7 +2554,7 @@ MATH_DEPS = [
     "//third_party/eigen3",
 ]
 
-cc_library(
+tf_cc_library(
     name = "math_not_windows",
     deps = [
         ":sparse_matmul_op",
@@ -2575,7 +2576,7 @@ tf_kernel_library(
     }),
 )
 
-cc_library(
+tf_cc_library(
     name = "math",
     deps = [
         ":aggregate_ops",
@@ -3114,7 +3115,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "nn",
     deps = [
         ":batch_norm_op",
@@ -3404,7 +3405,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "pooling_ops_hdrs",
     hdrs = [
         "avgpooling_op.h",
@@ -3492,7 +3493,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parsing",
     deps = [
         ":decode_csv_op",
@@ -3554,7 +3555,7 @@ tf_kernel_library(
     deps = PARSING_DEPS,
 )
 
-cc_library(
+tf_cc_library(
     name = "random_ops",
     deps = [
         ":random_op",
@@ -3609,7 +3610,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "required",
     deps = [
         ":no_op",
@@ -3651,7 +3652,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "sparse",
     deps = [
         ":serialize_sparse_op",
@@ -3829,7 +3830,7 @@ tf_cuda_cc_tests(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "loss_updaters",
     hdrs = [
         "hinge-loss.h",
@@ -3889,7 +3890,7 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "sdca_internal",
     srcs = ["sdca_internal.cc"],
     hdrs = ["sdca_internal.h"],
@@ -3902,7 +3903,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "state",
     deps = [
         ":count_up_to_op",
@@ -4013,7 +4014,7 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "string",
     deps = [
         ":as_string_op",
@@ -4210,7 +4211,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "spectrogram",
     srcs = ["spectrogram.cc"],
     hdrs = ["spectrogram.h"],
@@ -4223,7 +4224,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "spectrogram_test_utils",
     testonly = 1,
     srcs = ["spectrogram_test_utils.cc"],
@@ -4302,7 +4303,7 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mfcc_dct",
     srcs = ["mfcc_dct.cc"],
     hdrs = ["mfcc_dct.h"],
@@ -4329,7 +4330,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mfcc_mel_filterbank",
     srcs = ["mfcc_mel_filterbank.cc"],
     hdrs = ["mfcc_mel_filterbank.h"],
@@ -4356,7 +4357,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mfcc",
     srcs = ["mfcc.cc"],
     hdrs = ["mfcc.h"],
@@ -4420,7 +4421,7 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "audio",
     deps = [
         ":decode_wav_op",
@@ -4931,7 +4932,7 @@ filegroup(
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_kernels",
     srcs = select({
         "//tensorflow:android": [
@@ -4964,7 +4965,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
@@ -5568,7 +5569,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "remote_fused_graph_execute_utils",
     srcs = [
         "i_remote_fused_graph_ops_definitions.cc",
@@ -5588,7 +5589,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "remote_fused_graph_execute_op_test_utils",
     testonly = 1,
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
@@ -5658,7 +5659,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "remote_fused_graph_rewriter_transform",
     srcs = [
         "remote_fused_graph_rewriter_transform.cc",
@@ -5845,7 +5846,7 @@ tf_mkl_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "batch_util",
     srcs = ["batch_util.cc"],
     hdrs = ["batch_util.h"],
@@ -5855,7 +5856,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "captured_function",
     hdrs = ["captured_function.h"],
     deps = [
@@ -5863,7 +5864,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dataset",
     hdrs = ["dataset.h"],
     deps = [
@@ -5878,7 +5879,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "summary_interface",
     srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
@@ -5936,7 +5937,7 @@ filegroup(
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
 # should not be linked by projects that also link the cwise_op library.
-cc_library(
+tf_cc_library(
     name = "cwise_lib",
     srcs = [
         "cwise_ops_common.cc",

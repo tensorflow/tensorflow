@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -14,7 +15,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "utils",
     srcs = [
         "utils.cc",
@@ -42,7 +43,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "input_yielder",
     hdrs = [
         "input_yielder.h",
@@ -51,7 +52,7 @@ cc_library(
     deps = [],
 )
 
-cc_library(
+tf_cc_library(
     name = "trivial_test_graph_input_yielder",
     srcs = ["trivial_test_graph_input_yielder.cc"],
     hdrs = [
@@ -68,7 +69,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "file_input_yielder",
     srcs = ["file_input_yielder.cc"],
     hdrs = [

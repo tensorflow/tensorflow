@@ -9,6 +9,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -93,7 +95,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gdr_rendezvous_mgr",
     srcs = ["gdr_rendezvous_mgr.cc"],
     hdrs = ["gdr_rendezvous_mgr.h"],
@@ -110,7 +112,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gdr_server_lib",
     srcs = ["gdr_server_lib.cc"],
     hdrs = ["gdr_server_lib.h"],

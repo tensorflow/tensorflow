@@ -16,6 +16,7 @@ load(
     "if_mobile",
     "if_not_mobile",
     "py_test",
+    "tf_cc_library",
     "tf_cc_test",
 )
 
@@ -191,10 +192,11 @@ filegroup(
 )
 
 # DEPRECATED: No longer supported. Switch to SavedModel immediately.
-cc_library(
+tf_cc_library(
     name = "session_bundle",
     hdrs = ["session_bundle.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":manifest_proto_cc",
@@ -210,12 +212,13 @@ cc_library(
 # This is a lite version of the session_bundle target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should link
 # any required ops manually.
-cc_library(
+tf_cc_library(
     name = "session_bundle_lite",
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
     deprecation = "No longer supported. Switch to SavedModel immediately.",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
@@ -303,11 +306,12 @@ py_test(
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
 # link any required ops manually.
-cc_library(
+tf_cc_library(
     name = "signature_lite",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
     ] + if_not_mobile([
@@ -322,10 +326,11 @@ cc_library(
 )
 
 # DEPRECATED: No longer supported. Switch to SavedModel immediately.
-cc_library(
+tf_cc_library(
     name = "signature",
     hdrs = ["signature.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":manifest_proto_cc",
@@ -359,12 +364,13 @@ tf_cc_test(
 )
 
 # DEPRECATED: No longer supported. Switch to SavedModel immediately.
-cc_library(
+tf_cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
+    is_external = True,
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
@@ -374,11 +380,12 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
-cc_library(
+tf_cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
     hdrs = ["bundle_shim.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":session_bundle",

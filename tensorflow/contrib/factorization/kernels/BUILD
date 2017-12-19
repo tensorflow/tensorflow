@@ -7,9 +7,11 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "all_kernels",
+    is_external = True,
     deps = [
         ":clustering_ops",
         ":masked_matmul_ops",
@@ -18,9 +20,10 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "wals_solver_ops",
     srcs = ["wals_solver_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -29,9 +32,10 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "clustering_ops",
     srcs = ["clustering_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -40,9 +44,10 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "masked_matmul_ops",
     srcs = ["masked_matmul_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/kernels:bounds_check",

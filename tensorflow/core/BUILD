@@ -83,6 +83,7 @@ load(
     "tf_copts",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_cc_library",
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
@@ -250,7 +251,7 @@ tf_proto_library(
 )
 
 # Minimal lib to detect plafrom
-cc_library(
+tf_cc_library(
     name = "lib_platform",
     hdrs = [
         "platform/platform.h",
@@ -259,7 +260,7 @@ cc_library(
 
 # Minimal lib so that tools used for mobile compilation
 # don't have to depend on lib/platformlib.
-cc_library(
+tf_cc_library(
     name = "lib_proto_parsing",
     srcs = glob(tf_additional_proto_srcs()) + tf_env_time_srcs(),
     hdrs = [
@@ -283,7 +284,7 @@ cc_library(
 # :framework_internal) purposefully omits the definitions of many declared
 # symbols, which are included in //tensorflow:libtensorflow_framework.so. Using
 # tf_cc_test and tf_cc_binary will include the necessary symbols.
-cc_library(
+tf_cc_library(
     name = "lib",
     hdrs = [
         "lib/core/arena.h",
@@ -365,7 +366,7 @@ cc_library(
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
-cc_library(
+tf_cc_library(
     name = "test",
     testonly = 1,
     srcs = [
@@ -485,7 +486,7 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
-cc_library(
+tf_cc_library(
     name = "overflow",
     hdrs = ["util/overflow.h"],
     deps = [
@@ -494,12 +495,12 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ptr_util",
     hdrs = ["util/ptr_util.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "reader_base",
     srcs = ["framework/reader_base.cc"],
     hdrs = ["framework/reader_base.h"],
@@ -519,7 +520,7 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "op_gen_lib",
     srcs = ["framework/op_gen_lib.cc"],
     hdrs = ["framework/op_gen_lib.h"],
@@ -532,7 +533,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "session_options",
     hdrs = ["public/session_options.h"],
     visibility = ["//visibility:public"],
@@ -542,7 +543,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "framework_lite",
     srcs = tf_additional_minimal_lib_srcs(),
     hdrs = [
@@ -632,7 +633,7 @@ tf_gen_op_libs(
 )
 
 # And one for all user ops
-cc_library(
+tf_cc_library(
     name = "user_ops_op_lib",
     srcs = glob(["user_ops/**/*.cc"]),
     copts = tf_copts(),
@@ -642,7 +643,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "word2vec_ops",
     srcs = ["ops/word2vec_ops.cc"],
     linkstatic = 1,
@@ -651,7 +652,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -694,7 +695,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "array_grad",
     srcs = ["ops/array_grad.cc"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
@@ -707,7 +708,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "functional_grad",
     srcs = ["ops/functional_grad.cc"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
@@ -720,7 +721,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "math_grad",
     srcs = [
         "ops/math_grad.cc",
@@ -736,7 +737,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "nn_grad",
     srcs = ["ops/nn_grad.cc"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
@@ -774,7 +775,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "core",
     visibility = ["//visibility:public"],
     deps = [
@@ -785,7 +786,7 @@ cc_library(
 )
 
 # This includes implementations of all kernels built into TensorFlow.
-cc_library(
+tf_cc_library(
     name = "all_kernels",
     visibility = ["//visibility:public"],
     deps = [
@@ -861,7 +862,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tensorflow",
     visibility = ["//visibility:public"],
     deps = [
@@ -871,7 +872,7 @@ cc_library(
 )
 
 # Test support library needed for higher-level (TensorFlow-specific) tests
-cc_library(
+tf_cc_library(
     name = "testlib",
     testonly = 1,
     srcs = [
@@ -1012,7 +1013,7 @@ filegroup(
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts(android_optimization_level_override = None),
@@ -1035,7 +1036,7 @@ cc_library(
 #
 # bazel  build --config=ios_x86_64 \
 # //third_party/tensorflow/core:ios_tensorflow_lib
-cc_library(
+tf_cc_library(
     name = "ios_tensorflow_lib",
     srcs = if_ios([
         ":android_op_registrations_and_gradients",
@@ -1057,7 +1058,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "ios_tensorflow_test_lib",
     testonly = 1,
     srcs = if_ios([":android_test_srcs"]),
@@ -1077,7 +1078,7 @@ cc_library(
 
 # Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
     copts = tf_copts(),
@@ -1100,7 +1101,7 @@ cc_library(
 # Does not contain operators. In contrast to android_tensorflow_lib_lite,
 # this links in framework support for all types, relying on selective
 # registration of ops to prune code size.
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_lib_selective_registration",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + [
@@ -1121,7 +1122,7 @@ cc_library(
 
 # Android library for use with the SELECTIVE_REGISTRATION feature with
 # no proto_rtti.
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_lib_selective_registration_nortti",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
@@ -1193,7 +1194,7 @@ filegroup(
 )
 
 # Portable library providing testing functionality for TensorFlow.
-cc_library(
+tf_cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,
     srcs = if_android([":android_test_srcs"]),
@@ -1219,7 +1220,7 @@ cc_library(
 
 # -----------------------------------------------------------------------------
 # Libraries with GPU facilities that are useful for writing kernels.
-cc_library(
+tf_cc_library(
     name = "gpu_lib",
     srcs = [
         "common_runtime/gpu/gpu_event_mgr.cc",
@@ -1239,7 +1240,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_headers_lib",
     hdrs = [
         "common_runtime/gpu/gpu_event_mgr.h",
@@ -1247,7 +1248,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "cuda",
     visibility = ["//visibility:public"],
     deps = [
@@ -1429,7 +1430,7 @@ LIB_INTERNAL_DEFINES = (tf_additional_lib_defines() + [
                         tf_additional_mpi_lib_defines() +
                         tf_additional_gdr_lib_defines())
 
-cc_library(
+tf_cc_library(
     name = "lib_internal",
     srcs = LIB_INTERNAL_PRIVATE_HEADERS,
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
@@ -1450,7 +1451,7 @@ cc_library(
     ] + if_static([":lib_internal_impl"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "lib_internal_impl",
     srcs = LIB_INTERNAL_PRIVATE_HEADERS + glob(
         [
@@ -1501,14 +1502,14 @@ cc_library(
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.
-cc_library(
+tf_cc_library(
     name = "lib_hash_crc32c_accelerate_internal",
     srcs = ["lib/hash/crc32c_accelerate.cc"],
     # -msse4.2 enables the use of crc32c compiler builtins.
     copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "gif_internal",
     srcs = [
         "lib/gif/gif_io.cc",
@@ -1529,7 +1530,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "jpeg_internal",
     srcs = [
         "lib/jpeg/jpeg_handle.cc",
@@ -1554,7 +1555,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "android_jpeg_internal",
     srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",
@@ -1582,7 +1583,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "android_gif_internal",
     srcs = if_android([
         "lib/gif/gif_io.cc",
@@ -1609,7 +1610,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "android_png_internal",
     srcs = if_android([
         "lib/png/png_io.cc",
@@ -1640,7 +1641,7 @@ proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
     srcs_relative_dir = "tensorflow/core/",
 )
 
-cc_library(
+tf_cc_library(
     name = "proto_text",
     hdrs = proto_text_hdrs_and_srcs.hdrs,
     deps = [
@@ -1652,7 +1653,7 @@ cc_library(
 
 tf_version_info_genrule()
 
-cc_library(
+tf_cc_library(
     name = "version_lib",
     srcs = ["util/version_info.cc"],
     hdrs = ["public/version.h"],
@@ -1836,7 +1837,7 @@ tf_cuda_library(
 
 # Like stream_executor library, but compiles without --config=cuda
 # and does not include any cuda dependencies.
-cc_library(
+tf_cc_library(
     name = "stream_executor_no_cuda",
     srcs = ["platform/stream_executor.h"],
     hdrs = [
@@ -1849,7 +1850,7 @@ cc_library(
 )
 
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
-cc_library(
+tf_cc_library(
     name = "protos_cc",
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
 )
@@ -2099,7 +2100,7 @@ tf_cuda_library(
 
 # This library is deprecated and no longer publicly available.
 # Do not add more uses of it.
-cc_library(
+tf_cc_library(
     name = "regexp_internal",
     hdrs = [
         "platform/regexp.h",
@@ -2134,7 +2135,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "example_parser_configuration",
     srcs = ["example/example_parser_configuration.cc"],
     hdrs = ["example/example_parser_configuration.h"],
@@ -2268,7 +2269,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "sycl_runtime",
     srcs = if_not_windows([
         "common_runtime/sycl/sycl_allocator.cc",
@@ -2301,7 +2302,7 @@ cc_library(
 # -----------------------------------------------------------------------------
 # Tests
 
-cc_library(
+tf_cc_library(
     name = "lib_test_internal",
     testonly = 1,
     hdrs = [
@@ -2317,7 +2318,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tensor_testutil",
     testonly = 1,
     srcs = ["framework/tensor_testutil.cc"],
@@ -2330,7 +2331,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_inference_testutil",
     testonly = 1,
     srcs = ["framework/shape_inference_testutil.cc"],
@@ -2345,7 +2346,7 @@ cc_library(
 )
 
 # Main program for tests
-cc_library(
+tf_cc_library(
     name = "test_main",
     testonly = 1,
     srcs = ["platform/test_main.cc"],
@@ -3529,7 +3530,7 @@ filegroup(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cuda_libdevice_path",
     srcs = ["platform/cuda_libdevice_path.cc"] + tf_additional_libdevice_srcs(),
     hdrs = ["platform/cuda_libdevice_path.h"],

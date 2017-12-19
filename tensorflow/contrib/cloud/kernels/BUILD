@@ -10,7 +10,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_copts",
+    "tf_cc_library",
     "tf_kernel_library",
 )
 
@@ -48,11 +48,10 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "bigquery_table_accessor",
     srcs = ["bigquery_table_accessor.cc"],
     hdrs = ["bigquery_table_accessor.h"],
-    copts = tf_copts(),
     linkstatic = 1,
     deps = [
         ":bigquery_table_partition_proto_cc",

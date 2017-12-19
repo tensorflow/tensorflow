@@ -5,7 +5,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
+    "tf_cc_library",
     "tf_cc_binary",
 )
 
@@ -29,7 +29,6 @@ tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
     srcs = ["clock_cycle_profiling_main.cc"],
-    copts = tf_copts(),
     linkopts = select({
         "//tensorflow:android": [
             "-pie",

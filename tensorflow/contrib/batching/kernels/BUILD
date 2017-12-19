@@ -7,9 +7,12 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/batching:shared_batch_scheduler_hdrs",
         "//tensorflow/contrib/batching/util:periodic_function_dynamic",

@@ -852,6 +852,23 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def tf_cc_library(copts=None, is_external=False, **kwargs):
+  """Generate a cc_library with platform copts
+  Args:
+  - copts: copts always passed to the cc_library.
+  - kwargs: Any other argument to cc_library.
+  """
+  if not copts:
+    copts = []
+  native.cc_library(
+      copts=copts + tf_copts(is_external=is_external) + if_mkl(["-DINTEL_MKL=1"]),
+      **kwargs)
+
+register_extension_info(
+    extension_name = "tf_cc_library",
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
 

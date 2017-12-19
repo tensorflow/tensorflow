@@ -12,6 +12,7 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
@@ -28,7 +29,7 @@ filegroup(
 
 # Utils
 
-cc_library(
+tf_cc_library(
     name = "utils",
     srcs = [
         "utils/batch_features.cc",
@@ -50,6 +51,7 @@ cc_library(
         "utils/sparse_column_iterable.h",
         "utils/tensor_utils.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
@@ -122,10 +124,11 @@ tf_cc_test(
 
 # Models
 
-cc_library(
+tf_cc_library(
     name = "models",
     srcs = ["models/multiple_additive_trees.cc"],
     hdrs = ["models/multiple_additive_trees.h"],
+    is_external = True,
     deps = [
         ":trees",
         ":utils",
@@ -152,11 +155,12 @@ tf_cc_test(
 
 # Testutil
 
-cc_library(
+tf_cc_library(
     name = "batch_features_testutil",
     testonly = 1,
     srcs = ["testutil/batch_features_testutil.cc"],
     hdrs = ["testutil/batch_features_testutil.h"],
+    is_external = True,
     deps = [
         ":utils",
         "//tensorflow/core:framework_headers_lib",
@@ -165,10 +169,11 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "random_tree_gen",
     srcs = ["testutil/random_tree_gen.cc"],
     hdrs = ["testutil/random_tree_gen.h"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/core:lib",
@@ -187,7 +192,7 @@ tf_cc_binary(
 
 # Quantiles
 
-cc_library(
+tf_cc_library(
     name = "weighted_quantiles",
     srcs = [],
     hdrs = [
@@ -195,6 +200,7 @@ cc_library(
         "quantiles/weighted_quantiles_stream.h",
         "quantiles/weighted_quantiles_summary.h",
     ],
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -239,10 +245,11 @@ tf_cc_test(
 
 # Trees
 
-cc_library(
+tf_cc_library(
     name = "trees",
     srcs = ["trees/decision_tree.cc"],
     hdrs = ["trees/decision_tree.h"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
@@ -353,17 +360,19 @@ py_test(
 
 # Learner/Common
 
-cc_library(
+tf_cc_library(
     name = "class-partition-key",
     hdrs = ["learner/common/accumulators/class-partition-key.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "feature-stats-accumulator",
     hdrs = ["learner/common/accumulators/feature-stats-accumulator.h"],
+    is_external = True,
     deps = [
         ":class-partition-key",
     ],
@@ -382,10 +391,11 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "example_partitioner",
     srcs = ["learner/common/partitioners/example_partitioner.cc"],
     hdrs = ["learner/common/partitioners/example_partitioner.h"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:trees",
         "//tensorflow/contrib/boosted_trees/lib:utils",
@@ -406,18 +416,20 @@ tf_cc_test(
 )
 
 # Learner/stochastic
-cc_library(
+tf_cc_library(
     name = "gradient-stats",
     hdrs = ["learner/common/stats/gradient-stats.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "node-stats",
     hdrs = ["learner/common/stats/node-stats.h"],
+    is_external = True,
     deps = [
         ":gradient-stats",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
@@ -427,17 +439,19 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "split-stats",
     hdrs = ["learner/common/stats/split-stats.h"],
+    is_external = True,
     deps = [
         ":node-stats",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "feature-split-candidate",
     hdrs = ["learner/common/stats/feature-split-candidate.h"],
+    is_external = True,
     deps = [
         ":split-stats",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",

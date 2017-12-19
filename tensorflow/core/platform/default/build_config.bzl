@@ -4,6 +4,7 @@ load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -84,6 +85,7 @@ def pyx_library(
     native.cc_binary(
         name=shared_object_name,
         srcs=[stem + ".cpp"],
+        copts = tf_copts(),
         deps=deps + ["//util/python:python_headers"],
         linkshared = 1,
     )
@@ -244,7 +246,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
           ["@protobuf_archive//:protobuf"],
           ["@protobuf_archive//:protobuf_headers"]
       ),
-      copts = if_not_windows([
+      copts = tf_copts() + if_not_windows([
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",

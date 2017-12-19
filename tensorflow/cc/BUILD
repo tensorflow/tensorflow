@@ -13,11 +13,12 @@ load(
     "tf_cc_test",
     "tf_cc_binary",
     "tf_copts",
+    "tf_cc_library",
     "tf_gen_op_wrappers_cc",
     "cc_library_with_android_deps",
 )
 
-cc_library(
+tf_cc_library(
     name = "gradients",
     srcs = [
         "framework/gradients.cc",
@@ -82,7 +83,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gradient_checker",
     srcs = ["framework/gradient_checker.cc"],
     hdrs = ["framework/gradient_checker.h"],
@@ -116,7 +117,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grad_ops",
     deps = [
         ":array_grad",
@@ -126,7 +127,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grad_testutil",
     testonly = 1,
     srcs = ["gradients/grad_testutil.cc"],
@@ -291,7 +292,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grad_op_registry",
     srcs = ["framework/grad_op_registry.cc"],
     hdrs = ["framework/grad_op_registry.h"],
@@ -301,7 +302,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "array_grad",
     srcs = ["gradients/array_grad.cc"],
     deps = [
@@ -331,7 +332,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
     deps = [
@@ -360,7 +361,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "nn_grad",
     srcs = ["gradients/nn_grad.cc"],
     deps = [
@@ -389,7 +390,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "data_flow_grad",
     srcs = ["gradients/data_flow_grad.cc"],
     deps = [
@@ -525,7 +526,6 @@ cc_library_with_android_deps(
     android_deps = [
         "//tensorflow/core:android_tensorflow_lib",
     ],
-    copts = tf_copts(),
     data = [
         "//tensorflow/core:base_api_def",
     ],
@@ -563,7 +563,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "test_op_op_lib",
     srcs = ["framework/test_op.cc"],
     linkstatic = 1,
@@ -571,7 +571,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "testutil",
     testonly = 1,
     srcs = ["framework/testutil.cc"],
@@ -597,7 +597,6 @@ tf_gen_op_wrappers_cc(
 tf_cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
-    copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
@@ -637,7 +636,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "queue_runner",
     srcs = ["training/queue_runner.cc"],
     hdrs = ["training/queue_runner.h"],
@@ -671,7 +670,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "coordinator",
     srcs = ["training/coordinator.cc"],
     hdrs = ["training/coordinator.h"],

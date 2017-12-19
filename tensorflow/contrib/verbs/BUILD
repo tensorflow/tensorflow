@@ -8,6 +8,7 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 exports_files(["LICENSE"])
 
@@ -47,7 +48,7 @@ tf_proto_library_cc(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "verbs_util",
     srcs = ["verbs_util.cc"],
     hdrs = ["verbs_util.h"],
@@ -57,7 +58,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grpc_verbs_service",
     srcs = ["grpc_verbs_service.cc"],
     hdrs = ["grpc_verbs_service.h"],
@@ -75,7 +76,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "grpc_verbs_service_impl",
     srcs = ["grpc_verbs_service_impl.cc"],
     hdrs = ["grpc_verbs_service_impl.h"],
@@ -85,7 +86,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grpc_verbs_client",
     srcs = ["grpc_verbs_client.cc"],
     hdrs = ["grpc_verbs_client.h"],
@@ -114,7 +115,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "rdma_mgr",
     srcs = ["rdma_mgr.cc"],
     hdrs = ["rdma_mgr.h"],
@@ -154,7 +155,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "verbs_server_lib",
     srcs = ["verbs_server_lib.cc"],
     hdrs = ["verbs_server_lib.h"],

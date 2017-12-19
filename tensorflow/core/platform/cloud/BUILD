@@ -11,6 +11,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
+    "tf_cc_library",
 )
 
 filegroup(
@@ -27,7 +28,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "expiring_lru_cache",
     hdrs = ["expiring_lru_cache.h"],
     copts = tf_copts(),
@@ -35,7 +36,7 @@ cc_library(
     deps = ["//tensorflow/core:lib"],
 )
 
-cc_library(
+tf_cc_library(
     name = "file_block_cache",
     srcs = ["file_block_cache.cc"],
     hdrs = ["file_block_cache.h"],
@@ -44,7 +45,7 @@ cc_library(
     deps = ["//tensorflow/core:lib"],
 )
 
-cc_library(
+tf_cc_library(
     name = "gcs_dns_cache",
     srcs = ["gcs_dns_cache.cc"],
     hdrs = ["gcs_dns_cache.h"],
@@ -56,7 +57,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -80,7 +81,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "http_request",
     hdrs = ["http_request.h"],
     copts = tf_copts(),
@@ -91,7 +92,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "curl_http_request",
     srcs = ["curl_http_request.cc"],
     hdrs = ["curl_http_request.h"],
@@ -105,7 +106,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "http_request_fake",
     testonly = 1,
     hdrs = [
@@ -122,7 +123,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "google_auth_provider",
     srcs = ["google_auth_provider.cc"],
     hdrs = [
@@ -141,7 +142,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "now_seconds_env",
     testonly = 1,
     hdrs = ["now_seconds_env.h"],
@@ -153,7 +154,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "oauth_client",
     srcs = [
         "oauth_client.cc",
@@ -172,7 +173,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "retrying_utils",
     srcs = [
         "retrying_utils.cc",
@@ -187,7 +188,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "retrying_file_system",
     srcs = [
         "retrying_file_system.cc",
@@ -203,7 +204,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "time_util",
     srcs = [
         "time_util.cc",

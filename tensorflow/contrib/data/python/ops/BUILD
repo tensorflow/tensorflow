@@ -135,6 +135,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "prefetching_ops_kernels",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/data/kernels:prefetching_kernels",
         "//tensorflow/core:framework",

@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -15,7 +16,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],
     hdrs = ["op_types.h"],
@@ -28,7 +29,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -70,7 +71,7 @@ tf_cuda_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_view",
     srcs = ["graph_view.cc"],
     hdrs = ["graph_view.h"],
@@ -95,7 +96,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grappler_item",
     srcs = [
         "grappler_item.cc",
@@ -110,7 +111,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grappler_item_builder",
     srcs = [
         "grappler_item_builder.cc",

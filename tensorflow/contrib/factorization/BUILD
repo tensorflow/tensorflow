@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
@@ -104,8 +105,9 @@ tf_gen_op_libs([
     "factorization_ops",
 ])
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
+    is_external = True,
     deps = [
         ":clustering_ops_op_lib",
         ":factorization_ops_op_lib",

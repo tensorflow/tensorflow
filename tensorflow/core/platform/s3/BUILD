@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
+    "tf_cc_library",
     "tf_cc_test",
 )
 
@@ -49,7 +50,7 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "s3_crypto",
     srcs = [
         "s3_crypto.cc",
@@ -66,7 +67,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "s3_file_system",
     srcs = [
         "s3_file_system.cc",

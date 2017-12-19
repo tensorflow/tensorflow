@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -14,7 +15,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "scc",
     srcs = ["scc.cc"],
     hdrs = ["scc.h"],
@@ -47,7 +48,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "topological_sort",
     srcs = ["topological_sort.cc"],
     hdrs = ["topological_sort.h"],
@@ -73,7 +74,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "frame",
     srcs = ["frame.cc"],
     hdrs = ["frame.h"],

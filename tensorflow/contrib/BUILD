@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "contrib_py",
@@ -103,8 +105,9 @@ py_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "contrib_kernels",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_kernels",
@@ -124,8 +127,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "contrib_ops_op_lib",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_op_lib",
