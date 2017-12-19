@@ -59,7 +59,7 @@ class HloParser {
   // ParseXXX returns false if an error occurred.
   bool ParseHloModule();
   bool ParseComputations();
-  bool ParseComputation();
+  bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation::Builder* builder,
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
@@ -218,6 +218,7 @@ class HloParser {
 
   HloLexer lexer_;
   std::unique_ptr<HloModule> module_;
+  std::vector<std::unique_ptr<HloComputation>> computations_;
   const HloModuleConfig config_;
   std::vector<string> error_;
 };
@@ -266,17 +267,52 @@ bool HloParser::ParseHloModule() {
 
 // computations ::= (computation)+
 bool HloParser::ParseComputations() {
+  HloComputation* entry_computation = nullptr;
   do {
-    if (!ParseComputation()) {
+    if (!ParseComputation(&entry_computation)) {
       return false;
     }
   } while (lexer_.GetKind() != TokKind::kEof);
+
+  for (int i = 0; i < computations_.size(); i++) {
+    // If entry_computation is not nullptr, it means the computation it pointed
+    // to is marked with "ENTRY"; otherwise, no computation is marked with
+    // "ENTRY", and we use the last computation as the entry computation. We
+    // add the non-entry computations as embedded computations to the module.
+    if ((entry_computation != nullptr &&
+         computations_[i].get() != entry_computation) ||
+        (entry_computation == nullptr && i != computations_.size() - 1)) {
+      module_->AddEmbeddedComputation(std::move(computations_[i]));
+      continue;
+    }
+    auto computation =
+        module_->AddEntryComputation(std::move(computations_[i]));
+    // The parameters and result layouts were set to default layout. Here we
+    // set the layouts to what the hlo text says.
+    for (int p = 0; p < computation->num_parameters(); p++) {
+      const Shape& param_shape = computation->parameter_instruction(p)->shape();
+      if (param_shape.has_layout()) {
+        module_->mutable_entry_computation_layout()
+            ->mutable_parameter_layout(p)
+            ->ResetLayout(param_shape.layout());
+      }
+    }
+    const Shape& result_shape = computation->root_instruction()->shape();
+    if (result_shape.has_layout()) {
+      module_->mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ResetLayout(result_shape.layout());
+    }
+  }
+
   return true;
 }
 
 // computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
-bool HloParser::ParseComputation() {
+bool HloParser::ParseComputation(HloComputation** entry_computation) {
+  LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
+
   string name;
   LocTy name_loc = lexer_.GetLoc();
   if (!ParseName(&name)) {
@@ -307,10 +343,8 @@ bool HloParser::ParseComputation() {
   // Now root can be either an existing instruction or a nullptr. If it's a
   // nullptr, the implementation of Builder will set the last instruction as
   // root instruction.
-  HloComputation* computation =
-      is_entry_computation
-          ? module_->AddEntryComputation(builder->Build(root))
-          : module_->AddEmbeddedComputation(builder->Build(root));
+  computations_.emplace_back(builder->Build(root));
+  HloComputation* computation = computations_.back().get();
 
   if (!root) {
     root = computation->root_instruction();
@@ -328,24 +362,13 @@ bool HloParser::ParseComputation() {
                root_name, ", ", ShapeUtil::HumanString(root->shape())));
   }
 
-  // The parameters and result layouts were set to default layout. Here we set
-  // the layouts to what the hlo text says.
   if (is_entry_computation) {
-    for (int i = 0; i < computation->num_parameters(); i++) {
-      const Shape& param_shape = computation->parameter_instruction(i)->shape();
-      if (param_shape.has_layout()) {
-        module_->mutable_entry_computation_layout()
-            ->mutable_parameter_layout(i)
-            ->ResetLayout(param_shape.layout());
-      }
+    if (*entry_computation != nullptr) {
+      return Error(maybe_entry_loc, "expects only one ENTRY");
     }
-    const Shape& result_shape = computation->root_instruction()->shape();
-    if (result_shape.has_layout()) {
-      module_->mutable_entry_computation_layout()
-          ->mutable_result_layout()
-          ->ResetLayout(result_shape.layout());
-    }
+    *entry_computation = computation;
   }
+
   return AddComputation(name, computation, name_loc);
 }
 
@@ -373,6 +396,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   Shape shape;
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
+
+  LocTy maybe_root_loc = lexer_.GetLoc();
   bool is_root = EatIfPresent(TokKind::kw_ROOT);
 
   const LocTy name_loc = lexer_.GetLoc();
@@ -381,7 +406,11 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       !ParseShape(&shape) || !ParseOpcode(&opcode)) {
     return false;
   }
+
   if (is_root) {
+    if (!root_name->empty()) {
+      return Error(maybe_root_loc, "one computation should have only one ROOT");
+    }
     *root_name = name;
   }
 
