@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_logging.h"
 
 #include <aws/core/Aws.h>
-#include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/FileSystemUtils.h>
+#include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
@@ -103,8 +103,7 @@ Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
     level = 0;
   }
 
-  switch(level)
-  {
+  switch (level) {
     case INFO:
       logLevel = Aws::Utils::Logging::LogLevel::Info;
       break;
@@ -270,8 +269,8 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 };
 
 S3FileSystem::S3FileSystem() {
-  Aws::Utils::Logging::InitializeAWSLogging(
-    Aws::MakeShared<S3LogSystem>(kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
+  Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<S3LogSystem>(
+      kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
 
   Aws::SDKOptions options;
   options.cryptoOptions.sha256Factory_create_fn = []() {
