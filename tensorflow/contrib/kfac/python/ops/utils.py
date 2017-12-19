@@ -27,6 +27,8 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
 # Method used for inverting matrices.
 POSDEF_INV_METHOD = "cholesky"
@@ -226,11 +228,13 @@ class SubGraph(object):
   """
 
   def __init__(self, outputs):
+    # Set of all ancestor Tensors, Ops to 'outputs'.
     self._members = set()
 
     self._recurse_add(outputs)
 
   def _recurse_add(self, nodes):
+    """Recursively adds all of nodes' ancestors."""
     for node in nodes:
       if node in self._members:
         continue
@@ -246,8 +250,25 @@ class SubGraph(object):
     return node in self._members
 
   def variable_uses(self, var):
-    """Computes number of times a variable is used."""
-    return len(self._members.intersection(set(var.value().consumers())))
+    """Computes number of times a variable is used.
+
+    Args:
+      var: Variable or ResourceVariable instance.
+
+    Returns:
+      Number of times a variable is used within this subgraph.
+
+    Raises:
+      ValueError: If 'var' is not a variable type.
+    """
+    if isinstance(var, resource_variable_ops.ResourceVariable):
+      var = var.handle
+    elif isinstance(var, variables.Variable):
+      var = var.value()
+    else:
+      raise ValueError("%s does not appear to be a variable." % str(var))
+
+    return len(self._members.intersection(set(var.consumers())))
 
   def filter_list(self, node_list):
     """Filters 'node_list' to nodes in this subgraph."""
