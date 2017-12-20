@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops.dataset_ops import Dataset
-from tensorflow.python.framework import constant_op
+from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -27,18 +27,6 @@ from tensorflow.python.ops import gen_dataset_ops
 
 # TODO(b/64974358): Increase default buffer size to 256 MB.
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
-
-
-def _convert_optional_param_to_tensor(argument_name,
-                                      argument_value,
-                                      argument_default=0,
-                                      argument_dtype=dtypes.int64):
-  if argument_value is not None:
-    return ops.convert_to_tensor(
-        argument_value, dtype=argument_dtype, name=argument_name)
-  else:
-    return constant_op.constant(
-        argument_default, dtype=argument_dtype, name=argument_name)
 
 
 class TextLineDataset(Dataset):
@@ -58,12 +46,12 @@ class TextLineDataset(Dataset):
     super(TextLineDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-    self._compression_type = _convert_optional_param_to_tensor(
+    self._compression_type = convert.optional_param_to_tensor(
         "compression_type",
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-    self._buffer_size = _convert_optional_param_to_tensor(
+    self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def _as_variant_tensor(self):
@@ -100,12 +88,12 @@ class TFRecordDataset(Dataset):
     # Force the type to string even if filenames is an empty list.
     self._filenames = ops.convert_to_tensor(
         filenames, dtypes.string, name="filenames")
-    self._compression_type = _convert_optional_param_to_tensor(
+    self._compression_type = convert.optional_param_to_tensor(
         "compression_type",
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-    self._buffer_size = _convert_optional_param_to_tensor(
+    self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
@@ -155,11 +143,11 @@ class FixedLengthRecordDataset(Dataset):
     self._record_bytes = ops.convert_to_tensor(
         record_bytes, dtype=dtypes.int64, name="record_bytes")
 
-    self._header_bytes = _convert_optional_param_to_tensor(
+    self._header_bytes = convert.optional_param_to_tensor(
         "header_bytes", header_bytes)
-    self._footer_bytes = _convert_optional_param_to_tensor(
+    self._footer_bytes = convert.optional_param_to_tensor(
         "footer_bytes", footer_bytes)
-    self._buffer_size = _convert_optional_param_to_tensor(
+    self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def _as_variant_tensor(self):
