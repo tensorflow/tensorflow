@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -312,6 +314,35 @@ def fwd_gradients(ys, xs, grad_xs=None, stop_gradients=None):
   dysdx = gradients_impl.gradients(dydxs, us, grad_ys=grad_xs)
 
   return dysdx
+
+
+def on_tpu():
+  """Returns True when building a TPU computation."""
+  return tpu_function.get_tpu_context().number_of_shards is not None
+
+
+def cross_replica_mean(tensor, name=None):
+  """Takes mean value of a Tensor across all TPU cores.
+
+  Args:
+    tensor: Tensor to be synchronized.
+    name: None or string. Name of Op.
+
+  Returns:
+    Average of Tensor across all TPU cores.
+
+  Raises:
+    ValueError: If called outside of TPU context.
+  """
+  with ops.name_scope(name, "cross_replica_mean", [tensor]):
+    num_shards = tpu_function.get_tpu_context().number_of_shards
+    if num_shards is None:
+      raise ValueError(
+          "Cannot take cross_replica_mean() outside of TPU Context.")
+    if num_shards == 1:
+      return tensor
+    return tpu_ops.cross_replica_sum(tensor / num_shards)
+
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.

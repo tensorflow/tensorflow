@@ -22,6 +22,7 @@ import numpy as np
 import numpy.random as npr
 
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -266,6 +267,25 @@ class UtilsTest(test.TestCase):
           array_ops.constant(x), identity, damp)
       np_inv = np.linalg.inv(x + damp * np.eye(size))
       self.assertAllClose(sess.run(tf_inv), np_inv)
+
+  def testCrossReplicaMean(self):
+    """Ensures that cross_replica_mean() executes only when num_shards > 1."""
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(4):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertNotEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(1):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):  # Outside of TPU context.
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
 
 
 if __name__ == '__main__':
