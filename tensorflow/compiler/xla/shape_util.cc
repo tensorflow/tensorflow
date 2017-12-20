@@ -189,20 +189,21 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
       .ValueOrDie();
 }
 
-/* static */ Shape ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+/* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions) {
   std::vector<int64> layout(dimensions.size());
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
   return MakeShapeWithLayout(element_type, dimensions, layout);
 }
 
-/* static */ Shape ShapeUtil::NormalizeShapeToMonotonicDim0MajorLayout(
+/* static */ Shape
+ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
   std::vector<int64> dims(shape.dimensions_size());
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     dims[i] = shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
-  return MakeShapeWithMonotonicDim0MajorLayout(shape.element_type(), dims);
+  return MakeShapeWithDescendingLayout(shape.element_type(), dims);
 }
 
 /* static */ void ShapeUtil::PopulateShape(
@@ -1148,9 +1149,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     // as input_shape/output_shape and the dimension-0-major layout. These two
     // shapes are used for conversion between logical linear indices and
     // multi-dimensional indices.
-    Shape input_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+    Shape input_shape_dim0_major = MakeShapeWithDescendingLayout(
         input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
-    Shape output_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+    Shape output_shape_dim0_major = MakeShapeWithDescendingLayout(
         output_shape.element_type(), AsInt64Slice(output_shape.dimensions()));
 
     for (int64 input_dim = 0; input_dim < Rank(input_shape); ++input_dim) {

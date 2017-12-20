@@ -103,6 +103,26 @@ class CurlHttpRequest : public HttpRequest {
   /// read. Existing content of the vector will be cleared.
   Status SetResultBuffer(std::vector<char>* out_buffer) override;
 
+  /// \brief Specifies the buffer for receiving the response body, when the
+  /// caller knows the maximum size of the response body.
+  ///
+  /// This method allows the caller to receive the response body without an
+  /// additional intermediate buffer allocation and copy.  This method should
+  /// be called before calling Send(). After Send() has succeeded, the caller
+  /// should use the GetResultBufferDirectBytesTransferred() method in order
+  /// to learn how many bytes were transferred.
+  ///
+  /// Using this method is mutually exclusive with using SetResultBuffer().
+  Status SetResultBufferDirect(char* buffer, size_t size) override;
+
+  /// \brief Returns the number of bytes (of the response body) that were
+  /// transferred, when using the SetResultBufferDirect() method. The returned
+  /// value will always be less than or equal to the 'size' parameter that
+  /// was passed to SetResultBufferDirect(). If the actual HTTP response body
+  /// was greater than 'size' bytes, then this transfer method will only copy
+  /// the first 'size' bytes, and the rest will be ignored.
+  size_t GetResultBufferDirectBytesTransferred() override;
+
   /// \brief Returns the response headers of a completed request.
   ///
   /// If the header is not found, returns an empty string.
@@ -127,6 +147,10 @@ class CurlHttpRequest : public HttpRequest {
   /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,
                               void* userdata);
+
+  /// Processes response body content received when using SetResultBufferDirect.
+  static size_t WriteCallbackDirect(const void* ptr, size_t size, size_t nmemb,
+                                    void* userdata);
   /// A read callback in the form which can be accepted by libcurl.
   static size_t ReadCallback(void* ptr, size_t size, size_t nmemb,
                              FILE* userdata);
@@ -150,6 +174,14 @@ class CurlHttpRequest : public HttpRequest {
   size_t post_body_read_ = 0;
 
   std::vector<char>* response_buffer_ = nullptr;
+
+  struct DirectResponseState {
+    char* buffer_;
+    size_t buffer_size_;
+    size_t bytes_transferred_;
+  };
+  DirectResponseState direct_response_ = {};
+
   CURL* curl_ = nullptr;
   curl_slist* curl_headers_ = nullptr;
   curl_slist* resolve_list_ = nullptr;

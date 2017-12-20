@@ -285,11 +285,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     *result = StringPiece();
-    std::vector<char> out;
-    TF_RETURN_IF_ERROR(file_block_cache_->Read(filename_, offset, n, &out));
-    std::memcpy(scratch, out.data(), std::min(out.size(), n));
-    *result = StringPiece(scratch, std::min(out.size(), n));
-    if (result->size() < n) {
+    size_t bytes_transferred;
+    TF_RETURN_IF_ERROR(file_block_cache_->Read(filename_, offset, n, scratch,
+                                               &bytes_transferred));
+    *result = StringPiece(scratch, bytes_transferred);
+    if (bytes_transferred < n) {
       // This is not an error per se. The RandomAccessFile interface expects
       // that Read returns OutOfRange if fewer bytes were read than requested.
       return errors::OutOfRange("EOF reached, ", result->size(),
@@ -721,15 +721,17 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
   std::unique_ptr<FileBlockCache> file_block_cache(
       new FileBlockCache(block_size, max_bytes, max_staleness,
                          [this](const string& filename, size_t offset, size_t n,
-                                std::vector<char>* out) {
-                           return LoadBufferFromGCS(filename, offset, n, out);
+                                char* buffer, size_t* bytes_transferred) {
+                           return LoadBufferFromGCS(filename, offset, n, buffer,
+                                                    bytes_transferred);
                          }));
   return file_block_cache;
 }
 
 // A helper function to actually read the data from GCS.
 Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
-                                        size_t n, std::vector<char>* out) {
+                                        size_t n, char* buffer,
+                                        size_t* bytes_transferred) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
 
@@ -739,21 +741,23 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
       request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket,
                                       "/", request->EscapeString(object))));
   TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(out));
+  TF_RETURN_IF_ERROR(request->SetResultBufferDirect(buffer, n));
   TF_RETURN_IF_ERROR(
       request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read));
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
                                   bucket, "/", object);
 
+  size_t bytes_read = request->GetResultBufferDirectBytesTransferred();
+  *bytes_transferred = bytes_read;
   VLOG(1) << "Successful read of gs://" << bucket << "/" << object << " @ "
-          << offset << " of size: " << out->size();
+          << offset << " of size: " << bytes_read;
 
-  if (out->size() < block_size()) {
+  if (bytes_read < block_size()) {
     // Check stat cache to see if we encountered an interrupted read.
     FileStatistics stat;
     if (stat_cache_->Lookup(filename, &stat)) {
-      if (offset + out->size() < stat.length) {
+      if (offset + bytes_read < stat.length) {
         return errors::Internal(strings::Printf(
             "File contents are inconsistent for file: %s @ %lu.",
             filename.c_str(), offset));

@@ -495,14 +495,13 @@ class GraphModeFunction(object):
 def _get_defun_inputs(args):
   """Maps the inputs args to graph inputs."""
   ret = []
-  for a in args:
+  flat_args = nest.flatten(args)
+  for a in flat_args:
     if isinstance(a, ops.Tensor):
       ret.append(graph_placeholder(a.dtype, a.shape))
-    elif type(a) in (tuple, list):
-      ret.append(_get_defun_inputs(a))
     else:
       ret.append(a)
-  return tuple(ret) if type(args) is tuple else ret
+  return nest.pack_sequence_as(args, ret)
 
 
 def _defun_internal(name, func, args, kwds):
@@ -582,8 +581,10 @@ def _cache_key(x):
     return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
   if isinstance(x, np.ndarray):
     return ("array", x.shape, tuple(x.reshape(-1)))
-  if type(x) in (list, tuple):
+  if isinstance(x, (list, tuple)):
     return tuple([_cache_key(a) for a in x])
+  if isinstance(x, dict):
+    return tuple(tuple([_cache_key(k), _cache_key(v)]) for k, v in x.items())
   return x
 
 
