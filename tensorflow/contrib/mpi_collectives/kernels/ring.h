@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_MPI_H_
 #define TENSORFLOW_CONTRIB_MPI_H_
 
-#ifdef TENSORFLOW_USE_MPI
+// #ifdef TENSORFLOW_USE_MPI
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace contrib {
-namespace mpi {
+namespace mpi_collectives {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
@@ -317,11 +317,11 @@ Status RingAllgather(OpKernelContext* context, const Tensor* input,
   return Status::OK();
 }
 
-}  // namespace mpi
+}  // namespace mpi_collectives
 }  // namespace contrib
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_USE_MPI
+// #endif  // TENSORFLOW_USE_MPI
 
 #undef TENSORFLOW_CONTRIB_MPI_H_
 #endif  // TENSORFLOW_CONTRIB_MPI_H_
