@@ -87,6 +87,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Atan",
                                           "Atan2",
                                           "Atanh",
+                                          "Betainc",
                                           "Bitcast",
                                           "Cast",
                                           "Ceil",
@@ -153,6 +154,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Relu6Grad",
                                           "ReluGrad",
                                           "Rint",
+                                          "Select",
                                           "Selu",
                                           "SeluGrad",
                                           "Shape",
@@ -1061,6 +1063,9 @@ class AgnosticNodeProcessor : public NodeProcessor {
     if (IsBinaryOp(node) || IsUnaryGrad(node)) {
       return {0, 1};
     }
+    if (IsBetainc(node) || IsSelect(node)) {
+      return {0, 1, 2};
+    }
     if (IsShapeN(node) || IsIdentityN(node)) {
       std::vector<int> pos;
       for (int i = 0; i < node.input_size(); i++) {
@@ -1372,6 +1377,18 @@ class SplitProcessor : public ConcatProcessor {
   }
 };
 
+class TernaryOpProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TernaryOpProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos = {0, 1, 2};
+    return input_pos;
+  }
+};
+
 class UnaryGradProcessor : public AgnosticNodeProcessor {
  public:
   explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
@@ -1649,6 +1666,8 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
+          } else if (IsBetainc(*node) || IsSelect(*node)) {
+            node_processor.reset(new TernaryOpProcessor(opt_cxt));
           } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {

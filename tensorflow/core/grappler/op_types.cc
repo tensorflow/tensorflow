@@ -52,6 +52,8 @@ bool IsAssert(const NodeDef& node) { return node.op() == "Assert"; }
 
 bool IsAtan2(const NodeDef& node) { return node.op() == "Atan2"; }
 
+bool IsBetainc(const NodeDef& node) { return node.op() == "Betainc"; }
+
 bool IsBiasAdd(const NodeDef& node) {
   return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
 }
@@ -224,6 +226,8 @@ bool IsRestore(const NodeDef& node) {
 }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
+
+bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
