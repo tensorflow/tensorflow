@@ -6759,20 +6759,6 @@ class CohenKappaTest(test.TestCase):
             self.assertAlmostEqual(expect, sess.run(update_op), 2)
             self.assertAlmostEqual(expect, kappa.eval(), 2)
 
-  def testBasic2(self):
-    labels = np.random.randint(0, 4, size=(100, 1))
-    predictions = np.random.randint(0, 4, size=(100, 1))
-    expect = sk_metrics.cohen_kappa_score(labels, predictions)
-
-    with self.test_session() as sess:
-      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
-      labels = constant_op.constant(labels)
-      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
-
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(expect, sess.run(update_op), 5)
-      self.assertAlmostEqual(expect, kappa.eval(), 5)
-
   def testAllCorrect(self):
     inputs = np.random.randint(0, 4, size=(100, 1))
     expect = sk_metrics.cohen_kappa_score(inputs, inputs)
