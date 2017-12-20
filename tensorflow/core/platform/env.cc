@@ -301,14 +301,14 @@ bool Env::LocalTempFilename(string* filename) {
   // permissions or have different problems at times.
   for (const string& dir : dirs) {
     *filename = io::JoinPath(dir, "tempfile-");
-    if (CreateNewFileWithUniqueName(filename, "")) {
+    if (CreateUniqueFileName(filename, "")) {
       return true;
     }
   }
   return false;
 }
 
-bool Env::CreateNewFileWithUniqueName(string* prefix, const string& suffix) {
+bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
 #ifdef __APPLE__
   uint64_t tid64;
   pthread_threadid_np(nullptr, &tid64);
