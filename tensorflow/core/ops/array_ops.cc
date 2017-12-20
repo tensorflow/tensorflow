@@ -5332,13 +5332,12 @@ REGISTER_OP("ScatterNd")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(ScatterNdShape)
     .Doc(R"doc(
-Scatter `updates` into a new (initially zero for numeric, empty for string)
-tensor according to `indices`.
+Scatter `updates` into a new empty tensor according to `indices`.
 
 Creates a new tensor by applying sparse `updates` to individual values or
-slices within a zero (or empty string) tensor of the given `shape`
-according to indices. This operator is the inverse of the @{tf.gather_nd}
-operator which extracts values or slices from a given tensor.
+slices within a tensor (initially zero for numeric, empty for string) of
+the given `shape` according to indices. This operator is the inverse of the
+@{tf.gather_nd} operator which extracts values or slices from a given tensor.
 
 **WARNING**: The order in which updates are applied is nondeterministic, so the
 output will be nondeterministic if `indices` contains duplicates.
