@@ -1361,7 +1361,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
   // arg: f32[4,4,4,4,4,4] full of ones. Using small dims to limit run-time.
   std::vector<int64> input_dims(6, 4);
   std::unique_ptr<Literal> arg_literal =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+      Literal::CreateFullWithDescendingLayout<float>(input_dims, 1.0f);
 
   HloInstruction* arg_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
@@ -1414,7 +1414,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
 
   std::vector<int64> output_dims = {4, 3, 3, 3, 4, 4};
   std::unique_ptr<Literal> result_literal =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 8.0f);
+      Literal::CreateFullWithDescendingLayout<float>(output_dims, 8.0f);
   LiteralTestUtil::ExpectEqual(*result_literal, *result);
 }
 
