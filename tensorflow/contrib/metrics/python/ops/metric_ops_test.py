@@ -6823,26 +6823,29 @@ class CohenKappaTest(test.TestCase):
       [40, 80, 20, 30],
       [20, 10, 60, 35],
       [15, 25, 30, 25]])
-    labels_np, predictions_np = self._confusion_matrix_to_samples(confusion_matrix)
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
     num_samples = np.sum(confusion_matrix, dtype=np.int32)
-    weights_np = (np.arange(0, num_samples) % 5) / 5.0
+    weights = (np.arange(0, num_samples) % 5) / 5.0
     num_classes = confusion_matrix.shape[0]
 
     batch_size = num_samples // 10
-    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size,))
-    labels = array_ops.placeholder(dtypes_lib.int32, shape=(batch_size,))
-    weights = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size,))
-    kappa, update_op = metrics.cohen_kappa(labels, predictions, num_classes,
-                                           weights=weights)
+    predictions_t = array_ops.placeholder(dtypes_lib.float32,
+                                          shape=(batch_size,))
+    labels_t = array_ops.placeholder(dtypes_lib.int32,
+                                     shape=(batch_size,))
+    weights_t = array_ops.placeholder(dtypes_lib.float32,
+                                      shape=(batch_size,))
+    kappa, update_op = metrics.cohen_kappa(
+        labels_t, predictions_t, num_classes, weights=weights_t)
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
 
       for idx in range(0, num_samples, batch_size):
         batch_start, batch_end = idx, idx + batch_size
         sess.run(update_op,
-                 feed_dict={labels: labels_np[batch_start:batch_end],
-                            predictions: predictions_np[batch_start:batch_end],
-                            weights: weights_np[batch_start:batch_end]})
+                 feed_dict={labels_t: labels[batch_start:batch_end],
+                            predictions_t: predictions[batch_start:batch_end],
+                            weights_t: weights[batch_start:batch_end]})
       # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
       #                          labels_np, predictions_np, sample_weight=weights_np)
       expect = 0.289965397924
