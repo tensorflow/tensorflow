@@ -3301,13 +3301,16 @@ def count(values,
 
 def cohen_kappa(labels, predictions, num_classes, weights=None,
                 metrics_collections=None, updates_collections=None, name=None):
-  """Calculates [Cohen's kappa](https://en.wikipedia.org/wiki/Cohen's_kappa)
-  which is a statistic that measures inter-annotator agreement.
+  """Calculates Cohen's kappa.
 
-  The `cohen_kappa` function creates three local variables: `total_po`,
-  `total_pe_row`, and `total_pe_col`, that are used to compute the
-  Cohen's kappa. This value is ultimately returned as `kappa`, an idempotent
-  operation that is calculate by
+  [Cohen's kappa](https://en.wikipedia.org/wiki/Cohen's_kappa) is a statistic
+  that measures inter-annotator agreement.
+
+  The `cohen_kappa` function calculates the confusion matrix, and creates three
+  local variables to compute the Cohen's kappa: `total_po`, `total_pe_row`, and
+  `total_pe_col` refer to the diagonal part, rows and columns totals of the
+  confusion matrix, respectively. This value is ultimately returned as `kappa`,
+  an idempotent operation that is calculated by
 
       pe = (pe_row * pe_col) / N
       k = (sum(po) - sum(pe)) / (N - sum(pe))
@@ -3326,8 +3329,10 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
   doesn't support weighted matrix yet.
 
   Args:
-    labels: 1-D `Tensor` of the ground truth values.
-    predictions: 1-D `Tensor` of the predicted values.
+    labels: 1-D `Tensor` of real labels for the classification task. Must be
+      one of the following types: int16, int32, int64.
+    predictions: 1-D `Tensor` of predictions for a given classification.
+      Must have the same type as `labels`.
     num_classes: The possible number of labels.
     weights: Optional `Tensor` whose shape matches `predictions`.
     metrics_collections: An optional list of collections that `kappa` should
