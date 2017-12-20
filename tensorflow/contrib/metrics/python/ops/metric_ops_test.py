@@ -21,7 +21,6 @@ from __future__ import print_function
 import math
 
 import numpy as np
-from sklearn import metrics as sk_metrics
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
@@ -6765,7 +6764,8 @@ class CohenKappaTest(test.TestCase):
     # [[25, 0, 0],
     #  [0, 25, 0],
     #  [0, 0, 25]]
-    expect = sk_metrics.cohen_kappa_score(inputs, inputs)
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(inputs, inputs)
+    expect = 1.0
 
     with self.test_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
@@ -6783,7 +6783,8 @@ class CohenKappaTest(test.TestCase):
     # [[0, 25, 0],
     #  [0, 0, 25],
     #  [25, 0, 0]]
-    expect = sk_metrics.cohen_kappa_score(labels, predictions)
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(labels, predictions)
+    expect = -0.333333333333
 
     with self.test_session() as sess:
       predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
@@ -6802,9 +6803,9 @@ class CohenKappaTest(test.TestCase):
     labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
     num_samples = np.sum(confusion_matrix, dtype=np.int32)
     weights = (np.arange(0, num_samples) % 5) / 5.0
-
-    expect = sk_metrics.cohen_kappa_score(labels, predictions,
-                                          sample_weight=weights)
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
+    #                          labels, predictions, sample_weight=weights)
+    expect = 0.453466583385
 
     with self.test_session() as sess:
       predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
@@ -6842,10 +6843,10 @@ class CohenKappaTest(test.TestCase):
                  feed_dict={labels: labels_np[batch_start:batch_end],
                             predictions: predictions_np[batch_start:batch_end],
                             weights: weights_np[batch_start:batch_end]})
-
-      final_expect = sk_metrics.cohen_kappa_score(
-          labels_np, predictions_np, sample_weight=weights_np)
-      self.assertAlmostEqual(final_expect, kappa.eval(), 5)
+      # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
+      #                          labels_np, predictions_np, sample_weight=weights_np)
+      expect = 0.289965397924
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
 
   def testInvalidNumClasses(self):
     predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 1))
