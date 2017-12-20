@@ -19,7 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -27,20 +30,36 @@ namespace tensorflow {
 
 class TextLineReader : public ReaderBase {
  public:
-  TextLineReader(const string& node_name, int skip_header_lines, Env* env)
+  TextLineReader(const string& node_name, int skip_header_lines,
+                 const string& compression_type, Env* env)
       : ReaderBase(strings::StrCat("TextLineReader '", node_name, "'")),
         skip_header_lines_(skip_header_lines),
         env_(env),
-        line_number_(0) {}
+        line_number_(0),
+        compression_type_(compression_type) {}
 
   Status OnWorkStartedLocked() override {
     line_number_ = 0;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
+    if (compression_type_ == "ZLIB" || compression_type_ == "GZIP") {
+      const io::ZlibCompressionOptions zlib_options =
+          compression_type_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
+                                      : io::ZlibCompressionOptions::GZIP();
+      file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
+      compressed_inputstream_.reset(new io::ZlibInputStream(
+          file_stream_.get(), static_cast<size_t>(kBufferSize),
+          static_cast<size_t>(kBufferSize), zlib_options));
 
-    input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
+      buffered_inputstream_.reset(new io::BufferedInputStream(
+          compressed_inputstream_.get(), kBufferSize));
+    } else {
+      buffered_inputstream_.reset(
+          new io::BufferedInputStream(file_.get(), kBufferSize));
+    }
+
     for (; line_number_ < skip_header_lines_; ++line_number_) {
       string line_contents;
-      Status status = input_buffer_->ReadLine(&line_contents);
+      Status status = buffered_inputstream_->ReadLine(&line_contents);
       if (errors::IsOutOfRange(status)) {
         // We ignore an end of file error when skipping header lines.
         // We will end up skipping this file.
@@ -52,13 +71,13 @@ class TextLineReader : public ReaderBase {
   }
 
   Status OnWorkFinishedLocked() override {
-    input_buffer_.reset(nullptr);
+    buffered_inputstream_.reset(nullptr);
     return Status::OK();
   }
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    Status status = input_buffer_->ReadLine(value);
+    Status status = buffered_inputstream_->ReadLine(value);
     ++line_number_;
     if (status.ok()) {
       *key = strings::StrCat(current_work(), ":", line_number_);
@@ -75,21 +94,27 @@ class TextLineReader : public ReaderBase {
 
   Status ResetLocked() override {
     line_number_ = 0;
-    input_buffer_.reset(nullptr);
+    buffered_inputstream_.reset(nullptr);
     return ReaderBase::ResetLocked();
   }
 
   // TODO(josh11b): Implement serializing and restoring the state.  Need
   // to create TextLineReaderState proto to store ReaderBaseState,
-  // line_number_, and input_buffer_->Tell().
+  // line_number_, and buffered_inputstream_->Tell().
 
  private:
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
   const int skip_header_lines_;
   Env* const env_;
   int64 line_number_;
-  std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
-  std::unique_ptr<io::InputBuffer> input_buffer_;
+  string compression_type_;
+  // must outlive buffered_inputstream_
+  std::unique_ptr<RandomAccessFile> file_;
+  // must outlive buffered_inputstream_
+  std::unique_ptr<io::RandomAccessInputStream> file_stream_;
+  // must outlive buffered_inputstream_
+  std::unique_ptr<io::InputStreamInterface> compressed_inputstream_;
+  std::unique_ptr<io::BufferedInputStream> buffered_inputstream_;
 };
 
 class TextLineReaderOp : public ReaderOpKernel {
@@ -102,9 +127,13 @@ class TextLineReaderOp : public ReaderOpKernel {
     OP_REQUIRES(context, skip_header_lines >= 0,
                 errors::InvalidArgument("skip_header_lines must be >= 0 not ",
                                         skip_header_lines));
+    string compression_type;
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("compression_type", &compression_type));
     Env* env = context->env();
-    SetReaderFactory([this, skip_header_lines, env]() {
-      return new TextLineReader(name(), skip_header_lines, env);
+    SetReaderFactory([this, skip_header_lines, compression_type, env]() {
+      return new TextLineReader(name(), skip_header_lines, compression_type,
+                                env);
     });
   }
 };

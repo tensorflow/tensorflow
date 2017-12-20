@@ -394,15 +394,17 @@ class TextLineReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
-  def __init__(self, skip_header_lines=None, name=None):
+  def __init__(self, skip_header_lines=None, name=None, compression_type=None):
     """Create a TextLineReader.
 
     Args:
       skip_header_lines: An optional int. Defaults to 0.  Number of lines
         to skip from the beginning of every file.
       name: A name for the operation (optional).
+      compression_type: The type of compression for the file. Defaults to none.
     """
     rr = gen_io_ops._text_line_reader_v2(skip_header_lines=skip_header_lines,
+                                         compression_type=compression_type,
                                          name=name)
     super(TextLineReader, self).__init__(rr)
 
