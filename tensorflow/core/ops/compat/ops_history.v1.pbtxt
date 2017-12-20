@@ -27387,6 +27387,14 @@ op {
     name: "sloppy"
     type: DT_BOOL
   }
+  input_arg {
+    name: "buffer_output_elements"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "prefetch_input_elements"
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT

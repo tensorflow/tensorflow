@@ -34,11 +34,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/util:convert",
     ],
 )
 
