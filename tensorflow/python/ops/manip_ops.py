@@ -14,8 +14,6 @@
 # ==============================================================================
 """Operators for manipulating tensors.
 
-See the @{$python/manip_ops} guide.
-
 @@roll
 """
 
@@ -23,9 +21,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.ops import gen_manip_ops
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import remove_undocumented
 
+# pylint: disable=protected-access
 def roll(input, shift, axis):
   return gen_manip_ops.roll(input, shift, axis)
 
 roll.__doc__ = gen_manip_ops.roll.__doc__
+# pylint: enable=protected-access
+
+_allowed_symbols = ['roll']
+
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

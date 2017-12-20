@@ -30,9 +30,11 @@ REGISTER_OP("Roll")
     .Attr("Taxis: {int32,int64}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-Rolls the elements of a tensor by the offsets of `shift` along the dimensions
-of `axis`. Elements that roll passed the last position will wrap around
-to the first.
+Rolls the elements of a tensor along an axis.
+
+The elements are shifted with the offset of `shift` along the
+dimension of `axis`. Elements that roll passed the last position will wrap
+around to the first. Multiple shifts along multiple axes may be specified.
 
 For example:
 
