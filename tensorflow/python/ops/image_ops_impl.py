@@ -286,7 +286,7 @@ def flip_up_down(image):
   """Flip an image vertically (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
-  `height`.
+  `height`.raw
 
   See also `reverse()`.
 
@@ -1478,7 +1478,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       # Draw the bounding box in an image summary.
       image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                     bbox_for_draw)
-      tf.image_summary('images_with_box', image_with_box)
+      tf.summary.image('images_with_box', image_with_box)
 
       # Employ the bounding box to distort the image.
       distorted_image = tf.slice(image, begin, size)
