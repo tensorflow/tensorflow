@@ -36,7 +36,8 @@ void DoRoll(OpKernelContext* context, const int64 N, const int D,
             const gtl::ArraySlice<int64>& dim_range) {
   auto work = [input, output, D, &dim_size, &threshold, &dim_range](int64 start,
                                                                     int64 end) {
-    gtl::InlinedVector<int, 4> indices;  // array of indices for each dimension
+    // array of indices for each dimension
+    gtl::InlinedVector<int, 4> indices(D);
     int offset = 0;  // the shift along the flattened tensor for current element
     // initialize indices and offset
     for (int d = 0; d < D; d++) {
@@ -97,7 +98,7 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
 
     // array of indices for each dimension
     // indicies = [i, j, k, l, m, n]
-    gtl::InlinedVector<int, 4> indicies;
+    gtl::InlinedVector<int, 4> indicies(D);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64 remainder_offset = 0;
     // initialize indicies
@@ -183,7 +184,7 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   const int64 ave_group_size = dim_range[isd] / 2;
-  const int cost_per_unit = 50 / fmax(ave_group_size, 1);  // rough esitmate
+  const int cost_per_unit = 50 / std::max<int>(ave_group_size, 1);  // rough esitmate
   Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
         std::move(work));
 }
@@ -221,31 +222,30 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    gtl::InlinedVector<int, 4> shift_mod_sum;
-    for (int d = 0; d < D; d++) shift_mod_sum[d] = 0;  // default is 0
+    gtl::InlinedVector<int, 4> shift_mod_sum(D, 0);
     for (int m = 0; m < M; m++) {
       const int a = axis_flat(m);
       OP_REQUIRES(context, a < D,
                   errors::InvalidArgument("axis ", a, " is out of range"));
-      const int ds = fmax(static_cast<int>(input.dim_size(a)), 1);
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(a)), 1);
       const int sum = shift_mod_sum[a] + static_cast<int>(shift_flat(m));
       // modulo that works with negatives: ((x % y) + y) % y
       shift_mod_sum[a] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    gtl::InlinedVector<int, 4> dim_size;
+    gtl::InlinedVector<int, 4> dim_size(D);
     // threshold[d] is the index that the roll starts to wrap back to the front
-    gtl::InlinedVector<int, 4> threshold;
+    gtl::InlinedVector<int, 4> threshold(D);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64, 4> dim_range;
+    gtl::InlinedVector<int64, 4> dim_range(D);
     int64 dim_size_prod = 1;
     // inner shift dimension (inner most shifted dimension)
     int64 isd = 0;
     for (int d = D - 1; d >= 0; d--) {
-      if (!isd && shift_mod_sum[d]) isd = d;
-      const int ds = fmax(static_cast<int>(input.dim_size(d)), 1);
+      if (isd == 0 && shift_mod_sum[d] != 0) isd = d;
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(d)), 1);
       dim_size[d] = ds;
       threshold[d] = (ds - shift_mod_sum[d]) % ds;
       dim_size_prod *= static_cast<int64>(input.dim_size(d));
