@@ -112,7 +112,8 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
 
     std::vector<llvm::Value*> arg_values;
     std::transform(function->arg_begin(), function->arg_end(),
-                   std::back_inserter(arg_values), std::addressof<llvm::Value>);
+                   std::back_inserter(arg_values),
+                   [](llvm::Value& v) { return &v; });
     if (null_arg_idx != -1) {
       arg_values.insert(arg_values.begin() + null_arg_idx, nullptr);
     }
