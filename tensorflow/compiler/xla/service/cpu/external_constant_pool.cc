@@ -33,13 +33,10 @@ void ExternalConstantPool::Insert(string name, const Literal& literal,
   CHECK(entries_.find(name) == entries_.end());
 
   int64 literal_size = ShapeUtil::ByteSizeOf(literal.shape());
-  void* raw_pointer;
-  CHECK_EQ(
-      posix_memalign(&raw_pointer, std::max<size_t>(alignment, sizeof(void*)),
-                     literal_size),
-      0)
-      << "failed to allocate " << literal_size << " bytes with alignment of "
-      << alignment;
+  void* raw_pointer = tensorflow::port::AlignedMalloc(
+      literal_size, std::max<size_t>(alignment, sizeof(void*)));
+  CHECK(raw_pointer != nullptr) << "failed to allocate " << literal_size
+                                << " bytes with alignment of " << alignment;
 
   std::memcpy(raw_pointer, literal.InternalData(), literal_size);
   entries_.emplace(std::move(name), static_cast<uint8*>(raw_pointer));
