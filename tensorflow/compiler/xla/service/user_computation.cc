@@ -1506,7 +1506,7 @@ StatusOr<const OperationRequest*> LookUpRequest(
   return &session_computation.requests().at(handle_value);
 }
 
-// Returns the OperationRequestion corresponding to the root (result) of the
+// Returns the OperationRequest corresponding to the root (result) of the
 // session computation.
 StatusOr<const OperationRequest*> GetRoot(
     VersionedComputationHandle::Version version,

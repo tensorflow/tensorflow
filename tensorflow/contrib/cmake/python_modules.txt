@@ -289,6 +289,10 @@ tensorflow/contrib/learn/python/learn/utils
 tensorflow/contrib/legacy_seq2seq
 tensorflow/contrib/legacy_seq2seq/python
 tensorflow/contrib/legacy_seq2seq/python/ops
+tensorflow/contrib/libsvm
+tensorflow/contrib/libsvm/python
+tensorflow/contrib/libsvm/python/kernel_tests
+tensorflow/contrib/libsvm/python/ops
 tensorflow/contrib/linalg
 tensorflow/contrib/linalg/python
 tensorflow/contrib/linalg/python/ops

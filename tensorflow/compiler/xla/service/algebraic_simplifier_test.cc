@@ -327,6 +327,55 @@ TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
   EXPECT_EQ(0, negate_shape.dimensions_size());
 }
 
+// pow(pow(A, X), Y) => pow(A, X*Y)
+TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {7});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* base = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* exp2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* inner_power = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, base, exp1));
+  builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kPower,
+                                                      inner_power, exp2));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              op::Power(base, op::Multiply(exp1, exp2)));
+}
+
+// Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex
+// numbers.
+TEST_F(AlgebraicSimplifierTest, PowerOfPowerComplex) {
+  Shape r0c64 = ShapeUtil::MakeShape(C64, {});
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {7});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* base = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0c64, "param1"));
+  HloInstruction* exp2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0c64, "param2"));
+  HloInstruction* inner_power = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, base, exp1));
+  builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kPower,
+                                                      inner_power, exp2));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 // Test that A/1 is simplified to A for a scalar.
 TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});

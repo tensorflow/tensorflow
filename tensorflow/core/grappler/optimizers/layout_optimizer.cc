@@ -72,26 +72,37 @@ std::set<string> GetOpsFormatSupported() {
 // TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
 // because of the worse performance in some cases.
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {"Add",
+  std::set<string> ops_format_agnostic = {"Abs",
+                                          "Add",
                                           "AddN",
                                           "Acos",
                                           "Acosh",
+                                          "Angle",
                                           "Asin",
                                           "Asinh",
                                           "Atan",
                                           "Atanh",
+                                          "Bitcast",
+                                          "Cast",
                                           "Ceil",
+                                          "CheckNumerics",
                                           "Cos",
                                           "Cosh",
+                                          "ComplexAbs",
                                           "Concat",
                                           "ConcatV2",
+                                          "Conj",
                                           "Digamma",
+                                          "Elu",
+                                          "EluGrad",
                                           "Erf",
                                           "Erfc",
                                           "Exp",
                                           "Expm1",
                                           "Floor",
+                                          "GuaranteeConst",
                                           "Identity",
+                                          "Imag",
                                           "Inv",
                                           "InvGrad",
                                           "IsFinite",
@@ -103,14 +114,20 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Merge",
                                           "Mul",
                                           "Neg",
+                                          "OnesLike",
                                           "Pad",
+                                          "PreventGradient",
+                                          "Real",
                                           "RealDiv",
                                           "Reciprocal",
                                           "ReciprocalGrad",
                                           "Relu",
                                           "Relu6",
+                                          "Relu6Grad",
                                           "ReluGrad",
                                           "Rint",
+                                          "Selu",
+                                          "SeluGrad",
                                           "Shape",
                                           "ShapeN",
                                           "Sigmoid",
@@ -119,8 +136,12 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Sin",
                                           "Sinh",
                                           "Slice",
+                                          "Snapshot",
+                                          "Softplus",
+                                          "SoftplusGrad",
                                           "Split",
                                           "Switch",
+                                          "RefIdentity",
                                           "RefMerge",
                                           "RefSwitch",
                                           "Round",
@@ -131,10 +152,12 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Square",
                                           "SquaredDifference",
                                           "Squeeze",
+                                          "StopGradient",
                                           /*"Sum",*/ "Sub",
                                           "Tan",
                                           "Tanh",
-                                          "TanhGrad"};
+                                          "TanhGrad",
+                                          "ZerosLike"};
   return ops_format_agnostic;
 }
 
@@ -178,6 +201,15 @@ bool IsConcatV1(const NodeDef& node) {
 bool IsMaxPoolGradV1(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPoolGrad";
+}
+
+bool IsUnaryGrad(const NodeDef& node) {
+  bool is_unary_grad =
+      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
+      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
+      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
+      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+  return is_unary_grad;
 }
 
 class GraphProcessor {
@@ -570,11 +602,21 @@ class NodeProcessor : public GraphProcessor {
             if (op == "Transpose") {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kTransposeNCHWToNHWC, "-");
-              TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+              DataType dtype;
+              if (op == "Imag" || op == "Real" || op == "Angle" ||
+                  op == "Conj" || op == "ComplexAbs") {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "Tout"));
+                dtype = node_->attr().at("Tout").type();
+              } else if (op == "Bitcast") {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "type"));
+                dtype = node_->attr().at("type").type();
+              } else {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+                dtype = node_->attr().at("T").type();
+              }
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
               AddNodeTranspose(
-                  added_node_name, input, const_name,
-                  node_->attr().at("T").type(),
+                  added_node_name, input, const_name, dtype,
                   node_->attr().at("_output_shapes").list().shape(0), false);
             } else if (op == "DataFormatVecPermute") {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
@@ -1241,9 +1283,9 @@ class SplitProcessor : public ConcatProcessor {
   }
 };
 
-class ReluGradProcessor : public AgnosticNodeProcessor {
+class UnaryGradProcessor : public AgnosticNodeProcessor {
  public:
-  explicit ReluGradProcessor(const OptimizeContext& opt_cxt)
+  explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
@@ -1524,8 +1566,6 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new MergeProcessor(opt_cxt));
           } else if (IsPad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
-          } else if (IsReluGrad(*node)) {
-            node_processor.reset(new ReluGradProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
@@ -1538,6 +1578,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsUnaryGrad(*node)) {
+            node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {
             node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
           }
