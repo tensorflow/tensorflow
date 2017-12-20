@@ -1357,7 +1357,7 @@ string SaveGraph(const string& graph,
       dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
   auto env = tensorflow::Env::Default();
-  if (!env->CreateNewFileWithUniqueName(&path, file_extension)) {
+  if (!env->CreateUniqueFileName(&path, file_extension)) {
     status =
         Status(tensorflow::error::Code::UNKNOWN,
                StrCat("Failed to create temporary file to dump HLO graph: ",
