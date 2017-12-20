@@ -3307,10 +3307,10 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
   that measures inter-annotator agreement.
 
   The `cohen_kappa` function calculates the confusion matrix, and creates three
-  local variables to compute the Cohen's kappa: `po`, `pe_row`, and `pe_col`
-  refer to the diagonal part, rows and columns totals of the confusion matrix,
-  respectively. This value is ultimately returned as `kappa`, an idempotent
-  operation that is calculated by
+  local variables to compute the Cohen's kappa: `po`, `pe_row`, and `pe_col`,
+  which refer to the diagonal part, rows and columns totals of the confusion
+  matrix, respectively. This value is ultimately returned as `kappa`, an
+  idempotent operation that is calculated by
 
       pe = (pe_row * pe_col) / N
       k = (sum(po) - sum(pe)) / (N - sum(pe))
