@@ -152,7 +152,6 @@ def if_darwin(a):
 
 def get_win_copts(is_external=False):
     WINDOWS_COPTS = [
-        "/DLANG_CXX11",
         "/D__VERSION__=\\\"MSVC\\\"",
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
