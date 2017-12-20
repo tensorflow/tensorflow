@@ -6728,6 +6728,14 @@ class CohenKappaTest(test.TestCase):
       [9, 3, 1],
       [4, 8, 2],
       [2, 1, 6]])
+    # overall total = 36
+    # po = [9, 8, 6], sum(po) = 23
+    # pe_row = [15, 12, 9], pe_col = [13, 14, 9], so pe = [5.42, 4.67, 2.25]
+    # finally, kappa = (sum(po) - sum(pe)) / (N - sum(pe))
+    #                = (23 - 12.34) / (36 - 12.34)
+    #                = 0.45
+    # see: http://psych.unl.edu/psycrs/handcomp/hckappa.PDF
+    expect = 0.45
     labels, predictions = self._confuse_matrix_to_samples(confuse_matrix)
 
     dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64,
@@ -6748,8 +6756,8 @@ class CohenKappaTest(test.TestCase):
                 labels_tensor, predictions_tensor, 3, weights=weight)
 
             sess.run(variables.local_variables_initializer())
-            self.assertAlmostEqual(0.45, sess.run(update_op), 2)
-            self.assertAlmostEqual(0.45, kappa.eval(), 2)
+            self.assertAlmostEqual(expect, sess.run(update_op), 2)
+            self.assertAlmostEqual(expect, kappa.eval(), 2)
 
   def testBasic2(self):
     labels = np.random.randint(0, 4, size=(100, 1))
