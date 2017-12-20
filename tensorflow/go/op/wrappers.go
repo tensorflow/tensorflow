@@ -15333,6 +15333,23 @@ func SerializeTensor(scope *Scope, tensor tf.Output) (serialized tf.Output) {
 	return op.Output(0)
 }
 
+// Creates a dataset that contains the unique elements of `input_dataset`.
+func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "UniqueDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FusedBatchNormGradAttr is an optional argument to FusedBatchNormGrad.
 type FusedBatchNormGradAttr func(optionalAttr)
 
