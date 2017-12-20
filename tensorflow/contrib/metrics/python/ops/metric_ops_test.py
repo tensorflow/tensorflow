@@ -6730,7 +6730,7 @@ class CohenKappaTest(test.TestCase):
       [2, 1, 6]])
     labels, predictions = self._confuse_matrix_to_samples(confuse_matrix)
 
-    dtypes = [dtypes_lib.int32, dtypes_lib.int64,
+    dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64,
               dtypes_lib.float32, dtypes_lib.float64]
     shapes = [(len(labels,)),  # 1-dim
               (len(labels), 1)]  # 2-dim
