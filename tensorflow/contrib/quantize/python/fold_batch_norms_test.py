@@ -284,16 +284,20 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
 
     folded_mul = g.get_operation_by_name(scope + '/mul_fold')
     self.assertEqual(folded_mul.type, 'Mul')
+    if fused_batch_norm:
+      scale_reshape_op_name = scope + '/BatchNorm_Fold/scale_reshape'
+    else:
+      scale_reshape_op_name = scope + '/scale_reshape'
     self._AssertInputOpsAre(folded_mul,
                             [scope + '/depthwise_weights/read',
-                             scope + '/scale_reshape'])
+                             scale_reshape_op_name])
     self._AssertOutputGoesToOps(folded_mul, g, [scope + '/depthwise_Fold'])
 
-    scale_reshape = g.get_operation_by_name(scope + '/scale_reshape')
+    scale_reshape = g.get_operation_by_name(scale_reshape_op_name)
     self.assertEqual(scale_reshape.type, 'Reshape')
     self._AssertInputOpsAre(scale_reshape, [
         self._BatchNormMultiplierName(scope, has_scaling, fused_batch_norm),
-        scope + '/scale_reshape/shape'
+        scale_reshape_op_name + '/shape'
     ])
     self._AssertOutputGoesToOps(scale_reshape, g, [scope + '/mul_fold'])
 
@@ -326,13 +330,13 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
   def _BatchNormMultiplierName(self, scope, has_scaling, fused):
     if has_scaling:
       if fused:
-        return scope + '/mul'
+        return scope + '/BatchNorm_Fold/mul'
       return scope + '/BatchNorm/batchnorm/mul'
     return scope + '/BatchNorm/batchnorm/Rsqrt'
 
   def _BathNormBiasName(self, scope, fused):
     if fused:
-      return scope + '/bias'
+      return scope + '/BatchNorm_Fold/bias'
     return scope + '/BatchNorm/batchnorm/sub'
 
   def _WeightInit(self, stddev):

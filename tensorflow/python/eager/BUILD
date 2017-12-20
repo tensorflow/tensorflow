@@ -110,6 +110,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
@@ -144,6 +145,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )
 
@@ -415,6 +417,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],

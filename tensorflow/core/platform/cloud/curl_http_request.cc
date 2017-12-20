@@ -29,16 +29,6 @@ namespace {
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
-// Timeout for the whole request. Set only to prevent hanging indefinitely.
-constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
-
-// Timeout for the connection phase.
-constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
-
-// The maximum period of request inactivity, after which the request
-// is terminated.
-constexpr uint64 kInactivityTimeoutSeconds = 60;  // 1 minute
-
 // Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
  public:
@@ -117,6 +107,10 @@ class LibCurlProxy : public LibCurl {
   }
 
   void curl_free(void* p) override { ::curl_free(p); }
+
+  const char* curl_easy_strerror(CURLcode errornum) override {
+    return ::curl_easy_strerror(errornum);
+  }
 };
 }  // namespace
 
@@ -161,9 +155,6 @@ Status CurlHttpRequest::Init() {
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
   // Do not use signals for timeouts - does not work in multi-threaded programs.
   libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, kRequestTimeoutSeconds);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
-                             kConnectTimeoutSeconds);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
                              CURL_HTTP_VERSION_2_0);
 
@@ -195,6 +186,7 @@ Status CurlHttpRequest::SetUri(const string& uri) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   is_uri_set_ = true;
+  uri_ = uri;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str());
   return Status::OK();
 }
@@ -335,6 +327,16 @@ Status CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   return Status::OK();
 }
 
+Status CurlHttpRequest::SetTimeouts(uint32 connection, uint32 inactivity,
+                                    uint32 total) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  connect_timeout_secs_ = connection;
+  inactivity_timeout_secs_ = inactivity;
+  request_timeout_secs_ = total;
+  return Status::OK();
+}
+
 size_t CurlHttpRequest::WriteCallback(const void* ptr, size_t size,
                                       size_t nmemb, void* this_object) {
   CHECK(ptr);
@@ -397,6 +399,10 @@ Status CurlHttpRequest::Send() {
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
                              &CurlHttpRequest::HeaderCallback);
+
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, request_timeout_secs_);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                             connect_timeout_secs_);
 
   char error_buffer[CURL_ERROR_SIZE] = {0};
   libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
@@ -528,12 +534,37 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
     return 0;
   }
 
-  if (now - that->last_progress_timestamp_ > kInactivityTimeoutSeconds) {
+  if (now - that->last_progress_timestamp_ > that->inactivity_timeout_secs_) {
+    double lookup_time = -1;
+    const auto lookup_time_status = that->libcurl_->curl_easy_getinfo(
+        that->curl_, CURLINFO_NAMELOOKUP_TIME, &lookup_time);
+
+    double connect_time = -1;
+    const auto connect_time_status = that->libcurl_->curl_easy_getinfo(
+        that->curl_, CURLINFO_CONNECT_TIME, &connect_time);
+
+    double pretransfer_time = -1;
+    const auto pretransfer_time_status = that->libcurl_->curl_easy_getinfo(
+        that->curl_, CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+
+    double starttransfer_time = -1;
+    const auto starttransfer_time_status = that->libcurl_->curl_easy_getinfo(
+        that->curl_, CURLINFO_PRETRANSFER_TIME, &starttransfer_time);
+
     LOG(ERROR) << "The transmission  of request " << this_object
-               << " has been stuck at " << current_progress << " of "
-               << dltotal + ultotal << " bytes for "
-               << now - that->last_progress_timestamp_
-               << " seconds and will be aborted.";
+               << " (URI: " << that->uri_ << ") has been stuck at "
+               << current_progress << " of " << dltotal + ultotal
+               << " bytes for " << now - that->last_progress_timestamp_
+               << " seconds and will be aborted. CURL timing information: "
+               << "lookup time: " << lookup_time << " ("
+               << that->libcurl_->curl_easy_strerror(lookup_time_status)
+               << "), connect time: " << connect_time << " ("
+               << that->libcurl_->curl_easy_strerror(connect_time_status)
+               << "), pre-transfer time: " << pretransfer_time << " ("
+               << that->libcurl_->curl_easy_strerror(pretransfer_time_status)
+               << "), start-transfer time: " << starttransfer_time << " ("
+               << that->libcurl_->curl_easy_strerror(starttransfer_time_status)
+               << ")";
     return 1;  // Will abort the request.
   }
 

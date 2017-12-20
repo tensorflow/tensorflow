@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -46,6 +47,10 @@ struct bfloat16 {
   EIGEN_DEVICE_FUNC bfloat16() {}
 
   EIGEN_DEVICE_FUNC explicit bfloat16(const float v) {
+    if (Eigen::numext::isnan(v)) {
+      value = NAN_VALUE;
+      return;
+    }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     value = p[0];
@@ -54,11 +59,19 @@ struct bfloat16 {
 #endif
   }
 
+  // Following the convention of numpy, converting between complex and
+  // float will lead to loss of imag value.
+  explicit EIGEN_DEVICE_FUNC bfloat16(const complex64& val)
+      : bfloat16(val.real()) {}
+
+  explicit EIGEN_DEVICE_FUNC bfloat16(const complex128& val)
+      : bfloat16(static_cast<float>(val.real())) {}
+
   template <class T>
   explicit EIGEN_DEVICE_FUNC bfloat16(const T& val)
       : bfloat16(static_cast<float>(val)) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_EXPLICIT_CAST(float) const {
+  EIGEN_DEVICE_FUNC explicit operator float() const {
     float result;
 
     uint16_t* q = reinterpret_cast<uint16_t*>(&result);
@@ -87,6 +100,10 @@ struct bfloat16 {
 
   EIGEN_DEVICE_FUNC explicit operator int() const {
     return static_cast<int>(float(*this));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator long() const {
+    return static_cast<long>(float(*this));
   }
 
   EIGEN_DEVICE_FUNC explicit operator char() const {
@@ -121,17 +138,76 @@ struct bfloat16 {
     return static_cast<double>(float(*this));
   }
 
+  EIGEN_DEVICE_FUNC explicit operator complex64() const {
+    return complex64(float(*this), float(0.0));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator complex128() const {
+    return complex128(double(*this), double(0.0));
+  }
+
+  static bfloat16 epsilon() {
+    bfloat16 x;
+    x.value = 0x3c00;  // 0x1.0p-7
+    return x;
+  }
+
   uint16_t value;
+
+  // A value that represents "not a number".
+  static const uint16_t NAN_VALUE = 0x7FC0;
 };
 
-inline bool operator==(const bfloat16 a, const bfloat16 b) {
-  return a.value == b.value;
+inline bfloat16 operator+(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) + static_cast<float>(b));
 }
-
-inline bool operator!=(const bfloat16 a, const bfloat16 b) {
-  return a.value != b.value;
+inline bfloat16 operator-(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) - static_cast<float>(b));
 }
-
+inline bfloat16 operator*(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) * static_cast<float>(b));
+}
+inline bfloat16 operator/(bfloat16 a, bfloat16 b) {
+  return bfloat16(static_cast<float>(a) / static_cast<float>(b));
+}
+inline bfloat16 operator-(bfloat16 a) {
+  a.value ^= 0x8000;
+  return a;
+}
+inline bool operator<(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) < static_cast<float>(b);
+}
+inline bool operator<=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) <= static_cast<float>(b);
+}
+inline bool operator==(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) == static_cast<float>(b);
+}
+inline bool operator!=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) != static_cast<float>(b);
+}
+inline bool operator>(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) > static_cast<float>(b);
+}
+inline bool operator>=(bfloat16 a, bfloat16 b) {
+  return static_cast<float>(a) >= static_cast<float>(b);
+}
+inline bfloat16& operator+=(bfloat16& a, bfloat16 b) {
+  a = a + b;
+  return a;
+}
+inline bfloat16& operator-=(bfloat16& a, bfloat16 b) {
+  a = a - b;
+  return a;
+}
+inline bfloat16& operator*=(bfloat16& a, bfloat16 b) {
+  a = a * b;
+  return a;
+}
+inline bfloat16& operator/=(bfloat16& a, bfloat16 b) {
+  a = a / b;
+  return a;
+}
 }  // end namespace tensorflow
 
 namespace Eigen {

@@ -52,7 +52,6 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-# TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
@@ -266,8 +265,10 @@ class Scaffold(object):
 
   @staticmethod
   def _default_local_init_op():
-    return control_flow_ops.group(variables.local_variables_initializer(),
-                                  lookup_ops.tables_initializer())
+    return control_flow_ops.group(
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer(),
+        resources.initialize_resources(resources.local_resources()))
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name

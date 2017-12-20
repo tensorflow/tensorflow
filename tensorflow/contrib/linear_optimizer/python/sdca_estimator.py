@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -154,7 +154,7 @@ def sdca_model_fn(features, labels, mode, params, config=None):
     _add_bias_column(feature_columns, features, bias, columns_to_variables)
 
   def _train_op_fn(unused_loss):
-    global_step = contrib_variables.get_global_step()
+    global_step = training_util.get_global_step()
     sdca_model, train_op = optimizer.get_train_step(
         columns_to_variables, weight_column_name, loss_type, features, labels,
         global_step)

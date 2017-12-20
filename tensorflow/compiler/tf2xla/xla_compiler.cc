@@ -502,18 +502,6 @@ Status BuildComputation(
   return Status::OK();
 }
 
-void AssignMajorToMinorLayout(xla::Shape* shape) {
-  if (xla::ShapeUtil::IsTuple(*shape)) {
-    for (xla::Shape& elem_shape : *shape->mutable_tuple_shapes()) {
-      AssignMajorToMinorLayout(&elem_shape);
-    }
-  } else {
-    auto& minor_to_major = *shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major.Resize(xla::ShapeUtil::Rank(*shape), 0);
-    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
-  }
-}
-
 }  // namespace
 
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
@@ -543,8 +531,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                      options.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
-  result->tuple_arg = options.use_tuple_arg;
-
   std::vector<XlaExpression> arg_expressions;
   std::vector<int> arg_cores;
   TF_RETURN_IF_ERROR(BuildArguments(
@@ -563,11 +549,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       options.return_updated_values_for_all_resources, &builder,
       result->computation.get(), &num_computation_outputs,
       &num_nonconst_outputs, &result->resource_updates));
-
-  result->requires_runtime_context = context->has_context_parameter();
-
-  // Tuple arguments and runtime context parameters are incompatible.
-  TF_RET_CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
@@ -596,7 +577,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
   // Tensorflow expects a major-to-minor order of results.
-  AssignMajorToMinorLayout(&result->xla_output_shape);
+  xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;

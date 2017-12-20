@@ -22,6 +22,7 @@ from itertools import cycle
 import os
 import tarfile
 import threading
+import unittest
 import zipfile
 
 import numpy as np
@@ -164,6 +165,9 @@ class TestEnqueuers(test.TestCase):
     self.assertEqual(len(set(acc) - set(range(100))), 0)
     enqueuer.stop()
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
         create_generator_from_sequence_pcs(TestSequence([3, 200, 200, 3])),
@@ -182,16 +186,19 @@ class TestEnqueuers(test.TestCase):
         use_multiprocessing=False)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_fail_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
         create_generator_from_sequence_pcs(FaultSequence()),
         use_multiprocessing=True)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   def test_ordered_enqueuer_threads(self):

@@ -85,7 +85,7 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
   if logdir:
     # Support for TensorBoard summaries. Once training has started, use:
     #   tensorboard --logdir=<logdir>
-    summary_writer = tf.contrib.summary.create_summary_file_writer(logdir)
+    summary_writer = tf.contrib.summary.create_file_writer(logdir)
 
   # Training loop.
   for i, (xs, ys) in enumerate(tfe.Iterator(dataset)):

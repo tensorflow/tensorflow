@@ -864,9 +864,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // (eg, parameter).
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kComplex:
@@ -882,18 +883,19 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kRng:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -903,7 +905,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kRng:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
       // uninteresting.
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
@@ -911,9 +912,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kYellow;
     case HloOpcode::kBitcast:
-    case HloOpcode::kTuple:
-    case HloOpcode::kTrace:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
@@ -952,28 +953,28 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kRed;
     case HloOpcode::kParameter:
       return kParameterColor;
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
-    case HloOpcode::kSelectAndScatter:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
       return kPurple;
-    case HloOpcode::kMap:
     case HloOpcode::kFusion:
+    case HloOpcode::kMap:
       return kGray;
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
       return kBrown;
+    case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
-    case HloOpcode::kCall:
       return kDarkGreen;
     case HloOpcode::kConstant:
       LOG(FATAL) << "Constants don't get their own nodes in the graph.";
@@ -1055,7 +1056,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
       case HloOpcode::kBatchNormGrad:
         return Printf("feature_index=%lld", instr->feature_index());
       case HloOpcode::kCustomCall:
-        return Printf("custom_call_target=%s", instr->custom_call_target());
+        return Printf("target=%s", instr->custom_call_target());
       case HloOpcode::kSlice:
         return std::all_of(instr->slice_strides().begin(),
                            instr->slice_strides().end(),
@@ -1090,7 +1091,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         instr->shape().dimensions_size() > 1 &&
         !ShapeUtil::IsTuple(instr->shape())) {
       StrAppend(&instr_shape, "{",
-                Join(instr->shape().layout().minor_to_major(), ","), "}");
+                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
@@ -1353,18 +1354,17 @@ string SaveGraph(const string& graph,
       break;
   }
   string path = JoinPath(
-      dest_path, StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+      dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
-  int fd = mkstemps(&path[0], file_extension.length());
-  if (fd < 0) {
+  auto env = tensorflow::Env::Default();
+  if (!env->CreateUniqueFileName(&path, file_extension)) {
     status =
         Status(tensorflow::error::Code::UNKNOWN,
                StrCat("Failed to create temporary file to dump HLO graph: ",
                       strerror(errno)));
   } else {
     status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
-    close(fd);
+        tensorflow::WriteStringToFile(env, path, graph);
   }
   if (!status.ok()) {
     LOG(WARNING) << "Saving HLO graph failed: " << status;
@@ -1437,7 +1437,8 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+      env, path,
+      module.ToString(HloPrintOptions().set_print_large_constants(true))));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

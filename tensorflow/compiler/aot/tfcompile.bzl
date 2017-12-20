@@ -152,7 +152,7 @@ def tf_library(name, graph, config,
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
            " --out_object=$(@D)/" + object_file +
-           flags),
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -189,7 +189,7 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_session_module=$(@D)/" + session_module_pb +
-           flags),
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -267,7 +267,6 @@ def tf_library(name, graph, config,
         srcs=[test_file],
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "@org_tensorflow//tensorflow/compiler/aot:runtime",
             "@org_tensorflow//tensorflow/compiler/aot:tf_library_test_main",
             "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",
@@ -313,7 +312,6 @@ def tf_library(name, graph, config,
         linkopts = if_android(["-pie", "-s"]),
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "@org_tensorflow//tensorflow/compiler/aot:benchmark",
             "@org_tensorflow//tensorflow/compiler/aot:runtime",
             "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",

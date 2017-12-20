@@ -2487,7 +2487,7 @@ class Function(object):
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
-  In particular additonal operations via `fetches` argument and additional
+  In particular additional operations via `fetches` argument and additional
   tensor substitutions via `feed_dict` arguments. Note that given
   substitutions are merged with substitutions from `inputs`. Even though
   `feed_dict` is passed once in the constructor (called in `model.compile()`)
@@ -3120,8 +3120,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
   logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
   res = nn.sparse_softmax_cross_entropy_with_logits(
       labels=targets, logits=logits)
-  if len(output_shape) == 3:
-    # if our output includes timesteps we need to reshape
+  if len(output_shape) >= 3:
+    # If our output includes timesteps or spatial dimensions we need to reshape
     return array_ops.reshape(res, array_ops.shape(output)[:-1])
   else:
     return res

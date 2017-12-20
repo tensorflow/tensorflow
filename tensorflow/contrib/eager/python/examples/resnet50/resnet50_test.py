@@ -95,7 +95,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format)
     tf.train.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with tf.contrib.summary.create_summary_file_writer(
+    with tf.contrib.summary.create_file_writer(
         logdir, max_queue=0,
         name='t0').as_default(), tf.contrib.summary.always_record_summaries():
       with tf.device(device):

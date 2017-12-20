@@ -52,6 +52,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
     return DoParallelConcatUpdate<CPUDevice, type>(d, value, loc, output);
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
+    TF_CALL_variant(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ", value.dtype());

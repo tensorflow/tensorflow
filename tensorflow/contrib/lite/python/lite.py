@@ -50,7 +50,7 @@ GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
 # to protect against crashes. However, it breaks some dependent targets because
 # it forces us to depend on an external py_binary. The experimental API doesn't
 # have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = True
+EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -164,8 +164,8 @@ def toco_convert(input_data,
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
+  toco.drop_control_dependency = drop_control_dependency
   model = _model_flags_pb2.ModelFlags()
-  model.drop_control_dependency = drop_control_dependency
   toco.inference_type = inference_type
   for idx, input_tensor in enumerate(input_tensors):
     if input_tensor.dtype == _dtypes.float32:
@@ -187,8 +187,8 @@ def toco_convert(input_data,
       input_array.mean, input_array.std = quantized_input_stats[idx]
 
     input_array.name = _tensor_name(input_tensor)
-    input_array.shape.extend(map(int, input_tensor.get_shape()))
-    toco.input_types.append(tflite_input_type)
+    input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
+    toco.inference_input_type = tflite_input_type
 
   for output_tensor in output_tensors:
     model.output_arrays.append(_tensor_name(output_tensor))

@@ -91,13 +91,13 @@ class LossFunction(object):
 
   @abc.abstractmethod
   def _evaluate(self, targets):
-    """Evaluates the log probability of the targets.
+    """Evaluates the negative log probability of the targets.
 
     Args:
       targets: Tensor that distribution can calculate log_prob() of.
 
     Returns:
-      log probability of each target, summed across all targets.
+      negative log probability of each target, summed across all targets.
     """
     pass
 

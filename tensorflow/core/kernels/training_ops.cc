@@ -15,12 +15,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/training_ops.h"
 #include <algorithm>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/kernels/training_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -75,9 +76,9 @@ struct ApplyAdadelta<CPUDevice, T> {
         accum * rho() + grad.square() * (static_cast<T>(1) - rho());
     const auto update =
         (accum_update + epsilon()).sqrt() * (accum + epsilon()).rsqrt() * grad;
+    var.device(d) -= update * lr();
     accum_update.device(d) =
         accum_update * rho() + update.square() * (static_cast<T>(1) - rho());
-    var.device(d) -= update * lr();
   }
 };
 
@@ -361,6 +362,37 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyAddSign<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar alpha,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad) {
+    m.device(d) = m * beta() + grad * (static_cast<T>(1) - beta());
+    auto sign_gm = grad.sign() * m.sign();
+    var.device(d) -= lr() * (alpha() + sign_decay() * sign_gm) * grad;
+  }
+};
+
+template <typename T>
+struct ApplyPowerSign<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar logbase,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad) {
+    m.device(d) = m * beta() + grad * (static_cast<T>(1) - beta());
+    auto sign_gm = grad.sign() * m.sign();
+    auto grad_scale = (logbase() * sign_decay() * sign_gm).exp();
+    var.device(d) -= lr() * grad_scale * grad;
+  }
+};
+
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -504,8 +536,9 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    if (use_exclusive_lock_) {
-      mutex_lock l1(*GetTrainingVariableMutex(ctx, 0));
+    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    if (use_exclusive_lock_ && mu != nullptr) {
+      mutex_lock l1(*mu);
       // Don't try to acquire a lock on the second ref as they share the same
       // mutex.
       //
@@ -650,15 +683,21 @@ class SparseApplyAdadeltaOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    mutex* mu_var = GetTrainingVariableMutex(ctx, 0);
+  void Compute(OpKernelContext* ctx) override {
+    mutex* mu = GetTrainingVariableMutex(ctx, 0);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
     //
     // mutex* mu_accum = ctx->input_ref_mutex(1);
-    if (use_exclusive_lock_) {
-      mu_var->lock();
+    if (use_exclusive_lock_ && mu != nullptr) {
+      mutex_lock ml(*mu);
+      DoCompute(ctx);
+    } else {
+      DoCompute(ctx);
     }
+  }
+
+  void DoCompute(OpKernelContext* ctx) {
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
                             ctx, 0, use_exclusive_lock_, true, &var));
@@ -752,15 +791,12 @@ class SparseApplyAdadeltaOp : public OpKernel {
         const auto update =
             (accum_update_ + accum_update_.constant(epsilon_scalar)).sqrt() *
             (accum_ + accum_.constant(epsilon_scalar)).rsqrt() * grad_;
+        auto v = var_flat.template chip<0>(index);
+        v -= update * update.constant(lr_scalar);
         accum_update_ =
             accum_update_ * accum_update_.constant(rho_scalar) +
             update.square() * update.constant(static_cast<T>(1) - rho_scalar);
-        auto v = var_flat.template chip<0>(index);
-        v -= update * update.constant(lr_scalar);
       }
-    }
-    if (use_exclusive_lock_) {
-      mu_var->unlock();
     }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
@@ -3241,6 +3277,222 @@ REGISTER_KERNELS(float, int64);
 REGISTER_KERNELS(double, int32);
 REGISTER_KERNELS(double, int64);
 
+#undef REGISTER_KERNELS
+
+
+template <typename Device, typename T>
+class ApplyAddSignOp : public OpKernel {
+ public:
+  explicit ApplyAddSignOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor m;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+    OP_REQUIRES(
+        ctx, m.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+    const Tensor& lr = ctx->input(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr.shape().DebugString()));
+    const Tensor& alpha = ctx->input(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha.shape().DebugString()));
+    const Tensor& sign_decay = ctx->input(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
+                errors::InvalidArgument("sign_decay is not a scalar: ",
+                                        sign_decay.shape().DebugString()));
+    const Tensor& beta = ctx->input(5);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta.shape()),
+                errors::InvalidArgument("beta is not a scalar: ",
+                                        beta.shape().DebugString()));
+    const Tensor& grad = ctx->input(6);
+    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        m.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+    functor::ApplyAddSign<Device, T>()(
+        device, var.flat<T>(), m.flat<T>(), lr.scalar<T>(), alpha.scalar<T>(),
+        sign_decay.scalar<T>(), beta.scalar<T>(), grad.flat<T>());
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                        \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("ApplyAddSign").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAddSignOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAddSign")                \
+                              .Device(DEVICE_##D)                     \
+                              .HostMemory("var")                      \
+                              .HostMemory("m")                        \
+                              .TypeConstraint<T>("T"),                \
+                          ApplyAddSignOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                               \
+  template <>                                                             \
+  void ApplyAddSign<GPUDevice, T>::operator()(                            \
+      const GPUDevice& d,                                                 \
+      typename TTypes<T>::Flat var,                                       \
+      typename TTypes<T>::Flat m,                                         \
+      typename TTypes<T>::ConstScalar lr,                                 \
+      typename TTypes<T>::ConstScalar alpha,                              \
+      typename TTypes<T>::ConstScalar sign_decay,                         \
+      typename TTypes<T>::ConstScalar beta,                               \
+      typename TTypes<T>::ConstFlat grad);                                \
+  extern template struct ApplyAddSign<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+
+template <typename Device, typename T>
+class ApplyPowerSignOp : public OpKernel {
+ public:
+  explicit ApplyPowerSignOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor m;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+    OP_REQUIRES(
+        ctx, m.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+    const Tensor& lr = ctx->input(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr.shape().DebugString()));
+    const Tensor& logbase = ctx->input(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(logbase.shape()),
+                errors::InvalidArgument("logbase is not a scalar: ",
+                                        logbase.shape().DebugString()));
+    const Tensor& sign_decay = ctx->input(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(logbase.shape()),
+                errors::InvalidArgument("sign_decay is not a scalar: ",
+                                        sign_decay.shape().DebugString()));
+    const Tensor& beta = ctx->input(5);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta.shape()),
+                errors::InvalidArgument("beta is not a scalar: ",
+                                        beta.shape().DebugString()));
+    const Tensor& grad = ctx->input(6);
+    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var.shape().DebugString(), " ",
+                                        m.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+    functor::ApplyPowerSign<Device, T>()(
+        device, var.flat<T>(), m.flat<T>(), lr.scalar<T>(), logbase.scalar<T>(),
+        sign_decay.scalar<T>(), beta.scalar<T>(), grad.flat<T>());
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                          \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("ApplyPowerSign").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyPowerSignOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyPowerSign")                \
+                              .Device(DEVICE_##D)                       \
+                              .HostMemory("var")                        \
+                              .HostMemory("m")                          \
+                              .TypeConstraint<T>("T"),                  \
+                          ApplyPowerSignOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                               \
+  template <>                                                             \
+  void ApplyPowerSign<GPUDevice, T>::operator()(                          \
+      const GPUDevice& d,                                                 \
+      typename TTypes<T>::Flat var,                                       \
+      typename TTypes<T>::Flat m,                                         \
+      typename TTypes<T>::ConstScalar lr,                                 \
+      typename TTypes<T>::ConstScalar logbase,                            \
+      typename TTypes<T>::ConstScalar sign_decay,                         \
+      typename TTypes<T>::ConstScalar beta,                               \
+      typename TTypes<T>::ConstFlat grad);                                \
+  extern template struct ApplyPowerSign<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 }  // namespace tensorflow

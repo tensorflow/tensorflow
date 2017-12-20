@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import device_properties_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
@@ -28,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.grappler import cluster as gcluster
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.ops import array_ops
@@ -41,53 +43,107 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
 
 
-def weight(shape):
-  """weights generates a weight of a given shape."""
+def _weight(shape):
+  """Generates a weight of a given shape."""
   return random_ops.truncated_normal(shape, seed=0, stddev=0.1)
 
 
-def bias(shape):
-  """bias generates a bias of a given shape."""
+def _bias(shape):
+  """Generates a bias of a given shape."""
   return constant_op.constant(0.1, shape=shape)
 
 
-def conv2d(x, w):
-  """conv2d returns a 2d convolution layer with full stride."""
+def _conv2d(x, w):
+  """Returns a 2d convolution layer with full stride."""
   return nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
 
 
-def max_pool_2x2(x):
-  """max_pool_2x2 downsamples a feature map by 2X."""
+def _max_pool_2x2(x):
+  """Downsamples a feature map by 2X."""
   return nn.max_pool(
       x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
 # Taken from tensorflow/examples/tutorials/mnist/mnist_deep.py
-def two_layer_model(x):
+def _two_layer_model(x):
   x_image = array_ops.reshape(x, [-1, 28, 28, 1])
-  w_conv1 = weight([5, 5, 1, 32])
-  b_conv1 = bias([32])
-  h_conv1 = nn.relu(conv2d(x_image, w_conv1) + b_conv1)
-  h_pool1 = max_pool_2x2(h_conv1)
-  w_conv2 = weight([5, 5, 32, 64])
-  b_conv2 = bias([64])
-  h_conv2 = nn.relu(conv2d(h_pool1, w_conv2) + b_conv2)
-  h_pool2 = max_pool_2x2(h_conv2)
+  w_conv1 = _weight([5, 5, 1, 32])
+  b_conv1 = _bias([32])
+  h_conv1 = nn.relu(_conv2d(x_image, w_conv1) + b_conv1)
+  h_pool1 = _max_pool_2x2(h_conv1)
+  w_conv2 = _weight([5, 5, 32, 64])
+  b_conv2 = _bias([64])
+  h_conv2 = nn.relu(_conv2d(h_pool1, w_conv2) + b_conv2)
+  h_pool2 = _max_pool_2x2(h_conv2)
   return h_pool2
 
 
-def loop():
+def _model_with_second_port():
+  random_seed.set_random_seed(0)
+  x = random_ops.truncated_normal([2, 5, 5, 4], seed=0)
+  scale = constant_op.constant(0.1, shape=[4])
+  offset = constant_op.constant(0.3, shape=[4])
+  y, mean, _ = nn.fused_batch_norm(x, scale, offset)
+  mul = math_ops.add(y, mean)
+  output = array_ops.identity(mul)
+  return output
+
+
+def _model_with_branch(x):
+  x_image = array_ops.reshape(x, [-1, 28, 28, 1])
+  w_conv1 = _weight([5, 5, 1, 32])
+  w_conv2 = _weight([5, 5, 1, 32])
+  c_conv1 = _conv2d(x_image, w_conv1)
+  c_conv2 = _conv2d(x_image, w_conv2)
+  add = math_ops.add(c_conv1, c_conv2)
+  return add
+
+
+def _model_with_vec_and_4d(x):
+  x_image = array_ops.reshape(x, [-1, 28, 28, 1])
+  w_conv1 = _weight([5, 5, 1, 32])
+  c_conv1 = _conv2d(x_image, w_conv1)
+  vector = constant_op.constant(6.4, shape=[32])
+  add = math_ops.add(c_conv1, vector)
+  return add
+
+
+def _loop():
   random_seed.set_random_seed(0)
   x1 = random_ops.truncated_normal([1, 784], seed=0)
   x2 = random_ops.truncated_normal([1, 784], seed=0)
   x3 = random_ops.truncated_normal([1, 784], seed=0)
   x4 = random_ops.truncated_normal([1, 784], seed=0)
   elems = (x1, x2, x3, x4)
-  outputs = functional_ops.map_fn(two_layer_model, elems, dtype=dtypes.float32)
+  outputs = functional_ops.map_fn(_two_layer_model, elems, dtype=dtypes.float32)
   return outputs
 
 
-def get_config(layout_optimizer=True):
+def _loop_with_branch():
+  random_seed.set_random_seed(0)
+  x1 = random_ops.truncated_normal([1, 784], seed=0)
+  x2 = random_ops.truncated_normal([1, 784], seed=0)
+  x3 = random_ops.truncated_normal([1, 784], seed=0)
+  x4 = random_ops.truncated_normal([1, 784], seed=0)
+  elems = (x1, x2, x3, x4)
+  outputs = functional_ops.map_fn(
+      _model_with_branch, elems, dtype=dtypes.float32)
+  return outputs
+
+
+def _loop_with_vec_and_4d():
+  random_seed.set_random_seed(0)
+  x1 = random_ops.truncated_normal([1, 784], seed=0)
+  x2 = random_ops.truncated_normal([1, 784], seed=0)
+  x3 = random_ops.truncated_normal([1, 784], seed=0)
+  x4 = random_ops.truncated_normal([1, 784], seed=0)
+  elems = (x1, x2, x3, x4)
+  outputs = functional_ops.map_fn(
+      _model_with_vec_and_4d, elems, dtype=dtypes.float32)
+  return outputs
+
+
+def _get_config(layout_optimizer=True):
   if layout_optimizer:
     rewrite_options = rewriter_config_pb2.RewriterConfig(
         layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
@@ -100,6 +156,30 @@ def get_config(layout_optimizer=True):
   return config
 
 
+def _simple_metagraph(depthwise=False):
+  random_seed.set_random_seed(0)
+  x = variables.Variable(random_ops.truncated_normal([1, 200, 200, 3], seed=0))
+  conv = conv_layers.separable_conv2d if depthwise else conv_layers.conv2d
+  y = conv(x, 32, [3, 3])
+  z = conv(y, 32, [3, 3])
+  optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
+  loss = math_ops.reduce_mean(z)
+  train_op = optimizer.minimize(loss)
+  graph = ops.get_default_graph()
+  graph.add_to_collection('train_op', train_op)
+  meta_graph = saver_lib.export_meta_graph(graph_def=graph.as_graph_def())
+  return meta_graph
+
+
+def _get_cluster():
+  named_device = device_properties_pb2.NamedDevice()
+  named_device.name = '/GPU:0'
+  named_device.properties.type = 'GPU'
+  named_device.properties.environment['architecture'] = '4'
+  cluster = gcluster.Cluster(devices=[named_device])
+  return cluster
+
+
 class LayoutOptimizerTest(test.TestCase):
   """Tests the Grappler layout optimizer."""
 
@@ -107,7 +187,7 @@ class LayoutOptimizerTest(test.TestCase):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
     with session.Session(
-        config=get_config(layout_optimizer), graph=graph) as sess:
+        config=_get_config(layout_optimizer), graph=graph) as sess:
       batch = 2
       height = 6
       width = 7
@@ -142,12 +222,12 @@ class LayoutOptimizerTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = random_ops.truncated_normal([1, 784], seed=0)
-      output = two_layer_model(x)
+      output = _two_layer_model(x)
 
       with session.Session() as sess:
         output_val_ref = sess.run(output)
 
-      with session.Session(config=get_config()) as sess:
+      with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
         output_val = sess.run(output, run_metadata=metadata)
 
@@ -162,45 +242,292 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-Reshape-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-MaxPool_1',
-                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-0-0', nodes)
 
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
-  def testLoop(self):
+  def testSplitWithNonConstAxis(self):
     if test.is_gpu_available(cuda_only=True):
-      output = loop()
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      dim = array_ops.placeholder(dtype='int32')
+      split = array_ops.split(conv, 2, axis=dim)
+      output = math_ops.reduce_sum(split[0])
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={dim: 3})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata, feed_dict={dim: 3})
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-0-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_split_0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testPadWithConstPaddings(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      paddings_val = [[1, 2], [3, 4], [5, 6], [7, 8]]
+      paddings = constant_op.constant(
+          paddings_val, dtype='int32', name='PaddingsConst')
+      pad = array_ops.pad(conv, paddings)
+      output = array_ops.identity(pad)
 
       with session.Session() as sess:
         output_val_ref = sess.run(output)
 
-      with session.Session(config=get_config()) as sess:
+      with session.Session(config=_get_config()) as sess:
         metadata = config_pb2.RunMetadata()
         output_val = sess.run(output, run_metadata=metadata)
 
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
+      self.assertIn('LayoutOptimizer-Pad-PaddingsConst', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testPadWithNonConstPaddings(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      paddings = array_ops.placeholder(dtype='int32')
+      pad = array_ops.pad(conv, paddings)
+      output = array_ops.identity(pad)
+
+      paddings_val = [[1, 2], [3, 4], [5, 6], [7, 8]]
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={paddings: paddings_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                paddings: paddings_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Pad_1', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testSliceWithNonConstAxis(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      size = array_ops.placeholder(dtype='int32')
+      s = array_ops.slice(conv, [0, 0, 0, 0], size)
+      output = array_ops.identity(s)
+
+      size_val = [1, 2, 3, 4]
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={size: size_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                size: size_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-0-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Slice_2', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testShapeN(self):
+    if test.is_gpu_available(cuda_only=True):
+      x = array_ops.placeholder(dtype='float32')
+      conv = _two_layer_model(x)
+      shapen = array_ops.shape_n([conv, conv])
+      output = math_ops.add(shapen[0], shapen[1])
+
+      x_val = [1.7] * 784
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={x: x_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                x: x_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 1
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerVecPermuteNCHWToNHWC-ShapeN-0-0', nodes)
+      self.assertAllEqual(output_val_ref, output_val)
+
+  def testLoop(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _loop()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn(
+          'LayoutOptimizerTransposeNCHWToNHWC-map/while/MaxPool_1-0-2', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testLoopWithBranch(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _loop_with_branch()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
+                    nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testLoopWithVecAnd4D(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _loop_with_vec_and_4d()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
+                    nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testBinaryOpSecondPort(self):
+    if test.is_gpu_available(cuda_only=True):
+      output = _model_with_second_port()
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-FusedBatchNorm-0',
+                    nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Add-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testGradient(self):
-    if not test.is_gpu_available(cuda_only=True):
-      self.skipTest('GPU required')
-
-    random_seed.set_random_seed(0)
-    x = variables.Variable(
-        random_ops.truncated_normal([1, 200, 200, 3], seed=0))
-    y = conv_layers.conv2d(x, 32, [3, 3])
-    z = conv_layers.conv2d(y, 32, [3, 3])
-    optimizer = gradient_descent.GradientDescentOptimizer(1e-4)
-    loss = math_ops.reduce_mean(z)
-    train_op = optimizer.minimize(loss)
-    graph = ops.get_default_graph()
-    graph.add_to_collection('train_op', train_op)
-    meta_graph = saver_lib.export_meta_graph(graph_def=graph.as_graph_def())
-
+    meta_graph = _simple_metagraph()
     rewrite_options = rewriter_config_pb2.RewriterConfig(
         layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
-    optimized_graph = tf_optimizer.OptimizeGraph(rewrite_options, meta_graph)
+    optimized_graph = tf_optimizer.OptimizeGraph(
+        rewrite_options, meta_graph, cluster=_get_cluster())
 
     found = 0
     for node in optimized_graph.node:
@@ -209,7 +536,27 @@ class LayoutOptimizerTest(test.TestCase):
         self.assertEqual(node.attr['data_format'].s, 'NCHW')
     self.assertEqual(found, 5)
 
+  def testDepthwise(self):
+    meta_graph = _simple_metagraph(depthwise=True)
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+    optimized_graph = tf_optimizer.OptimizeGraph(
+        rewrite_options, meta_graph, cluster=_get_cluster())
+
+    found = 0
+    for node in optimized_graph.node:
+      if node.op in [
+          'DepthwiseConv2dNative', 'DepthwiseConv2dNativeBackpropFilter',
+          'DepthwiseConv2dNativeBackpropInput'
+      ]:
+        found += 1
+        self.assertEqual(node.attr['data_format'].s, 'NCHW')
+    self.assertEqual(found, 6)
+
   def testCheckpointCompatibility(self):
+    if not test.is_gpu_available(cuda_only=True):
+      self.skipTest('GPU required')
+
     checkpoint_path = self.get_temp_dir()
     self._train(checkpoint_path)
     vars_expected = self._train(checkpoint_path, restore=True)

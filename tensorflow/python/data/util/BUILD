@@ -38,8 +38,10 @@ py_library(
     deps = [
         ":nest",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
     ],
@@ -56,6 +58,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 

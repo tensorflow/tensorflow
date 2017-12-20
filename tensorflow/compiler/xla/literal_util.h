@@ -99,6 +99,7 @@ class Literal {
     f16s_.clear();
     f32s_.clear();
     f64s_.clear();
+    c64s_.clear();
     tuple_literals_.clear();
   }
 
@@ -285,11 +286,15 @@ class Literal {
   std::unique_ptr<Literal> Relayout(const Layout& new_layout,
                                     const ShapeIndex& shape_index = {}) const;
 
-  // Creates a new literal by reshaping this literal to have 'shape'. Both the
-  // original shape and 'shape' must contain the same number of elements. The
+  // An overload of Relayout which changes the layout of the entire shape rather
+  // than being limited to a single array within the shape.
+  std::unique_ptr<Literal> Relayout(const Shape& shape_with_layout) const;
+
+  // Creates a new literal by reshaping this literal to have the given
+  // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   StatusOr<std::unique_ptr<Literal>> Reshape(
-      tensorflow::gtl::ArraySlice<int64> shape) const;
+      tensorflow::gtl::ArraySlice<int64> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -1106,7 +1111,7 @@ void Literal::PopulateR2WithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64>(values.size()),
        static_cast<int64>(values.begin()->size())},
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
 
   const int64 dim0_size = values.size();
   const int64 dim1_size = values.begin()->size();
@@ -1137,9 +1142,10 @@ void Literal::PopulateR2(
 template <typename NativeT>
 void Literal::PopulateFromArrayWithLayout(const Array<NativeT>& values,
                                           const Layout& layout) {
+  CHECK_EQ(layout.format(), DENSE);
   *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
   Reserve(values.num_elements());
   values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
                      NativeT value) { this->Set(indices, value); });

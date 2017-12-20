@@ -65,6 +65,7 @@ See the @{$python/contrib.framework} guide.
 @@get_variable_full_name
 @@get_variables_to_restore
 @@get_variables
+@@global_variable
 @@local_variable
 @@model_variable
 @@variable

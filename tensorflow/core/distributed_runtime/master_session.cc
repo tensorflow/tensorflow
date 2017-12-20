@@ -67,13 +67,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     const SessionOptions& session_opts,
                     const StatsPublisherFactory& stats_publisher_factory,
                     GraphExecutionState* execution_state, bool is_partial,
-                    WorkerCacheInterface* worker_cache)
+                    WorkerCacheInterface* worker_cache, bool should_deregister)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
         debug_opts_(bopts.debug_options),
-        worker_cache_(worker_cache) {
+        worker_cache_(worker_cache),
+        should_deregister_(should_deregister) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph()->graph.num_node_ids();
 
@@ -85,7 +86,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     }
   }
 
-  ~ReffedClientGraph() override { DeregisterPartitions(); }
+  ~ReffedClientGraph() override {
+    if (should_deregister_) {
+      DeregisterPartitions();
+    }
+  }
 
   const ClientGraph* client_graph() { return client_graph_.get(); }
 
@@ -208,7 +213,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
+  const bool should_deregister_;
 
   // Graph partitioned into per-location subgraphs.
   struct Part {
@@ -486,7 +492,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<StringPiece, size_t, StringPiece::Hasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
 
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
@@ -1043,7 +1049,10 @@ Status MasterSession::Create(GraphDef* graph_def,
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         graph_def, execution_options, &execution_state_));
   }
-  if (options.cluster_def != nullptr) {
+  // TODO(b/36574172): Remove these conditions when ClusterSpec
+  // propagation is supported in all servers.
+  if (options.cluster_def != nullptr ||
+      session_opts_.config.isolate_session_state()) {
     should_delete_worker_sessions_ = true;
     return CreateWorkerSessions(options);
   }
@@ -1052,10 +1061,9 @@ Status MasterSession::Create(GraphDef* graph_def,
 
 Status MasterSession::CreateWorkerSessions(
     const WorkerCacheFactoryOptions& options) {
-  CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
-                       << "dynamic cluster membership.";
   std::vector<string> worker_names;
-  worker_cache_->ListWorkers(&worker_names);
+  WorkerCacheInterface* worker_cache = get_worker_cache();
+  worker_cache->ListWorkers(&worker_names);
 
   struct WorkerGroup {
     // The worker name. (Not owned.)
@@ -1073,10 +1081,10 @@ Status MasterSession::CreateWorkerSessions(
   std::vector<WorkerGroup> workers(worker_names.size());
 
   // Release the workers.
-  auto cleanup = gtl::MakeCleanup([this, &workers] {
+  auto cleanup = gtl::MakeCleanup([this, &workers, worker_cache] {
     for (auto&& worker_group : workers) {
       if (worker_group.worker != nullptr) {
-        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
+        worker_cache->ReleaseWorker(*worker_group.name, worker_group.worker);
       }
     }
   });
@@ -1085,11 +1093,19 @@ Status MasterSession::CreateWorkerSessions(
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
-    *workers[i].request.mutable_server_def()->mutable_cluster() =
-        *options.cluster_def;
-    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+    if (options.cluster_def) {
+      *workers[i].request.mutable_server_def()->mutable_cluster() =
+          *options.cluster_def;
+      workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+      // Session state is always isolated when ClusterSpec propagation
+      // is in use.
+      workers[i].request.set_isolate_session_state(true);
+    } else {
+      workers[i].request.set_isolate_session_state(
+          session_opts_.config.isolate_session_state());
+    }
 
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
@@ -1156,7 +1172,7 @@ Status MasterSession::DeleteWorkerSessions() {
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
-    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].worker = worker_cache->CreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
   }
 
@@ -1262,7 +1278,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
-          worker_cache);
+          worker_cache, !should_delete_worker_sessions_);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }

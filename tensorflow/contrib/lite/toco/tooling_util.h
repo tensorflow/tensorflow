@@ -288,6 +288,8 @@ bool IsDiscardableArray(const Model& model, const string& array_name);
 
 void CheckFinalDataTypesSatisfied(const Model& model);
 
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
+
 }  // namespace toco
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
