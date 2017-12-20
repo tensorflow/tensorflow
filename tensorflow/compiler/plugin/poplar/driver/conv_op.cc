@@ -51,6 +51,8 @@ GetConvolutionParameters(const HloInstruction* inst) {
   std::vector<int> k_h;
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
+  std::vector<bool> f_i;
+  std::vector<bool> f_k;
   for (int64 i=0; i < window.dimensions().size(); i++) {
     n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
@@ -61,10 +63,12 @@ GetConvolutionParameters(const HloInstruction* inst) {
     k_h.push_back(0);
     d_i.push_back(window.dimensions(i).base_dilation());
     d_w.push_back(window.dimensions(i).window_dilation());
+    f_i.push_back(false);
+    f_k.push_back(false);
   }
 
   popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, w_s, p_l, p_u, d_i,
-                             k_l, k_h, d_w, 1);
+                             f_i, k_l, k_h, d_w, f_k, 1);
 
   return params;
 }
@@ -97,6 +101,8 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
   std::vector<int> k_h;
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
+  std::vector<bool> f_i;
+  std::vector<bool> f_k;
   for (int64 i=0; i < window.dimensions().size(); i++) {
     n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
@@ -107,12 +113,14 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
     k_h.push_back(0);
     d_i.push_back(window.dimensions(i).base_dilation());
     d_w.push_back(window.dimensions(i).window_dilation());
+    f_i.push_back(false);
+    f_k.push_back(false);
   }
 
   n_o = n_o / n_i;
 
   popconv::ConvParams params(dtype, n_b, n_s, f_s, 1, n_o, w_s, p_l, p_u, d_i,
-                             k_l, k_h, d_w, n_i);
+                             f_i, k_l, k_h, d_w, f_k, n_i);
 
   return params;
 }
