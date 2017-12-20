@@ -36,7 +36,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'PowerSignOptimizer',
-    'AddSignOptimizer'
+    'AddSignOptimizer',
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
