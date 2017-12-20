@@ -216,6 +216,64 @@ TEST(CAPI, TensorHandleCopyBetweenDevices) {
   EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 }
 
+TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevices) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status.get());
+  TFE_DeleteContextOptions(opts);
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
+  TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  const int num_devices = TF_DeviceListCount(devices);
+
+  const char* kCPUDevice = "CPU:0";
+  if (num_devices < 3) {
+    TF_DeleteDeviceList(devices);
+    TF_DeleteTensor(t);
+    TFE_DeleteTensorHandle(hcpu);
+    TFE_DeleteContext(ctx, status.get());
+    return;
+  }
+  const string gpu_1_name(TF_DeviceListName(devices, 1, status.get()));
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  const string gpu_2_name(TF_DeviceListName(devices, 2, status.get()));
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  TFE_TensorHandle* hdevice =
+      TFE_TensorHandleCopyToDevice(hcpu, ctx, gpu_1_name.c_str(), status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+
+  TFE_TensorHandle* hdevice2 = TFE_TensorHandleCopyToDevice(
+      hdevice, ctx, gpu_2_name.c_str(), status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  TFE_DeleteTensorHandle(hdevice);
+  // Copy back to CPU
+  TFE_TensorHandle* hcopy =
+      TFE_TensorHandleCopyToDevice(hdevice2, ctx, kCPUDevice, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  TFE_DeleteTensorHandle(hdevice2);
+
+  // Ensure that the contents are the same!
+  TF_Tensor* tcopy = TFE_TensorHandleResolve(hcopy, status.get());
+  TFE_DeleteTensorHandle(hcopy);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK);
+  EXPECT_EQ(TF_TensorByteSize(t), TF_TensorByteSize(tcopy));
+  EXPECT_EQ(
+      0, memcmp(TF_TensorData(t), TF_TensorData(tcopy), TF_TensorByteSize(t)));
+  TF_DeleteTensor(tcopy);
+
+  TF_DeleteDeviceList(devices);
+  TF_DeleteTensor(t);
+  TFE_DeleteTensorHandle(hcpu);
+  TFE_DeleteContext(ctx, status.get());
+  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+}
+
 TEST(CAPI, TensorHandleSilentCopy) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);

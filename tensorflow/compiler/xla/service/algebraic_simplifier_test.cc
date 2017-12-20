@@ -816,6 +816,120 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
             1);
 }
 
+TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {3, 3, 0}), "lhs"));
+
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {3, 0, 3}), "rhs"));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.set_input_feature_dimension(2);
+
+  dnums.set_output_batch_dimension(0);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.set_output_feature_dimension(2);
+
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.set_kernel_input_feature_dimension(1);
+  dnums.set_kernel_output_feature_dimension(2);
+  Window window;
+  WindowDimension* dim = window.add_dimensions();
+  dim->set_size(3);
+  dim->set_padding_low(0);
+  dim->set_padding_high(0);
+  dim->set_stride(1);
+  dim->set_window_dilation(1);
+  dim->set_base_dilation(1);
+  dim->set_window_reversal(false);
+  // Create add computation.
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, window, dnums));
+  module->AddEntryComputation(builder.Build());
+  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
+                                             non_bitcasting_callback());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convolution(lhs, rhs));
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Broadcast(op::Constant()));
+}
+
+TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 0}), "op"));
+  Window window;
+  for (int64 i = 0; i < 2; ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(1);
+    dim->set_padding_low(1);
+    dim->set_padding_high(1);
+    dim->set_window_dilation(1);
+    dim->set_base_dilation(1);
+  }
+  // Create add computation.
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = module->AddEmbeddedComputation(builder.Build());
+  }
+  builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      ShapeUtil::MakeShape(F32, {5, 2}), param,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f))),
+      window, add_computation));
+  module->AddEntryComputation(builder.Build());
+  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
+                                             non_bitcasting_callback());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::ReduceWindow(param, op::Constant()));
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Broadcast(op::Constant()));
+}
+
+TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 0}), "op"));
+  PaddingConfig padding;
+  for (int i = 0; i < 2; ++i) {
+    PaddingConfig::PaddingConfigDimension* dimension = padding.add_dimensions();
+    dimension->set_edge_padding_low(1);
+    dimension->set_edge_padding_high(1);
+    dimension->set_interior_padding(0);
+  }
+  builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {5, 2}), param,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0(0.0f))),
+      padding));
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Pad(param, op::Constant()));
+  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
+                                             non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Broadcast(op::Constant()));
+}
+
 TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
 
@@ -1309,7 +1423,7 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(F32, {2, 2, 2}),
+          0, ShapeUtil::MakeShapeWithDescendingLayout(F32, {2, 2, 2}),
           "param0"));
 
   HloInstruction* copy1 = builder.AddInstruction(HloInstruction::CreateUnary(

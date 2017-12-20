@@ -397,6 +397,7 @@ py_test(
     srcs = ["scan_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -488,6 +489,25 @@ py_test(
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+    ],
+)
+
+py_test(
+    name = "unique_dataset_op_test",
+    size = "small",
+    srcs = ["unique_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/stateless",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//third_party/py/numpy",
     ],
 )
 

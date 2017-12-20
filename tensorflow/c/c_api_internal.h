@@ -24,6 +24,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#ifndef __ANDROID__
+#include "tensorflow/core/framework/op_gen_lib.h"
+#endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -156,6 +159,22 @@ struct TF_DeviceList {
 
 struct TF_Function {
   tensorflow::FunctionDef fdef;
+};
+
+struct TF_ApiDefMap {
+  explicit TF_ApiDefMap(const tensorflow::OpList& op_list)
+      :
+#ifndef __ANDROID__
+        api_def_map(op_list),
+#endif
+        update_docs_called(false) {
+  }
+
+#ifndef __ANDROID__
+  tensorflow::ApiDefMap api_def_map GUARDED_BY(lock);
+#endif
+  bool update_docs_called GUARDED_BY(lock);
+  tensorflow::mutex lock;
 };
 
 namespace tensorflow {

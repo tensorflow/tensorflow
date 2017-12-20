@@ -157,7 +157,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -228,6 +228,7 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_DeviceBoundaries) {
 
   // The optimization should be disabled to prevent increasing the number of
   // nodes crossing device boundaries.
+  TF_CHECK_OK(TopologicalSort(&item.graph));
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
@@ -282,7 +283,7 @@ TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch.push_back("id2");
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
