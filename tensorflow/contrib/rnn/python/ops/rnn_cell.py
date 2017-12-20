@@ -2634,7 +2634,10 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
 
 class SRUCell(rnn_cell_impl._LayerRNNCell):
-  """Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
+  """SRU, Simple Recurrent Unit
+     Implementation based on
+     Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
+
      This variation of RNN cell is characterized by the simplified data dependence
      between hidden states of two consecutive time steps. Traditionally, hidden
      states from a cell at time step t-1 needs to be multiplied with a matrix
