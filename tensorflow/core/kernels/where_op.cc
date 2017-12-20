@@ -55,14 +55,14 @@ namespace functor {
 namespace {
 template <typename T>
 int64 CountAccumulator(const T* begin, const T* end) {
-  return std::accumulate(begin, end, 0L, [](int64 accum, const T& val) {
+  return std::accumulate(begin, end, 0LL, [](int64 accum, const T& val) {
     return accum + (val != T(0));
   });
 }
 
 template <>
 int64 CountAccumulator<bool>(const bool* begin, const bool* end) {
-  return std::accumulate(begin, end, 0L);
+  return std::accumulate(begin, end, 0LL);
 }
 
 }  // namespace
