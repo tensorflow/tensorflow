@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
-
+#include "fnmatch.h"
 #pragma comment(lib, "Shlwapi.lib")
 
 namespace tensorflow {
@@ -72,9 +72,11 @@ class WindowsEnv : public Env {
   }
 
   bool MatchPath(const string& path, const string& pattern) override {
-      std::wstring ws_path(WindowsFileSystem::Utf8ToWideChar(path));
-      std::wstring ws_pattern(WindowsFileSystem::Utf8ToWideChar(pattern));
-    return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
+    string n_path = path;
+    std::replace(n_path.begin(), n_path.end(), '\\', '/');
+    string n_pattern = pattern;
+    std::replace(n_pattern.begin(), n_pattern.end(), '\\', '/');
+    return fnmatch(n_pattern.c_str(), n_path.c_str(), FNM_PATHNAME) == 0;
   }
 
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }

@@ -174,6 +174,10 @@ TEST(InterPlanetaryFileSystemTest, IPFSMatch) {
   // Returns Jupiter's moons.
   EXPECT_EQ(Match(&ipfs, "Jupiter/*"),
             "Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
+#ifdef PLATFORM_WINDOWS
+  EXPECT_EQ(Match(&ipfs, "Jupiter\\*"),
+            "Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
+#endif PLATFORM_WINDOWS
   // Returns Jupiter's and Earth's moons.
   EXPECT_EQ(Match(&ipfs, "*/*"),
             "Earth/Moon,Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
