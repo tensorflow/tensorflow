@@ -355,7 +355,7 @@ Status BuildArguments(const Graph& graph,
       const int core = (*arg_cores)[parameters[i]];
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
+                              : xla::ShardingBuilder::AssignDevice(core));
       arg_handles[i] = builder->GetTupleElement(tuple, i);
     }
   } else {
@@ -363,7 +363,7 @@ Status BuildArguments(const Graph& graph,
       const int core = (*arg_cores)[parameters[i]];
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
+                              : xla::ShardingBuilder::AssignDevice(core));
       arg_handles[i] =
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
@@ -475,7 +475,7 @@ Status BuildComputation(
       // Request that the value be returned on a specific core.
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
+                              : xla::ShardingBuilder::AssignDevice(core));
 
       xla::ComputationDataHandle handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));

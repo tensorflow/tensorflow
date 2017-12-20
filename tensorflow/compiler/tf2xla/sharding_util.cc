@@ -74,7 +74,7 @@ ParseShardingFromDevice(
       return CoreOutOfRangeError(core, num_cores_per_replica);
     }
     return tensorflow::gtl::optional<xla::OpSharding>(
-        xla::sharding_builder::AssignDevice(core));
+        xla::ShardingBuilder::AssignDevice(core));
   }
 }
 

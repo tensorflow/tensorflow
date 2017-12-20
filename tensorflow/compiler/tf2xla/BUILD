@@ -158,7 +158,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -204,7 +203,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:computation_builder",
-        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
