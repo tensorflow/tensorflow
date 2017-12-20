@@ -419,7 +419,7 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   // We don't use the results of this topological sort until later, but this
   // call invalidates all NodeDef pointers, so it needs to be done before we
   // start collecting those.
-  TopologicalSort(graph);
+  TF_CHECK_OK(TopologicalSort(graph));
   NodeMap node_map(graph);
   std::vector<RecomputedSubGraph> recomputed_subgraphs;
   // Do not recompute nodes which are fed, since the recomputed node would not
@@ -716,7 +716,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   {
     // Estimate the size of the data to swap for each node.
     GraphProperties properties(item);
-    TF_RETURN_IF_ERROR(properties.InferStatically());
+    TF_RETURN_IF_ERROR(properties.InferStatically(true));
     for (auto& swap : nodes_to_swap) {
       const NodeDef* node = swap.first;
       std::vector<OpInfo::TensorProperties> props =

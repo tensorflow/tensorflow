@@ -36,6 +36,7 @@ from tensorflow.contrib.distributions.python.ops.distribution_util import softpl
 from tensorflow.contrib.distributions.python.ops.distribution_util import tridiag
 from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
+from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
@@ -107,6 +108,7 @@ _allowed_symbols = [
     'Gamma',
     'GammaWithSoftplusConcentrationRate',
     'Geometric',
+    'HalfNormal',
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
@@ -157,6 +159,10 @@ _allowed_symbols = [
     'assign_log_moving_mean_exp',
     'moving_mean_variance',
     'estimator_head_distribution_regression',
+    'quadrature_scheme_softmaxnormal_gauss_hermite',
+    'quadrature_scheme_softmaxnormal_quantiles',
+    'quadrature_scheme_lognormal_gauss_hermite',
+    'quadrature_scheme_lognormal_quantiles',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

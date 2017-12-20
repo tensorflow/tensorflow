@@ -10,10 +10,10 @@ particular, this document explains the following:
 
 You can view TensorFlow documentation on https://www.tensorflow.org, and you
 can view and edit the raw files on
-[GitHub](https://www.tensorflow.org/code/tensorflow/docs_src/). 
+[GitHub](https://www.tensorflow.org/code/tensorflow/docs_src/).
 We're publishing our docs on GitHub so everybody can contribute. Whatever gets
 checked in to `tensorflow/docs_src` will be published soon after on
-https://www.tensorflow.org. 
+https://www.tensorflow.org.
 
 Republishing TensorFlow documentation in different forms is absolutely allowed,
 but we are unlikely to accept other documentation formats (or the tooling to
@@ -237,7 +237,7 @@ If a module is accidentally imported, it typically breaks the doc generator
 even if the doc generator succeeds, unwanted symbols may show up in the
 docs. Check the generated docs to make sure that all symbols that are documented
 are expected. If there are symbols that shouldn’t be there, you have the
-following options for dealing with them: 
+following options for dealing with them:
 
 - Private symbols and imports
 - The `remove_undocumented` filter

@@ -18,6 +18,7 @@ gen_zipped_test_files(
     files = [
         "add.zip",
         "avg_pool.zip",
+        "batch_to_space_nd.zip",
         "concat.zip",
         "constant.zip",
         "control_dep.zip",
@@ -25,12 +26,14 @@ gen_zipped_test_files(
         "depthwiseconv.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
+        "gather.zip",
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",
         "local_response_norm.zip",
         "max_pool.zip",
         "mul.zip",
+        "pad.zip",
         "relu.zip",
         "relu1.zip",
         "relu6.zip",
@@ -158,6 +161,12 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite:string",
     ],
+)
+
+cc_library(
+    name = "util",
+    testonly = 1,
+    hdrs = ["util.h"],
 )
 
 cc_test(

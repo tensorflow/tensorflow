@@ -35,6 +35,9 @@ from tensorflow.python.platform import googletest
 class CategoricalTest(XLATestCase):
   """Test cases for random-number generating operators."""
 
+  def output_dtypes(self):
+    return set(self.int_types).intersection([np.int32, np.int64])
+
   def _chi2(self, expected, actual):
     """Returns Chi2 GOF statistic."""
     actual = np.asarray(actual)
@@ -55,7 +58,8 @@ class CategoricalTest(XLATestCase):
     """
     with self.test_session() as sess, self.test_scope():
       random_seed.set_random_seed(1618)
-      op = random_ops.multinomial(logits, num_samples)
+      op = random_ops.multinomial(logits, num_samples,
+                                  output_dtype=dtypes.int32)
       d = sess.run(op)
 
     batch_size, num_classes = logits.shape
@@ -73,11 +77,11 @@ class CategoricalTest(XLATestCase):
 
     return freqs_mat
 
-  def _testRngIsNotConstant(self, rng, dtype):
+  def _testRngIsNotConstant(self, rng, dtype, output_dtype):
     # Tests that 'rng' does not always return the same value.
     with self.test_session() as sess:
       with self.test_scope():
-        x = rng(dtype)
+        x = rng(dtype, output_dtype)
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
@@ -92,21 +96,25 @@ class CategoricalTest(XLATestCase):
                       (not np.array_equal(y, w)))
 
   def testCategoricalIsNotConstant(self):
-    def rng(unused_dtype):
-      return random_ops.multinomial([[1., 1., 1.]], 10)
+    def rng(dtype, output_dtype):
+      return random_ops.multinomial(np.array([[1., 1., 1.]], dtype=dtype), 10,
+                                    output_dtype=output_dtype)
 
-    dtype = dtypes.float32
-    self._testRngIsNotConstant(rng, dtype)
+    dtype = np.float32
+    for output_dtype in self.output_dtypes():
+      self._testRngIsNotConstant(rng, dtype, output_dtype)
 
   def testCategoricalIsInRange(self):
-    for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session() as sess:
-        with self.test_scope():
-          x = random_ops.multinomial(
-              array_ops.ones(shape=[1, 20], dtype=dtype), 1000)
-        y = sess.run(x)
-        self.assertTrue((y >= 0).sum() == 1000)
-        self.assertTrue((y < 20).sum() == 1000)
+    for dtype in self.float_types:
+      for output_dtype in self.output_dtypes():
+        with self.test_session() as sess:
+          with self.test_scope():
+            x = random_ops.multinomial(
+                array_ops.ones(shape=[1, 20], dtype=dtype), 1000,
+                output_dtype=output_dtype)
+          y = sess.run(x)
+          self.assertTrue((y >= 0).sum() == 1000)
+          self.assertTrue((y < 20).sum() == 1000)
 
   def testSamplingCorrectness(self):
     np.random.seed(1618)  # Make it reproducible.

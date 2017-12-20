@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-// Limit a float input f betweeen +abs_limit and -abs_limit.
+// Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size

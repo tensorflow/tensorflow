@@ -21,6 +21,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -341,6 +342,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -354,8 +356,8 @@ DestroyTemporaryVariable
 AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
-DeserializeSparse
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

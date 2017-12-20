@@ -53,6 +53,7 @@ class _ScanDataset(dataset_ops.Dataset):
         [t.dtype for t in nest.flatten(self._initial_state)])
 
     # Will be populated by calling `tf_scan_func`.
+    self._output_classes = None
     self._output_shapes = None
     self._output_types = None
 
@@ -68,13 +69,16 @@ class _ScanDataset(dataset_ops.Dataset):
       flat_new_state_shapes = []
 
       @function.Defun(*(flat_state_types + nest.flatten(
-          sparse.unwrap_sparse_types(input_dataset.output_types))))
+          sparse.as_dense_types(input_dataset.output_types,
+                                input_dataset.output_classes))))
       def tf_scan_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
         # Pass in shape information from the state and input_dataset.
-        for arg, shape in zip(
-            args,
-            flat_state_shapes + nest.flatten(input_dataset.output_shapes)):
+        # TODO(b/69424092): Check that neither inputs nor outputs are sparse.
+        dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
+                                              input_dataset.output_classes)
+        for arg, shape in zip(args,
+                              flat_state_shapes + nest.flatten(dense_shapes)):
           arg.set_shape(shape)
 
         pivot = len(flat_state_shapes)
@@ -108,6 +112,8 @@ class _ScanDataset(dataset_ops.Dataset):
                 "state. Expected %s; got %s." %
                 (self._state_types, nest.pack_sequence_as(
                     self._state_types, [t.dtype for t in flat_new_state])))
+        self._output_classes = nest.pack_sequence_as(
+            output_value, [ops.Tensor for _ in flat_output_value])
         self._output_types = nest.pack_sequence_as(
             output_value, [t.dtype for t in flat_output_value])
 
@@ -147,8 +153,13 @@ class _ScanDataset(dataset_ops.Dataset):
         self._scan_func.captured_inputs,
         f=self._scan_func,
         output_types=nest.flatten(
-            sparse.unwrap_sparse_types(self.output_types)),
-        output_shapes=nest.flatten(self.output_shapes))
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_shapes(self):

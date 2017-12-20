@@ -61,7 +61,7 @@ class TensorSliceReaderCacheWrapper;
 }  // namespace checkpoint
 
 class AsyncOpKernel;
-class FunctionCallFrame;
+class CallFrameInterface;
 class FunctionLibraryRuntime;
 class OpKernelConstruction;  // declared below
 class OpKernelContext;       // declared below
@@ -548,7 +548,7 @@ class OpKernelContext {
     FrameAndIter frame_iter;
 
     // Function call supports.
-    FunctionCallFrame* call_frame = nullptr;
+    CallFrameInterface* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollector* stats_collector = nullptr;
@@ -930,7 +930,7 @@ class OpKernelContext {
   //
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return params_->call_frame; }
+  CallFrameInterface* call_frame() const { return params_->call_frame; }
 
   // If not nullptr, the kernel invoke functions defined in the
   // library. E.g., CHECK_NOTNULL(function_library())->Run("Foo", ...).
@@ -1492,10 +1492,12 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 // }
 
 #define OP_REQUIRES(CTX, EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) {        \
-    (CTX)->CtxFailure((STATUS));      \
-    return;                           \
-  }
+  do {                                \
+    if (!TF_PREDICT_TRUE(EXP)) {      \
+      (CTX)->CtxFailure((STATUS));    \
+      return;                         \
+    }                                 \
+  } while (0)
 
 #define OP_REQUIRES_OK(CTX, ...)          \
   do {                                    \
@@ -1507,11 +1509,13 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK) \
-  if (!TF_PREDICT_TRUE(EXP)) {                        \
-    (CTX)->CtxFailure((STATUS));                      \
-    (CALLBACK)();                                     \
-    return;                                           \
-  }
+  do {                                                \
+    if (!TF_PREDICT_TRUE(EXP)) {                      \
+      (CTX)->CtxFailure((STATUS));                    \
+      (CALLBACK)();                                   \
+      return;                                         \
+    }                                                 \
+  } while (0)
 
 #define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK) \
   do {                                              \

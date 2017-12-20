@@ -46,6 +46,10 @@ The following tutorials focus on linear models:
   * @{$audio_recognition$Simple Audio Recognition}, which shows how to
     build a basic speech recognition network.
 
+The following tutorial covers building a classification model for sequences:
+
+  * @{$recurrent_quickdraw$Classifying Drawings using Recurrent Neural Networks}
+
 Although TensorFlow specializes in machine learning, you may also use
 TensorFlow to solve other kinds of math problems.  For example:
 

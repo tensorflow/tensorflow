@@ -44,6 +44,9 @@ namespace window_util {
   if (dim.window_dilation() != 1) {
     StrAppend(&str, ",window_dilation=", dim.window_dilation());
   }
+  if (dim.window_reversal()) {
+    StrAppend(&str, ",window_reversal");
+  }
   StrAppend(&str, ")");
   return str;
 }
@@ -83,6 +86,11 @@ string ToString(const Window& window) {
   if (HasWindowDilation(window)) {
     add_field(" rhs_dilate", [](const WindowDimension& dim) {
       return StrCat(dim.window_dilation());
+    });
+  }
+  if (HasWindowReversal(window)) {
+    add_field(" rhs_reversal", [](const WindowDimension& dim) {
+      return StrCat(dim.window_reversal() ? 1 : 0);
     });
   }
   return str;
@@ -132,6 +140,15 @@ bool HasBaseDilation(const Window& window) {
 bool HasWindowDilation(const Window& window) {
   for (const auto& dim : window.dimensions()) {
     if (dim.window_dilation() != 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasWindowReversal(const Window& window) {
+  for (const auto& dim : window.dimensions()) {
+    if (dim.window_reversal()) {
       return true;
     }
   }

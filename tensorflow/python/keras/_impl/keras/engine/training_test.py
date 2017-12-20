@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import unittest
+
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
@@ -783,6 +786,9 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestGeneratorMethods(test.TestCase):
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_methods(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
@@ -830,6 +836,11 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            validation_data=custom_generator(),
+                            validation_steps=1,
+                            workers=0)
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -839,6 +850,10 @@ class TestGeneratorMethods(test.TestCase):
                                 steps=5,
                                 max_queue_size=10,
                                 use_multiprocessing=False)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=0)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
                                  max_queue_size=10,
@@ -848,6 +863,11 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  use_multiprocessing=False)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False,
+                                 workers=0)
 
         # Test legacy API
         model.fit_generator(custom_generator(),

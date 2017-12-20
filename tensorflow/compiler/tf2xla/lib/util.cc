@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
-                                 xla::Shape& shape) {
+                                 const xla::Shape& shape) {
   return builder->Broadcast(
       builder->ConstantLiteral(xla::Literal::Zero(shape.element_type())),
       xla::AsInt64Slice(shape.dimensions()));
@@ -39,6 +39,9 @@ xla::ComputationDataHandle FloatLiteral(xla::ComputationBuilder* builder,
   switch (type) {
     case xla::F16:
       return builder->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      break;
+    case xla::BF16:
+      return builder->ConstantR0<bfloat16>(static_cast<bfloat16>(value));
       break;
     case xla::F32:
       return builder->ConstantR0<float>(static_cast<float>(value));

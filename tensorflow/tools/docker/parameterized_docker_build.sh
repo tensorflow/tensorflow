@@ -265,7 +265,7 @@ else
   DOCKERFILE="${TMP_DIR}/Dockerfile"
 
   # Modify the devel Dockerfile to specify the git branch
-  sed -r "s/([\s]*git checkout )(.*)/\1${TF_DOCKER_BUILD_DEVEL_BRANCH}/g" \
+  sed "s/^RUN git clone --branch=.* --depth=1/RUN git clone --branch=${TF_DOCKER_BUILD_DEVEL_BRANCH} --depth=1/" \
       "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
 
   # Modify python/pip version if necessary.

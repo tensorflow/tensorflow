@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:private"])
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
+    "if_windows",
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
@@ -155,8 +156,8 @@ sh_binary(
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/data/python/ops:prefetching_py",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
+            "//tensorflow/contrib/eager/python:checkpointable",
             "//tensorflow/contrib/eager/python:evaluator",
-            "//tensorflow/contrib/eager/python:summary_writer",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
@@ -193,4 +194,24 @@ sh_binary(
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+)
+
+# A genrule for generating a marker file for the pip package on Windows
+#
+# This only works on Windows, because :simple_console_for_windows is a
+# python zip file containing everything we need for building the pip package.
+# However, on other platforms, due to https://github.com/bazelbuild/bazel/issues/4223,
+# when C++ extensions change, this generule doesn't rebuild.
+genrule(
+    name = "win_pip_package_marker",
+    srcs = if_windows([
+        ":build_pip_package",
+        ":simple_console_for_windows",
+    ]),
+    outs = ["win_pip_package_marker_file"],
+    cmd = select({
+        "//conditions:default": "touch $@",
+        "//tensorflow:windows": "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
+    }),
+    visibility = ["//visibility:public"],
 )

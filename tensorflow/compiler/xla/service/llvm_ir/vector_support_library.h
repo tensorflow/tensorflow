@@ -111,7 +111,12 @@ class VectorSupportLibrary {
     return LoadBroadcast(base_pointer, ir_builder()->getInt64(offset_elements));
   }
 
-  llvm::Value* AddReduce(llvm::Value* vector);
+  // Compute the horizontal sum of each vector in `vectors`.  The i'th element
+  // in the result vector is the (scalar) horizontal sum of the i'th vector in
+  // `vectors`.  If `init_values` is not nullptr then the value in the i'th lane
+  // in `init_values` is added to the i'th horizontal sum.
+  std::vector<llvm::Value*> ComputeHorizontalSums(
+      std::vector<llvm::Value*> vectors, llvm::Value* init_values = nullptr);
 
   llvm::Value* GetZeroVector();
   llvm::Value* GetZeroScalar();
@@ -126,6 +131,33 @@ class VectorSupportLibrary {
   const std::string& name() const { return name_; }
 
  private:
+  llvm::Value* ExtractLowHalf(llvm::Value*);
+  llvm::Value* ExtractHighHalf(llvm::Value*);
+
+  llvm::Value* MulInternal(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* AddInternal(llvm::Value* lhs, llvm::Value* rhs);
+
+  llvm::Value* AddReduce(llvm::Value* vector);
+
+  // Perform an X86 AVX style horizontal add between `lhs` and `rhs`.  The
+  // resulting IR for an 8-float wide vector is expected to lower to a single
+  // vhaddps instruction on a CPU that supports vhaddps, and not be too bad in
+  // other cases.
+  //
+  // For a vector width of 8, the result vector is computed as:
+  //   Result[0] = Lhs[0] + Lhs[1]
+  //   Result[1] = Lhs[2] + Lhs[3]
+  //   Result[2] = Rhs[0] + Rhs[1]
+  //   Result[3] = Rhs[2] + Rhs[3]
+  //   Result[4] = Lhs[4] + Lhs[5]
+  //   Result[5] = Lhs[6] + Lhs[7]
+  //   Result[6] = Rhs[4] + Rhs[5]
+  //   Result[7] = Rhs[6] + Rhs[7]
+  llvm::Value* AvxStyleHorizontalAdd(llvm::Value* lhs, llvm::Value* rhs);
+
+  std::vector<llvm::Value*> ComputeAvxOptimizedHorizontalSums(
+      std::vector<llvm::Value*> vectors, llvm::Value* init_values);
+
   int64 vector_size_;
   PrimitiveType primitive_type_;
   llvm::IRBuilder<>* ir_builder_;
@@ -142,7 +174,7 @@ class LlvmVariable {
  public:
   LlvmVariable(llvm::Type*, llvm::IRBuilder<>* ir_builder);
 
-  llvm::Value* Get();
+  llvm::Value* Get() const;
   void Set(llvm::Value* new_value);
 
  private:

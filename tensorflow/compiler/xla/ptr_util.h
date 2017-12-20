@@ -37,7 +37,7 @@ std::unique_ptr<T> WrapUnique(T* ptr) {
 template <typename T, typename... Args>
 typename tensorflow::helper::MakeUniqueResult<T>::scalar MakeUnique(
     Args&&... args) {
-  return tensorflow::MakeUnique<T, Args>(std::forward<Args>(args)...);
+  return tensorflow::MakeUnique<T, Args...>(std::forward<Args>(args)...);
 }
 
 // Overload for array of unknown bound.

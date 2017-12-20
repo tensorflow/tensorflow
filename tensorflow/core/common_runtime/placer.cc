@@ -129,7 +129,7 @@ class ColocationGraph {
     // 'string' values stored in NodeDef attribute lists, as well as StringPiece
     // values that refer to 'string' values from NodeDef::name(), without
     // performing any string allocations.
-    std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>
+    std::unordered_map<StringPiece, const Node*, StringPieceHasher>
         colocation_group_root;
 
     for (Node* node : graph_->nodes()) {
@@ -171,7 +171,7 @@ class ColocationGraph {
   }
 
   Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>*
+      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
           colocation_group_root,
       Node* node, StringPiece colocation_group) {
     const Node*& root_node = (*colocation_group_root)[colocation_group];

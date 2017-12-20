@@ -292,7 +292,7 @@ prediction_set = pd.read_csv("boston_predict.csv", skipinitialspace=True,
 Next, create a list of `FeatureColumn`s for the input data, which formally
 specify the set of features to use for training. Because all features in the
 housing data set contain continuous values, you can create their
-`FeatureColumn`s using the `tf.contrib.layers.real_valued_column()` function:
+`FeatureColumn`s using the `tf.feature_column.numeric_column()` function:
 
 ```python
 feature_cols = [tf.feature_column.numeric_column(k) for k in FEATURES]

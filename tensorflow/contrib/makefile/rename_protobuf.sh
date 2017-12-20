@@ -38,7 +38,7 @@
 #
 # Note that this script modifies the source code in-place, so once it's been run
 # it's no longer suitable for further manual modifications, since the difference
-# with the top of tree will already be large. 
+# with the top of tree will already be large.
 
 mv tensorflow/contrib/makefile/downloads/protobuf/src/google/protobuf \
  tensorflow/contrib/makefile/downloads/protobuf//src/google/protobuf3
@@ -71,7 +71,7 @@ sed -i '' 's%::google::protobuf;%google::protobuf3;%' \
 
 # Fix up a couple of special build scripts that look for particular files.
 sed -i '' 's%src/google/protobuf/message.cc%src/google/protobuf3/message.cc%' \
- tensorflow/contrib/makefile/downloads/protobuf/configure.ac 
+ tensorflow/contrib/makefile/downloads/protobuf/configure.ac
 sed -i '' 's%src/google/protobuf/stubs/common.h%src/google/protobuf3/stubs/common.h%' \
  tensorflow/contrib/makefile/downloads/protobuf/autogen.sh
 

@@ -78,14 +78,14 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   }
   for (int i = 0; i < arguments.size(); ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
-            arguments[i]->shape())) {
+            arguments[i]->on_host_shape())) {
       return InvalidArgument(
           "argument does not match shape or layout of computation parameter "
           "%d: expected %s, got %s",
           i,
           ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
               .c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
     }
   }
 
@@ -275,22 +275,15 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
                                         device_ordinal, options));
 }
 
-// Copy the literal data to the device with the given ordinal and return as a
-// ScopedShapedBuffer. The given memory allocator is used for device memory
-// allocation.
 StatusOr<std::unique_ptr<ScopedShapedBuffer>>
 LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
                                    DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }
-  TF_ASSIGN_OR_RETURN(
-      auto scoped_buffer,
-      ScopedShapedBuffer::Allocate(
-          literal.shape(), allocator, device_ordinal,
-          [this](const Shape& shape) {
-            return backend().transfer_manager()->GetByteSizeRequirement(shape);
-          }));
+  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          literal.shape(), allocator, device_ordinal));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -298,8 +291,6 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   return std::move(scoped_buffer);
 }
 
-// Copy the data from the device contained in the given ShapedBuffer and
-// return as a Literal.
 StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(
@@ -307,6 +298,24 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
       backend().stream_executor(shaped_buffer.device_ordinal()));
   return backend().transfer_manager()->TransferLiteralFromDevice(executor,
                                                                  shaped_buffer);
+}
+
+Status LocalClient::TransferToInfeedLocal(const Literal& literal,
+                                          int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                      backend().stream_executor(device_ordinal));
+  return backend().transfer_manager()->TransferLiteralToInfeed(executor,
+                                                               literal);
+}
+
+StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
+    const Shape& shape, int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                      backend().stream_executor(device_ordinal));
+  auto literal = MakeUnique<Literal>();
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
+      executor, shape, literal.get()));
+  return std::move(literal);
 }
 
 }  // namespace xla

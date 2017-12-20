@@ -47,29 +47,22 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  CpuExecutable(
-      std::unique_ptr<SimpleOrcJIT> jit,
-      std::unique_ptr<const BufferAssignment> assignment,
-      std::unique_ptr<const HloModule> hlo_module,
-      const string& entry_function_name,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx);
+  CpuExecutable(std::unique_ptr<SimpleOrcJIT> jit,
+                std::unique_ptr<const BufferAssignment> assignment,
+                std::unique_ptr<const HloModule> hlo_module,
+                const string& entry_function_name,
+                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
-
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -85,12 +78,10 @@ class CpuExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
-
   // Type of the computation function we expect in the JIT.
   using ComputeFunctionType = void (*)(
       void* /*result*/, const ExecutableRunOptions* /*run_options*/,
-      const void** /*args*/, void** /*temps*/, uint64* /*profile_counters*/);
+      const void** /*args*/, void** /*temps*/, int64* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -112,17 +103,22 @@ class CpuExecutable : public Executable {
   // arguments using the supplied buffers.
   Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Create a ShapedBuffer for holding the result of the computation. The
+  // addresses (DeviceMemoryBases) are set according to buffer assignment.
+  // 'buffers_in_result' should point to a vector of the same size as
+  // 'allocated_buffers'. An element in buffers_in_result is set to true if the
+  // corresponding buffer is live out of the computation (and thus contained in
+  // the returned ShapedBuffer).
+  StatusOr<std::unique_ptr<ShapedBuffer>> CreateResultShapedBuffer(
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          allocated_buffers,
+      std::vector<bool>* buffers_in_result);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.
@@ -144,9 +140,6 @@ class CpuExecutable : public Executable {
 
   // Entry function name for the computation.
   const string entry_function_name_;
-
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuExecutable);
 };

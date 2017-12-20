@@ -117,11 +117,11 @@ def numpy_input_fn(x,
         raise ValueError('y cannot be empty dict, use None instead.')
 
       ordered_dict_y = collections.OrderedDict(
-        sorted(y.items(), key=lambda t: t[0]))
+          sorted(y.items(), key=lambda t: t[0]))
       target_keys = list(ordered_dict_y.keys())
 
       duplicate_keys = set(feature_keys).intersection(set(target_keys))
-      if len(duplicate_keys):
+      if duplicate_keys:
         raise ValueError('{} duplicate keys are found in both x and y: '
                          '{}'.format(len(duplicate_keys), duplicate_keys))
 
@@ -131,16 +131,14 @@ def numpy_input_fn(x,
       ordered_dict_data[target_keys] = y
 
     if len(set(v.shape[0] for v in ordered_dict_data.values())) != 1:
-      shape_dict_of_x = {k: ordered_dict_data[k].shape
-                         for k in feature_keys}
+      shape_dict_of_x = {k: ordered_dict_data[k].shape for k in feature_keys}
 
       if target_keys is None:
         shape_of_y = None
       elif isinstance(target_keys, string_types):
         shape_of_y = y.shape
       else:
-        shape_of_y = {k: ordered_dict_data[k].shape
-                      for k in target_keys}
+        shape_of_y = {k: ordered_dict_data[k].shape for k in target_keys}
 
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
@@ -155,11 +153,12 @@ def numpy_input_fn(x,
         enqueue_size=batch_size,
         num_epochs=num_epochs)
 
-    batch = (queue.dequeue_many(batch_size) if num_epochs is None
-                else queue.dequeue_up_to(batch_size))
+    batch = (
+        queue.dequeue_many(batch_size)
+        if num_epochs is None else queue.dequeue_up_to(batch_size))
 
     # Remove the first `Tensor` in `batch`, which is the row number.
-    if len(batch) > 0:
+    if batch:
       batch.pop(0)
 
     features = dict(zip(feature_keys, batch[:len(feature_keys)]))

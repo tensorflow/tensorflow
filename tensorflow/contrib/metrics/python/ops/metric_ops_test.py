@@ -2218,11 +2218,11 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       if weights:
         weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
       gotten_result, update_op = (
-          metric_ops.streaming_precision_recall_at_equal_thresholds(
-              predictions=predictions_tensor,
+          metric_ops.precision_recall_at_equal_thresholds(
               labels=labels_tensor,
-              num_thresholds=3,
-              weights=weights_tensor))
+              predictions=predictions_tensor,
+              weights=weights_tensor,
+              num_thresholds=3))
 
       sess.run(variables.local_variables_initializer())
       sess.run(update_op)
@@ -2230,17 +2230,17 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       self._testResultsEqual(expected_result, gotten_result)
 
   def testVars(self):
-    metric_ops.streaming_precision_recall_at_equal_thresholds(
-        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
-        labels=constant_op.constant([True], dtype=dtypes_lib.bool))
+    metric_ops.precision_recall_at_equal_thresholds(
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32))
     _assert_metric_variables(
         self, ('precision_recall_at_equal_thresholds/variables/tp_buckets:0',
                'precision_recall_at_equal_thresholds/variables/fp_buckets:0'))
 
   def testVarsWithName(self):
-    metric_ops.streaming_precision_recall_at_equal_thresholds(
-        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+    metric_ops.precision_recall_at_equal_thresholds(
         labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
         name='foo')
     _assert_metric_variables(
         self, ('foo/variables/tp_buckets:0', 'foo/variables/fp_buckets:0'))
@@ -2251,9 +2251,8 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
     labels = constant_op.constant(
         np.random.uniform(size=(10, 3)) > 0.5, dtype=dtypes_lib.bool)
 
-    result, update_op = (
-        metric_ops.streaming_precision_recall_at_equal_thresholds(
-            predictions=predictions, labels=labels))
+    result, update_op = metric_ops.precision_recall_at_equal_thresholds(
+        labels=labels, predictions=predictions)
 
     with self.test_session() as sess:
       # Run several updates.
@@ -3163,7 +3162,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = random_ops.random_uniform(
         (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.7)
+        labels, predictions, precision=0.7)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3183,7 +3182,7 @@ class RecallAtPrecisionTest(test.TestCase):
     predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
     labels = constant_op.constant(inputs)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=1.0)
+        labels, predictions, precision=1.0)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3198,7 +3197,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.8)
+        labels, predictions, precision=0.8)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3213,7 +3212,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.4)
+        labels, predictions, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3231,7 +3230,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = constant_op.constant(labels_values)
     weights = constant_op.constant(weights_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, weights=weights, precision=0.4)
+        labels, predictions, weights=weights, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())

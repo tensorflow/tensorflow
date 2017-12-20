@@ -24,15 +24,10 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tflite {
-
-inline void LogToStderr() {
-#ifdef PLATFORM_GOOGLE
-  FLAGS_logtostderr = true;
-#endif
-}
 
 // A gmock matcher that check that elements of a float vector match to a given
 // tolerance.
@@ -197,6 +192,9 @@ class SingleOpModel {
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
 };
 
+// Strings have a special implementation that is in test_util.cc
+template <>
+std::vector<string> SingleOpModel::ExtractVector(int index);
 }  // namespace tflite
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_

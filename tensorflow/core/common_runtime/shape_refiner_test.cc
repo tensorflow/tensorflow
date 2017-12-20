@@ -1161,11 +1161,13 @@ TEST_F(ShapeRefinerTest, SameDefinedShape) {
   auto s_unknown_2 = ctx->MakeShape({-1, 2});
   auto s_unknown_2_b = ctx->MakeShape({-1, 2});
 
-  EXPECT_TRUE(SameDefinedShape(ctx, unknown, unknown_b));
+  EXPECT_TRUE(SameDefinedShape(ctx, unknown, unknown));
+  EXPECT_FALSE(SameDefinedShape(ctx, unknown, unknown_b));
   EXPECT_FALSE(SameDefinedShape(ctx, unknown, s_1_2));
   EXPECT_TRUE(SameDefinedShape(ctx, s_1_2, s_1_2_b));
   EXPECT_FALSE(SameDefinedShape(ctx, s_1_2, s_2_2));
-  EXPECT_TRUE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2_b));
+  EXPECT_TRUE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2));
+  EXPECT_FALSE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2_b));
 }
 
 TEST_F(ShapeRefinerTest, IsUpdatedShapesOrTypes) {
@@ -1178,14 +1180,15 @@ TEST_F(ShapeRefinerTest, IsUpdatedShapesOrTypes) {
   TF_ASSERT_OK(m.AddNode(test));
   shape_inference::InferenceContext* ctx = m.GetContext(test);
 
+  shape_inference::ShapeHandle unknown = ctx->UnknownShape();
   std::vector<shape_inference::ShapeAndType> t0{
       {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
-      {ctx->UnknownShape(), DT_INVALID},
+      {unknown, DT_INVALID},
       {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
 
   std::vector<shape_inference::ShapeAndType> t1{
       {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
-      {ctx->UnknownShape(), DT_INVALID},
+      {unknown, DT_INVALID},
       {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
 
   std::vector<shape_inference::ShapeAndType> t2{
@@ -1256,10 +1259,10 @@ TEST_F(ShapeRefinerTest, IncrementalUpdates) {
       0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
   refined = false;
   TF_ASSERT_OK(m.UpdateNode(dequeue, true /* relax */, &refined));
-  EXPECT_FALSE(refined);
+  EXPECT_TRUE(refined);
   ctx = m.GetContext(dequeue);
   EXPECT_EQ("[?,7]", ctx->DebugString(ctx->output(0)));
-  EXPECT_FALSE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
+  EXPECT_TRUE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
 
   // Inject a shape of the same handle and expect refined to not change.
   ctx = m.GetContext(queue);

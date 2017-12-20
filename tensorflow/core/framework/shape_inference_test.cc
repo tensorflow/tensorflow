@@ -359,11 +359,11 @@ TEST_F(ShapeInferenceTest, WithRankAtMost) {
   // WithRankAtMost on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtMost(in0, 1, &s1).ok());
   EXPECT_EQ("?", c.DebugString(s1));
-  EXPECT_FALSE(SameHandle(in0, s1));
+  EXPECT_TRUE(SameHandle(in0, s1));
 
   EXPECT_TRUE(c.WithRankAtMost(in0, 2, &s2).ok());
   EXPECT_EQ("?", c.DebugString(s2));
-  EXPECT_FALSE(SameHandle(s1, s2));
+  EXPECT_TRUE(SameHandle(s1, s2));
 
   // WithRankAtMost on shape with known dimensionality.
   s1 = in1;
@@ -398,11 +398,11 @@ TEST_F(ShapeInferenceTest, WithRankAtLeast) {
   // WithRankAtLeast on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtLeast(in0, 1, &s1).ok());
   EXPECT_EQ("?", c.DebugString(s1));
-  EXPECT_FALSE(SameHandle(in0, s1));
+  EXPECT_TRUE(SameHandle(in0, s1));
 
   EXPECT_TRUE(c.WithRankAtLeast(in0, 2, &s2).ok());
   EXPECT_EQ("?", c.DebugString(s2));
-  EXPECT_FALSE(SameHandle(s1, s2));
+  EXPECT_TRUE(SameHandle(s1, s2));
 
   // WithRankAtLeast on shape with known dimensionality.
   s1 = in1;
@@ -544,9 +544,10 @@ TEST_F(ShapeInferenceTest, RelaxDim) {
   auto d_unknown_b = c.Dim(c.input(0), 4);
   DimensionHandle out;
 
-  // Relaxing anything with unknown returns a new unknown.
+  // Relaxing anything with unknown returns a new unknown or the existing
+  // unknown.
   Relax(&c, d2, d_unknown, &out);
-  EXPECT_FALSE(SameHandle(d_unknown, out));
+  EXPECT_TRUE(SameHandle(d_unknown, out));
   EXPECT_FALSE(SameHandle(d_unknown_b, out));
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
   Relax(&c, d_unknown, d2, &out);
@@ -554,7 +555,7 @@ TEST_F(ShapeInferenceTest, RelaxDim) {
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
   Relax(&c, d_unknown, d_unknown_b, &out);
   EXPECT_FALSE(SameHandle(d_unknown, out));
-  EXPECT_FALSE(SameHandle(d_unknown_b, out));
+  EXPECT_TRUE(SameHandle(d_unknown_b, out));
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(out));
 
   // Relaxing with self returns self.
@@ -602,7 +603,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   EXPECT_EQ("?", c.DebugString(out));
   Relax(&c, s_unknown, s_unknown_b, &out);
   EXPECT_FALSE(SameHandle(s_unknown, out));
-  EXPECT_FALSE(SameHandle(s_unknown_b, out));
+  EXPECT_TRUE(SameHandle(s_unknown_b, out));
   EXPECT_EQ("?", c.DebugString(out));
 
   // Relaxing with self returns self.
@@ -623,7 +624,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   Relax(&c, s_u_2, s_1_u, &out);
   EXPECT_EQ("[?,?]", c.DebugString(out));
   EXPECT_FALSE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
-  EXPECT_FALSE(SameHandle(c.Dim(s_1_u, 1), c.Dim(out, 1)));
+  EXPECT_TRUE(SameHandle(c.Dim(s_1_u, 1), c.Dim(out, 1)));
   auto s_u1 = c.UnknownShapeOfRank(1);
   auto s_u2 = c.UnknownShapeOfRank(1);
   Relax(&c, s_u1, s_u2, &out);
@@ -637,7 +638,7 @@ TEST_F(ShapeInferenceTest, RelaxShape) {
   EXPECT_EQ("[?,?]", c.DebugString(out));
   out = s_unknown;
   Relax(&c, s_1_3, s_u_2, &out);
-  EXPECT_FALSE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
+  EXPECT_TRUE(SameHandle(c.Dim(s_u_2, 0), c.Dim(out, 0)));
   EXPECT_EQ("[?,?]", c.DebugString(out));
   out = s_unknown;
 

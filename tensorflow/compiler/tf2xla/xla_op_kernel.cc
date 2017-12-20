@@ -346,9 +346,9 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
 }
 
 void XlaOpKernelContext::SetInvalidOutput(int index) {
-  const TensorShape shape;
   Tensor* output = nullptr;
-  OP_REQUIRES_OK(context_, context_->allocate_output(index, shape, &output));
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, TensorShape({}), &output));
   XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
   xla::ComputationDataHandle handle;
   handle.set_handle(0);
@@ -415,6 +415,11 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateMin(
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateAdd(type);
+}
+
+const xla::Computation* XlaOpKernelContext::GetOrCreateMul(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMul(type);
 }
 
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}

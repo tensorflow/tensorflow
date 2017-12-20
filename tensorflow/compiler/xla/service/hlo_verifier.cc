@@ -59,11 +59,13 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleConvert(HloInstruction* convert) override {
-    if (ShapeUtil::ElementIsComplex(convert->operand(0)->shape())) {
-      TF_RET_CHECK(ShapeUtil::ElementIsComplex(convert->shape()))
-          << "Unsupported complex->real kConvert";
-    }
     return CheckShape(convert, ShapeInference::InferConvertShape(
+                                   convert->operand(0)->shape(),
+                                   convert->shape().element_type()));
+  }
+
+  Status HandleBitcastConvert(HloInstruction* convert) override {
+    return CheckShape(convert, ShapeInference::InferBitcastConvertShape(
                                    convert->operand(0)->shape(),
                                    convert->shape().element_type()));
   }
@@ -73,7 +75,11 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleDot(HloInstruction* dot) override {
-    return CheckBinaryShape(dot);
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferDotOpShape(
+                            dot->operand(0)->shape(), dot->operand(1)->shape(),
+                            dot->dot_dimension_numbers()));
+    return CheckShape(dot, expected);
   }
 
   Status HandleConvolution(HloInstruction* convolution) override {
@@ -87,8 +93,12 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
-    return CheckShape(crs, ShapeInference::InferCrossReplicaSumShape(
-                               crs->operand(0)->shape()));
+    std::vector<const Shape*> operand_shapes;
+    for (const HloInstruction* operand : crs->operands()) {
+      operand_shapes.push_back(&operand->shape());
+    }
+    return CheckShape(
+        crs, ShapeInference::InferCrossReplicaSumShape(operand_shapes));
   }
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
@@ -141,9 +151,6 @@ class ShapeVerifier : public DfsHloVisitor {
   }
 
   Status HandleBitcast(HloInstruction* bitcast) override {
-    // Bitcasts can be any shape, as long as the size matches the operand size.
-    TF_RET_CHECK(shape_size_fn_(bitcast->shape()) ==
-                 shape_size_fn_(bitcast->operand(0)->shape()));
     return tensorflow::Status::OK();
   }
 
@@ -263,6 +270,15 @@ class ShapeVerifier : public DfsHloVisitor {
                       xla_while->while_body()->ComputeProgramShape().result());
   }
 
+  Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(CheckShape(
+        conditional,
+        conditional->true_computation()->ComputeProgramShape().result()));
+    return CheckShape(
+        conditional,
+        conditional->false_computation()->ComputeProgramShape().result());
+  }
+
   Status HandlePad(HloInstruction* pad) override {
     return CheckShape(pad,
                       ShapeInference::InferPadShape(pad->operand(0)->shape(),
@@ -272,7 +288,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   Status HandleSend(HloInstruction* send) override {
     TF_RET_CHECK(send->users().size() == 1);
-    const HloInstruction* send_done = send->users()[0];
+    const HloInstruction* send_done = send->users().front();
     TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
     TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
     return CheckShape(
@@ -290,7 +306,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   Status HandleRecv(HloInstruction* recv) override {
     TF_RET_CHECK(recv->users().size() == 1);
-    const HloInstruction* recv_done = recv->users()[0];
+    const HloInstruction* recv_done = recv->users().front();
     TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
     TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
     return CheckShape(recv,
@@ -418,6 +434,63 @@ string ComputationsToString(
       });
 }
 
+// Verifies various invariants about the structure of the HLO:
+//
+// (1) each instruction has a non-null parent() set to the HloComputation which
+//     contains it.
+//
+// (2) each computation has a non-null parent() set to the HloModule which
+//     contains it.
+//
+// (3) the operands of each instruction are in the same computation as the
+//     instruction.
+Status VerifyHloStructure(HloModule* module) {
+  for (const HloComputation* computation : module->computations()) {
+    if (computation->parent() == nullptr) {
+      return FailedPrecondition("Computation %s has a null parent pointer",
+                                computation->name().c_str());
+    }
+    if (computation->parent() != module) {
+      return FailedPrecondition(
+          "Computation %s parent() does not point to parent module",
+          computation->name().c_str());
+    }
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->parent() == nullptr) {
+        return FailedPrecondition("Instruction %s has a null parent pointer",
+                                  instruction->name().c_str());
+      }
+      if (instruction->parent() != computation) {
+        return FailedPrecondition(
+            "Instruction %s parent() does not point to parent computation",
+            instruction->name().c_str());
+      }
+    }
+  }
+
+  // Check that operands are in the same computation separately from verifying
+  // parent() correctness so conditions like a null HloInstruction::parent() are
+  // identified and reported explicitly above rather than reporting a mismatched
+  // operand.
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      for (int i = 0; i < instruction->operand_count(); ++i) {
+        const HloInstruction* operand = instruction->operand(i);
+        if (operand->parent() != instruction->parent()) {
+          return FailedPrecondition(
+              "Operand %d (%s) of instruction %s is in a different "
+              "computation: %s vs %s",
+              i, operand->name().c_str(), instruction->name().c_str(),
+              operand->parent()->name().c_str(),
+              instruction->parent()->name().c_str());
+        }
+      }
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
@@ -538,6 +611,8 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
 }
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
+  TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
 
@@ -571,7 +646,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         // or ComputationLowerer::Visit()
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
-                << "Broadcast HLO has invalid number of dimensions.";
+            << "Broadcast HLO has invalid number of dimensions.";
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         auto* while_cond = instruction->while_condition();
         auto* while_body = instruction->while_body();

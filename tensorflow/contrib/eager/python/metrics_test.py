@@ -67,7 +67,7 @@ class MetricsTest(test.TestCase):
     m([1, 10, 100])
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name="t0").as_default(), summary_ops.always_record_summaries():
       m.result()  # As a side-effect will write summaries.

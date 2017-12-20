@@ -1119,9 +1119,8 @@ def rgb_to_grayscale(images, name=None):
     # https://en.wikipedia.org/wiki/Luma_%28video%29
     rgb_weights = [0.2989, 0.5870, 0.1140]
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
-    gray_float = math_ops.reduce_sum(flt_image * rgb_weights,
-                                     rank_1,
-                                     keepdims=True)
+    gray_float = math_ops.reduce_sum(
+        flt_image * rgb_weights, rank_1, keepdims=True)
     gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
@@ -1169,7 +1168,7 @@ def random_hue(image, max_delta, seed=None):
       set_random_seed for its interaction with the graph-level random seed.
 
   Returns:
-    3-D float tensor of shape `[height, width, channels]`.
+    Adjusted image(s), same shape and DType as `image`.
 
   Raises:
     ValueError: if `max_delta` is invalid.
@@ -1276,30 +1275,9 @@ def adjust_saturation(image, saturation_factor, name=None):
     orig_dtype = image.dtype
     flt_image = convert_image_dtype(image, dtypes.float32)
 
-    # TODO(zhengxq): we will switch to the fused version after we add a GPU
-    # kernel for that.
-    fused = os.environ.get('TF_ADJUST_SATURATION_FUSED', '')
-    fused = fused.lower() in ('true', 't', '1')
-
-    if fused:
-      return convert_image_dtype(
-          gen_image_ops.adjust_saturation(flt_image, saturation_factor),
-          orig_dtype)
-
-    hsv = gen_image_ops.rgb_to_hsv(flt_image)
-
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
-
-    saturation *= saturation_factor
-    saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
-
-    hsv_altered = array_ops.concat([hue, saturation, value], 2)
-    rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
-
-    return convert_image_dtype(rgb_altered, orig_dtype)
-
+    return convert_image_dtype(
+        gen_image_ops.adjust_saturation(flt_image, saturation_factor),
+        orig_dtype)
 
 def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,

@@ -42,6 +42,7 @@ BLACKLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
+    "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
@@ -66,9 +67,6 @@ BLACKLIST = [
     "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
     "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
     "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
-
-    # TODO(yifeif): Remove when py_library(testonly=1) is ignored.
-    "//tensorflow/contrib/summary:summary_test_internal",
 ]
 
 

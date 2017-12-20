@@ -392,7 +392,7 @@ diff = -(y_ * tf.log(y))
 to the built-in, numerically-stable implementation of softmax cross-entropy:
 
 ```python
-diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
+diff = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=logits)
 ```
 
 Rerun with the `--debug` flag as follows:

@@ -45,6 +45,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
                init_stamp_token,
                epsilon,
                num_quantiles,
+               max_elements=None,
                name=None,
                container=None):
     """Creates a QuantileAccumulator object.
@@ -53,6 +54,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
       init_stamp_token: The initial value for the stamp token.
       epsilon: Error bound on the quantile computation.
       num_quantiles: Number of quantiles to produce from the final summary.
+      max_elements: Maximum number of elements added to the accumulator.
       name: the name to save the accumulator under.
       container: An optional `string`. Defaults to `""`
     """
@@ -67,6 +69,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
           self._quantile_accumulator_handle,
           init_stamp_token,
           epsilon=epsilon,
+          max_elements=max_elements,
           num_quantiles=num_quantiles)
       is_initialized_op = gen_quantile_ops.quantile_accumulator_is_initialized(
           self._quantile_accumulator_handle)
