@@ -1740,7 +1740,7 @@ class BatchNormTest(test.TestCase):
     return expected_var, correction_factor
 
   def testBatchNormCenterFalse(self):
-    a = array_ops.placeholder(dtype.float32, shape=(10, 10, 10, 10))
+    a = array_ops.placeholder(dtype=dtypes.float32, shape=(10, 10, 10, 10))
     # Test that center=False builds a valid graph.
     _layers.batch_norm(a, center=False, data_format='NCHW',
                        zero_debias_moving_mean=True)
