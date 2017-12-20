@@ -132,7 +132,7 @@ def evaluation(logits, labels):
   Args:
     logits: Logits tensor, float - [batch_size, NUM_CLASSES].
     labels: Labels tensor, int32 - [batch_size], with values in the
-      range [0, NUM_CLASSES).
+      range [0, NUM_CLASSES].
 
   Returns:
     A scalar int32 tensor with the number of examples (out of batch_size)
