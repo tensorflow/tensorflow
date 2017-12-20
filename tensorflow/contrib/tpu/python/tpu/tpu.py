@@ -133,7 +133,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
                       len(self._unsupported_ops), op_str)
       if len(self._unsupported_ops) > _MAX_WARNING_LINES:
         logging.warning("... and %d more" %
-                        len(self._unsupported_ops) - _MAX_WARNING_LINES)
+                        (len(self._unsupported_ops) - _MAX_WARNING_LINES))
 
   def AddOp(self, op):
     self._AddOpInternal(op)
