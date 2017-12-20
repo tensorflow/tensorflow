@@ -25,7 +25,6 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  //for _mktemp
 #endif
-#include "third_party/absl/strings/numbers.h"
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -118,9 +117,6 @@ constexpr char kReadRequestTimeout[] = "GCS_READ_REQUEST_TIMEOUT_SECS";
 // The environment variable to configure the overall request timeout for
 // upload requests.
 constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
-// If set to true, then each HTTP request will log verbose output.
-// This is for debugging only.
-constexpr char kLogHttpRequestVerbose[] = "GCS_LOG_HTTP_REQUEST_VERBOSE";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
@@ -608,10 +604,6 @@ bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
   return convert(env_value, value);
 }
 
-bool SimpleAtob(StringPiece text, bool* result) {
-  return absl::SimpleAtob(absl::string_view(text.data(), text.size()), result);
-}
-
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
@@ -691,11 +683,6 @@ GcsFileSystem::GcsFileSystem()
   }
   if (GetEnvVar(kWriteRequestTimeout, strings::safe_strtou32, &timeout_value)) {
     timeouts_.write = timeout_value;
-  }
-
-  bool log_verbose = false;
-  if (GetEnvVar(kLogHttpRequestVerbose, SimpleAtob, &log_verbose)) {
-    log_http_request_verbose_ = log_verbose;
   }
 }
 
@@ -1401,10 +1388,6 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   new_request->AddAuthBearerHeader(auth_token);
-
-  if (log_http_request_verbose_) {
-    new_request->SetVerboseLogging(true);
-  }
 
   *request = std::move(new_request);
   return Status::OK();

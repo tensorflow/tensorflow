@@ -140,13 +140,6 @@ class HttpRequest {
   virtual void SetTimeouts(uint32 connection, uint32 inactivity,
                            uint32 total) = 0;
 
-  /// \brief Enables verbose logging for this HTTP request.
-  ///
-  /// The implementation is free to do whatever it wants with this request.
-  /// Generally, the implementation should use this as a hint to emit debug
-  /// logging somewhere.
-  virtual void SetVerboseLogging(bool enabled) = 0;
-
   TF_DISALLOW_COPY_AND_ASSIGN(HttpRequest);
 };
 

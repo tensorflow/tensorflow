@@ -167,8 +167,6 @@ class FakeHttpRequest : public CurlHttpRequest {
                                        inactivity, " ", total, "\n");
   }
 
-  virtual void SetVerboseLogging(bool enabled) override {}
-
  private:
   string actual_request() const {
     string s;

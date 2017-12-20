@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 
-#include "third_party/absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -25,11 +24,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
-using absl::string_view;
-
 namespace tensorflow {
 
 namespace {
+
+// Set to 1 to enable verbose debug output from curl.
+constexpr uint64 kVerboseOutput = 0;
 
 // Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
@@ -114,29 +114,6 @@ class LibCurlProxy : public LibCurl {
     return ::curl_easy_strerror(errornum);
   }
 };
-
-int CurlDebugCallback(CURL* handle, curl_infotype type, char* data, size_t size,
-                      void* userptr) {
-  switch (type) {
-    case CURLINFO_HEADER_IN:
-      LOG(INFO) << "< " << string_view(data, size);
-      break;
-
-    case CURLINFO_HEADER_OUT:
-      LOG(INFO) << "> " << string_view(data, size);
-      break;
-
-    case CURLINFO_TEXT:
-      LOG(INFO) << "* " << string_view(data, size);
-      break;
-
-    default:
-      // We are not currently interested in the other CURLINFO_* types.
-      break;
-  }
-
-  return 0;
-}
 }  // namespace
 
 CurlHttpRequest::CurlHttpRequest() : CurlHttpRequest(LibCurlProxy::Load()) {}
@@ -152,6 +129,7 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //       default in //third_party:curl.BUILD and can be customized via an
   //       environment variable.
 
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
   libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
@@ -183,18 +161,6 @@ CurlHttpRequest::~CurlHttpRequest() {
   }
   if (curl_) {
     libcurl_->curl_easy_cleanup(curl_);
-  }
-}
-
-void CurlHttpRequest::SetVerboseLogging(bool enabled) {
-  if (enabled) {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, static_cast<uint64>(1));
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_DEBUGFUNCTION,
-                               reinterpret_cast<void*>(CurlDebugCallback));
-  } else {
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, static_cast<uint64>(0));
-    libcurl_->curl_easy_setopt(curl_, CURLOPT_DEBUGFUNCTION,
-                               static_cast<void*>(nullptr));
   }
 }
 
