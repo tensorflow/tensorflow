@@ -146,7 +146,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        g, _ = rnn_cell_impl.SRUCell(2)(x, m)
+        g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g], {x.name: np.array([[1., 1.]]),
