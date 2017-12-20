@@ -300,36 +300,47 @@ bool Env::LocalTempFilename(string* filename) {
   // Try each directory, as they might be full, have inappropriate
   // permissions or have different problems at times.
   for (const string& dir : dirs) {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    int32 tid = static_cast<int32>(tid64);
-    int32 pid = static_cast<int32>(getpid());
-#elif defined(__FreeBSD__)
-    // Has to be casted to long first, else this error appears:
-    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
-    // is not allowed
-    int32 tid = static_cast<int32>((long) pthread_self());
-    int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-    int32 tid = static_cast<int32>(GetCurrentThreadId());
-    int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-    int32 tid = static_cast<int32>(pthread_self());
-    int32 pid = static_cast<int32>(getpid());
-#endif
-    uint64 now_microsec = NowMicros();
-
-    *filename = io::JoinPath(
-        dir, strings::Printf("tempfile-%s-%x-%d-%llx", port::Hostname().c_str(),
-                             tid, pid, now_microsec));
-    if (FileExists(*filename).ok()) {
-      filename->clear();
-    } else {
+    *filename = io::JoinPath(dir, "tempfile-");
+    if (CreateUniqueFileName(filename, "")) {
       return true;
     }
   }
   return false;
+}
+
+bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
+#ifdef __APPLE__
+  uint64_t tid64;
+  pthread_threadid_np(nullptr, &tid64);
+  int32 tid = static_cast<int32>(tid64);
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(__FreeBSD__)
+  // Has to be casted to long first, else this error appears:
+  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+  // is not allowed
+  int32 tid = static_cast<int32>((long) pthread_self());
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(PLATFORM_WINDOWS)
+  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 pid = static_cast<int32>(GetCurrentProcessId());
+#else
+  int32 tid = static_cast<int32>(pthread_self());
+  int32 pid = static_cast<int32>(getpid());
+#endif
+  uint64 now_microsec = NowMicros();
+
+  *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(),
+                           tid, pid, now_microsec);
+
+  if (suffix.size()) {
+    *prefix += suffix;
+  }
+  if (FileExists(*prefix).ok()) {
+    prefix->clear();
+    return false;
+  } else {
+    return true;
+  }
 }
 
 Thread::~Thread() {}
