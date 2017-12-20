@@ -3388,10 +3388,9 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
     po_t = array_ops.diag_part(counts_in_table)
     pe_row_t = math_ops.reduce_sum(counts_in_table, axis=0)
     pe_col_t = math_ops.reduce_sum(counts_in_table, axis=1)
-    with ops.control_dependencies([po_t, pe_row_t, pe_col_t]):
-      update_po = state_ops.assign_add(po, po_t)
-      update_pe_row = state_ops.assign_add(pe_row, pe_row_t)
-      update_pe_col = state_ops.assign_add(pe_col, pe_col_t)
+    update_po = state_ops.assign_add(po, po_t)
+    update_pe_row = state_ops.assign_add(pe_row, pe_row_t)
+    update_pe_col = state_ops.assign_add(pe_col, pe_col_t)
 
     def _calculate_k(po, pe_row, pe_col, name):
       po_sum = math_ops.reduce_sum(po)
