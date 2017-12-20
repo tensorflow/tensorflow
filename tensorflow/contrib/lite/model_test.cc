@@ -255,6 +255,28 @@ TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
   ASSERT_FALSE(model);
 }
 
+// Test that loading model directly from a Model flatbuffer works.
+TEST(BasicFlatBufferModel, TestBuildFromModel) {
+  TestErrorReporter reporter;
+  FileCopyAllocation model_allocation(
+      "tensorflow/contrib/lite/testdata/test_model.bin", &reporter);
+  ASSERT_TRUE(model_allocation.valid());
+  ::flatbuffers::Verifier verifier(
+      reinterpret_cast<const uint8_t*>(model_allocation.base()),
+      model_allocation.bytes());
+  ASSERT_TRUE(VerifyModelBuffer(verifier));
+  const Model* model_fb = ::tflite::GetModel(model_allocation.base());
+
+  auto model = FlatBufferModel::BuildFromModel(model_fb);
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
+      kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+}
+
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
 // not here.

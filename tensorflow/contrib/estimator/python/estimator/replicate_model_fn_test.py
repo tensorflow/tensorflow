@@ -40,6 +40,7 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import losses
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variable_scope
@@ -221,12 +222,39 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       total_loss = (1.0 * 10 - 1.0) + (2.0 * 10 - 2.0)
       self.assertEqual(total_loss, session.run(estimator_spec.loss))
 
-      # loss' of c is 3.
+      # derivative of loss = (1*c - 1) + (2*c - 2) is 3.
       # new value of c = 10 - learning rate * 3 = 7.0.
       session.run(estimator_spec.train_op)
       with variable_scope.variable_scope('', reuse=True):
         c = variable_scope.get_variable('c', dtype=dtypes.float64)
         self.assertEqual(7.0, session.run(c))
+
+  def test_train_with_mean_reduction(self):
+    features = np.array([[1.0], [2.0]])
+    labels = np.array([[1.0], [2.0]])
+
+    with self.test_session() as session:
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn,
+          self.optimizer_fn,
+          losses.Reduction.MEAN,
+          devices=['/gpu:0', '/gpu:1'])
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+      session.run(variables.global_variables_initializer())
+
+      # loss = feature * c - label
+      total_loss = ((1.0 * 10 - 1.0) + (2.0 * 10 - 2.0)) / 2.0
+      self.assertEqual(total_loss, session.run(estimator_spec.loss))
+
+      # derivative of loss = (1*c - 1)/2 + (2*c - 2)/2 is 1.5.
+      # It's the same computation as without mean reduction, but the
+      # loss from every tower is scaled by 1/<number of towers>.
+      # new value of c = 10 - learning rate * 1.5 = 8.5
+      session.run(estimator_spec.train_op)
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual(8.5, session.run(c))
 
   def test_train_spec_with_optimizer_without_params(self):
 
@@ -271,6 +299,38 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       # Accuracy is 1.0 (match) in the second tower, since the feature
       # times weight "c" happened to be equal to the label.
       total_loss = ((0.01 * 10 - 0.01) + (0.002 * 10 - 0.02))
+
+      self.assertNear((0.0 + 1.0) / 2.0, accuracy, 0.01)
+      self.assertEqual(0, auc)
+      self.assertNear(total_loss, session.run(estimator_spec.loss), 0.01)
+
+  def test_eval_with_mean_reduction(self):
+    features = np.array([[0.01], [0.002]])
+    labels = np.array([[0.01], [0.02]])
+
+    with self.test_session() as session:
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn,
+          self.optimizer_fn,
+          losses.Reduction.MEAN,
+          devices=['/gpu:0', '/gpu:1'])
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
+      session.run(variables.local_variables_initializer())
+      session.run(variables.global_variables_initializer())
+
+      accuracy, a = estimator_spec.eval_metric_ops['accuracy']
+      auc, b = estimator_spec.eval_metric_ops['auc']
+
+      session.run([a, b])
+      accuracy = session.run(accuracy)
+      auc = session.run(auc)
+
+      # loss[i] = features[i] * 10 - labels[i].
+      # Accuracy is 0.0 (no match) in the first tower.
+      # Accuracy is 1.0 (match) in the second tower, since the feature
+      # times weight "c" happened to be equal to the label.
+      total_loss = ((0.01 * 10 - 0.01) + (0.002 * 10 - 0.02)) / 2.0
 
       self.assertNear((0.0 + 1.0) / 2.0, accuracy, 0.01)
       self.assertEqual(0, auc)
@@ -356,6 +416,11 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
           'probabilities': np.array([[0.1], [0.02]])
       }, session.run(estimator_spec.predictions))
 
+  def test_unsupported_loss_reduction(self):
+    with self.assertRaisesRegexp(ValueError, ''):
+      _ = replicate_model_fn.replicate_model_fn(
+          self.model_fn, self.optimizer_fn, losses.Reduction.NONE)
+
 
 class GetLossTowersTest(test_util.TensorFlowTestCase):
 
@@ -398,6 +463,40 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
       # The input batch for the second tower had a loss that is 1.0
       # bigger: 0.6 vs 1.6.
       self.assertEqual(2.0, session.run(tower_specs[1].loss))
+
+      self.assertEqual(1, len(variables.global_variables()))
+      self.assertEqual(1, len(variables.trainable_variables()))
+
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual(0.25, session.run(c))
+
+  def test_gradients_are_computed_with_mean_reduction(self):
+    with self.test_session() as session:
+      tower_specs = replicate_model_fn._get_loss_towers(
+          self.model_fn,
+          mode=model_fn_lib.ModeKeys.EVAL,
+          features=[[0.6], [1.6]],
+          labels=[[0.6], [0.6]],
+          params=None,
+          loss_reduction=losses.Reduction.MEAN,
+          config=None,
+          devices=['/gpu:0', '/gpu:1'],
+          local_ps_devices=['/gpu:0'],
+          name_scope_pattern='test_tower_{}')
+      session.run(variables.global_variables_initializer())
+
+      self.assertEqual(len(tower_specs), 2)
+
+      self.assertEqual('/device:GPU:0', tower_specs[0].loss.device)
+      self.assertEqual('averaged_loss:0', tower_specs[0].loss.name)
+      self.assertEqual(0.5, session.run(tower_specs[0].loss))
+
+      self.assertEqual('/device:GPU:1', tower_specs[1].loss.device)
+      self.assertEqual('test_tower_1/averaged_loss:0', tower_specs[1].loss.name)
+      # The input batch for the second tower had a loss that is 1.0
+      # bigger: 0.6 vs 1.6.
+      self.assertEqual(1.0, session.run(tower_specs[1].loss))
 
       self.assertEqual(1, len(variables.global_variables()))
       self.assertEqual(1, len(variables.trainable_variables()))

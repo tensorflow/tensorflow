@@ -234,7 +234,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
       const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
@@ -255,7 +255,7 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &variance,
+      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
@@ -1905,15 +1905,7 @@ class Stream {
   //
   // Returns an OK status if the blocking was successful and the stream is ok().
   // Otherwise returns an error describing why the blocking failed.
-  //
-  // TODO(b/70298427): Rename to BlockHostUntilDone, once all callers have been
-  // converted from the bool form.
-  port::Status BlockHostUntilDoneWithStatus() LOCKS_EXCLUDED(mu_);
-
-  // DEPRECATED(b/70298427) - new code should use BlockHostUntilDoneWithStatus()
-  //
-  // Equivalent to BlockHostUntilDoneWithStatus().ok().
-  bool BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
+  port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal

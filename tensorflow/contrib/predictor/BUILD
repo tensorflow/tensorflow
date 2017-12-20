@@ -137,6 +137,17 @@ py_test(
 )
 
 py_test(
+    name = "predictor_factories_test",
+    srcs = ["predictor_factories_test.py"],
+    data = [":test_export_dir"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":predictor_factories",
+    ],
+)
+
+py_test(
     name = "core_estimator_predictor_test",
     srcs = ["core_estimator_predictor_test.py"],
     srcs_version = "PY2AND3",

@@ -45,6 +45,10 @@ into a universal file containing armv7, armv7s, arm64, i386, and x86_64
 architectures. The resulting library is in
 `tensorflow/contrib/lite/gen/lib/libtensorflow-lite.a`.
 
+If you get an error such as `no such file or directory: 'x86_64'` when running 
+`build_ios_universal_lib.sh`: open Xcode > Preferences > Locations, and ensure 
+a value is selected in the "Command Line Tools" dropdown.
+
 ## Using in your own application
 
 You'll need to update various settings in your app to link against TensorFlow

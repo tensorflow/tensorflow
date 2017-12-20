@@ -51,6 +51,7 @@ TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
+@test_util.with_c_api
 class GroupTestCase(test_util.TensorFlowTestCase):
 
   def _StripNode(self, nd):
@@ -132,6 +133,7 @@ class GroupTestCase(test_util.TensorFlowTestCase):
         control_flow_ops.group(1, 2)
 
 
+@test_util.with_c_api
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -143,6 +145,7 @@ class ShapeTestCase(test_util.TensorFlowTestCase):
                             [constant_op.constant(1.0)], tensor).get_shape())
 
 
+@test_util.with_c_api
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
   def testTupleDependencies(self):
@@ -174,6 +177,7 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         self.assertEquals(1, counter.eval())
 
 
+@test_util.with_c_api
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDenseShape(self):
@@ -431,6 +435,7 @@ class CondTest(test_util.TensorFlowTestCase):
           control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
+@test_util.with_c_api
 class ContextTest(test_util.TensorFlowTestCase):
 
   def testCondContext(self):
@@ -447,18 +452,25 @@ class ContextTest(test_util.TensorFlowTestCase):
               c.to_proto(),
               control_flow_ops.CondContext.from_proto(c.to_proto()).to_proto())
 
-  def testWhileContext(self):
+  def _testWhileContextHelper(self, maximum_iterations=None):
     with self.test_session() as sess:
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
-      control_flow_ops.while_loop(c, b, [i])
+      control_flow_ops.while_loop(
+          c, b, [i], maximum_iterations=maximum_iterations)
       for op in sess.graph.get_operations():
-        c = op._get_control_flow_context()
-        if c:
-          self.assertProtoEquals(
-              c.to_proto(),
-              control_flow_ops.WhileContext.from_proto(c.to_proto()).to_proto())
+        context = op._get_control_flow_context()
+        if context:
+          self.assertProtoEquals(context.to_proto(),
+                                 control_flow_ops.WhileContext.from_proto(
+                                     context.to_proto()).to_proto())
+
+  def testWhileContext(self):
+    self._testWhileContextHelper()
+
+  def testWhileContextWithMaximumIterations(self):
+    self._testWhileContextHelper(maximum_iterations=10)
 
   def testControlContextImportScope(self):
     with self.test_session():
@@ -516,6 +528,7 @@ def _RawNestedShape(nested_shape):
 
 
 # TODO(yori): Add tests for indexed slices.
+@test_util.with_c_api
 class DataTypesTest(test_util.TensorFlowTestCase):
 
   def assertAllEqualNested(self, a, b):
@@ -846,6 +859,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
+@test_util.with_c_api
 class CaseTest(test_util.TensorFlowTestCase):
 
   def testCase_withDefault(self):
@@ -869,8 +883,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 8)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "More than one condition evaluated as True"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 2})
 
   def testCase_multiple_matches_non_exclusive(self):
@@ -895,11 +908,7 @@ class CaseTest(test_util.TensorFlowTestCase):
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
       self.assertEqual(sess.run(output, feed_dict={x: 2}), 4)
       self.assertEqual(sess.run(output, feed_dict={x: 3}), 6)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r"\[None of the conditions evaluated as True. "
-          r"Conditions: \(Equal:0, Equal_1:0, Equal_2:0\), Values:\] "
-          r"\[0 0 0\]"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
   def testCase_withoutDefault_oneCondition(self):
@@ -908,10 +917,7 @@ class CaseTest(test_util.TensorFlowTestCase):
     output = control_flow_ops.case(conditions, exclusive=True)
     with self.test_session() as sess:
       self.assertEqual(sess.run(output, feed_dict={x: 1}), 2)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r"\[None of the conditions evaluated as True. "
-          r"Conditions: \(Equal:0\), Values:\] \[0\]"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
 

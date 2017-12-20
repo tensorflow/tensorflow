@@ -857,8 +857,8 @@ class DaskDataFeeder(object):
     """Returns a function, that will sample data and provide it to placeholders.
 
     Args:
-      input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output labels.
+      input_placeholder: tf.placeholder for input features mini batch.
+      output_placeholder: tf.placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size

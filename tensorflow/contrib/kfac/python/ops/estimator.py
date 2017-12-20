@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import itertools
-import math
 
 import numpy as np
 
@@ -128,7 +127,7 @@ class FisherEstimator(object):
     self._estimation_mode = estimation_mode
     self._layers = layer_collection
     self._layers.create_subgraph()
-    self._check_registration(variables)
+    self._layers.check_registration(variables)
     self._gradient_fns = {
         "gradients": self._get_grads_lists_gradients,
         "empirical": self._get_grads_lists_empirical,
@@ -202,49 +201,6 @@ class FisherEstimator(object):
 
     return self._apply_transformation(vecs_and_vars,
                                       lambda fb, vec: fb.multiply(vec))
-
-  def _check_registration(self, variables):
-    """Checks that all variable uses have been registered properly.
-
-    Args:
-      variables: List of variables.
-
-    Raises:
-      ValueError: If any registered variables are not included in the list.
-      ValueError: If any variable in the list is not registered.
-      ValueError: If any variable in the list is registered with the wrong
-          number of "uses" in the subgraph recorded (vs the number of times that
-          variable is actually used in the subgraph).
-    """
-    # Note that overlapping parameters (i.e. those that share variables) will
-    # be caught by layer_collection.LayerParametersDict during registration.
-
-    reg_use_map = self._layers.get_use_count_map()
-
-    error_messages = []
-
-    for var in variables:
-      total_uses = self._layers.subgraph.variable_uses(var)
-      reg_uses = reg_use_map[var]
-
-      if reg_uses == 0:
-        error_messages.append("Variable {} not registered.".format(var))
-      elif (not math.isinf(reg_uses)) and reg_uses != total_uses:
-        error_messages.append(
-            "Variable {} registered with wrong number of uses ({} "
-            "registrations vs {} uses).".format(var, reg_uses, total_uses))
-
-    num_get_vars = len(reg_use_map)
-
-    if num_get_vars > len(variables):
-      error_messages.append("{} registered variables were not included in list."
-                            .format(num_get_vars - len(variables)))
-
-    if error_messages:
-      error_messages = [
-          "Found the following errors with variable registration:"
-      ] + error_messages
-      raise ValueError("\n\t".join(error_messages))
 
   def _setup(self, cov_ema_decay):
     """Sets up the various operations.
@@ -333,11 +289,7 @@ class FisherEstimator(object):
     return tuple((grad,) for grad in grads_all)
 
   def _get_grads_lists_exact(self, tensors):
-    """Returns a list of all gradients, computing them exactly.
-
-    Args:
-      tensors: Tensors for which to compute gradients.
-    """
+    """No docstring required."""
     # Loop over all coordinates of all losses.
     grads_all = []
     for loss in self._layers.losses:

@@ -575,6 +575,7 @@ cc_library(
 
 # Generates library per group of ops.
 tf_gen_op_libs(
+    is_external = False,
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
@@ -2172,12 +2173,15 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_id.h",
+    "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
     "common_runtime/gpu/pool_allocator.h",
     "common_runtime/gpu/process_state.h",
+    "common_runtime/gpu_device_context.h",
 ]
 
 tf_cuda_library(
@@ -2188,13 +2192,13 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
+        "common_runtime/gpu/gpu_id_utils.cc",
         "common_runtime/gpu/gpu_managed_allocator.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
-        "common_runtime/gpu_device_context.h",
     ],
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),
@@ -2784,10 +2788,24 @@ tf_cc_test_mkl(
 )
 
 tf_cc_tests_gpu(
+    name = "gpu_device_on_non_gpu_machine_test",
+    size = "small",
+    srcs = ["common_runtime/gpu/gpu_device_on_non_gpu_machine_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":gpu_headers_lib",
+        ":gpu_runtime",
+        ":test",
+    ],
+)
+
+tf_cc_tests_gpu(
     name = "gpu_related_tests",
     size = "small",
     srcs = glob(["user_ops/**/*_test.cc"]) + [
         "common_runtime/gpu/gpu_bfc_allocator_test.cc",
+        "common_runtime/gpu/gpu_device_test.cc",
+        "common_runtime/gpu/gpu_id_utils_test.cc",
         "common_runtime/gpu/gpu_event_mgr_test.cc",
         "common_runtime/gpu/pool_allocator_test.cc",
     ],
@@ -3152,6 +3170,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
     ],

@@ -56,9 +56,13 @@ class CopyOpTest : public HloTestBase {
                                 tensorflow::gtl::ArraySlice<int64> permutation);
 };
 
-XLA_TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
+XLA_TEST_F(CopyOpTest, CopyR0Bool) {
+  TestCopyOp(*Literal::CreateR0<bool>(true));
+}
 
-XLA_TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
+XLA_TEST_F(CopyOpTest, CopyR1S0U32) {
+  TestCopyOp(*Literal::CreateR1<uint32>({}));
+}
 
 XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
   TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
@@ -85,7 +89,6 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   // Copy literal to device to use as parameter.
   auto literal = Literal::CreateR0<float>(42.0);
   Shape shape = literal->shape();
-  auto constant_device_base = TransferToDevice(*literal);
 
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));
@@ -98,7 +101,7 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   module->AddEntryComputation(std::move(computation));
 
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(module), {constant_device_base});
+      ExecuteAndTransfer(std::move(module), {literal.get()});
   LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
 }
 

@@ -148,9 +148,10 @@ struct ImportGraphDefResults {
   // The requested nodes associated with ImportGraphDefOptions::return_nodes.
   std::vector<Node*> return_nodes;
 
-  // Keys in ImportGraphDefOptions::input_map that weren't used as an input to
-  // any node in`gdef`.
-  std::vector<TensorId> unused_input_map_keys;
+  // Keys in ImportGraphDefOptions::input_map that don't appear in `gdef` and
+  // weren't used as an input to any node in `gdef`. These keys are likely due
+  // to typos, and callers may wish to treat their existence as an error.
+  std::vector<TensorId> missing_unused_input_map_keys;
 };
 
 // Adds the graph in GraphDef `gdef` into an existing Graph `*g`.

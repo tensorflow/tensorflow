@@ -59,13 +59,15 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
              op->type == OperatorType::kTensorFlowGreaterEqual) {
     // These operators unconditionally produce bool outputs
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
-  } else if (op->type == OperatorType::kTensorFlowShape) {
+  } else if (op->type == OperatorType::kRank ||
+             op->type == OperatorType::kTensorFlowShape) {
     // These operators are assumed to produce int32 outputs.
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kInt32);
   } else if (op->type == OperatorType::kTensorFlowSplit ||
-             op->type == OperatorType::kTensorFlowConcat) {
+             op->type == OperatorType::kTensorFlowConcat ||
+             op->type == OperatorType::kFill) {
     // These operators produce an output with the same type as their 2nd input
-    CHECK_GT(op->inputs.size(), 1);
+    CHECK_GE(op->inputs.size(), 2);
     const ArrayDataType data_type = model->arrays[op->inputs[1]]->data_type;
     SetDataTypeForAllOutputs(model, op, data_type);
   } else if (op->type == OperatorType::kCast) {
@@ -73,6 +75,11 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     CHECK_EQ(op->outputs.size(), 1);
     auto* cast_op = static_cast<CastOperator*>(op);
     model->arrays[op->outputs[0]]->data_type = cast_op->dst_data_type;
+  } else if (op->type == OperatorType::kArgMax) {
+    // Data type of the ArgMax op is specified.
+    CHECK_EQ(op->outputs.size(), 1);
+    auto* argmax_op = static_cast<ArgMaxOperator*>(op);
+    model->arrays[op->outputs[0]]->data_type = argmax_op->output_data_type;
   } else if (op->type == OperatorType::kTensorFlowUnsupported) {
     auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
     if (unsupported_op->output_data_types.size() != op->outputs.size()) {
@@ -83,6 +90,9 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       auto data_type = unsupported_op->output_data_types[i];
       model->arrays[output]->data_type = data_type;
     }
+  } else if (op->type == OperatorType::kExpandDims) {
+    // Yield on ExpandDim until it is converted to Reshape
+    return false;
   } else {
     // These operators produce outputs with the same type as their 1st input
     CHECK_GT(op->inputs.size(), 0);

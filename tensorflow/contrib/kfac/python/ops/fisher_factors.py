@@ -270,9 +270,10 @@ class FisherFactor(object):
     return moving_averages.assign_moving_average(
         self._cov, new_cov, ema_decay, zero_debias=ZERO_DEBIAS)
 
+  @abc.abstractmethod
   def make_inverse_update_ops(self):
     """Create and return update ops corresponding to registered computations."""
-    return []
+    pass
 
   def get_cov(self):
     return self._cov
@@ -304,6 +305,10 @@ class InverseProvidingFactor(FisherFactor):
   def register_damped_inverse(self, damping):
     """Registers a damped inverse needed by a FisherBlock.
 
+    This creates a variable and signals make_inverse_update_ops to make the
+    corresponding update op.  The variable can be read via the method
+    get_inverse.
+
     Args:
       damping: The damping value (float or Tensor) for this factor.
     """
@@ -320,6 +325,10 @@ class InverseProvidingFactor(FisherFactor):
 
   def register_matpower(self, exp, damping):
     """Registers a matrix power needed by a FisherBlock.
+
+    This creates a variable and signals make_inverse_update_ops to make the
+    corresponding update op.  The variable can be read via the method
+    get_matpower.
 
     Args:
       exp: The exponent (float or Tensor) to raise the matrix to.
@@ -338,13 +347,26 @@ class InverseProvidingFactor(FisherFactor):
       self._matpower_by_exp_and_damping[(exp, damping)] = matpower
 
   def register_eigendecomp(self):
-    """Registers that an eigendecomposition is needed by a FisherBlock."""
+    """Registers an eigendecomposition.
+
+    Unlike register_damp_inverse and register_matpower this doesn't create
+    any variables or inverse ops.  Instead it merely makes tensors containing
+    the eigendecomposition available to anyone that wants them.  They will be
+    recomputed (once) for each session.run() call (when they needed by some op).
+    """
     if not self._eigendecomp:
-      self._eigendecomp = linalg_ops.self_adjoint_eig(self._cov)
+      eigenvalues, eigenvectors = linalg_ops.self_adjoint_eig(self._cov)
+
+      # The matrix self._cov is positive semidefinite by construction, but the
+      # numerical eigenvalues could be negative due to numerical errors, so here
+      # we clip them to be at least FLAGS.eigenvalue_clipping_threshold
+      clipped_eigenvalues = math_ops.maximum(eigenvalues,
+                                             EIGENVALUE_CLIPPING_THRESHOLD)
+      self._eigendecomp = (clipped_eigenvalues, eigenvectors)
 
   def make_inverse_update_ops(self):
     """Create and return update ops corresponding to registered computations."""
-    ops = super(InverseProvidingFactor, self).make_inverse_update_ops()
+    ops = []
 
     num_inverses = len(self._inverses_by_damping)
     matrix_power_registered = bool(self._matpower_by_exp_and_damping)
@@ -356,26 +378,20 @@ class InverseProvidingFactor(FisherFactor):
       self.register_eigendecomp()  # ensures self._eigendecomp is set
       eigenvalues, eigenvectors = self._eigendecomp  # pylint: disable=unpacking-non-sequence
 
-      # The matrix self._cov is positive semidefinite by construction, but the
-      # numerical eigenvalues could be negative due to numerical errors, so here
-      # we clip them to be at least EIGENVALUE_CLIPPING_THRESHOLD.
-      clipped_eigenvalues = math_ops.maximum(eigenvalues,
-                                             EIGENVALUE_CLIPPING_THRESHOLD)
-
       for damping, inv in self._inverses_by_damping.items():
         ops.append(
             inv.assign(
-                math_ops.matmul(eigenvectors / (clipped_eigenvalues + damping),
+                math_ops.matmul(eigenvectors / (eigenvalues + damping),
                                 array_ops.transpose(eigenvectors))))
 
       for (exp, damping), matpower in self._matpower_by_exp_and_damping.items():
         ops.append(
             matpower.assign(
                 math_ops.matmul(eigenvectors *
-                                (clipped_eigenvalues + damping)**exp,
+                                (eigenvalues + damping)**exp,
                                 array_ops.transpose(eigenvectors))))
       # These ops share computation and should be run on a single device.
-      ops = [control_flow_ops.group(ops)]
+      ops = [control_flow_ops.group(*ops)]
     else:
       for damping, inv in self._inverses_by_damping.items():
         ops.append(inv.assign(utils.posdef_inv(self._cov, damping)))
@@ -383,6 +399,9 @@ class InverseProvidingFactor(FisherFactor):
     return ops
 
   def get_damped_inverse(self, damping):
+    # Note that this function returns a variable which gets updated by the
+    # inverse ops.  It may be stale / inconsistent with the latest value of
+    # get_cov().
     return self._inverses_by_damping[damping]
 
   def get_matpower(self, exp, damping):
@@ -457,6 +476,9 @@ class DiagonalFactor(FisherFactor):
   @property
   def _cov_initializer(self):
     return diagonal_covariance_initializer
+
+  def make_inverse_update_ops(self):
+    return []
 
 
 class NaiveDiagonalFactor(DiagonalFactor):
@@ -879,10 +901,8 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
     """Constructs a new `FullyConnectedMultiKF`.
 
     Args:
-      tensor_lists: List of lists of  Tensors of shape [batch_size, n]. Layer
-        inputs at each timestep.
-      has_bias: bool. If True, assume this factor is for the layer's inputs and
-        append '1' to each row.
+      tensor_lists: List of lists of Tensors of shape [batch_size, n].
+      has_bias: bool. If True, '1' is appended to each row.
       colocate_cov_ops_with_inputs: Whether to colocate cov_update ops with
         their inputs.
     """
@@ -975,14 +995,14 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
   def register_cov_dt1(self):
     """Create a variable representing temporal cross-covariance.
 
-    This is technically the second moment, not covariance, since it's
-    not mean subtracted.
+    (This is technically the second moment, not covariance, since it's
+    not mean subtracted.)
     """
     if self._cov_dt1 is None:
       with variable_scope.variable_scope(self._var_scope):
         self._cov_dt1 = variable_scope.get_variable(
             "cov_dt1",
-            initializer=self._cov_initializer,
+            initializer=init_ops.zeros_initializer,
             shape=self._cov_shape,
             trainable=False,
             dtype=self._dtype)
@@ -1045,7 +1065,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
 
       self._option2quants_by_damping[damping] = (Pmat, Kmat, mu)
 
-  def make_inverse_updates_ops(self):
+  def make_inverse_update_ops(self):
     """Create and return update ops corresponding to registered computations."""
     # TODO(b/69918258): Add correctness tests for this method.
     # pylint: disable=invalid-name
@@ -1089,7 +1109,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
         hPsi = math_ops.matmul(math_ops.matmul(invsqrtC0, C1), invsqrtC0)
 
         # Compute the decomposition U*diag(psi)*U^T = hPsi
-        psi, U = utils.psd_eig(hPsi)
+        psi, U = utils.posdef_eig(hPsi)
 
         # L = C0^(-1/2) * U
         Lmat = math_ops.matmul(invsqrtC0, U)
@@ -1139,6 +1159,6 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
         ops.append(Kmat_var.assign(Kmat))
         ops.append(mu_var.assign(mu))
 
-    return [control_flow_ops.group(ops)]
+    return [control_flow_ops.group(*ops)]
 
     # pylint: enable=invalid-name

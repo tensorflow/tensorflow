@@ -39,6 +39,77 @@ struct DataFormatDimMap {
   }
 };
 
+template <typename T>
+struct VecPermuteNHWCToNCHW {
+  Eigen::DSizes<Eigen::DenseIndex, 1> dimensions(
+      typename TTypes<T>::ConstFlat input) const {
+    Eigen::DSizes<Eigen::DenseIndex, 1> result;
+    result[0] = input.dimension(0);
+    return result;
+  }
+  template <typename Output, typename Device>
+  void eval(typename TTypes<T>::ConstFlat input, Output& output,
+            const Device& d) const {
+    if (input.size() == 8) {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(1);
+      output.template chip<0>(2).device(d) = input.template chip<0>(6);
+      output.template chip<0>(3).device(d) = input.template chip<0>(7);
+      output.template chip<0>(4).device(d) = input.template chip<0>(2);
+      output.template chip<0>(5).device(d) = input.template chip<0>(3);
+      output.template chip<0>(6).device(d) = input.template chip<0>(4);
+      output.template chip<0>(7).device(d) = input.template chip<0>(5);
+    } else {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(3);
+      output.template chip<0>(2).device(d) = input.template chip<0>(1);
+      output.template chip<0>(3).device(d) = input.template chip<0>(2);
+    }
+  }
+};
+
+template <typename T>
+struct VecPermuteNCHWToNHWC {
+  Eigen::DSizes<Eigen::DenseIndex, 1> dimensions(
+      typename TTypes<T>::ConstFlat input) const {
+    Eigen::DSizes<Eigen::DenseIndex, 1> result;
+    result[0] = input.dimension(0);
+    return result;
+  }
+  template <typename Output, typename Device>
+  void eval(typename TTypes<T>::ConstFlat input, Output& output,
+            const Device& d) const {
+    if (input.size() == 8) {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(1);
+      output.template chip<0>(2).device(d) = input.template chip<0>(4);
+      output.template chip<0>(3).device(d) = input.template chip<0>(5);
+      output.template chip<0>(4).device(d) = input.template chip<0>(6);
+      output.template chip<0>(5).device(d) = input.template chip<0>(7);
+      output.template chip<0>(6).device(d) = input.template chip<0>(2);
+      output.template chip<0>(7).device(d) = input.template chip<0>(3);
+    } else {
+      output.template chip<0>(0).device(d) = input.template chip<0>(0);
+      output.template chip<0>(1).device(d) = input.template chip<0>(2);
+      output.template chip<0>(2).device(d) = input.template chip<0>(3);
+      output.template chip<0>(3).device(d) = input.template chip<0>(1);
+    }
+  }
+};
+
+// Functor used by DataFormatVecPermuteOp to do the computations.
+template <typename Device, typename T>
+struct DataFormatVecPermute {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::Flat y, bool nhwc_to_nchw) {
+    if (nhwc_to_nchw) {
+      y.device(d) = x.customOp(VecPermuteNHWCToNCHW<T>());
+    } else {
+      y.device(d) = x.customOp(VecPermuteNCHWToNHWC<T>());
+    }
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

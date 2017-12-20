@@ -142,6 +142,13 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
+    case BF16:
+      // For BF16 we just need some type that is 16 bits wide so that it will
+      // take up the right amount of space in memory. LLVM does not have a BF16
+      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
+      // we can't map it directly to an LLVM type. We will not map a BF16
+      // addition to an addition on this type (int16) - this is just the type
+      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case S32:
     case U32:
@@ -200,8 +207,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   if (ShapeUtil::IsTuple(shape)) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else {
-    for (int64 dimension : shape.layout().minor_to_major()) {
+  } else if (ShapeUtil::IsArray(shape)) {
+    for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
     }
@@ -280,6 +287,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<float>(*multi_index));
         break;
+      case BF16:
+        value = llvm::ConstantInt::get(
+            ir_element_type,
+            tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
+        break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<double>(*multi_index));
@@ -304,7 +316,7 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   // decrements with each recursive call. We want to iterate through the
   // dimensions in major-to-minor order as we recurse so just index into
   // minor_to_major to get the dimension number for this level of the recursion.
-  int64 dimension = shape.layout().minor_to_major(dimension_index);
+  int64 dimension = LayoutUtil::Minor(shape.layout(), dimension_index);
 
   // Recursively call LiteralToConstant to construct subarrays for the
   // more-minor dimensions. Gather the subarrays into a vector for bundling into
@@ -320,7 +332,7 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   if (elements.empty()) {
     element_type = ir_element_type;
     for (int i = 0; i < dimension_index; ++i) {
-      int64 index = shape.layout().minor_to_major(i);
+      int64 index = LayoutUtil::Minor(shape.layout(), i);
       element_type =
           llvm::ArrayType::get(element_type, shape.dimensions(index));
     }

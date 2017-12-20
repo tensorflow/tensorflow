@@ -48,7 +48,7 @@ _allowed_symbols = [
     'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper',
     'clip_gradients_by_global_norm',
-    'ElasticAverageOptimizer', 
+    'ElasticAverageOptimizer',
     'ElasticAverageCustomGetter',
     'ModelAverageOptimizer',
     'ModelAverageCustomGetter'

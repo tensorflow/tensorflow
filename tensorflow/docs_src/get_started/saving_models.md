@@ -15,9 +15,8 @@ This document focuses on checkpoints. For details on SavedModel, see the
 
 ## Sample code
 
-This document relies on the same Iris classification example detailed in
-<!-- TODO (barryr): fill in link when module settles down. --> 
-@{$premade_estimators$Getting Started with TensorFlow}.
+This document relies on the same
+[https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py](Iris classification example) detailed in @{$premade_estimators$Getting Started with TensorFlow}.
 To download and access the example, invoke the following two commands:
 
 ```shell
@@ -228,10 +227,12 @@ This separation will keep your checkpoints recoverable.
 
 ## Summary
 
-Checkpoints provide an easy automatic mechanism for storing and restoring
-models created by Estimators.  See the @{$saved_model$Saving and Restoring}
+Checkpoints provide an easy automatic mechanism for saving and restoring
+models created by Estimators.
+
+See the @{$saved_model$Saving and Restoring}
 chapter of the *TensorFlow Programmer's Guide* for details on:
 
-*   Saving and restoring models created by low-level TensorFlow APIs.
-*   Saving and restoring models in the SavedModel format, which is a
+*   Saving and restoring models using low-level TensorFlow APIs.
+*   Exporting and importing models in the SavedModel format, which is a
     language-neutral, recoverable, serialization format.

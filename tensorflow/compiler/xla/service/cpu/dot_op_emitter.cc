@@ -143,7 +143,8 @@ class ColumnMajorMatrixVectorProductEmitter {
   ColumnMajorMatrixVectorProductEmitter(PrimitiveType scalar_type,
                                         int64 tile_rows, int64 tile_cols,
                                         int64 m, int64 k, llvm::Value* lhs,
-                                        llvm::Value* rhs, llvm::Value* result,
+                                        llvm::Value* rhs, llvm::Value* addend,
+                                        llvm::Value* result,
                                         llvm::IRBuilder<>* ir_builder)
       : scalar_type_(scalar_type),
         tile_rows_(tile_rows),
@@ -152,6 +153,7 @@ class ColumnMajorMatrixVectorProductEmitter {
         k_(k),
         lhs_(lhs),
         rhs_(rhs),
+        addend_(addend),
         result_(result),
         ir_builder_(ir_builder),
         ksl_(ir_builder_),
@@ -198,6 +200,7 @@ class ColumnMajorMatrixVectorProductEmitter {
   int64 k_;
   llvm::Value* lhs_;
   llvm::Value* rhs_;
+  llvm::Value* addend_;
   llvm::Value* result_;
   llvm::IRBuilder<>* ir_builder_;
   KernelSupportLibrary ksl_;
@@ -242,9 +245,10 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
            /*step=*/tile_rows_, [&](llvm::Value* row) {
              std::vector<llvm::Value*> lhs_tile =
                  lhs_tile_loader->LoadTile(/*minor_dim_offset=*/row);
-             llvm::Value* accumulator = is_first_column
-                                            ? vsl_.GetZeroVector()
-                                            : vsl_.LoadVector(result_, row);
+             llvm::Value* accumulator =
+                 is_first_column ? (addend_ ? vsl_.LoadVector(addend_, row)
+                                            : vsl_.GetZeroVector())
+                                 : vsl_.LoadVector(result_, row);
              for (int i = 0; i < columns; i++) {
                accumulator = vsl_.MulAdd(lhs_tile[i], rhs_tile[i], accumulator);
              }
@@ -288,7 +292,18 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
                   ir_builder_->getInt1(is_first_tiled_column));
               ksl_.If(
                   setting_result_first_time,
-                  [&]() { vsl_.StoreScalar(product, result_, scalar_row); },
+                  /*true_block_generator=*/
+                  [&]() {
+                    if (addend_) {
+                      vsl_.StoreScalar(
+                          vsl_.Add(vsl_.LoadScalar(addend_, scalar_row),
+                                   product),
+                          result_, scalar_row);
+                    } else {
+                      vsl_.StoreScalar(product, result_, scalar_row);
+                    }
+                  },
+                  /*false_block_generator=*/
                   [&]() {
                     vsl_.StoreScalar(
                         vsl_.Add(vsl_.LoadScalar(result_, scalar_row), product),
@@ -353,7 +368,7 @@ class RowMajorMatrixVectorProductEmitter {
   RowMajorMatrixVectorProductEmitter(PrimitiveType scalar_type, int64 tile_rows,
                                      int64 tile_cols, int64 m, int64 k,
                                      llvm::Value* lhs, llvm::Value* rhs,
-                                     llvm::Value* result,
+                                     llvm::Value* addend, llvm::Value* result,
                                      llvm::IRBuilder<>* ir_builder)
       : scalar_type_(scalar_type),
         tile_rows_(tile_rows),
@@ -362,6 +377,7 @@ class RowMajorMatrixVectorProductEmitter {
         k_(k),
         lhs_(lhs),
         rhs_(rhs),
+        addend_(addend),
         result_(result),
         ir_builder_(ir_builder),
         ksl_(ir_builder_),
@@ -394,6 +410,7 @@ class RowMajorMatrixVectorProductEmitter {
   int64 k_;
   llvm::Value* lhs_;
   llvm::Value* rhs_;
+  llvm::Value* addend_;
   llvm::Value* result_;
   llvm::IRBuilder<>* ir_builder_;
   KernelSupportLibrary ksl_;
@@ -420,13 +437,27 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
       vector_accumulators.begin(), vector_accumulators.end(),
       std::back_inserter(accumulator_values),
       [](const VectorVariable& vector_var) { return vector_var.Get(); });
-  std::vector<llvm::Value*> horizontal_sums =
-      vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+
+  std::vector<llvm::Value*> horizontal_sums;
+  if (row_count == vsl_.vector_size()) {
+    if (addend_) {
+      horizontal_sums = vsl_.ComputeHorizontalSums(
+          std::move(accumulator_values), vsl_.LoadVector(addend_, row));
+    } else {
+      horizontal_sums =
+          vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+    }
+  } else {
+    horizontal_sums = vsl_.ComputeHorizontalSums(std::move(accumulator_values));
+  }
 
   for (int i = 0; i < row_count; i++) {
     llvm::Value* result_value =
         vsl_.Add(horizontal_sums[i], scalar_accumulators[i].Get());
     llvm::Value* offset = ir_builder_->CreateAdd(ir_builder_->getInt64(i), row);
+    if (addend_ && row_count != vsl_.vector_size()) {
+      result_value = vsl_.Add(vsl_.LoadScalar(addend_, offset), result_value);
+    }
     vsl_.StoreScalar(result_value, result_, offset);
   }
 }
@@ -490,20 +521,19 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
 
 }  // namespace
 
-DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
-                           bool transpose_rhs,
-                           const llvm_ir::IrArray& target_array,
-                           const llvm_ir::IrArray& lhs_array,
-                           const llvm_ir::IrArray& rhs_array,
-                           llvm::Value* executable_run_options_value,
-                           llvm::IRBuilder<>* ir_builder,
-                           const HloModuleConfig& hlo_module_config)
+DotOpEmitter::DotOpEmitter(
+    const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+    const HloModuleConfig& hlo_module_config)
     : dot_(dot),
       transpose_lhs_(transpose_lhs),
       transpose_rhs_(transpose_rhs),
       target_array_(target_array),
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
+      addend_array_(addend_array),
       executable_run_options_value_(executable_run_options_value),
       ir_builder_(ir_builder),
       hlo_module_config_(hlo_module_config) {}
@@ -511,14 +541,15 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
 /* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
     const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-    const llvm_ir::IrArray& rhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
     const HloModuleConfig& hlo_module_config) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
-                           lhs_array, rhs_array, executable_run_options_value,
-                           ir_builder, hlo_module_config);
+                           lhs_array, rhs_array, addend_array,
+                           executable_run_options_value, ir_builder,
+                           hlo_module_config);
   return dot_emitter.Emit();
 }
 
@@ -601,17 +632,19 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
     string kernel_name = tensorflow::strings::StrCat(
         "col_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
-        "_", tile_cols, "_", m, "_", k);
+        "_", tile_cols, "_", m, "_", k, addend_array_ ? "_with_addend" : "");
 
     KernelSupportLibrary::EmitAndCallOutlinedKernel(
         /*enable_fast_math=*/enable_fast_math,
         /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
-        lhs_op, rhs_op, result_op,
+        lhs_op, rhs_op,
+        addend_array_ ? addend_array_->GetBasePointer() : nullptr, result_op,
         [this, tile_rows, tile_cols, m, k, primitive_type](
-            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* addend_op,
+            llvm::Value* result_op) {
           ColumnMajorMatrixVectorProductEmitter emitter(
               primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
-              result_op, ir_builder_);
+              addend_op, result_op, ir_builder_);
           emitter.Emit();
         });
   } else {
@@ -622,17 +655,19 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
 
     string kernel_name = tensorflow::strings::StrCat(
         "row_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,
-        "_", tile_cols, "_", m, "_", k);
+        "_", tile_cols, "_", m, "_", k, addend_array_ ? "_with_addend" : "");
 
     KernelSupportLibrary::EmitAndCallOutlinedKernel(
         /*enable_fast_math=*/enable_fast_math,
         /*optimize_for_size=*/optimize_for_size, ir_builder_, kernel_name,
-        lhs_op, rhs_op, result_op,
+        lhs_op, rhs_op,
+        addend_array_ ? addend_array_->GetBasePointer() : nullptr, result_op,
         [this, tile_rows, tile_cols, m, k, primitive_type](
-            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* result_op) {
+            llvm::Value* lhs_op, llvm::Value* rhs_op, llvm::Value* addend_op,
+            llvm::Value* result_op) {
           RowMajorMatrixVectorProductEmitter emitter(
               primitive_type, tile_rows, tile_cols, m, k, lhs_op, rhs_op,
-              result_op, ir_builder_);
+              addend_op, result_op, ir_builder_);
           emitter.Emit();
         });
   }
@@ -676,6 +711,8 @@ tensorflow::Status DotOpEmitter::Emit() {
   if (EmitLlvmIrDotIfProfitable()) {
     return Status::OK();
   }
+
+  CHECK_EQ(addend_array_, nullptr);
 
   if (PotentiallyImplementedAsEigenDot(dot_)) {
     return EmitCallToRuntime();
@@ -951,8 +988,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
   return {lhs_shape.dimensions(transpose_lhs_ ? 1 : 0),
           lhs_shape.dimensions(transpose_lhs_ ? 0 : 1),
           rhs_shape.dimensions(transpose_rhs_ ? 0 : 1),
-          lhs_shape.layout().minor_to_major(0) == 0,
-          rhs_shape.layout().minor_to_major(0) == 0};
+          LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
+          LayoutUtil::Minor(rhs_shape.layout(), 0) == 0};
 }
 
 llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
@@ -963,8 +1000,8 @@ llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
   // reduction dimension.
   std::vector<int64> dimensions;
   const Shape& shape = operand_array.GetShape();
-  for (int i = shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape.layout().minor_to_major(i);
+  for (int i = LayoutUtil::MinorToMajor(shape).size() - 1; i >= 0; --i) {
+    int64 dimension = LayoutUtil::Minor(shape.layout(), i);
     if (dimension != reduction_dimension) {
       dimensions.push_back(dimension);
     }
@@ -1046,9 +1083,40 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
 
 // For vector-matrix dot products, it is always profitable to make the Rhs
 // column major.
-bool ProfitableToMakeDotRhsColumnMajor(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kDot &&
-         hlo.shape().dimensions_size() == 2 && hlo.shape().dimensions(0) == 1;
+tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+    const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() == 2 &&
+      hlo.shape().dimensions(0) == 1) {
+    if (hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) == 0) {
+      return 1;
+    }
+    return {};
+  }
+
+  if (hlo.opcode() == HloOpcode::kFusion &&
+      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput) {
+    auto* fusion_root =
+        hlo.fused_instructions_computation()->root_instruction();
+    if (fusion_root->opcode() != HloOpcode::kAdd) {
+      return {};
+    }
+
+    for (auto* fusion_root_op : fusion_root->operands()) {
+      if (fusion_root_op->opcode() != HloOpcode::kDot) {
+        continue;
+      }
+      if (auto operand_num =
+              ProfitableToMakeDotOperandColumnMajor(*fusion_root_op)) {
+        auto* operand = fusion_root_op->operand(*operand_num);
+        if (operand->opcode() == HloOpcode::kParameter &&
+            operand->user_count() == 1) {
+          return operand->parameter_number();
+        }
+      }
+    }
+  }
+
+  return {};
 }
 
 bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot) {

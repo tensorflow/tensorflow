@@ -51,83 +51,7 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
   return platform_id_;
 }
 
-Status GenericTransferManager::TransferLiteralFromDevice(
-    se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
-    const Shape& device_shape, const Shape& literal_shape, Literal* literal) {
-  VLOG(2) << "transferring literal shape from device: "
-          << ShapeUtil::HumanString(literal_shape)
-          << "; device location: " << source.opaque();
-  TF_RET_CHECK(ShapeUtil::Compatible(device_shape, literal_shape));
-
-  // Tuples are a special case and contain one or more shapes inside of them to
-  // an arbitrary nesting depth.
-  if (device_shape.element_type() == TUPLE) {
-    *literal->mutable_shape() = literal_shape;
-    TF_ASSIGN_OR_RETURN(
-        std::vector<se::DeviceMemoryBase> element_buffers,
-        ShallowCopyTupleFromDevice(executor, source, device_shape));
-    TF_RET_CHECK(element_buffers.size() ==
-                 ShapeUtil::TupleElementCount(device_shape));
-    for (int64 i = 0; i < element_buffers.size(); ++i) {
-      const Shape& element_device_shape = device_shape.tuple_shapes(i);
-      const Shape& element_literal_shape = literal_shape.tuple_shapes(i);
-      Literal* element_literal = literal->add_tuple_literals();
-      // Recursively call TransferFromDevice to copy over the data in the
-      // element array.
-      TF_RETURN_IF_ERROR(TransferLiteralFromDevice(
-          executor, element_buffers[i], /*device_shape=*/element_device_shape,
-          /*literal_shape=*/element_literal_shape, element_literal));
-    }
-    return Status::OK();
-  }
-
-  *literal->mutable_shape() = device_shape;
-  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
-  TF_RETURN_IF_ERROR(TransferBufferFromDevice(
-      executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
-      /*destination=*/literal->MutableInternalData()));
-  if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    *literal = std::move(*literal->Relayout(literal_shape.layout()));
-  }
-  TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
-  return Status::OK();
-}
-
-StatusOr<std::vector<se::DeviceMemoryBase>>
-GenericTransferManager::ShallowCopyTupleFromDevice(
-    se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
-    const Shape& shape) {
-  TF_RET_CHECK(ShapeUtil::IsTuple(shape));
-
-  // For devices which use the GenericTransferManager, a tuple is stored as an
-  // array of pointers to buffers. Copy the contents of the tuple buffer into
-  // a vector of void* pointers.
-  std::vector<void*> element_pointers(ShapeUtil::TupleElementCount(shape),
-                                      nullptr);
-  int64 tuple_size = ShapeUtil::ByteSizeOf(shape, pointer_size_);
-  auto copy_status = executor->SynchronousMemcpyD2H(source, tuple_size,
-                                                    element_pointers.data());
-  if (!copy_status.ok()) {
-    return AddStatus(
-        Status(static_cast<tensorflow::error::Code>(copy_status.code()),
-               copy_status.error_message()),
-        "failed transfer of tuple buffer " + ShapeUtil::HumanString(shape));
-  }
-
-  // Create a DeviceMemoryBase from each void* pointer.
-  std::vector<se::DeviceMemoryBase> destination;
-  for (size_t i = 0; i < element_pointers.size(); ++i) {
-    if (element_pointers[i] == nullptr &&
-        !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
-      return FailedPrecondition("tuple contains nullptr at element %lu", i);
-    }
-    destination.emplace_back(element_pointers[i],
-                             GetByteSizeRequirement(shape.tuple_shapes(i)));
-  }
-  return std::move(destination);
-}
-
-Status GenericTransferManager::WriteTuplePointersToDevice(
+Status GenericTransferManager::WriteSingleTupleIndexTable(
     perftools::gputools::StreamExecutor* executor,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
     const Shape& shape, perftools::gputools::DeviceMemoryBase* region) {
@@ -145,16 +69,19 @@ StatusOr<std::unique_ptr<Literal>>
 GenericTransferManager::TransferLiteralFromDevice(
     se::StreamExecutor* executor, const ShapedBuffer& device_buffer) {
   VLOG(2) << "transferring literal from device ordinal "
-          << executor->device_ordinal() << "; device shape: "
-          << ShapeUtil::HumanStringWithLayout(device_buffer.shape())
-          << "; opaque: " << device_buffer.buffer(/*index=*/{}).opaque();
+          << executor->device_ordinal() << "; device buffer: " << device_buffer;
   TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
 
+  // The on-host and on-device shape should always be the same for the generic
+  // transfer manager.
+  TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
+                                device_buffer.on_host_shape()));
+
   std::unique_ptr<Literal> literal =
-      Literal::CreateFromShape(device_buffer.shape());
+      Literal::CreateFromShape(device_buffer.on_host_shape());
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.shape(),
+      device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
         if (!ShapeUtil::IsTuple(subshape)) {
           TF_RETURN_IF_ERROR(TransferBufferFromDevice(
@@ -175,16 +102,22 @@ Status GenericTransferManager::TransferLiteralToDevice(
     const ShapedBuffer& device_buffer) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "
-          << ShapeUtil::HumanString(shape) << "; device location: "
-          << device_buffer.buffer(/*index=*/{}).opaque();
+          << ShapeUtil::HumanString(shape)
+          << "; device buffer: " << device_buffer;
 
-  TF_RET_CHECK(ShapeUtil::Compatible(literal.shape(), device_buffer.shape()));
+  // The on-host and on-device shape should always be the same for the generic
+  // transfer manager.
+  TF_RET_CHECK(ShapeUtil::Equal(device_buffer.on_device_shape(),
+                                device_buffer.on_host_shape()));
+
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(literal.shape(), device_buffer.on_host_shape()));
   TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
 
   TF_RETURN_IF_ERROR(WriteTupleIndexTables(executor, device_buffer));
 
   return ShapeUtil::ForEachSubshapeWithStatus(
-      device_buffer.shape(),
+      device_buffer.on_host_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
         se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
         if (ShapeUtil::IsArray(device_subshape)) {
@@ -210,33 +143,6 @@ Status GenericTransferManager::TransferLiteralToDevice(
         }
         return Status::OK();
       });
-}
-
-Status GenericTransferManager::TransferLiteralToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
-    se::DeviceMemoryBase* destination) {
-  const Shape& shape = literal.shape();
-  VLOG(2) << "transferring literal shape to device: "
-          << ShapeUtil::HumanString(shape)
-          << "; device location: " << destination->opaque();
-
-  if (ShapeUtil::IsTuple(literal.shape())) {
-    std::vector<void*> tuple_elements_on_device;
-    for (const Literal& tuple_element : literal.tuple_literals()) {
-      se::DeviceMemoryBase allocation = executor->AllocateArray<uint8>(
-          GetByteSizeRequirement(tuple_element.shape()));
-      TF_RETURN_IF_ERROR(
-          TransferLiteralToDevice(executor, tuple_element, &allocation));
-      tuple_elements_on_device.push_back(allocation.opaque());
-    }
-    return TransferBufferToDevice(
-        executor, tuple_elements_on_device.size() * sizeof(void*),
-        tuple_elements_on_device.data(), destination);
-  }
-
-  return TransferBufferToDevice(executor,
-                                /*size=*/GetByteSizeRequirement(shape),
-                                /*source=*/literal.InternalData(), destination);
 }
 
 Status GenericTransferManager::TransferLiteralToInfeed(
