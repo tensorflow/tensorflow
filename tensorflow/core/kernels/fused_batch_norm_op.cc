@@ -557,10 +557,10 @@ class FusedBatchNormOp : public OpKernel {
                                                      &saved_maybe_inv_var));
     // If there is nothing to compute, return.
     if (x.shape().num_elements() == 0) {
-      functor::SetZeroFunctor<Device, T> f;
+      functor::SetZeroFunctor<Device, U> f;
       // Return zero mean/variance when input is empty.
-      f(context->eigen_device<Device>(), batch_mean->flat<T>());
-      f(context->eigen_device<Device>(), batch_var->flat<T>());
+      f(context->eigen_device<Device>(), batch_mean->flat<U>());
+      f(context->eigen_device<Device>(), batch_var->flat<U>());
       return;
     }
 
@@ -668,9 +668,9 @@ class FusedBatchNormGradOp : public OpKernel {
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {
-      functor::SetZeroFunctor<Device, T> f;
-      f(context->eigen_device<Device>(), scale_backprop->flat<T>());
-      f(context->eigen_device<Device>(), offset_backprop->flat<T>());
+      functor::SetZeroFunctor<Device, U> f;
+      f(context->eigen_device<Device>(), scale_backprop->flat<U>());
+      f(context->eigen_device<Device>(), offset_backprop->flat<U>());
       return;
     }
 
