@@ -292,7 +292,7 @@ Status BuildArguments(const Graph& graph,
         TF_RETURN_IF_ERROR(
             context->CreateResource(arg.resource_kind, i, arg.name, arg.type,
                                     xla::ComputationDataHandle(), &resource));
-        resource->tensor_array_size = arg.tensor_array_size;
+        resource->set_tensor_array_size(arg.tensor_array_size);
         arg_expression.set_resource(resource);
         if (arg.initialized) {
           resources.push_back(i);
@@ -381,14 +381,11 @@ Status BuildArguments(const Graph& graph,
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);
         XlaResource* resource = arg_expression.resource();
-        TF_RETURN_IF_ERROR(resource->SetFromPack(arg.tensor_array_gradients,
-                                                 arg_handles[i], builder));
+        TF_RETURN_IF_ERROR(
+            resource->SetFromPack(arg.tensor_array_gradients, arg_handles[i],
+                                  /*reset_initial_values=*/true, builder));
         VLOG(2) << "    resource: num_gradients: "
                 << arg.tensor_array_gradients.size();
-        resource->initial_value = resource->value;
-        for (const auto& gradient : resource->tensor_array_gradients) {
-          gradient.second->initial_value = gradient.second->value;
-        }
         break;
       }
       case XlaCompiler::Argument::kParameter:
@@ -439,36 +436,36 @@ Status BuildComputation(
   std::vector<const XlaResource*> arg_resources;
   arg_resources.reserve(resources.size());
   for (const auto& resource : resources) {
-    if (resource->arg_num >= 0) {
+    if (resource->arg_num() >= 0) {
       arg_resources.push_back(resource.get());
     }
   }
   std::sort(arg_resources.begin(), arg_resources.end(),
             [](const XlaResource* a, const XlaResource* b) {
-              return a->arg_num < b->arg_num;
+              return a->arg_num() < b->arg_num();
             });
 
   for (const XlaResource* resource : arg_resources) {
-    const XlaCompiler::Argument& arg = args[resource->arg_num];
-    const int core = arg_cores[resource->arg_num];
-    DCHECK_LT(resource->arg_num, arg_cores.size());
+    const XlaCompiler::Argument& arg = args[resource->arg_num()];
+    const int core = arg_cores[resource->arg_num()];
+    DCHECK_LT(resource->arg_num(), arg_cores.size());
     bool modified =
-        resource->value.handle() != resource->initial_value.handle();
+        resource->value().handle() != resource->initial_value().handle();
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
-    for (const auto& grad : resource->tensor_array_gradients) {
-      modified =
-          modified ||
-          grad.second->value.handle() != grad.second->initial_value.handle() ||
-          arg.tensor_array_gradients.count(grad.first) == 0;
+    for (const auto& grad : resource->tensor_array_gradients()) {
+      modified = modified ||
+                 grad.second->value().handle() !=
+                     grad.second->initial_value().handle() ||
+                 arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
-      update.input_index = resource->arg_num;
-      update.type = resource->type;
+      update.input_index = resource->arg_num();
+      update.type = resource->type();
       update.modified = modified;
-      for (const auto& grad : resource->tensor_array_gradients) {
+      for (const auto& grad : resource->tensor_array_gradients()) {
         update.tensor_array_gradients_accessed.insert(grad.first);
       }
 
