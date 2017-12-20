@@ -558,6 +558,16 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
   will be a directory.
 )doc");
 
+REGISTER_OP("UniqueDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that contains the unique elements of `input_dataset`.
+)doc");
+
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
