@@ -220,7 +220,7 @@ class Env {
 
   /// Creates a local unique file name that starts with |prefix| and ends with
   /// |suffix|. Returns true if success.
-  bool CreateLocalFilename(string* prefix, const string& suffix);
+  bool CreateNewFileWithUniqueName(string* prefix, const string& suffix);
 
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
