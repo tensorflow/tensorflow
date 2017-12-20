@@ -1518,6 +1518,49 @@ TF_CAPI_EXPORT extern void TF_DeleteLibraryHandle(TF_Library* lib_handle);
 // in this address space.
 TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllOpList();
 
+// TF_ApiDefMap encapsulates a collection of API definitions for an operation.
+//
+// This object maps the name of a TensorFlow operation to a description of the
+// API to generate for it, as defined by the ApiDef protocol buffer (
+// https://www.tensorflow.org/code/tensorflow/core/framework/api_def.proto)
+//
+// The ApiDef messages are typically used to generate convenience wrapper
+// functions for TensorFlow operations in various language bindings.
+typedef struct TF_ApiDefMap TF_ApiDefMap;
+
+// Creates a new TF_ApiDefMap instance.
+//
+// Params:
+//  op_list_buffer - TF_Buffer instance containing serialized OpList
+//    protocol buffer. (See
+//    https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto
+//    for the OpList proto definition).
+//  status - Set to OK on success and an appropriate error on failure.
+TF_CAPI_EXPORT extern TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer,
+                                                    TF_Status* status);
+
+// Deallocates a TF_ApiDefMap.
+TF_CAPI_EXPORT extern void TF_DeleteApiDefMap(TF_ApiDefMap* apimap);
+
+// Add ApiDefs to the map.
+//
+// `text` corresponds to a text representation of an ApiDefs protocol message.
+// (https://www.tensorflow.org/code/tensorflow/core/framework/api_def.proto).
+//
+// The provided ApiDefs will be merged with existing ones in the map, with
+// precedence given to the newly added version in case of conflicts with
+// previous calls to TF_ApiDefMapPut.
+TF_CAPI_EXPORT extern void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map,
+                                           const char* text, size_t text_len,
+                                           TF_Status* status);
+
+// Returns a serialized ApiDef protocol buffer for the TensorFlow operation
+// named `name`.
+TF_CAPI_EXPORT extern TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map,
+                                                 const char* name,
+                                                 size_t name_len,
+                                                 TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
