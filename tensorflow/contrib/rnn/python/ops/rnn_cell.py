@@ -2635,6 +2635,13 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
 class SRUCell(rnn_cell_impl._LayerRNNCell):
   """Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
+     This variation of RNN cell is characterized by the simplified data dependence
+     between hidden states of two consecutive time steps. Traditionally, hidden
+     states from a cell at time step t-1 needs to be multiplied with a matrix
+     W_hh before being fed into the ensuing cell at time step t.
+     This flavor of RNN replaces the matrix multiplication between h_{t-1}
+     and W_hh with a pointwise multiplication, resulting in performance
+     gain.
 
   Args:
     num_units: int, The number of units in the SRU cell.
