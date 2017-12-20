@@ -247,6 +247,8 @@ bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
 
 bool IsSplit(const NodeDef& node) { return node.op() == "Split"; }
 
+bool IsSplitV(const NodeDef& node) { return node.op() == "SplitV"; }
+
 bool IsSqrtGrad(const NodeDef& node) { return node.op() == "SqrtGrad"; }
 
 bool IsSquaredDifference(const NodeDef& node) {

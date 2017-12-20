@@ -100,6 +100,7 @@ bool IsSigmoidGrad(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
+bool IsSplitV(const NodeDef& node);
 bool IsSqrtGrad(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);

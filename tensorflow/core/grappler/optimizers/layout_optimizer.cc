@@ -171,6 +171,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Softplus",
                                           "SoftplusGrad",
                                           "Split",
+                                          "SplitV",
                                           "Switch",
                                           "TruncateDiv",
                                           "TruncateMod",
@@ -680,7 +681,7 @@ class NodeProcessor : public GraphProcessor {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kVecPermuteNCHWToNHWC, "-");
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "out_type"));
-              DataType dtype = (IsSplit(*node_))
+              DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
                                    ? DT_INT32
                                    : node_->attr().at("out_type").type();
               AddNodeDataFormatOp(added_node_name, input, op, dtype, false);
@@ -1054,10 +1055,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  private:
   std::vector<int> DataInputPos(const NodeDef& node) const {
-    if (IsSplit(node)) {
-      return {1};
-    }
-    if (IsConcatV1(node)) {
+    if (IsSplit(node) || IsConcatV1(node)) {
       return {1};
     }
     if (IsBinaryOp(node) || IsUnaryGrad(node)) {
@@ -1258,8 +1256,9 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     if (IsConstant(*dim_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
     } else {
-      DataType dtype =
-          (IsSplit(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
+      DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
+                           ? DT_INT32
+                           : node_->attr().at("Tidx").type();
       AddDataFormatTranformToInput("DataFormatDimMap", axis_node_pos_, dtype);
     }
     return Status::OK();
@@ -1375,6 +1374,17 @@ class SplitProcessor : public ConcatProcessor {
     }
     return output_pos;
   }
+};
+
+class SplitVProcessor : public SplitProcessor {
+ public:
+  explicit SplitVProcessor(const OptimizeContext& opt_cxt)
+      : SplitProcessor(opt_cxt) {
+    axis_node_pos_ = 2;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {0}; }
 };
 
 class TernaryOpProcessor : public AgnosticNodeProcessor {
@@ -1684,6 +1694,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
             node_processor.reset(new SplitProcessor(opt_cxt));
+          } else if (IsSplitV(*node)) {
+            node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {
