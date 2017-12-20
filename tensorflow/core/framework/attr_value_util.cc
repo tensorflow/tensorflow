@@ -89,7 +89,7 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
       std::vector<string> pieces;
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
-          pieces.push_back(attr_value.list().s(i));
+          pieces.push_back(SummarizeString(attr_value.list().s(i)));
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
