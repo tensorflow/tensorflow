@@ -100,13 +100,17 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =
         hlo.convolution_dimension_numbers();
-    if (dnums.spatial_dimensions_size() > 3) {
+    if (dnums.input_spatial_dimensions_size() > 3) {
       return false;
     }
 
     // CuDNN does not accept zero-element arguments
     if (ShapeUtil::HasZeroElements(hlo.operand(0)->shape()) ||
         ShapeUtil::HasZeroElements(hlo.operand(1)->shape())) {
+      return false;
+    }
+
+    if (window_util::HasWindowReversal(hlo.window())) {
       return false;
     }
 

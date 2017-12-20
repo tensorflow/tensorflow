@@ -156,6 +156,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 
 
+# Imports the core `InputLayer` symbol in contrib during development.
+InputLayer = fc_core.InputLayer  # pylint: disable=invalid-name
+
+
 class _LinearEmbeddingLookupArguments(
     collections.namedtuple("_LinearEmbeddingLookupArguments",
                            ["input_tensor",
@@ -521,7 +525,7 @@ def sparse_column_with_integerized_feature(column_name,
 
   Args:
     column_name: A string defining sparse column name.
-    bucket_size: An int that is > 1. The number of buckets. It should be bigger
+    bucket_size: An int that is >= 1. The number of buckets. It should be bigger
       than maximum feature. In other words features in this column should be an
       int64 in range [0, bucket_size)
     combiner: A string specifying how to reduce if the sparse column is
@@ -539,7 +543,7 @@ def sparse_column_with_integerized_feature(column_name,
     An integerized _SparseColumn definition.
 
   Raises:
-    ValueError: bucket_size is not greater than 1.
+    ValueError: bucket_size is less than 1.
     ValueError: dtype is not integer.
   """
   return _SparseColumnIntegerized(

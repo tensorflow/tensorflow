@@ -3857,6 +3857,56 @@ class MeanPerClassAccuracyTest(test.TestCase):
       self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
 
 
+class FalseNegativesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_negatives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('false_negatives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.false_negatives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(3., tn_update_op.eval())
+      self.assertAllClose(3., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.false_negatives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(5., tn_update_op.eval())
+      self.assertAllClose(5., tn.eval())
+
+
 class FalseNegativesAtThresholdsTest(test.TestCase):
 
   def setUp(self):
@@ -3904,6 +3954,56 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
       self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
       self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
+
+
+class FalsePositivesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.false_positives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('false_positives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.false_positives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(7., tn_update_op.eval())
+      self.assertAllClose(7., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.false_positives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(14., tn_update_op.eval())
+      self.assertAllClose(14., tn.eval())
 
 
 class FalsePositivesAtThresholdsTest(test.TestCase):
@@ -3957,6 +4057,56 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
 
 
+class TrueNegativesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_negatives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('true_negatives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.true_negatives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(3., tn_update_op.eval())
+      self.assertAllClose(3., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.true_negatives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(4., tn_update_op.eval())
+      self.assertAllClose(4., tn.eval())
+
+
 class TrueNegativesAtThresholdsTest(test.TestCase):
 
   def setUp(self):
@@ -4004,6 +4154,56 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
       self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
       self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
       self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
+
+
+class TruePositivesTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.true_positives(
+        labels=(0, 1, 0, 1),
+        predictions=(0, 0, 1, 1))
+    _assert_metric_variables(self, ('true_positives/count:0',))
+
+  def testUnweighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    tn, tn_update_op = metrics.true_positives(
+        labels=labels, predictions=predictions)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(7., tn_update_op.eval())
+      self.assertAllClose(7., tn.eval())
+
+  def testWeighted(self):
+    labels = constant_op.constant(((0, 1, 0, 1, 0),
+                                   (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0),
+                                   (0, 0, 0, 0, 1)))
+    predictions = constant_op.constant(((0, 0, 1, 1, 0),
+                                        (1, 1, 1, 1, 1),
+                                        (0, 1, 0, 1, 0),
+                                        (1, 1, 1, 1, 1)))
+    weights = constant_op.constant((1., 1.5, 2., 2.5))
+    tn, tn_update_op = metrics.true_positives(
+        labels=labels, predictions=predictions, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAllClose(0., tn.eval())
+      self.assertAllClose(12., tn_update_op.eval())
+      self.assertAllClose(12., tn.eval())
 
 
 class TruePositivesAtThresholdsTest(test.TestCase):

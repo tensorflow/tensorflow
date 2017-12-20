@@ -20,7 +20,10 @@
 #include <string>
 #include <vector>
 
+
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
@@ -49,7 +52,7 @@ TEST(FfmpegLibTest, TestTempDirectoryThreading) {
     pool.Schedule([&mu, &temp_filenames, environment]() {
       std::array<string, kStringsPerItem> buffer;
       for (int32 j = 0; j < kStringsPerItem; ++j) {
-        buffer[j] = GetTempFilename("mp3");
+        buffer[j] = io::GetTempFilename("mp3");
         TF_QCHECK_OK(environment->DeleteFile(buffer[j]));
       }
       mutex_lock l(mu);

@@ -107,16 +107,15 @@ class VectorExponentialLinearOperator(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.linalg
+  tfd = tf.contrib.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
   mat = [[1.0, 0.1],
          [0.1, 1.0]]
 
-  vex = ds.VectorExponentialLinearOperator(
-      scale=la.LinearOperatorFullMatrix(mat))
+  vex = tfd.VectorExponentialLinearOperator(
+      scale=tf.linalg.LinearOperatorFullMatrix(mat))
 
   # Compute the pdf of an`R^2` observation; return a scalar.
   vex.prob([1., 2.]).eval()  # shape: []
@@ -127,9 +126,9 @@ class VectorExponentialLinearOperator(
   scale_diag = [[1., 2, 3],
                 [0.5, 1, 1.5]]     # shape: [2, 3]
 
-  vex = ds.VectorExponentialLinearOperator(
+  vex = tfd.VectorExponentialLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorDiag(scale_diag))
+      scale=tf.linalg.LinearOperatorDiag(scale_diag))
 
   # Compute the pdf of two `R^3` observations; return a length-2 vector.
   x = [[1.9, 2.2, 3.1],

@@ -88,5 +88,69 @@ TEST(ExpiringLRUCacheTest, MaxEntries) {
   EXPECT_EQ(value, 5);
 }
 
+TEST(ExpiringLRUCacheTest, LookupOrCompute) {
+  // max_age of 0 means we should always compute.
+  uint64 num_compute_calls = 0;
+  ExpiringLRUCache<int>::ComputeFunc compute_func =
+      [&num_compute_calls](const string& key, int* value) {
+        *value = num_compute_calls;
+        num_compute_calls++;
+        return Status::OK();
+      };
+  ExpiringLRUCache<int> cache1(0, 4);
+
+  int value = -1;
+  TF_EXPECT_OK(cache1.LookupOrCompute("a", &value, compute_func));
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(num_compute_calls, 1);
+  // re-read the same value, expect another lookup
+  TF_EXPECT_OK(cache1.LookupOrCompute("a", &value, compute_func));
+  EXPECT_EQ(value, 1);
+  EXPECT_EQ(num_compute_calls, 2);
+
+  // Define a new cache with max_age > 0 and verify correct behavior.
+  ExpiringLRUCache<int> cache2(2, 4);
+  num_compute_calls = 0;
+  value = -1;
+
+  // Read our first value
+  TF_EXPECT_OK(cache2.LookupOrCompute("a", &value, compute_func));
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(num_compute_calls, 1);
+  // Re-read, exepct no additional function compute_func calls.
+  TF_EXPECT_OK(cache2.LookupOrCompute("a", &value, compute_func));
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(num_compute_calls, 1);
+
+  // Read a sequence of additional values, eventually evicting "a".
+  TF_EXPECT_OK(cache2.LookupOrCompute("b", &value, compute_func));
+  EXPECT_EQ(value, 1);
+  EXPECT_EQ(num_compute_calls, 2);
+  TF_EXPECT_OK(cache2.LookupOrCompute("c", &value, compute_func));
+  EXPECT_EQ(value, 2);
+  EXPECT_EQ(num_compute_calls, 3);
+  TF_EXPECT_OK(cache2.LookupOrCompute("d", &value, compute_func));
+  EXPECT_EQ(value, 3);
+  EXPECT_EQ(num_compute_calls, 4);
+  TF_EXPECT_OK(cache2.LookupOrCompute("e", &value, compute_func));
+  EXPECT_EQ(value, 4);
+  EXPECT_EQ(num_compute_calls, 5);
+  // Verify the other values remain in the cache.
+  TF_EXPECT_OK(cache2.LookupOrCompute("b", &value, compute_func));
+  EXPECT_EQ(value, 1);
+  EXPECT_EQ(num_compute_calls, 5);
+  TF_EXPECT_OK(cache2.LookupOrCompute("c", &value, compute_func));
+  EXPECT_EQ(value, 2);
+  EXPECT_EQ(num_compute_calls, 5);
+  TF_EXPECT_OK(cache2.LookupOrCompute("d", &value, compute_func));
+  EXPECT_EQ(value, 3);
+  EXPECT_EQ(num_compute_calls, 5);
+
+  // Re-read "a", ensure it is re-computed.
+  TF_EXPECT_OK(cache2.LookupOrCompute("a", &value, compute_func));
+  EXPECT_EQ(value, 5);
+  EXPECT_EQ(num_compute_calls, 6);
+}
+
 }  // namespace
 }  // namespace tensorflow

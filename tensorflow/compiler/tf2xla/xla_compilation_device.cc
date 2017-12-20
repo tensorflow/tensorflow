@@ -100,7 +100,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   b->SetOpMetadata(metadata);
 
   auto sharding_parse_result = ParseShardingFromDevice(
-      op_kernel->requested_device(), std::numeric_limits<int>::max());
+      op_kernel->def(), std::numeric_limits<int>::max());
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   tensorflow::gtl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();

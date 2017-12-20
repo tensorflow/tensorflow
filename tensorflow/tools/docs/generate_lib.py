@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import fnmatch
 import os
 import sys
 
@@ -198,12 +199,12 @@ def add_dict_to_dict(add_from, add_to):
       add_to[key] = add_from[key]
 
 
-# Exclude some libaries in contrib from the documentation altogether.
+# Exclude some libraries in contrib from the documentation altogether.
 def _get_default_private_map():
   return {'tf.test': ['mock']}
 
 
-# Exclude members of some libaries.
+# Exclude members of some libraries.
 def _get_default_do_not_descend_map():
   # TODO(wicke): Shrink this list once the modules get sealed.
   return {
@@ -384,10 +385,26 @@ class _UpdateTags(py_guide_parser.PyGuideParser):
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
 
 
-def _other_docs(src_dir, output_dir, reference_resolver):
-  """Convert all the files in `src_dir` and write results to `output_dir`."""
-  header = '<!-- DO NOT EDIT! Automatically generated file. -->\n'
+def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
+  """Fix @{} references in all files under `src_dir` matching `file_pattern`.
 
+  A matching directory structure, with the modified files is
+  written to `output_dir`.
+
+  `{"__init__.py","OWNERS","README.txt"}` are skipped.
+
+  Files not matching `file_pattern` (using `fnmatch`) are copied with no change.
+
+  Also, files in the `api_guides/python` directory get explicit ids set on all
+  heading-2s to ensure back-links work.
+
+  Args:
+    src_dir: The directory to convert files from.
+    output_dir: The root directory to write the resulting files to.
+    reference_resolver: A `parser.ReferenceResolver` to make the replacements.
+    file_pattern: Only replace references in files matching file_patters,
+      using fnmatch. Non-matching files are copied unchanged.
+  """
   # Iterate through all the source files and process them.
   tag_updater = _UpdateTags()
   for dirpath, _, filenames in os.walk(src_dir):
@@ -415,21 +432,21 @@ def _other_docs(src_dir, output_dir, reference_resolver):
 
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
-      if not base_name.endswith('.md'):
-        print('Copying non-md file %s...' % suffix)
+      if not fnmatch.fnmatch(base_name, file_pattern):
+        print('Copying un-matched file %s...' % suffix)
         open(full_out_path, 'w').write(open(full_in_path).read())
         continue
       if dirpath.endswith('/api_guides/python'):
         print('Processing Python guide %s...' % base_name)
-        md_string = tag_updater.process(full_in_path)
+        content = tag_updater.process(full_in_path)
       else:
         print('Processing doc %s...' % suffix)
-        md_string = open(full_in_path).read()
+        content = open(full_in_path).read()
 
-      output = reference_resolver.replace_references(md_string,
-                                                     relative_path_to_root)
+      content = reference_resolver.replace_references(content,
+                                                      relative_path_to_root)
       with open(full_out_path, 'w') as f:
-        f.write(header + output)
+        f.write(content)
 
   print('Done.')
 

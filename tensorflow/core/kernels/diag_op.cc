@@ -108,7 +108,7 @@ class DiagPartOp : public OpKernel {
 };
 
 // Implementation of the functor specialization for CPU.
-// 
+//
 // According to the diagonal definition,
 // `output[i1,..., ik, i1,..., ik] = input[i1,..., ik]`,
 //
@@ -116,7 +116,7 @@ class DiagPartOp : public OpKernel {
 // pointer can be represent by coordinate [i1,..., ik],
 // where `index = i1*(s2*...*sk) + i2*(s3*...*sk) +... + ik`
 //
-// Let new_index is the offset of output's pointer with coordinate 
+// Let new_index is the offset of output's pointer with coordinate
 // [i1,..., ik, i1,..., ik], then we have
 // `new_index = i1*(s2*...sk*s1*...*sk) + i2*(s3*...*sk*s1*...*sk) +... + \
 //              ik*(s1*...*sk) + i1*(s2*...*sk) + i2*(s3*...*sk) +... + ik

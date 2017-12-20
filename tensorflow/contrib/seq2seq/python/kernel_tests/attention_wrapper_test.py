@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -256,6 +257,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.12500001)
@@ -288,6 +291,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
     self._testWithAttention(
@@ -314,6 +319,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-0.0051812846),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
@@ -344,6 +351,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
     self._testWithAttention(
@@ -371,6 +380,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 10), dtype=dtype('float32'), mean=0.117389656,),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
@@ -547,6 +558,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050430927)
@@ -580,6 +593,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.046009291)
@@ -591,6 +606,25 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testBahdanauMonotonicNormalized')
+
+  def testBahdanauMonotonicHard(self):
+    # Run attention mechanism with mode='hard', make sure probabilities are hard
+    b, t, u, d = 10, 20, 30, 40
+    with self.test_session(use_gpu=True) as sess:
+      a = wrapper.BahdanauMonotonicAttention(
+          d,
+          random_ops.random_normal((b, t, u)),
+          mode='hard')
+      # Just feed previous attention as [1, 0, 0, ...]
+      attn, unused_state = a(
+          random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
+      sess.run(variables.global_variables_initializer())
+      attn_out = attn.eval()
+      # All values should be 0 or 1
+      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
+      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
+      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
+                                           attn_out.sum(axis=1) == 0)))
 
   def testLuongMonotonicNotNormalized(self):
     create_attention_mechanism = functools.partial(
@@ -612,6 +646,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-5.2024145e-05),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
@@ -647,6 +683,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
@@ -681,6 +719,9 @@ class AttentionWrapperTest(test.TestCase):
         alignments=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        attention_state=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=())
 
     expected_final_alignment_history = (
@@ -697,6 +738,25 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
+
+  def testLuongMonotonicHard(self):
+    # Run attention mechanism with mode='hard', make sure probabilities are hard
+    b, t, u, d = 10, 20, 30, 40
+    with self.test_session(use_gpu=True) as sess:
+      a = wrapper.LuongMonotonicAttention(
+          d,
+          random_ops.random_normal((b, t, u)),
+          mode='hard')
+      # Just feed previous attention as [1, 0, 0, ...]
+      attn, unused_state = a(
+          random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
+      sess.run(variables.global_variables_initializer())
+      attn_out = attn.eval()
+      # All values should be 0 or 1
+      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
+      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
+      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
+                                           attn_out.sum(axis=1) == 0)))
 
   def testMultiAttentionNoAttentionLayer(self):
     create_attention_mechanisms = (
@@ -717,6 +777,9 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 20), dtype=dtype('float32'), mean=0.11680689),
         time=3,
         alignments=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        attention_state=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=())
@@ -752,6 +815,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 3), dtype=dtype('float32'), mean=-0.0098808752),
         time=3,
         alignments=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),),
+        attention_state=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),),
         alignment_history=())
 

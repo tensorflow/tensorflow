@@ -20,6 +20,10 @@ limitations under the License.
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(__FreeBSD__)
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #include "tensorflow/core/platform/windows/windows_file_system.h"
@@ -266,6 +270,14 @@ string Env::GetExecutablePath() {
   char unresolved_path[buffer_size];
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK(realpath(unresolved_path, exe_path));
+#elif defined(__FreeBSD__)
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+  size_t exe_path_size = PATH_MAX;
+
+  if (sysctl(mib, 4, exe_path, &exe_path_size, NULL, 0) != 0) {
+    // Resolution of path failed
+    return "";
+  }
 #elif defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
@@ -292,6 +304,12 @@ bool Env::LocalTempFilename(string* filename) {
     uint64_t tid64;
     pthread_threadid_np(nullptr, &tid64);
     int32 tid = static_cast<int32>(tid64);
+    int32 pid = static_cast<int32>(getpid());
+#elif defined(__FreeBSD__)
+    // Has to be casted to long first, else this error appears:
+    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+    // is not allowed
+    int32 tid = static_cast<int32>((long) pthread_self());
     int32 pid = static_cast<int32>(getpid());
 #elif defined(PLATFORM_WINDOWS)
     int32 tid = static_cast<int32>(GetCurrentThreadId());

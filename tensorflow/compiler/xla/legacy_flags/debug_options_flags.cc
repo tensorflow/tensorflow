@@ -31,7 +31,6 @@ std::vector<tensorflow::Flag>* flag_objects;
 std::once_flag flags_init;
 
 void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_hlo_graph_path("/tmp/");
   flags->set_xla_enable_fast_math(true);
   flags->set_xla_llvm_enable_alias_scope_metadata(true);
   flags->set_xla_llvm_enable_noalias_metadata(true);
@@ -118,8 +117,21 @@ void AllocateFlags() {
            flag_values->xla_hlo_dump_as_graphdef(),
            "Dump HLO graphs as TensorFlow GraphDefs."),
        tensorflow::Flag(
+           "xla_hlo_graph_sharding_color",
+           bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
+           flag_values->xla_hlo_graph_sharding_color(),
+           "Assign colors based on sharding assignments when generating the "
+           "HLO graphs."),
+       tensorflow::Flag(
+           "xla_hlo_tfgraph_device_scopes",
+           bool_setter_for(&DebugOptions::set_xla_hlo_tfgraph_device_scopes),
+           flag_values->xla_hlo_tfgraph_device_scopes(),
+           "When generating TensorFlow HLO graphs, if the HLO instructions "
+           "are assigned to a specific device, prefix the name scope with "
+           "\"devX\" with X being the device ordinal."),
+       tensorflow::Flag(
            "xla_log_hlo_text", flag_values->mutable_xla_log_hlo_text(),
-           "HLO modules matching this regex will be dumped to LOG(INFO). "),
+           "HLO modules matching this regex will be dumped to LOG(INFO)."),
        tensorflow::Flag(
            "xla_generate_hlo_text_to",
            flag_values->mutable_xla_generate_hlo_text_to(),

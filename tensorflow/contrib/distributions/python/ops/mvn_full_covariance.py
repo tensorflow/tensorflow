@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.distributions.python.ops import mvn_tril
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 
 
 __all__ = [
@@ -73,14 +76,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
   cov = [[ 0.36,  0.12,  0.06],
          [ 0.12,  0.29, -0.13],
          [ 0.06, -0.13,  0.26]]
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance_matrix=cov)
 
@@ -100,7 +103,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   covariance_matrix = ...  # shape: [2, 3, 3], symmetric, positive definite.
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance=covariance_matrix)
 
@@ -167,9 +170,12 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
           covariance_matrix = ops.convert_to_tensor(
               covariance_matrix, name="covariance_matrix")
           if validate_args:
-            assert_symmetric = check_ops.assert_equal(
-                covariance_matrix,
-                array_ops.matrix_transpose(covariance_matrix),
+            tol = np.finfo(covariance_matrix.dtype.as_numpy_dtype).eps * 10
+            diff = math_ops.abs(
+                covariance_matrix
+                - array_ops.matrix_transpose(covariance_matrix))
+            assert_symmetric = check_ops.assert_less(
+                diff, tol + tol * math_ops.abs(covariance_matrix),
                 message="Matrix was not symmetric.")
             covariance_matrix = control_flow_ops.with_dependencies(
                 [assert_symmetric], covariance_matrix)

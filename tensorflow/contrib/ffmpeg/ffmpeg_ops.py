@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
+from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
+from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
@@ -89,3 +91,19 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
 
 
 ops.NotDifferentiable('EncodeAudio')
+
+
+def decode_video(contents):
+  """Create an op that decodes the contents of a video file.
+
+  Args:
+    contents: The binary contents of the video file to decode. This is a
+      scalar.
+
+  Returns:
+    A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.
+  """
+  return gen_decode_video_op_py.decode_video(contents)
+
+
+ops.NotDifferentiable('DecodeVideo')

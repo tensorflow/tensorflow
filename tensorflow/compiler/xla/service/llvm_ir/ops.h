@@ -40,11 +40,24 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
 inline bool CanEmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const BufferAssignment& assignment) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
-  return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-         fusion->fused_expression_root()->opcode() ==
-             HloOpcode::kDynamicUpdateSlice &&
-         CanUpdateDynamicSliceInPlace(fusion->fused_expression_root(),
-                                      assignment);
+  HloInstruction* fused_root = fusion->fused_expression_root();
+  if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice ||
+      fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    return false;
+  }
+  // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
+  // associated operand. See if it shares an allocation with this operand.
+  HloInstruction* fusion_operand;
+  ShapeIndex index;
+  std::tie(fusion_operand, index) =
+      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
+  if (fusion_operand->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  auto* operand = fusion->operand(fusion_operand->parameter_number());
+  return assignment.HasAllocationAt(operand, index) &&
+         assignment.HasAllocationAt(fusion, {}) &&
+         assignment.SharesSliceAtIndex(fusion, {}, operand, index);
 }
 
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,

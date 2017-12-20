@@ -494,7 +494,7 @@ answered questions, and were part of inspiring discussions.
 This release contains contributions from many people at Google, as well as:
 
 A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex
-Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton 
+Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton
 Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben
 Visser, Brady Zhou, Calpa Liu, Changming Sun, Chih Cheng Liang, Christopher
 Berner, Clark Zinzow, @Conchylicultor, Dan Ellis, Dan J, Dan Jarvis, Daniel

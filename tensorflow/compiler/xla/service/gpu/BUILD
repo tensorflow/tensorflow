@@ -343,15 +343,16 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "copy_insertion",
-    srcs = ["copy_insertion.cc"],
-    hdrs = ["copy_insertion.h"],
+    name = "gpu_copy_insertion",
+    srcs = ["gpu_copy_insertion.cc"],
+    hdrs = ["gpu_copy_insertion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
 )
@@ -427,14 +428,14 @@ cc_library(
     hdrs = ["gpu_compiler.h"],
     deps = [
         ":convolution_folding",
-        ":copy_insertion",
         ":fusion_merger",
+        ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_layout_assignment",
         ":hlo_schedule",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
@@ -444,10 +445,11 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
-        "//tensorflow/compiler/xla/service:batchnorm_rewriter",
+        "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
@@ -491,9 +493,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "gpu_layout_assignment",
+    srcs = ["gpu_layout_assignment.cc"],
+    hdrs = ["gpu_layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -507,10 +509,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "layout_assignment_test",
-    srcs = ["layout_assignment_test.cc"],
+    name = "gpu_layout_assignment_test",
+    srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":gpu_layout_assignment",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -574,11 +576,14 @@ tf_cc_test(
     deps = [
         ":instruction_fusion",
         ":while_transformer",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

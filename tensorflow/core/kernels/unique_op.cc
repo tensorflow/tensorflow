@@ -133,11 +133,7 @@ class UniqueOp : public OpKernel {
     auto Tout = output->shaped<T, 3>(new_sizes);
 
     for (auto it : uniq) {
-      for (int64 i = 0; i < Tin.dimension(0); i++) {
-        for (int64 j = 0; j < Tin.dimension(2); j++) {
-          Tout(i, it.second, j) = Tin(i, it.first, j);
-        }
-      }
+      Tout.chip(it.second, 1) = Tin.chip(it.first, 1);
     }
 
     if (num_outputs() > 2) {
