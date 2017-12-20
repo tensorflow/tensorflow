@@ -99,7 +99,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
 
 
 class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
-  """A tfdbg Session wrapper that can be used with TensroBoard Debugger Plugin.
+  """A tfdbg Session wrapper that can be used with TensorBoard Debugger Plugin.
 
   This wrapper is the same as `GrpcDebugWrapperSession`, except that it uses a
     predefined `watch_fn` that
