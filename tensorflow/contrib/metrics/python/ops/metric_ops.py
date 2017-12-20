@@ -3307,10 +3307,10 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
   that measures inter-annotator agreement.
 
   The `cohen_kappa` function calculates the confusion matrix, and creates three
-  local variables to compute the Cohen's kappa: `total_po`, `total_pe_row`, and
-  `total_pe_col` refer to the diagonal part, rows and columns totals of the
-  confusion matrix, respectively. This value is ultimately returned as `kappa`,
-  an idempotent operation that is calculated by
+  local variables to compute the Cohen's kappa: `po`, `pe_row`, and `pe_col`
+  refer to the diagonal part, rows and columns totals of the confusion matrix,
+  respectively. This value is ultimately returned as `kappa`, an idempotent
+  operation that is calculated by
 
       pe = (pe_row * pe_col) / N
       k = (sum(po) - sum(pe)) / (N - sum(pe))
@@ -3371,9 +3371,12 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
     stat_dtype = (dtypes.int64
                   if weights is None or weights.dtype.is_integer
                   else dtypes.float32)
-    total_po = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_po')
-    total_pe_row = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_pe_row')
-    total_pe_col = metrics_impl.metric_variable((num_classes,), stat_dtype, name='total_pe_col')
+    po = metrics_impl.metric_variable(
+        (num_classes,), stat_dtype, name='po')
+    pe_row = metrics_impl.metric_variable(
+        (num_classes,), stat_dtype, name='pe_row')
+    pe_col = metrics_impl.metric_variable(
+        (num_classes,), stat_dtype, name='pe_col')
 
     # Table of the counts of agreement:
     counts_in_table = confusion_matrix.confusion_matrix(
@@ -3402,7 +3405,7 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
           po_sum - pe_sum, total - pe_sum, name=name)
       return k
 
-    kappa = _calculate_k(total_po, total_pe_row, total_pe_col, name='value')
+    kappa = _calculate_k(po, pe_row, pe_col, name='value')
     update_op = _calculate_k(update_po, update_pe_row, update_pe_col, 'update_op')
 
     if metrics_collections:

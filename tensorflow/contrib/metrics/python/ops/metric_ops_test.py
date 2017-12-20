@@ -6682,9 +6682,9 @@ class CohenKappaTest(test.TestCase):
         labels=array_ops.ones((10, 1)),
         num_classes=2)
     _assert_metric_variables(self, (
-        'cohen_kappa/total_po:0',
-        'cohen_kappa/total_pe_row:0',
-        'cohen_kappa/total_pe_col:0',))
+        'cohen_kappa/po:0',
+        'cohen_kappa/pe_row:0',
+        'cohen_kappa/pe_col:0',))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
