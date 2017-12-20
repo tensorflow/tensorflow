@@ -341,14 +341,14 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   EXPECT_FALSE(env->FileExists(filename).ok());
 }
 
-TEST_F(DefaultEnvTest, CreateLocalFilename) {
+TEST_F(DefaultEnvTest, CreateNewFileWithUniqueName) {
   Env* env = Env::Default();
 
   string prefix = "tempfile-prefix-";
   string suffix = ".tmp";
   string filename = prefix;
 
-  EXPECT_TRUE(env->CreateLocalFilename(&filename, suffix));
+  EXPECT_TRUE(env->CreateNewFileWithUniqueName(&filename, suffix));
 
   StringPiece str(filename);
   EXPECT_TRUE(str.starts_with(prefix));
