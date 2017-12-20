@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -167,18 +168,6 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
-  const bool src_cpu = IsCPU(srcd);
-  if (src_cpu == dst_cpu) {
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat(
-            "TFE_TensorHandleCopyToDevice requires either the source "
-            "TFE_TensorHandle be on or the destination device be on CPU "
-            "or be the same (they are ",
-            DeviceName(srcd), " and ", DeviceName(dstd), " in this call)")
-            .c_str());
-    return nullptr;
-  }
   tensorflow::Tensor* src = &(h->t);
   if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
     TF_SetStatus(
@@ -189,26 +178,19 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
             .c_str());
     return nullptr;
   }
-  if (src_cpu) {
-    tensorflow::Tensor dst(
-        dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
-        src->shape());
-    if (src->shape().num_elements() == 0) {
-      return new TFE_TensorHandle(dst, dstd);
-    }
-    tensorflow::Notification n;
-    dstd->tensorflow_gpu_device_info()->default_context->CopyCPUTensorToDevice(
-        src, dstd, &dst, [status, &n](const tensorflow::Status& s) {
-          status->status = s;
-          n.Notify();
-        });
-    n.WaitForNotification();
-    return (TF_GetCode(status) == TF_OK) ? new TFE_TensorHandle(dst, dstd)
-                                         : nullptr;
+  tensorflow::Tensor dst(dstd->GetAllocator(tensorflow::AllocatorAttributes()),
+                         src->dtype(), src->shape());
+  if (src->shape().num_elements() == 0) {
+    return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
-  CHECK(dst_cpu);
-  tensorflow::Tensor dst(src->dtype(), src->shape());
-  tensorflow::Notification n;
+  tensorflow::DeviceContext* src_device_context = nullptr;
+  if (!IsCPU(srcd)) {
+    src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
+  }
+  tensorflow::DeviceContext* dst_device_context = nullptr;
+  if (!dst_cpu) {
+    dst_device_context = dstd->tensorflow_gpu_device_info()->default_context;
+  }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that
   // GPU devices are implemented using 3 streams - one for host->device copies,
@@ -217,16 +199,18 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   // but more than necessary (since it waits for operations that might have
   // nothing to do with this tensor to complete).
   status->status = srcd->Sync();
-  if (!status->status.ok()) return nullptr;
-  srcd->tensorflow_gpu_device_info()->default_context->CopyDeviceTensorToCPU(
-      src, "IGNORE_MY_TENSOR_NAME", srcd, &dst,
-      [status, &n](const tensorflow::Status& s) {
-        status->status = s;
-        n.Notify();
-      });
+  tensorflow::Notification n;
+  tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
+                                 srcd, dstd, tensorflow::AllocatorAttributes(),
+                                 tensorflow::AllocatorAttributes(), src, &dst,
+                                 [status, &n](const tensorflow::Status& s) {
+                                   status->status = s;
+                                   n.Notify();
+                                 });
   n.WaitForNotification();
-  return (TF_GetCode(status) == TF_OK) ? new TFE_TensorHandle(dst, nullptr)
-                                       : nullptr;
+  return (TF_GetCode(status) == TF_OK)
+             ? new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd)
+             : nullptr;
 }
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
