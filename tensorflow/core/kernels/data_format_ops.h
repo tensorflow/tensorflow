@@ -26,8 +26,8 @@ namespace functor {
 // Functor used by DataFormatDimMapOP to do the computations.
 template <typename Device, typename T>
 struct DataFormatDimMap {
-  void operator()(const Device& d, typename TTypes<T>::ConstScalar x,
-                  typename TTypes<T>::Scalar y) {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::Flat y) {
     auto zero = x.constant(0);
     auto one = x.constant(1);
     auto three = x.constant(3);
