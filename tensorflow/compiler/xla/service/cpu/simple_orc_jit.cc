@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 
-#include <dlfcn.h>
 #include <stdint.h>
 #include <algorithm>
 #include <list>
@@ -40,6 +39,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
+
+#ifdef _MSC_VER
+extern "C" {
+void sincos(double x, double *sin, double *cos) {
+  *sin = std::sin(x);
+  *cos = std::cos(x);
+}
+void sincosf(float x, float *sin, float *cos) {
+  *sin = std::sinf(x);
+  *cos = std::cosf(x);
+}
+}
+#endif
 
 namespace xla {
 namespace cpu {
