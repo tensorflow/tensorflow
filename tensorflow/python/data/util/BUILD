@@ -62,6 +62,30 @@ py_test(
     ],
 )
 
+py_library(
+    name = "convert",
+    srcs = ["convert.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_test(
+    name = "convert_test",
+    size = "small",
+    srcs = ["convert_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convert",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:util",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
