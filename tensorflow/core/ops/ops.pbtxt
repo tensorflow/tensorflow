@@ -33982,6 +33982,30 @@ op {
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
 }
 op {
+  name: "UniqueDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the unique elements of `input_dataset`."
+}
+op {
   name: "UniqueV2"
   input_arg {
     name: "x"
