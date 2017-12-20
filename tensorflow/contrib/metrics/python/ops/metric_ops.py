@@ -3364,8 +3364,9 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
     # Convert 2-dim (num, 1) to 1-dim (num,)
     labels.get_shape().with_rank_at_most(2)
     labels = array_ops.squeeze(labels)
-    predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-        predictions=predictions, labels=labels, weights=weights)
+    predictions, labels, weights = (
+        metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
+            predictions=predictions, labels=labels, weights=weights))
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     stat_dtype = (dtypes.int64
@@ -3384,19 +3385,20 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
       num_classes=num_classes, weights=weights,
       dtype=stat_dtype, name="counts_in_table")
 
-    po = array_ops.diag_part(counts_in_table, name='po')
-    pe_row = math_ops.reduce_sum(counts_in_table, axis=0, name='pe_row')
-    pe_col = math_ops.reduce_sum(counts_in_table, axis=1, name='pe_col')
-    with ops.control_dependencies([po, pe_row, pe_col]):
-      update_po = state_ops.assign_add(total_po, po)
-      update_pe_row = state_ops.assign_add(total_pe_row, pe_row)
-      update_pe_col = state_ops.assign_add(total_pe_col, pe_col)
+    po_t = array_ops.diag_part(counts_in_table)
+    pe_row_t = math_ops.reduce_sum(counts_in_table, axis=0)
+    pe_col_t = math_ops.reduce_sum(counts_in_table, axis=1)
+    with ops.control_dependencies([po_t, pe_row_t, pe_col_t]):
+      update_po = state_ops.assign_add(po, po_t)
+      update_pe_row = state_ops.assign_add(pe_row, pe_row_t)
+      update_pe_col = state_ops.assign_add(pe_col, pe_col_t)
 
     def _calculate_k(po, pe_row, pe_col, name):
       po_sum = math_ops.reduce_sum(po)
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
-          metrics_impl._safe_div(pe_row * pe_col, total, None))  # pylint: disable=protected-access
+          metrics_impl._safe_div(  # pylint: disable=protected-access
+              pe_row * pe_col, total, None))
       po_sum, pe_sum, total = (math_ops.to_double(po_sum),
                                math_ops.to_double(pe_sum),
                                math_ops.to_double(total))
@@ -3406,7 +3408,8 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
       return k
 
     kappa = _calculate_k(po, pe_row, pe_col, name='value')
-    update_op = _calculate_k(update_po, update_pe_row, update_pe_col, 'update_op')
+    update_op = _calculate_k(update_po, update_pe_row, update_pe_col,
+                             name='update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, kappa)
