@@ -286,7 +286,7 @@ def flip_up_down(image):
   """Flip an image vertically (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
-  `height`.raw
+  `height`.
 
   See also `reverse()`.
 
