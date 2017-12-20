@@ -71,7 +71,7 @@ def _eager_fill(dims, value, ctx):
   attr_t = value.dtype.as_datatype_enum
   dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
-  attrs = ("T", attr_t)
+  attrs = ("T", attr_t, "index_type", dtypes.int32.as_datatype_enum)
   result, = execute.execute(
       b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
