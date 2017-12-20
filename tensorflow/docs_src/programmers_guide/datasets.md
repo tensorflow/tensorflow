@@ -455,9 +455,6 @@ dataset = dataset.flat_map(
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
 
-For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
-in @{$get_started/linear_regression}.
-
 <!--
 TODO(mrry): Add these sections.
 

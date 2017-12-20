@@ -432,7 +432,7 @@ Pre-made Estimators are an effective way to quickly create standard models.
 Now that you've gotten started writing TensorFlow programs, consider the
 following material:
 
-* @{$get_started/saving_models$Checkpoints} to learn how to save and restore
+* @{$get_started/checkpoints$Checkpoints} to learn how to save and restore
   models.
 * @{$get_started/datasets_quickstart$Datasets} to learn more about importing
   data into your
