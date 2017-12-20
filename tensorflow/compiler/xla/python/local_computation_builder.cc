@@ -166,6 +166,18 @@ ComputationDataHandle LocalComputationBuilder::Dot(
   return builder_.Dot(lhs, rhs);
 }
 
+ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers) {
+  return builder_.ConvGeneralDilated(lhs, rhs, window_strides, padding,
+                                     lhs_dilation, rhs_dilation,
+                                     dimension_numbers);
+}
+
 ComputationDataHandle LocalComputationBuilder::ConvertElementType(
     const ComputationDataHandle& operand, PrimitiveType new_element_type) {
   return builder_.ConvertElementType(operand, new_element_type);
