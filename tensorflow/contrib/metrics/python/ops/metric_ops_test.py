@@ -6663,12 +6663,12 @@ class CountTest(test.TestCase):
 
 class CohenKappaTest(test.TestCase):
 
-  def _confuse_matrix_to_samples(self, confuse_matrix):
-    x, y = confuse_matrix.shape
+  def _confusion_matrix_to_samples(self, confusion_matrix):
+    x, y = confusion_matrix.shape
     pairs = []
     for label in range(x):
       for feature in range(y):
-        pairs += [label, feature] * confuse_matrix[label, feature]
+        pairs += [label, feature] * confusion_matrix[label, feature]
     pairs = np.array(pairs).reshape((-1, 2))
     return pairs[:, 0], pairs[:, 1]
 
@@ -6724,7 +6724,7 @@ class CohenKappaTest(test.TestCase):
         self.assertAlmostEqual(initial_kappa, kappa.eval(), 5)
 
   def testBasic(self):
-    confuse_matrix = np.array([
+    confusion_matrix = np.array([
       [9, 3, 1],
       [4, 8, 2],
       [2, 1, 6]])
@@ -6736,7 +6736,7 @@ class CohenKappaTest(test.TestCase):
     #                = 0.45
     # see: http://psych.unl.edu/psycrs/handcomp/hckappa.PDF
     expect = 0.45
-    labels, predictions = self._confuse_matrix_to_samples(confuse_matrix)
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
 
     dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64,
               dtypes_lib.float32, dtypes_lib.float64]
@@ -6760,7 +6760,11 @@ class CohenKappaTest(test.TestCase):
             self.assertAlmostEqual(expect, kappa.eval(), 2)
 
   def testAllCorrect(self):
-    inputs = np.random.randint(0, 4, size=(100, 1))
+    inputs = np.arange(0, 100) % 4
+    # confusion matrix
+    # [[25, 0, 0],
+    #  [0, 25, 0],
+    #  [0, 0, 25]]
     expect = sk_metrics.cohen_kappa_score(inputs, inputs)
 
     with self.test_session() as sess:
@@ -6775,6 +6779,10 @@ class CohenKappaTest(test.TestCase):
   def testAllIncorrect(self):
     labels = np.arange(0, 100) % 4
     predictions = (labels + 1) % 4
+    # confusion matrix
+    # [[0, 25, 0],
+    #  [0, 0, 25],
+    #  [25, 0, 0]]
     expect = sk_metrics.cohen_kappa_score(labels, predictions)
 
     with self.test_session() as sess:
@@ -6787,11 +6795,16 @@ class CohenKappaTest(test.TestCase):
       self.assertAlmostEqual(expect, kappa.eval(), 5)
 
   def testWeighted(self):
-    labels = np.random.randint(0, 4, size=(100, 1))
-    predictions = np.random.randint(0, 4, size=(100, 1))
-    weights = np.random.random(size=(100, 1))
+    confusion_matrix = np.array([
+      [9, 3, 1],
+      [4, 8, 2],
+      [2, 1, 6]])
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
+    num_samples = np.sum(confusion_matrix, dtype=np.int32)
+    weights = (np.arange(0, num_samples) % 5) / 5.0
+
     expect = sk_metrics.cohen_kappa_score(labels, predictions,
-                                          sample_weight=weights[:, 0])
+                                          sample_weight=weights)
 
     with self.test_session() as sess:
       predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
@@ -6804,16 +6817,20 @@ class CohenKappaTest(test.TestCase):
       self.assertAlmostEqual(expect, kappa.eval(), 5)
 
   def testWithMultipleUpdates(self):
-    num_samples = 1000
-    batch_size = 100
-    num_classes = 4
-    labels_np = np.random.randint(0, num_classes, size=(num_samples, 1))
-    predictions_np = np.random.randint(0, num_classes, size=(num_samples, 1))
-    weights_np = np.random.random(size=(num_samples, 1))
+    confusion_matrix = np.array([
+      [90, 30, 10, 20],
+      [40, 80, 20, 30],
+      [20, 10, 60, 35],
+      [15, 25, 30, 25]])
+    labels_np, predictions_np = self._confusion_matrix_to_samples(confusion_matrix)
+    num_samples = np.sum(confusion_matrix, dtype=np.int32)
+    weights_np = (np.arange(0, num_samples) % 5) / 5.0
+    num_classes = confusion_matrix.shape[0]
 
-    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size, 1))
-    labels = array_ops.placeholder(dtypes_lib.int32, shape=(batch_size, 1))
-    weights = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size, 1))
+    batch_size = num_samples // 10
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size,))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(batch_size,))
+    weights = array_ops.placeholder(dtypes_lib.float32, shape=(batch_size,))
     kappa, update_op = metrics.cohen_kappa(labels, predictions, num_classes,
                                            weights=weights)
     with self.test_session() as sess:
@@ -6821,20 +6838,13 @@ class CohenKappaTest(test.TestCase):
 
       for idx in range(0, num_samples, batch_size):
         batch_start, batch_end = idx, idx + batch_size
-        expect = sk_metrics.cohen_kappa_score(
-            labels_np[:batch_end, 0],
-            predictions_np[:batch_end, 0],
-            sample_weight=weights_np[:batch_end, 0])
-        self.assertAlmostEqual(
-            expect,
-            sess.run(update_op,
-                     feed_dict={labels: labels_np[batch_start:batch_end],
-                                predictions: predictions_np[batch_start:batch_end],
-                                weights: weights_np[batch_start:batch_end]}),
-            5)
+        sess.run(update_op,
+                 feed_dict={labels: labels_np[batch_start:batch_end],
+                            predictions: predictions_np[batch_start:batch_end],
+                            weights: weights_np[batch_start:batch_end]})
 
       final_expect = sk_metrics.cohen_kappa_score(
-          labels_np, predictions_np, sample_weight=weights_np[:, 0])
+          labels_np, predictions_np, sample_weight=weights_np)
       self.assertAlmostEqual(final_expect, kappa.eval(), 5)
 
   def testInvalidNumClasses(self):
