@@ -56,6 +56,7 @@ class TestHttpRequest : public HttpRequest {
 
   void SetTimeouts(uint32 connection, uint32 inactivity,
                    uint32 total) override {}
+  void SetVerboseLogging(bool enabled) override {}
 
   std::map<string, string> resolve_overrides_;
 };

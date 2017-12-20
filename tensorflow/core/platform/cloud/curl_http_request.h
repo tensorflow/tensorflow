@@ -140,6 +140,8 @@ class CurlHttpRequest : public HttpRequest {
 
   void SetTimeouts(uint32 connection, uint32 inactivity, uint32 total) override;
 
+  void SetVerboseLogging(bool enabled) override;
+
  private:
   /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,

@@ -195,6 +195,9 @@ class GcsFileSystem : public FileSystem {
   /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
 
+  /// Controls whether we enable verbose logging in CurlHttpRequests.
+  bool log_http_request_verbose_ = false;
+
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };
 
