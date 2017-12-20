@@ -51,7 +51,7 @@ int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
   return num_removed;
 }
 
-// Remove dulicate control inputs.
+// Remove duplicate control inputs.
 void PruneControlInputs(NodeDef* node) {
   std::unordered_set<string> inputs;
   int pos = 0;
