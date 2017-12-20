@@ -240,7 +240,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
             << " offset shape: " << offset.shape().DebugString()
             << " tensor format: " << tensor_format;
 
-    // Return NaN mean/variance when input is empty.
+    // If input is empty, weturn NaN mean/variance
     if (x.shape().num_elements() == 0) {
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
@@ -550,7 +550,6 @@ class FusedBatchNormOp : public OpKernel {
     Tensor* y = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, x.shape(), &y));
-
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, scale.shape(), &batch_mean));
