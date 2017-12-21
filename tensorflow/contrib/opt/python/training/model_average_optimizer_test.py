@@ -189,7 +189,7 @@ class ModelAverageOptimizerTest(test.TestCase):
          variable_scope.variable_scope('', custom_getter=ma_coustom):
       v = variable_scope.get_variable(initializer=[1, 2], name="v")
       w = variable_scope.get_variable(initializer=[2, 1], name='w')
-      v_g, w_g = ma_coustom._map[v], ma_coustom._map[w]
+      v_g, w_g = ma_coustom._local_2_global[v], ma_coustom._local_2_global[w]
       self.assertDeviceEqual("/job:worker/task:0", v.device)
       self.assertDeviceEqual("job:ps/task:0", v_g.device)
       self.assertDeviceEqual("/job:worker/task:0", w.device)

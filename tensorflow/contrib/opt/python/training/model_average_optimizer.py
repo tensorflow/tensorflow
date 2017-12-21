@@ -68,7 +68,7 @@ class ModelAverageCustomGetter(object):
       worker_device: String.  Name of the `worker` job.
     """
     self._worker_device = worker_device
-    self._map = {}
+    self._local_2_global = {}
 
   def __call__(self, getter, name, trainable, collections, *args, **kwargs):
     if trainable:
@@ -83,7 +83,7 @@ class ModelAverageCustomGetter(object):
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
 
-      self._map[local_var] = global_variable
+      self._local_2_global[local_var] = global_variable
       return local_var
     else:
       return getter(name, trainable, collections, *args, **kwargs)
@@ -124,7 +124,7 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     self._opt = opt
     self._num_worker = num_worker
     self._is_chief = is_chief
-    self._map = ma_custom_getter._map
+    self._local_2_global = ma_custom_getter._local_2_global
     self._interval_steps = interval_steps
     self._accumulator_list = []
     self._chief_init_op = None
@@ -164,7 +164,7 @@ class ModelAverageOptimizer(optimizer.Optimizer):
       raise ValueError(
         'The list of local_variables should not be empty')
     update_ops = []
-    global_center_vars = [self._map[var] for var in var_list]
+    global_center_vars = [self._local_2_global[var] for var in var_list]
     for lvar, gvar in zip(var_list, global_center_vars):
       with ops.device(lvar.device):
         update_ops.append(state_ops.assign(lvar, gvar.read_value()))
@@ -186,7 +186,7 @@ class ModelAverageOptimizer(optimizer.Optimizer):
         name passed to the Optimizer constructor.
 
     Returns:
-      A conditional 'Operation' that update both local and global varibales or
+      A conditional 'Operation' that update both local and global variables or
       just local variables
 
     Raises:
@@ -209,7 +209,7 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     # update global variables.
     def _Update_global_variables():
       local_vars = [v for g, v in grads_and_vars if g is not None]
-      global_vars = [self._map[v] for v in local_vars]
+      global_vars = [self._local_2_global[v] for v in local_vars]
       # sync queue
       with ops.colocate_with(global_step):
         sync_queue = data_flow_ops.FIFOQueue(-1, [dtypes.bool], shapes=[[]],
