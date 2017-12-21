@@ -196,6 +196,7 @@ py_library(
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",

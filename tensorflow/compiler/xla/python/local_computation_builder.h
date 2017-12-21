@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
@@ -112,6 +113,14 @@ class LocalComputationBuilder {
 
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
+
+  ComputationDataHandle ConvGeneralDilated(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
+      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+      tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers);
 
   ComputationDataHandle ConvertElementType(const ComputationDataHandle& operand,
                                            PrimitiveType new_element_type);

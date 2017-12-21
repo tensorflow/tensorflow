@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -2618,4 +2619,54 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
                 output_values, target_names, nullptr, status);
 }
 
+TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
+  tensorflow::OpList op_list;
+  if (!op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length)) {
+    status->status = InvalidArgument("Unparseable OpList");
+    return nullptr;
+  }
+  status->status = Status::OK();
+  return new TF_ApiDefMap(op_list);
+}
+
+void TF_DeleteApiDefMap(TF_ApiDefMap* apimap) { delete apimap; }
+
+void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
+                     size_t text_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+#else
+  mutex_lock l(api_def_map->lock);
+  if (api_def_map->update_docs_called) {
+    status->status = FailedPrecondition(
+        "TF_ApiDefMapPut cannot be called after TF_ApiDefMapGet has been "
+        "called.");
+    return;
+  }
+  string api_def_text(text, text_len);
+  status->status = api_def_map->api_def_map.LoadApiDef(api_def_text);
+#endif  // __ANDROID__
+}
+
+TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
+                           size_t name_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+  return nullptr;
+#else
+  mutex_lock l(api_def_map->lock);
+  if (!api_def_map->update_docs_called) {
+    api_def_map->api_def_map.UpdateDocs();
+    api_def_map->update_docs_called = true;
+  }
+  string name_str(name, name_len);
+  const auto* api_def = api_def_map->api_def_map.GetApiDef(name_str);
+
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(*api_def, ret);
+  return ret;
+#endif  // __ANDROID__
+}
 }  // end extern "C"

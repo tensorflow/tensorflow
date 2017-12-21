@@ -1354,18 +1354,17 @@ string SaveGraph(const string& graph,
       break;
   }
   string path = JoinPath(
-      dest_path, StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+      dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
-  int fd = mkstemps(&path[0], file_extension.length());
-  if (fd < 0) {
+  auto env = tensorflow::Env::Default();
+  if (!env->CreateUniqueFileName(&path, file_extension)) {
     status =
         Status(tensorflow::error::Code::UNKNOWN,
                StrCat("Failed to create temporary file to dump HLO graph: ",
                       strerror(errno)));
   } else {
     status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
-    close(fd);
+        tensorflow::WriteStringToFile(env, path, graph);
   }
   if (!status.ok()) {
     LOG(WARNING) << "Saving HLO graph failed: " << status;

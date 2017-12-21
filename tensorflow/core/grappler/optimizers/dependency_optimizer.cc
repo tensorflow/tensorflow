@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -51,7 +52,7 @@ int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
   return num_removed;
 }
 
-// Remove dulicate control inputs.
+// Remove duplicate control inputs.
 void PruneControlInputs(NodeDef* node) {
   std::unordered_set<string> inputs;
   int pos = 0;
@@ -350,15 +351,16 @@ Status DependencyOptimizer::TransitiveReduction() {
       num_nodes);
   for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
     const NodeDef& node = optimized_graph_->node(node_idx);
-    if (ModifiesFrameInfo(node)) {
-      // Ignore nodes that modify frame info.
+    if (ModifiesFrameInfo(node) || !HasOpDef(node)) {
+      // Ignore function nodes and nodes that modify frame info.
       continue;
     }
     for (int input_slot = 0; input_slot < node.input_size(); ++input_slot) {
       const string& input = node.input(input_slot);
       const NodeDef* input_node = node_map_->GetNode(input);
-      if (ModifiesFrameInfo(*input_node)) {
-        // Ignore edges from nodes that modify frame info.
+      if (ModifiesFrameInfo(*input_node) || IsMerge(*input_node)) {
+        // Ignore edges from nodes that modify frame info and from Merge nodes,
+        // because we cannot know which of it's input paths executes.
         continue;
       }
       const int input_node_idx = node_to_idx_[input_node];
@@ -375,6 +377,14 @@ Status DependencyOptimizer::TransitiveReduction() {
   // of length > 1, we can drop that control dependency.
   int num_controls_removed = 0;
   std::vector<int> longest_distance(num_nodes);
+  // Map from target_index -> set of (input_slot, source_index), representing
+  // the control edges to remove. We sort them in reverse order by input slot,
+  // such that when we swap them out so we don't clobber the
+  // node(target).input() repeated field.
+  typedef std::pair<int, int> InputSlotAndSource;
+  std::unordered_map<
+      int, std::set<InputSlotAndSource, std::greater<InputSlotAndSource>>>
+      control_edges_to_remove;
   for (int source = 0; source < num_nodes; ++source) {
     int highest_control_target = -1;
     for (const auto& control_output : control_outputs[source]) {
@@ -382,7 +392,7 @@ Status DependencyOptimizer::TransitiveReduction() {
         highest_control_target = control_output.first;
       }
     }
-    if (highest_control_target < source) {
+    if (highest_control_target <= source) {
       continue;
     }
     std::fill(longest_distance.begin() + source,
@@ -391,7 +401,10 @@ Status DependencyOptimizer::TransitiveReduction() {
       for (int input : inputs[target]) {
         // If the input node is before source in the topo order, no path
         // source -> input -> target can exits and we can skip it.
-        if (input >= source) {
+        // Also only extend a path from the source itself or from nodes that
+        // have a path from source, indicated by longest_distance[input] > 0.
+        if (input == source ||
+            (input > source && longest_distance[input] > 0)) {
           // If source -> input -> target is longer than the longest
           // path so far from source -> target, update the longest_distance.
           int candidate_longest_distance = longest_distance[input] + 1;
@@ -402,23 +415,34 @@ Status DependencyOptimizer::TransitiveReduction() {
       }
     }
 
-    // If the longest path from the source to the target of a control dependency
-    // is longer than 1, there exists an alternate path, and we can eliminate
-    // the control dependency since it is redundant.
+    // If the longest path from source to target of a control dependency is
+    // longer than 1, there exists an alternate path, and we can eliminate the
+    // redundant direct control dependency.
     for (const auto& control_output : control_outputs[source]) {
       const int target = control_output.first;
       if (longest_distance[target] > 1) {
         const int input_slot = control_output.second;
-        // We modify the node inplace here. This is safe because there can
-        // only be one control edge from a given source to a given target.
-        const NodeDef& source_node = optimized_graph_->node(source);
-        NodeDef* target_node = optimized_graph_->mutable_node(target);
-        target_node->mutable_input()->SwapElements(
-            input_slot, target_node->input_size() - 1);
-        node_map_->RemoveOutput(source_node.name(), target_node->name());
-        target_node->mutable_input()->RemoveLast();
-        ++num_controls_removed;
+        control_edges_to_remove[target].emplace(input_slot, source);
+        VLOG(1) << "Removing edge from:\n"
+                << optimized_graph_->node(source).DebugString() << "\n\nto:\n\n"
+                << optimized_graph_->node(target).DebugString();
       }
+    }
+  }
+
+  for (const auto& it : control_edges_to_remove) {
+    const int target = it.first;
+    NodeDef* target_node = optimized_graph_->mutable_node(target);
+    for (const InputSlotAndSource& slot_and_source : it.second) {
+      const int input_slot = slot_and_source.first;
+      const int source = slot_and_source.second;
+      const NodeDef& source_node = optimized_graph_->node(source);
+      CHECK_LT(input_slot, target_node->input_size());
+      target_node->mutable_input()->SwapElements(input_slot,
+                                                 target_node->input_size() - 1);
+      node_map_->RemoveOutput(source_node.name(), target_node->name());
+      target_node->mutable_input()->RemoveLast();
+      ++num_controls_removed;
     }
   }
   VLOG(1) << "Removed " << num_controls_removed << " out of " << num_controls
@@ -442,36 +466,27 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
 
-  VLOG(1) << "Graph before optimization:\n" << optimized_graph_->DebugString();
   CleanControlInputs();
-  const int num_iterations = opt_level_ == RewriterConfig::AGGRESSIVE ? 2 : 1;
+  const int num_iterations = 2;
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
     Status topo_sort_status;
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      // Prepare the graph for transitive reduction if enabled.
-      topo_sort_status = TopologicalSort(optimized_graph_);
-    }
+    // Perform topological sort to prepare the graph for transitive reduction.
+    topo_sort_status = TopologicalSort(optimized_graph_);
 
+    // Set up index-based graph datastructures to speed up analysis steps below.
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
 
-    // Remove redundant control dependencies, iteration 1.
-    if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-      if (topo_sort_status.ok()) {
-        TF_RETURN_IF_ERROR(TransitiveReduction());
-      } else {
-        LOG(ERROR) << topo_sort_status.error_message();
-      }
-      VLOG(1) << "Graph after transitive reduction:\n"
-              << optimized_graph_->DebugString();
+    if (topo_sort_status.ok()) {
+      // Remove redundant control dependencies.
+      TF_RETURN_IF_ERROR(TransitiveReduction());
+    } else {
+      LOG(ERROR) << topo_sort_status.error_message();
     }
 
-    // Turn nodes without non-control outputs into NoOps, prune NoOps.
+    // Turn nodes with only control outputs into NoOps, prune NoOps.
     TF_RETURN_IF_ERROR(OptimizeDependencies());
-    VLOG(1) << "Graph after NoOp conversion & pruning:\n"
-            << optimized_graph_->DebugString();
   }
-  VLOG(1) << "Graph after optimization:\n" << optimized_graph_->DebugString();
 
   return Status::OK();
 }

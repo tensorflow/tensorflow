@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""SavedModel utility functions."""
+"""SavedModel simple save functionality."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -39,7 +39,7 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
       to configure a SavedModel, this method has a few practical implications:
     - It will be treated as a graph for inference / serving (i.e. uses the tag
       `tag_constants.SERVING`)
-    - The saved model will load in TensorFlow Serving and supports the
+    - The SavedModel will load in TensorFlow Serving and supports the
       [Predict API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
       To use the Classify, Regress, or MultiInference APIs, please
       use either

@@ -735,6 +735,20 @@ class BatchDatasetSerializationTest(
         lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
         num_outputs)
 
+  def _build_dataset_dense_to_sparse(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.fill([x], x)).apply(
+            batching.dense_to_sparse_batch(4, [12]))
+
+  def testDenseToSparseBatchDatasetCore(self):
+    components = np.random.randint(5, size=(40,)).astype(np.int32)
+    diff_comp = np.random.randint(2, size=(100,)).astype(np.int32)
+
+    num_outputs = len(components) // 4
+    self.run_core_tests(lambda: self._build_dataset_dense_to_sparse(components),
+                        lambda: self._build_dataset_dense_to_sparse(diff_comp),
+                        num_outputs)
+
 
 class PaddedBatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):

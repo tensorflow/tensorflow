@@ -24,11 +24,18 @@ namespace grappler {
 
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
+bool IsAngle(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
+bool IsAtan2(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
+bool IsBitcast(const NodeDef& node);
+bool IsComplex(const NodeDef& node);
+bool IsComplexAbs(const NodeDef& node);
+bool IsConj(const NodeDef& node);
 bool IsConcatOffset(const NodeDef& node);
 bool IsConstant(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
@@ -41,18 +48,38 @@ bool IsDequeueOp(const NodeDef& node);
 bool IsDiv(const NodeDef& node);
 bool IsEluGrad(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
+bool IsEqual(const NodeDef& node);
 bool IsExit(const NodeDef& node);
+bool IsFloorDiv(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);
-bool IsFusedBatchNormGradV1(const NodeDef& node);
+bool IsFusedBatchNormGrad(const NodeDef& node);
+bool IsGreater(const NodeDef& node);
+bool IsGreaterEqual(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
+bool IsIdentityN(const NodeDef& node);
+bool IsIgamma(const NodeDef& node);
+bool IsIgammac(const NodeDef& node);
+bool IsImag(const NodeDef& node);
 bool IsInvGrad(const NodeDef& node);
+bool IsLess(const NodeDef& node);
+bool IsLessEqual(const NodeDef& node);
+bool IsLogicalAnd(const NodeDef& node);
+bool IsLogicalNot(const NodeDef& node);
+bool IsLogicalOr(const NodeDef& node);
+bool IsMaximum(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
+bool IsMinimum(const NodeDef& node);
+bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
+bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
+bool IsPolygamma(const NodeDef& node);
+bool IsPow(const NodeDef& node);
+bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
 bool IsReluGrad(const NodeDef& node);
@@ -80,7 +107,10 @@ bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
 bool IsTanhGrad(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
+bool IsTruncateDiv(const NodeDef& node);
+bool IsTruncateMod(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
+bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).
 // Returns false if it could not be determined to be so.
@@ -101,6 +131,9 @@ bool IsInvolution(const NodeDef& node);
 // first input tensor and possible changes its shape. More precisely, this
 // function returns true if the op commutes with all element-wise operations.
 bool IsValuePreserving(const NodeDef& node);
+
+// Returns true if we can find an opdef corresponding to the op of the node.
+bool HasOpDef(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

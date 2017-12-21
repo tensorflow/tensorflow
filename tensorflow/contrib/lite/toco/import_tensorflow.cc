@@ -52,6 +52,7 @@ using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -135,6 +136,8 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kInt32;
   else if (dtype == DT_INT64)
     return ArrayDataType::kInt64;
+  else if (dtype == DT_STRING)
+    return ArrayDataType::kString;
   else
     LOG(INFO) << "Unsupported data type in placehoder op: " << dtype;
   return ArrayDataType::kNone;
@@ -236,6 +239,27 @@ void ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
   }
 }
 
+void ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_STRING);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  ImportShape(input_shape.dim(), output_array->mutable_shape());
+  int input_flat_size = 1;
+  for (int k = 0; k < input_shape.dim_size(); k++) {
+    input_flat_size *= input_shape.dim(k).size();
+  }
+  auto& output_string_data =
+      output_array->GetMutableBuffer<ArrayDataType::kString>().data;
+  output_string_data.resize(input_flat_size);
+  if (input_flat_size != input_tensor.string_val_size()) {
+    LOG(FATAL) << "Input_content string_val doesn't have the right "
+                  "dimensions for this string tensor.";
+  }
+  for (int i = 0; i < input_flat_size; ++i) {
+    output_string_data[i] = input_tensor.string_val(i);
+  }
+}
+
 // Count the number of inputs of a given node. If
 // `tf_import_flags.drop_control_dependency` is true, count the number of
 // non-control-dependency inputs.
@@ -261,23 +285,30 @@ void ConvertConstOperator(const NodeDef& node,
   const auto dtype = GetDataTypeAttr(node, "dtype");
 
   auto& array = model->GetOrCreateArray(node.name());
-  array.data_type = dtype == DT_FLOAT
-                        ? ArrayDataType::kFloat
-                        : dtype == DT_INT32
-                              ? ArrayDataType::kInt32
-                              : dtype == DT_INT64 ? ArrayDataType::kInt64
-                                                  : ArrayDataType::kNone;
-  if (dtype == DT_FLOAT) {
-    ImportFloatArray(tensor, &array);
-  } else if (dtype == DT_INT32) {
-    ImportInt32Array(tensor, &array);
-  } else if (dtype == DT_INT64) {
-    ImportInt64Array(tensor, &array);
-  } else {
-    // do nothing, silently ignore the Const data. For example, there are consts
-    // of string type. We just make a dummy buffer to indicate that this array
-    // does not rely on external input.
-    array.GetMutableBuffer<ArrayDataType::kNone>();
+  switch (dtype) {
+    case DT_FLOAT:
+      array.data_type = ArrayDataType::kFloat;
+      ImportFloatArray(tensor, &array);
+      break;
+    case DT_INT32:
+      array.data_type = ArrayDataType::kInt32;
+      ImportInt32Array(tensor, &array);
+      break;
+    case DT_INT64:
+      array.data_type = ArrayDataType::kInt64;
+      ImportInt64Array(tensor, &array);
+      break;
+    case DT_STRING:
+      array.data_type = ArrayDataType::kString;
+      ImportStringArray(tensor, &array);
+      break;
+    default:
+      array.data_type = ArrayDataType::kNone;
+      // do nothing, silently ignore the Const data.
+      // We just make a dummy buffer to indicate that
+      // this array does not rely on external input.
+      array.GetMutableBuffer<ArrayDataType::kNone>();
+      break;
   }
 }
 
@@ -1191,7 +1222,7 @@ void ConvertGatherOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "Gather");
   CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
   const auto indices_data_type = GetDataTypeAttr(node, "Tindices");
-  CHECK(indices_data_type == DT_INT32);
+  CHECK(indices_data_type == DT_INT32 || indices_data_type == DT_INT64);
   auto* op = new GatherOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));

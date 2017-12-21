@@ -393,7 +393,7 @@ XLA_TEST_P(ReduceWindowTest, R6Add) {
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
   std::unique_ptr<Literal> arg_literal =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+      Literal::CreateFullWithDescendingLayout<float>(input_dims, 1.0f);
 
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -402,7 +402,7 @@ XLA_TEST_P(ReduceWindowTest, R6Add) {
 
   std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
   std::unique_ptr<Literal> expected =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 9.0f);
+      Literal::CreateFullWithDescendingLayout<float>(output_dims, 9.0f);
 
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }

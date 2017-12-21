@@ -55,10 +55,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     *output = nullptr;
 
-#define HANDLE_TYPE(T)                                      \
-  case DataTypeToEnum<T>::value: {                          \
-    *output = new Dataset<T>(batch_size, row_shape, input); \
-    break;                                                  \
+#define HANDLE_TYPE(T)                                           \
+  case DataTypeToEnum<T>::value: {                               \
+    *output = new Dataset<T>(ctx, batch_size, row_shape, input); \
+    break;                                                       \
   }
 
     switch (input->output_dtypes()[0]) {
@@ -75,11 +75,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
  private:
   // TODO(mrry): Push the templated code down to the raw copying routine.
   template <class T>
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 batch_size, const PartialTensorShape& row_shape,
-            const DatasetBase* input)
-        : batch_size_(batch_size), row_shape_(row_shape), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 batch_size,
+            const PartialTensorShape& row_shape, const DatasetBase* input)
+        : GraphDatasetBase(ctx),
+          batch_size_(batch_size),
+          row_shape_(row_shape),
+          input_(input) {
       input_->Ref();
 
       output_shapes_.reserve(3);
@@ -110,6 +113,25 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() override {
       return strings::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
                              ")::Dataset");
+    }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_node;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      Node* batch_size_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size_node));
+      Node* row_shape_node;
+      std::vector<int64> row_shape;
+      row_shape.reserve(
+          row_shape_.dims());  // not an unknown rank PartialTensorShape
+      for (int i = 0; i < row_shape_.dims(); i++)
+        row_shape.emplace_back(row_shape_.dim_size(i));
+      TF_RETURN_IF_ERROR(b->AddVector(row_shape, &row_shape_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_node, batch_size_node, row_shape_node}, output));
+      return Status::OK();
     }
 
    private:
@@ -239,6 +261,20 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         out_tensors->push_back(std::move(dense_shape));
 
         *end_of_sequence = false;
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(Iterator::SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(Iterator::RestoreParent(ctx, reader, input_impl_));
         return Status::OK();
       }
 

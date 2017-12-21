@@ -267,6 +267,10 @@ class FisherFactor(object):
     new_cov = math_ops.add_n(
         tuple(self._compute_new_cov(idx) for idx in range(self._num_sources)))
 
+    # Synchronize value across all TPU cores.
+    if utils.on_tpu():
+      new_cov = utils.cross_replica_mean(new_cov)
+
     return moving_averages.assign_moving_average(
         self._cov, new_cov, ema_decay, zero_debias=ZERO_DEBIAS)
 

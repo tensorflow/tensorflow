@@ -268,14 +268,18 @@ class ShapeUtil {
       PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<int64> minor_to_major);
 
-  // Constructs a new shape with major-first layout.
-  static Shape MakeShapeWithMonotonicDim0MajorLayout(
+  // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
+  static Shape MakeShapeWithDescendingLayout(
       PrimitiveType element_type,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
-  // Returns a new shape with major-first layout that has the same layout of
-  // elements with a different shape.
-  static Shape NormalizeShapeToMonotonicDim0MajorLayout(const Shape& shape);
+  // Returns a new Shape based on the given Shape with low-dimension-major
+  // layout (i.e. {n, n-1, ..., 0}, like Fortran), and with the dimensions
+  // rearranged so that it has the same in-memory layout as the given shape.
+  //
+  // For example, transforms f32[B,H,W,C]{0,3,2,1} to f32[H,W,C,B]{3,2,1,0}.
+  static Shape MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+      const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
   static void PopulateShape(PrimitiveType element_type,

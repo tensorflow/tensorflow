@@ -338,11 +338,11 @@ tfdbg> ni cross_entropy/Log
 ![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
-and that its input is the node `softmax/Softmax`. Run the following command to
+and that its input is the node `Softmax`. Run the following command to
 take a closer look at the input tensor:
 
 ```none
-tfdbg> pt softmax/Softmax:0
+tfdbg> pt Softmax:0
 ```
 
 Examine the values in the input tensor, searching for zeros:
