@@ -131,13 +131,9 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      const void* buf_ptr = nullptr;
-      int size = 0;
-      if (!stream.GetDirectBufferPointer(&buf_ptr, &size)) return false;
-      if (size < bytes_length) return false;
-      bytes_list->push_back(
-          string(static_cast<const char*>(buf_ptr), bytes_length));
-      if (!stream.Skip(bytes_length)) return false;
+      string bytes;
+      if (!stream.ReadString(&bytes, bytes_length)) return false;
+      bytes_list->push_back(std::move(bytes));
     }
     stream.PopLimit(limit);
     return true;
