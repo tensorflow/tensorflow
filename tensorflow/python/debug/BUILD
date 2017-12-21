@@ -204,6 +204,7 @@ py_library(
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
         "@six_archive//:six",
