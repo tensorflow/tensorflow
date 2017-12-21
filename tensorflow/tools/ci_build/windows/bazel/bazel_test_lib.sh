@@ -42,7 +42,6 @@ broken_cpu_cc_tests="\
     //tensorflow/core/platform/cloud:gcs_file_system_test + \
     //tensorflow/core/kernels/cloud:bigquery_table_accessor_test + \
     //tensorflow/core/kernels/hexagon:graph_transferer_test + \
-    //tensorflow/core/kernels/hexagon:quantized_matmul_op_for_hexagon_test + \
     //tensorflow/core/kernels:remote_fused_graph_execute_utils_test + \
     //tensorflow/core/kernels:requantize_op_test + \
     //tensorflow/core/kernels:requantization_range_op_test + \
