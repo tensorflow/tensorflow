@@ -6856,6 +6856,17 @@ class CohenKappaTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'num_classes'):
       metrics.cohen_kappa(labels, predictions, 1)
 
+  def testInvalidDimension(self):
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 1))
+    invalid_labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 2))
+    with self.assertRaises(ValueError):
+      metrics.cohen_kappa(invalid_labels, predictions, 3)
+
+    invalid_predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 2))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 1))
+    with self.assertRaises(ValueError):
+      metrics.cohen_kappa(labels, invalid_predictions, 3)
+
 
 if __name__ == '__main__':
   test.main()
