@@ -4398,7 +4398,10 @@ py_test(
         "grappler/item_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    tags = [
+        "grappler",
+        "no_pip",  # tf_optimizer is not available in pip.
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4428,7 +4431,10 @@ py_test(
         "grappler/cluster_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    tags = [
+        "grappler",
+        "no_pip",  # tf_optimizer is not available in pip.
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4455,12 +4461,13 @@ py_test(
     name = "tf_optimizer_test",
     size = "small",
     srcs = [
-        "grappler/cluster_test.py",
-        "grappler/item_test.py",
         "grappler/tf_optimizer_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    tags = [
+        "grappler",
+        "no_pip",  # tf_optimizer is not available in pip.
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4478,6 +4485,9 @@ py_test(
         "grappler/memory_optimizer_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "grappler",
+    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -4518,7 +4528,10 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["manual"],
+    tags = [
+        "grappler",
+        "manual",
+    ],
 )
 
 py_library(
@@ -4553,7 +4566,10 @@ py_test(
     size = "small",
     srcs = ["grappler/cost_analyzer_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "grappler",
+        "no_pip",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4585,7 +4601,10 @@ py_test(
     size = "small",
     srcs = ["grappler/model_analyzer_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "grappler",
+        "no_pip",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
