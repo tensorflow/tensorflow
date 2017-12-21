@@ -171,7 +171,6 @@ cc_library(
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
-        "graph_transformations/convert_trivial_transpose_to_reshape.cc",
         "graph_transformations/create_im2col_arrays.cc",
         "graph_transformations/dequantize.cc",
         "graph_transformations/drop_fake_quant.cc",
@@ -208,10 +207,7 @@ cc_library(
         "graph_transformations/resolve_constant_concatenation.cc",
         "graph_transformations/resolve_constant_fake_quant.cc",
         "graph_transformations/resolve_constant_fill.cc",
-        "graph_transformations/resolve_constant_range.cc",
-        "graph_transformations/resolve_constant_shape_or_rank.cc",
-        "graph_transformations/resolve_constant_stack.cc",
-        "graph_transformations/resolve_constant_strided_slice.cc",
+        "graph_transformations/resolve_constant_tensorflow_shape.cc",
         "graph_transformations/resolve_constant_unary.cc",
         "graph_transformations/resolve_mean_attributes.cc",
         "graph_transformations/resolve_pad_attributes.cc",
@@ -285,7 +281,6 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ] + select({
         # Placeholder for internal darwin rule.
