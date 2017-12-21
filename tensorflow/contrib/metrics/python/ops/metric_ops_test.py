@@ -6677,7 +6677,7 @@ class CohenKappaTest(test.TestCase):
 
   def testVars(self):
     metrics.cohen_kappa(
-        predictions=array_ops.ones((10, 1)),
+        predictions_idx=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         num_classes=2)
     _assert_metric_variables(self, (
@@ -6688,7 +6688,7 @@ class CohenKappaTest(test.TestCase):
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     kappa, _ = metrics.cohen_kappa(
-        predictions=array_ops.ones((10, 1)),
+        predictions_idx=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         num_classes=2,
         metrics_collections=[my_collection_name])
@@ -6697,7 +6697,7 @@ class CohenKappaTest(test.TestCase):
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.cohen_kappa(
-        predictions=array_ops.ones((10, 1)),
+        predictions_idx=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         num_classes=2,
         updates_collections=[my_collection_name])

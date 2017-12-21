@@ -3299,7 +3299,7 @@ def count(values,
     return count_, update_op
 
 
-def cohen_kappa(labels, predictions, num_classes, weights=None,
+def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
                 metrics_collections=None, updates_collections=None, name=None):
   """Calculates Cohen's kappa.
 
@@ -3331,8 +3331,8 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
   Args:
     labels: 1-D `Tensor` of real labels for the classification task. Must be
       one of the following types: int16, int32, int64.
-    predictions: 1-D `Tensor` of predictions for a given classification.
-      Must have the same type as `labels`.
+    predictions_idx: 1-D `Tensor` of predicted class indices for a given
+      classification. Must have the same type as `labels`.
     num_classes: The possible number of labels.
     weights: Optional `Tensor` whose shape matches `predictions`.
     metrics_collections: An optional list of collections that `kappa` should
@@ -3360,15 +3360,15 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
     raise ValueError('`num_classes` must be greater than 1.'
                      'Found: {}'.format(num_classes))
   with variable_scope.variable_scope(name, 'cohen_kappa',
-                                     (labels, predictions, weights)):
+                                     (labels, predictions_idx, weights)):
     # Convert 2-dim (num, 1) to 1-dim (num,)
     labels.get_shape().with_rank_at_most(2)
     if labels.get_shape().ndims == 2:
       labels = array_ops.squeeze(labels, axis=[-1])
     predictions_idx, labels, weights = (
         metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-            predictions=predictions, labels=labels, weights=weights))
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+            predictions=predictions_idx, labels=labels, weights=weights))
+    predictions_idx.get_shape().assert_is_compatible_with(labels.get_shape())
 
     stat_dtype = (dtypes.int64
                   if weights is None or weights.dtype.is_integer
@@ -3382,7 +3382,7 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
 
     # Table of the counts of agreement:
     counts_in_table = confusion_matrix.confusion_matrix(
-      labels, predictions,
+      labels, predictions_idx,
       num_classes=num_classes, weights=weights,
       dtype=stat_dtype, name="counts_in_table")
 
