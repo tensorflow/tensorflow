@@ -3357,7 +3357,7 @@ def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
     raise RuntimeError('tf.contrib.metrics.cohen_kappa is not supported'
                        'when eager execution is enabled.')
   if num_classes < 2:
-    raise ValueError('`num_classes` must be greater than 1.'
+    raise ValueError('`num_classes` must be >= 2.'
                      'Found: {}'.format(num_classes))
   with variable_scope.variable_scope(name, 'cohen_kappa',
                                      (labels, predictions_idx, weights)):
