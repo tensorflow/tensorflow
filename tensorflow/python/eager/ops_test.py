@@ -255,11 +255,12 @@ class OpsTest(test_util.TensorFlowTestCase):
         'using.*DEVICE_PLACEMENT_SILENT'):
       reshaped = array_ops.reshape(value, shape.gpu())
 
-  def testInvalidInputDataType(self):
+  def testInt64(self):
     # Fill requires the first input to be an int32 tensor.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'int64'):
-      array_ops.fill(constant_op.constant([2], dtype=dtypes.int64),
-                     constant_op.constant(1))
+    self.assertAllEqual(
+        [1.0, 1.0],
+        array_ops.fill(constant_op.constant([2], dtype=dtypes.int64),
+                       constant_op.constant(1)))
 
   def testOutputOnHostMemory(self):
     if not context.context().num_gpus():

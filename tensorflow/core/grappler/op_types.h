@@ -89,6 +89,7 @@ bool IsRecv(const NodeDef& node);
 bool IsReduction(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
+bool IsReverseV2(const NodeDef& node);
 bool IsRsqrtGrad(const NodeDef& node);
 bool IsSelect(const NodeDef& node);
 bool IsSeluGrad(const NodeDef& node);
