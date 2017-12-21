@@ -121,31 +121,9 @@ CurlHttpRequest::CurlHttpRequest() : CurlHttpRequest(LibCurlProxy::Load()) {}
 CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
     : libcurl_(libcurl), env_(env) {
   default_response_buffer_.reserve(CURL_MAX_WRITE_SIZE);
-}
 
-CurlHttpRequest::~CurlHttpRequest() {
-  if (curl_headers_) {
-    libcurl_->curl_slist_free_all(curl_headers_);
-  }
-  if (resolve_list_) {
-    libcurl_->curl_slist_free_all(resolve_list_);
-  }
-  if (put_body_) {
-    fclose(put_body_);
-  }
-  if (curl_) {
-    libcurl_->curl_easy_cleanup(curl_);
-  }
-}
-
-Status CurlHttpRequest::Init() {
-  if (is_initialized_) {
-    return errors::FailedPrecondition("Already initialized.");
-  }
   curl_ = libcurl_->curl_easy_init();
-  if (!curl_) {
-    return errors::Internal("Couldn't initialize a curl session.");
-  }
+  CHECK(curl_ != nullptr) << "Couldn't initialize a curl session.";
 
   // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
   //       default in //third_party:curl.BUILD and can be customized via an
@@ -168,13 +146,22 @@ Status CurlHttpRequest::Init() {
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
-  is_initialized_ = true;
-  auto s = SetResultBuffer(&default_response_buffer_);
-  if (!s.ok()) {
-    is_initialized_ = false;
-    return s;
+  SetResultBuffer(&default_response_buffer_);
+}
+
+CurlHttpRequest::~CurlHttpRequest() {
+  if (curl_headers_) {
+    libcurl_->curl_slist_free_all(curl_headers_);
   }
-  return Status::OK();
+  if (resolve_list_) {
+    libcurl_->curl_slist_free_all(resolve_list_);
+  }
+  if (put_body_) {
+    fclose(put_body_);
+  }
+  if (curl_) {
+    libcurl_->curl_easy_cleanup(curl_);
+  }
 }
 
 string CurlHttpRequest::EscapeString(const string& str) {
@@ -184,65 +171,52 @@ string CurlHttpRequest::EscapeString(const string& str) {
   return out_str;
 }
 
-Status CurlHttpRequest::SetUri(const string& uri) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::SetUri(const string& uri) {
+  CheckNotSent();
   is_uri_set_ = true;
   uri_ = uri;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str());
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetRange(uint64 start, uint64 end) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
+  CheckNotSent();
   libcurl_->curl_easy_setopt(curl_, CURLOPT_RANGE,
                              strings::StrCat(start, "-", end).c_str());
-  return Status::OK();
 }
 
-Status CurlHttpRequest::AddHeader(const string& name, const string& value) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::AddHeader(const string& name, const string& value) {
+  CheckNotSent();
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat(name, ": ", value).c_str());
-  return Status::OK();
 }
 
-Status CurlHttpRequest::AddResolveOverride(const string& hostname, int64 port,
-                                           const string& ip_addr) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::AddResolveOverride(const string& hostname, int64 port,
+                                         const string& ip_addr) {
+  CheckNotSent();
   // Resolve values are hostname:port:IP.add.ress
   resolve_list_ = libcurl_->curl_slist_append(
       resolve_list_,
       strings::StrCat(hostname, ":", port, ":", ip_addr).c_str());
-  return Status::OK();
 }
 
-Status CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
+  CheckNotSent();
   if (!auth_token.empty()) {
-    return AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
+    AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
   }
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetDeleteRequest() {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+void CurlHttpRequest::SetDeleteRequest() {
+  CheckNotSent();
+  CheckMethodNotSet();
   is_method_set_ = true;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE");
-  return Status::OK();
 }
 
 Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
                                        size_t offset) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  CheckNotSent();
+  CheckMethodNotSet();
   is_method_set_ = true;
   if (put_body_) {
     fclose(put_body_);
@@ -266,10 +240,9 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   return Status::OK();
 }
 
-Status CurlHttpRequest::SetPutEmptyBody() {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+void CurlHttpRequest::SetPutEmptyBody() {
+  CheckNotSent();
+  CheckMethodNotSet();
   is_method_set_ = true;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
   curl_headers_ =
@@ -278,13 +251,11 @@ Status CurlHttpRequest::SetPutEmptyBody() {
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                              &CurlHttpRequest::ReadCallback);
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
+  CheckNotSent();
+  CheckMethodNotSet();
   is_method_set_ = true;
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
@@ -294,13 +265,11 @@ Status CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                              &CurlHttpRequest::ReadCallback);
   post_body_buffer_ = StringPiece(buffer, size);
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetPostEmptyBody() {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+void CurlHttpRequest::SetPostEmptyBody() {
+  CheckNotSent();
+  CheckMethodNotSet();
   is_method_set_ = true;
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   curl_headers_ =
@@ -309,15 +278,11 @@ Status CurlHttpRequest::SetPostEmptyBody() {
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                              &CurlHttpRequest::ReadCallback);
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  if (!out_buffer) {
-    return errors::InvalidArgument("out_buffer cannot be null");
-  }
+void CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
+  CheckNotSent();
+  CHECK(out_buffer != nullptr);
 
   out_buffer->clear();
   response_buffer_ = out_buffer;
@@ -326,13 +291,11 @@ Status CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
                              &CurlHttpRequest::WriteCallback);
-  return Status::OK();
 }
 
-Status CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
+void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
   CHECK(buffer != nullptr);
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+  CheckNotSent();
 
   direct_response_ = DirectResponseState{buffer, size, 0};
 
@@ -340,7 +303,6 @@ Status CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
                              reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
                              &CurlHttpRequest::WriteCallbackDirect);
-  return Status::OK();
 }
 
 size_t CurlHttpRequest::WriteCallbackDirect(const void* ptr, size_t size,
@@ -380,14 +342,12 @@ size_t CurlHttpRequest::GetResultBufferDirectBytesTransferred() {
   return direct_response_.bytes_transferred_;
 }
 
-Status CurlHttpRequest::SetTimeouts(uint32 connection, uint32 inactivity,
-                                    uint32 total) {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+void CurlHttpRequest::SetTimeouts(uint32 connection, uint32 inactivity,
+                                  uint32 total) {
+  CheckNotSent();
   connect_timeout_secs_ = connection;
   inactivity_timeout_secs_ = inactivity;
   request_timeout_secs_ = total;
-  return Status::OK();
 }
 
 size_t CurlHttpRequest::WriteCallback(const void* ptr, size_t size,
@@ -436,12 +396,11 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
 }
 
 Status CurlHttpRequest::Send() {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
+  CheckNotSent();
+  CHECK(is_uri_set_) << "URI has not been set.";
+
   is_sent_ = true;
-  if (!is_uri_set_) {
-    return errors::FailedPrecondition("URI has not been set.");
-  }
+
   if (curl_headers_) {
     libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
   }
@@ -543,25 +502,12 @@ Status CurlHttpRequest::Send() {
   return result;
 }
 
-Status CurlHttpRequest::CheckInitialized() const {
-  if (!is_initialized_) {
-    return errors::FailedPrecondition("The object has not been initialized.");
-  }
-  return Status::OK();
+void CurlHttpRequest::CheckMethodNotSet() const {
+  CHECK(!is_method_set_) << "HTTP method has been already set.";
 }
 
-Status CurlHttpRequest::CheckMethodNotSet() const {
-  if (is_method_set_) {
-    return errors::FailedPrecondition("HTTP method has been already set.");
-  }
-  return Status::OK();
-}
-
-Status CurlHttpRequest::CheckNotSent() const {
-  if (is_sent_) {
-    return errors::FailedPrecondition("The request has already been sent.");
-  }
-  return Status::OK();
+void CurlHttpRequest::CheckNotSent() const {
+  CHECK(!is_sent_) << "The request has already been sent.";
 }
 
 string CurlHttpRequest::GetResponseHeader(const string& name) const {

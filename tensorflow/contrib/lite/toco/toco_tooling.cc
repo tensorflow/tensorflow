@@ -67,6 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new FuseBinaryIntoFollowingAffine);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
+  transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveTensorFlowSqueeze);

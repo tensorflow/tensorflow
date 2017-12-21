@@ -255,6 +255,33 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
                          depth * block_size * block_size}));
 }
 
+void ProcessFillOperator(Model* model, FillOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& output_array = *model->arrays[op->outputs[0]];
+  if (output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+
+  auto& dims_array = model->GetArray(op->inputs[0]);
+  if (!dims_array.has_shape()) {
+    // Yield until dims shape been resolved.
+    return;
+  }
+  if (!dims_array.buffer) {
+    // Yield until the dims are constant
+    return;
+  }
+  CHECK(dims_array.data_type == ArrayDataType::kInt32) << "dims must be int32";
+  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 4)
+      << "dims vector can be no larger than 4 values";
+
+  std::vector<int32> const& dims =
+      dims_array.GetBuffer<ArrayDataType::kInt32>().data;
+  *(output_array.mutable_shape()->mutable_dims()) = dims;
+}
+
 void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
   if (!EnsureBiasVectorShape(model, op)) {
     return;
@@ -1040,6 +1067,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessSpaceToDepthOperator(model,
                                   static_cast<SpaceToDepthOperator*>(op));
       break;
+    case OperatorType::kFill:
+      ProcessFillOperator(model, static_cast<FillOperator*>(op));
+      break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
                                     static_cast<FullyConnectedOperator*>(op));
@@ -1103,7 +1133,6 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       // or else at the moment we will abort.
       break;
     case OperatorType::kExpandDims:
-    case OperatorType::kFill:
     case OperatorType::kRange:
     case OperatorType::kRank:
     case OperatorType::kTensorFlowShape:

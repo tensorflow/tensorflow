@@ -71,6 +71,55 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that Const + A is canonicalized to A + Const.
+TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(42.0f)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, constant, param0));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(param0, op::Constant()));
+}
+
+// Test that [(A + C1) + C2] => [A + (C1 + C2)] for constants C1 and C2.
+TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(42.0f)));
+  HloInstruction* constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(3.14159f)));
+
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param0, constant1));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, add1, constant2));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(param0, op::Add(constant1, constant2)));
+}
+
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
   HloComputation::Builder builder(TestName());
@@ -137,6 +186,28 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+// Test that A - Const is canonicalized to A + (-Const).
+TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32, HloOpcode::kSubtract, param0, constant));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSubtract);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(param0, op::Negate(constant)));
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).

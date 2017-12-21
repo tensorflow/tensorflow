@@ -1136,9 +1136,17 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+  if (hlo_module_config_.replica_count() == 1) {
+    // When there is a single replica, a cross replica sum is the identity
+    // function, and the buffer assignment expects a copy (we could eliminate
+    // these at the HLO level as an optimization).
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+    return EmitMemcpy(*crs->operand(0), *crs);
+  }
+
   // TODO(b/33011107): Support cross replica sum on CPU.
   return Unimplemented(
-      "Cross replica sum not implemented on CPU. See b/33011107.");
+      "Cross replica sum is not implemented on CPU. See b/33011107.");
 }
 
 // Fills up the free variables in 'index_with_free_var' with values from

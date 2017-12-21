@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,7 +32,7 @@ namespace tensorflow {
 // Otherwise, returns either:
 // - explicit_sharding if explicit_sharding.has_value()
 // - a non-value if there is no assigned core or
-// - a sharding set as per xla::ShardingBuilder::AssignDevice.
+// - a sharding set as per xla::sharding_builder::AssignDevice.
 xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
 ParseShardingFromDevice(const string& device_name, int num_cores_per_replica,
                         tensorflow::gtl::optional<xla::OpSharding>

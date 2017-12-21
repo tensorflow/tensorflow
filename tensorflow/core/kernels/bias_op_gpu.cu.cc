@@ -173,19 +173,13 @@ __global__ void BiasGradNCHW_SharedAtomics(const T* output_backprop,
   // Accumulate the results in the shared memory into the first element.
   // No syncthreads is needed since this is only in the same warp.
   int32 thread_index = threadIdx.x;
-  if (thread_index < 16) {
-    s_data[thread_index] += s_data[thread_index + 16];
-    __syncwarp(0xFFFF);
-    if (thread_index < 8) s_data[thread_index] += s_data[thread_index + 8];
-    __syncwarp(0xFF);
-    if (thread_index < 4) s_data[thread_index] += s_data[thread_index + 4];
-    __syncwarp(0xF);
-    if (thread_index < 2) s_data[thread_index] += s_data[thread_index + 2];
-    __syncwarp(0x3);
+  if (thread_index < 32) {
+    AccT data = s_data[thread_index];
+    for (int32 delta = warpSize / 2; delta > 0; delta /= 2) {
+      data += CudaShuffleXorSync(kCudaWarpAll, data, delta);
+    }
     if (thread_index == 0) {
-      T val = T(s_data[0] + s_data[1]);
-      // The first thread writes out the accumulated result to global location.
-      CudaAtomicAdd(bias_backprop + bias_index, val);
+      CudaAtomicAdd(bias_backprop + bias_index, T(data));
     }
   }
 }
