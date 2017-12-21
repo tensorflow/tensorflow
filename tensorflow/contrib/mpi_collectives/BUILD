@@ -55,11 +55,11 @@ tf_kernel_library(
         "kernels/mpi_ops.cc",
         "kernels/ring.cc",
     ],
-    gpu_srcs = [
-        "kernels/ring.cu.cc",
-    ],
     hdrs = [
         "kernels/ring.h",
+    ],
+    gpu_srcs = [
+        "kernels/ring.cu.cc",
     ],
     deps = [
         "//tensorflow/core:core_cpu",
@@ -69,7 +69,7 @@ tf_kernel_library(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
     ],
-# TODO: Include?    alwayslink = 1,
+    # TODO: Include?    alwayslink = 1,
 )
 
 tf_gen_op_libs(
@@ -131,4 +131,3 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
-
