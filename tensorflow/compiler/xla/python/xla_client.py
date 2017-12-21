@@ -391,6 +391,11 @@ class ComputationBuilder(object):
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
 
+  def Collapse(self, operand, dimensions):
+    """Collapse op."""
+    return _wrap_data_handle(
+        self._client.Collapse(_unwrap_data_handle(operand), dimensions))
+
   def Trans(self, operand):
     """Specialized matrix transpose op."""
     return _wrap_data_handle(
@@ -400,6 +405,11 @@ class ComputationBuilder(object):
     """Transpose op."""
     return _wrap_data_handle(
         self._client.Transpose(_unwrap_data_handle(operand), permutation))
+
+  def Rev(self, operand, dimensions):
+    """Rev op."""
+    return _wrap_data_handle(
+        self._client.Rev(_unwrap_data_handle(operand), dimensions))
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.

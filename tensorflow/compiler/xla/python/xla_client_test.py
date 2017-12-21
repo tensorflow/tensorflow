@@ -594,6 +594,21 @@ class SingleOpTest(LocalComputationTest):
         new_sizes=[2, 3])
     self._ExecuteAndCompareExact(c, expected=[[1, 2, 3], [4, 5, 6]])
 
+  def testCollapse(self):
+    c = self._NewComputation()
+    c.Collapse(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[1, 2])
+    self._ExecuteAndCompareExact(c, expected=[[1, 2, 3, 4], [5, 6, 7, 8]])
+
+  def testRev(self):
+    c = self._NewComputation()
+    c.Rev(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[0, 2])
+    self._ExecuteAndCompareExact(
+        c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
+
   def testSelect(self):
     c = self._NewComputation()
     c.Select(
