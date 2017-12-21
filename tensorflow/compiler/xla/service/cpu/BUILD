@@ -151,8 +151,8 @@ cc_library(
     name = "simple_orc_jit",
     srcs = [
         "simple_orc_jit.cc",
-        "windows_compatibility.h",
         "windows_compatibility.cc",
+        "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
     deps = [
