@@ -41,16 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #ifdef _MSC_VER
-extern "C" {
-void sincos(double x, double *sin, double *cos) {
-  *sin = std::sin(x);
-  *cos = std::cos(x);
-}
-void sincosf(float x, float *sin, float *cos) {
-  *sin = std::sinf(x);
-  *cos = std::cosf(x);
-}
-}
+#include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #endif
 
 namespace xla {
