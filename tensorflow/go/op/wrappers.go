@@ -8894,9 +8894,10 @@ func DataFormatDimMapDstFormat(value string) DataFormatDimMapAttr {
 // the source data format.
 //
 // Arguments:
-//	x: Scalar. Dimension index in source data format. Must be in the range [-4, 4).
+//	x: A Tensor with each element as a dimension index in source data format.
+// Must be in the range [-4, 4).
 //
-// Returns Scalar. Dimension index in destination data format.
+// Returns A Tensor with each element as a dimension index in destination data format.
 func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAttr) (y tf.Output) {
 	if scope.Err() != nil {
 		return
