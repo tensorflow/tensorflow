@@ -335,7 +335,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
         log_usage=log_usage)
 
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
-    self._sent_graph_version = -sys.maxint
+    self._sent_graph_version = -1
 
   def before_run(self, run_context):
     self._sent_graph_version = grpc_wrapper.publish_traceback(
