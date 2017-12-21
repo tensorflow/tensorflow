@@ -3030,6 +3030,7 @@ tf_cuda_library(
         ":safe_ptr",
         ":test_ops_kernels",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
