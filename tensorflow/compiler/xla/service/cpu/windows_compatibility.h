@@ -20,6 +20,7 @@ limitations under the License.
 
 extern "C" {
 
+// MSVC does not have sincos[f].
 void sincos(double x, double *sinv, double *cosv);
 void sincosf(float x, float *sinv, float *cosv);
 
