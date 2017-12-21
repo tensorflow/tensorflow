@@ -65,7 +65,11 @@ std::set<string> GetOpsFormatSupported() {
       "FusedBatchNormGradV2",
       "FusedConv2DBiasActivation",
       "MaxPool",
+      "MaxPoolV2",
       "MaxPoolGrad",
+      "MaxPoolGradGrad",
+      "MaxPoolGradV2",
+      "MaxPoolGradGradV2",
       "SpaceToDepth",
       "DepthToSpace"};
   return ops_format_supported;
@@ -230,9 +234,29 @@ bool IsConcatV1(const NodeDef& node) {
   return op == "Concat";
 }
 
+bool IsMaxPoolV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolV2";
+}
+
 bool IsMaxPoolGradV1(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPoolGrad";
+}
+
+bool IsMaxPoolGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradV2";
+}
+
+bool IsMaxPoolGradGradV1(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGrad";
+}
+
+bool IsMaxPoolGradGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGradV2";
 }
 
 bool IsUnaryGrad(const NodeDef& node) {
@@ -1010,6 +1034,55 @@ class MaxPoolGradProcessor : public NodeProcessor {
   }
 };
 
+class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
+ public:
+  explicit MaxPoolGradV2Processor(const OptimizeContext& opt_cxt)
+      : MaxPoolGradProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    for (int i = 3; i < node_->input_size(); i++) {
+      auto param_node = node_map_->GetNode(node_->input(i));
+      if (IsConstant(*param_node)) {
+        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      } else {
+        AddDataFormatTranformToInput("DataFormatVecPermute", i, DT_INT32);
+      }
+    }
+    return Status::OK();
+  }
+};
+
+class MaxPoolV2Processor : public NodeProcessor {
+ public:
+  explicit MaxPoolV2Processor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    // We check data_input's shape instead, because the shape inference of
+    // MaxPoolV2 is not able to infer the shape when ksize or strides is not
+    // constant.
+    auto data_input = node_map_->GetNode(node_->input(0));
+    int port;
+    ParseNodeName(node_->input(0), &port);
+    return !MustPreserve() && IsNHWC() && IsPortDimsFour(*data_input, port) &&
+           HasOutputs() && IsOnGPU();
+  }
+
+  Status CustomizedProcessing() override {
+    for (int i = 1; i < node_->input_size(); i++) {
+      auto param_node = node_map_->GetNode(node_->input(i));
+      if (IsConstant(*param_node)) {
+        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      } else {
+        AddDataFormatTranformToInput("DataFormatVecPermute", i, DT_INT32);
+      }
+    }
+    return Status::OK();
+  }
+};
+
 class AgnosticNodeProcessor : public NodeProcessor {
  public:
   explicit AgnosticNodeProcessor(const OptimizeContext& opt_cxt)
@@ -1650,8 +1723,12 @@ class DataLayoutOptimizer : GraphProcessor {
           node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
         } else if (IsFusedBatchNormGrad(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
-        } else if (IsMaxPoolGradV1(*node)) {
+        } else if (IsMaxPoolV2(*node)) {
+          node_processor.reset(new MaxPoolV2Processor(opt_cxt));
+        } else if (IsMaxPoolGradV1(*node) || IsMaxPoolGradGradV1(*node)) {
           node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
+        } else if (IsMaxPoolGradV2(*node) || IsMaxPoolGradGradV2(*node)) {
+          node_processor.reset(new MaxPoolGradV2Processor(opt_cxt));
         } else {
           node_processor.reset(new NodeProcessor(opt_cxt));
         }
