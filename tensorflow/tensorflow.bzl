@@ -599,7 +599,15 @@ def tf_cc_test(name,
       name="%s%s" % (name, suffix),
       srcs=srcs + tf_binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
-      linkopts=if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
+      linkopts=select({
+        "//tensorflow:android": [
+            "-pie",
+          ],
+        "//conditions:default": [
+            "-lpthread",
+            "-lm"
+        ],
+      }) + linkopts + _rpath_linkopts(name),
       deps=deps + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",

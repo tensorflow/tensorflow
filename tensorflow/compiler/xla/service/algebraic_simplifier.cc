@@ -361,6 +361,39 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     return Status::OK();
   }
 
+  // Canonicalization: Put constants on the right.  This makes the reassociation
+  // rules below simpler.
+  VLOG(10) << "trying transform [Const + A => A + Const]";
+  if (lhs->IsConstant() && !rhs->IsConstant()) {
+    return ReplaceWithNewInstruction(
+        add,
+        HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd, rhs, lhs));
+  }
+
+  // Reassociate to allow constant folding.
+  //
+  // Note: This is not general.  For example, we won't reassociate
+  //
+  //   (A + C1) + (B + C2) =>  A + B + (C1 + C2).
+  //
+  VLOG(10) << "trying transform [(A + C1) + C2 => A + (C1 + C2)]";
+  if (rhs->IsConstant() && lhs->opcode() == HloOpcode::kAdd &&
+      !lhs->operand(0)->IsConstant() && lhs->operand(1)->IsConstant()) {
+    auto* c1 = lhs->mutable_operand(1);
+    auto* c2 = rhs;
+    TF_ASSIGN_OR_RETURN(
+        Shape sum_of_constants_shape,
+        ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, c1, c2));
+
+    auto* sum_of_constants =
+        computation_->AddInstruction(HloInstruction::CreateBinary(
+            sum_of_constants_shape, HloOpcode::kAdd, c1, c2));
+    return ReplaceWithNewInstruction(
+        add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
+                                          lhs->mutable_operand(0),
+                                          sum_of_constants));
+  }
+
   return Status::OK();
 }
 
@@ -492,6 +525,16 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
   VLOG(10) << "trying transform [A - 0 => A]: " << sub->ToString();
   if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(sub, lhs)) {
     return Status::OK();
+  }
+
+  // Canonicalize subtraction of a constant to addition.
+  VLOG(10) << "trying transform [A - Const => A + (-Const)]";
+  if (rhs->IsConstant() && !lhs->IsConstant()) {
+    HloInstruction* negative_const = computation_->AddInstruction(
+        HloInstruction::CreateUnary(rhs->shape(), HloOpcode::kNegate, rhs));
+    return ReplaceWithNewInstruction(
+        sub, HloInstruction::CreateBinary(sub->shape(), HloOpcode::kAdd, lhs,
+                                          negative_const));
   }
 
   return Status::OK();

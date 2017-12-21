@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -95,11 +96,13 @@ TEST_F(BatchNormalizationTest, SquareTesseractElementwise) {
   auto x = builder.ConstantLiteral(input_literal_);
   builder.SquareF32(x);
 
+  using tensorflow::MathUtil;
+
   Array4D<float> expected(kSamples, kZ, kY, kX);
   Array2D<float> expected_pz({
-      {std::pow(-1.0f, 2.0f), std::pow(4.1f, 2.0f)},
-      {std::pow(2.0f, 2.0f), std::pow(4.1f, 2.0f)},
-      {std::pow(5.0f, 2.0f), std::pow(4.4f, 2.0f)},
+      {MathUtil::IPow(-1.0f, 2), MathUtil::IPow(4.1f, 2)},
+      {MathUtil::IPow(2.0f, 2), MathUtil::IPow(4.1f, 2)},
+      {MathUtil::IPow(5.0f, 2), MathUtil::IPow(4.4f, 2)},
   });
   expected.FillWithPZ(expected_pz);
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
