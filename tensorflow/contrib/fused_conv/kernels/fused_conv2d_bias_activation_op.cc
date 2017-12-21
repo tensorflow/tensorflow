@@ -303,7 +303,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
                                                                      &cc_minor);
     OP_REQUIRES(
-        ctx, cc_major >= 6 && cc_minor >= 1,
+        ctx, ((cc_major == 6 && cc_minor >= 1) || cc_major > 6),
         errors::Unimplemented(
             "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
             "compute capability 6.1 or later."));

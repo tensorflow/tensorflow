@@ -120,13 +120,14 @@ cc_library(
 cc_library(
     name = "xla_compiler",
     srcs = [
+        "graph_compiler.cc",
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
-        "graph_compiler.cc",
+        "xla_resource.cc",
         "xla_cpu_backend.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
@@ -139,6 +140,7 @@ cc_library(
         "xla_helpers.h",
         "xla_op_kernel.h",
         "xla_op_registry.h",
+        "xla_resource.h",
     ],
     visibility = [":friends"],
     deps = [
@@ -158,6 +160,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -203,6 +206,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

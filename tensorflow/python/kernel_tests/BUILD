@@ -617,6 +617,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "parse_single_example_op_test",
+    size = "small",
+    srcs = ["parse_single_example_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
     name = "partitioned_variables_test",
     size = "small",
     srcs = ["partitioned_variables_test.py"],

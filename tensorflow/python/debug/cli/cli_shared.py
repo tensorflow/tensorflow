@@ -28,6 +28,7 @@ from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.debug.lib import common
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 
 RL = debugger_cli_common.RichLine
 
@@ -152,7 +153,8 @@ def format_tensor(tensor,
                   print_all=False,
                   tensor_slicing=None,
                   highlight_options=None,
-                  include_numeric_summary=False):
+                  include_numeric_summary=False,
+                  write_path=None):
   """Generate formatted str to represent a tensor or its slices.
 
   Args:
@@ -172,6 +174,8 @@ def format_tensor(tensor,
       for more details.
     include_numeric_summary: Whether a text summary of the numeric values (if
       applicable) will be included.
+    write_path: A path to save the tensor value (after any slicing) to
+      (optinal). `numpy.save()` is used to save the value.
 
   Returns:
     An instance of `debugger_cli_common.RichTextLines` representing the
@@ -186,6 +190,16 @@ def format_tensor(tensor,
     value = tensor
     sliced_name = tensor_name
 
+  auxiliary_message = None
+  if write_path:
+    with gfile.Open(write_path, "wb") as output_file:
+      np.save(output_file, value)
+    line = debugger_cli_common.RichLine("Saved value to: ")
+    line += debugger_cli_common.RichLine(write_path, font_attr="bold")
+    line += " (%sB)" % bytes_to_readable_str(gfile.Stat(write_path).length)
+    auxiliary_message = debugger_cli_common.rich_text_lines_from_rich_line_list(
+        [line, debugger_cli_common.RichLine("")])
+
   if print_all:
     np_printoptions["threshold"] = value.size
   else:
@@ -196,6 +210,7 @@ def format_tensor(tensor,
       sliced_name,
       include_metadata=True,
       include_numeric_summary=include_numeric_summary,
+      auxiliary_message=auxiliary_message,
       np_printoptions=np_printoptions,
       highlight_options=highlight_options)
 

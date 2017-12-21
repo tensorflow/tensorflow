@@ -83,6 +83,11 @@ class LocalComputationBuilder {
                                 tensorflow::gtl::ArraySlice<int64> dimensions,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
+  ComputationDataHandle Collapse(const ComputationDataHandle& operand,
+                                 tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  ComputationDataHandle CrossReplicaSum(const ComputationDataHandle& operand);
+
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
@@ -132,6 +137,9 @@ class LocalComputationBuilder {
   ComputationDataHandle Transpose(
       const ComputationDataHandle& operand,
       tensorflow::gtl::ArraySlice<int64> permutation);
+
+  ComputationDataHandle Rev(const ComputationDataHandle& operand,
+                            tensorflow::gtl::ArraySlice<int64> dimensions);
 
   ComputationDataHandle Map(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,

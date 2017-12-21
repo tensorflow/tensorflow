@@ -762,8 +762,9 @@ REGISTER_OP("DataFormatDimMap")
 Returns the dimension index in the destination data format given the one in
 the source data format.
 
-x: Scalar. Dimension index in source data format. Must be in the range [-4, 4).
-y: Scalar. Dimension index in destination data format.
+x: A Tensor with each element as a dimension index in source data format.
+  Must be in the range [-4, 4).
+y: A Tensor with each element as a dimension index in destination data format.
 src_format: source data format.
 dst_format: destination data format.
 )doc");

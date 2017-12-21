@@ -65,7 +65,11 @@ std::set<string> GetOpsFormatSupported() {
       "FusedBatchNormGradV2",
       "FusedConv2DBiasActivation",
       "MaxPool",
+      "MaxPoolV2",
       "MaxPoolGrad",
+      "MaxPoolGradGrad",
+      "MaxPoolGradV2",
+      "MaxPoolGradGradV2",
       "SpaceToDepth",
       "DepthToSpace"};
   return ops_format_supported;
@@ -87,6 +91,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Atan",
                                           "Atan2",
                                           "Atanh",
+                                          "Betainc",
                                           "Bitcast",
                                           "Cast",
                                           "Ceil",
@@ -102,9 +107,11 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Div",
                                           "Elu",
                                           "EluGrad",
+                                          "Enter",
                                           "Equal",
                                           "Erf",
                                           "Erfc",
+                                          "Exit",
                                           "Exp",
                                           "Expm1",
                                           "Floor",
@@ -137,6 +144,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Mod",
                                           "Mul",
                                           "Neg",
+                                          "NextIteration",
                                           "NotEqual",
                                           "OnesLike",
                                           "Pad",
@@ -147,12 +155,12 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "RealDiv",
                                           "Reciprocal",
                                           "ReciprocalGrad",
-                                          "RefIdentity",
                                           "Relu",
                                           "Relu6",
                                           "Relu6Grad",
                                           "ReluGrad",
                                           "Rint",
+                                          "Select",
                                           "Selu",
                                           "SeluGrad",
                                           "Shape",
@@ -167,11 +175,10 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Softplus",
                                           "SoftplusGrad",
                                           "Split",
+                                          "SplitV",
                                           "Switch",
                                           "TruncateDiv",
                                           "TruncateMod",
-                                          "RefMerge",
-                                          "RefSwitch",
                                           "Round",
                                           "Rsqrt",
                                           "RsqrtGrad",
@@ -227,9 +234,29 @@ bool IsConcatV1(const NodeDef& node) {
   return op == "Concat";
 }
 
+bool IsMaxPoolV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolV2";
+}
+
 bool IsMaxPoolGradV1(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPoolGrad";
+}
+
+bool IsMaxPoolGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradV2";
+}
+
+bool IsMaxPoolGradGradV1(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGrad";
+}
+
+bool IsMaxPoolGradGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGradV2";
 }
 
 bool IsUnaryGrad(const NodeDef& node) {
@@ -678,7 +705,7 @@ class NodeProcessor : public GraphProcessor {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kVecPermuteNCHWToNHWC, "-");
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "out_type"));
-              DataType dtype = (IsSplit(*node_))
+              DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
                                    ? DT_INT32
                                    : node_->attr().at("out_type").type();
               AddNodeDataFormatOp(added_node_name, input, op, dtype, false);
@@ -1007,6 +1034,55 @@ class MaxPoolGradProcessor : public NodeProcessor {
   }
 };
 
+class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
+ public:
+  explicit MaxPoolGradV2Processor(const OptimizeContext& opt_cxt)
+      : MaxPoolGradProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    for (int i = 3; i < node_->input_size(); i++) {
+      auto param_node = node_map_->GetNode(node_->input(i));
+      if (IsConstant(*param_node)) {
+        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      } else {
+        AddDataFormatTranformToInput("DataFormatVecPermute", i, DT_INT32);
+      }
+    }
+    return Status::OK();
+  }
+};
+
+class MaxPoolV2Processor : public NodeProcessor {
+ public:
+  explicit MaxPoolV2Processor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    // We check data_input's shape instead, because the shape inference of
+    // MaxPoolV2 is not able to infer the shape when ksize or strides is not
+    // constant.
+    auto data_input = node_map_->GetNode(node_->input(0));
+    int port;
+    ParseNodeName(node_->input(0), &port);
+    return !MustPreserve() && IsNHWC() && IsPortDimsFour(*data_input, port) &&
+           HasOutputs() && IsOnGPU();
+  }
+
+  Status CustomizedProcessing() override {
+    for (int i = 1; i < node_->input_size(); i++) {
+      auto param_node = node_map_->GetNode(node_->input(i));
+      if (IsConstant(*param_node)) {
+        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
+      } else {
+        AddDataFormatTranformToInput("DataFormatVecPermute", i, DT_INT32);
+      }
+    }
+    return Status::OK();
+  }
+};
+
 class AgnosticNodeProcessor : public NodeProcessor {
  public:
   explicit AgnosticNodeProcessor(const OptimizeContext& opt_cxt)
@@ -1052,14 +1128,14 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  private:
   std::vector<int> DataInputPos(const NodeDef& node) const {
-    if (IsSplit(node)) {
-      return {1};
-    }
-    if (IsConcatV1(node)) {
+    if (IsSplit(node) || IsConcatV1(node)) {
       return {1};
     }
     if (IsBinaryOp(node) || IsUnaryGrad(node)) {
       return {0, 1};
+    }
+    if (IsBetainc(node) || IsSelect(node)) {
+      return {0, 1, 2};
     }
     if (IsShapeN(node) || IsIdentityN(node)) {
       std::vector<int> pos;
@@ -1253,8 +1329,9 @@ class ConcatProcessor : public AgnosticNodeProcessor {
     if (IsConstant(*dim_node)) {
       TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
     } else {
-      DataType dtype =
-          (IsSplit(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
+      DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
+                           ? DT_INT32
+                           : node_->attr().at("Tidx").type();
       AddDataFormatTranformToInput("DataFormatDimMap", axis_node_pos_, dtype);
     }
     return Status::OK();
@@ -1369,6 +1446,29 @@ class SplitProcessor : public ConcatProcessor {
       }
     }
     return output_pos;
+  }
+};
+
+class SplitVProcessor : public SplitProcessor {
+ public:
+  explicit SplitVProcessor(const OptimizeContext& opt_cxt)
+      : SplitProcessor(opt_cxt) {
+    axis_node_pos_ = 2;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {0}; }
+};
+
+class TernaryOpProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TernaryOpProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos = {0, 1, 2};
+    return input_pos;
   }
 };
 
@@ -1623,8 +1723,12 @@ class DataLayoutOptimizer : GraphProcessor {
           node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
         } else if (IsFusedBatchNormGrad(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
-        } else if (IsMaxPoolGradV1(*node)) {
+        } else if (IsMaxPoolV2(*node)) {
+          node_processor.reset(new MaxPoolV2Processor(opt_cxt));
+        } else if (IsMaxPoolGradV1(*node) || IsMaxPoolGradGradV1(*node)) {
           node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
+        } else if (IsMaxPoolGradV2(*node) || IsMaxPoolGradGradV2(*node)) {
+          node_processor.reset(new MaxPoolGradV2Processor(opt_cxt));
         } else {
           node_processor.reset(new NodeProcessor(opt_cxt));
         }
@@ -1649,6 +1753,8 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
+          } else if (IsBetainc(*node) || IsSelect(*node)) {
+            node_processor.reset(new TernaryOpProcessor(opt_cxt));
           } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
@@ -1665,6 +1771,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
             node_processor.reset(new SplitProcessor(opt_cxt));
+          } else if (IsSplitV(*node)) {
+            node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {
