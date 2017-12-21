@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Factory functions for `Predictor`s."""
 
 from __future__ import absolute_import
@@ -59,9 +58,9 @@ def from_contrib_estimator(estimator,
   return contrib_estimator_predictor.ContribEstimatorPredictor(
       estimator,
       prediction_input_fn,
-      input_alternative_key,
-      output_alternative_key,
-      graph)
+      input_alternative_key=input_alternative_key,
+      output_alternative_key=output_alternative_key,
+      graph=graph)
 
 
 def from_estimator(estimator,
@@ -92,10 +91,7 @@ def from_estimator(estimator,
                     'tf.contrib.learn.Estimator. You likely want to call '
                     'from_contrib_estimator.')
   return core_estimator_predictor.CoreEstimatorPredictor(
-      estimator,
-      serving_input_receiver_fn,
-      output_key,
-      graph)
+      estimator, serving_input_receiver_fn, output_key=output_key, graph=graph)
 
 
 def from_saved_model(export_dir,
@@ -125,8 +121,9 @@ def from_saved_model(export_dir,
     ValueError: More than one of `signature_def_key` and `signature_def` is
       specified.
   """
-  return saved_model_predictor.SavedModelPredictor(export_dir,
-                                                   signature_def_key,
-                                                   signature_def,
-                                                   tags,
-                                                   graph)
+  return saved_model_predictor.SavedModelPredictor(
+      export_dir,
+      signature_def_key=signature_def_key,
+      signature_def=signature_def,
+      tags=tags,
+      graph=graph)

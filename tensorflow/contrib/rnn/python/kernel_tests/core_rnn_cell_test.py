@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,7 +41,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.framework import test_util
 from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
-
 
 
 # pylint: enable=protected-access
@@ -374,19 +374,20 @@ class RNNCellTest(test.TestCase):
         h = array_ops.zeros([batch_size, num_proj])
         state = rnn_cell_impl.LSTMStateTuple(c, h)
         cell = contrib_rnn_cell.LayerNormLSTMCell(
-          num_units=num_units,
-          num_proj=num_proj,
-          forget_bias=1.0,
-          layer_norm=True,
-          norm_gain=1.0,
-          norm_shift=0.0)
+            num_units=num_units,
+            num_proj=num_proj,
+            forget_bias=1.0,
+            layer_norm=True,
+            norm_gain=1.0,
+            norm_shift=0.0)
         g, out_m = cell(x, state)
         sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run([g, out_m], {
-          x.name: np.ones((batch_size, input_size)),
-          c.name: 0.1 * np.ones((batch_size, num_units)),
-          h.name: 0.1 * np.ones((batch_size, num_proj))
-        })
+        res = sess.run(
+            [g, out_m], {
+                x.name: np.ones((batch_size, input_size)),
+                c.name: 0.1 * np.ones((batch_size, num_units)),
+                h.name: 0.1 * np.ones((batch_size, num_proj))
+            })
         self.assertEqual(len(res), 2)
         # The numbers in results were not calculated, this is mostly just a
         # smoke test.
@@ -396,9 +397,9 @@ class RNNCellTest(test.TestCase):
         # Different inputs so different outputs and states
         for i in range(1, batch_size):
           self.assertTrue(
-            float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) < 1e-6)
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) < 1e-6)
           self.assertTrue(
-            float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) < 1e-6)
+              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) < 1e-6)
 
   def testOutputProjectionWrapper(self):
     with self.test_session() as sess:

@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "DecodeCompressed"
+  in_arg {
+    name: "bytes"
+    description: <<END
+A Tensor of string which is compressed.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor with the same shape as input `bytes`, uncompressed
+from bytes.
+END
+  }
+  attr {
+    name: "compression_type"
+    description: <<END
+A scalar containing either (i) the empty string (no
+compression), (ii) "ZLIB", or (iii) "GZIP".
+END
+  }
+  summary: "Decompress strings."
+  description: <<END
+This op decompresses each element of the `bytes` input `Tensor`, which
+is assumed to be compressed using the given `compression_type`.
+
+The `output` is a string `Tensor` of the same shape as `bytes`,
+each element containing the decompressed data from the corresponding
+element in `bytes`.
+END
+}

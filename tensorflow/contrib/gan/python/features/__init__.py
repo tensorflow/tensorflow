@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN features module.
+
+This module includes support for virtual batch normalization, buffer replay,
+conditioning, etc.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,10 +26,12 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.gan.python.features.python import clip_weights
 from tensorflow.contrib.gan.python.features.python import conditioning_utils
+from tensorflow.contrib.gan.python.features.python import random_tensor_pool
 from tensorflow.contrib.gan.python.features.python import virtual_batchnorm
 
 from tensorflow.contrib.gan.python.features.python.clip_weights import *
 from tensorflow.contrib.gan.python.features.python.conditioning_utils import *
+from tensorflow.contrib.gan.python.features.python.random_tensor_pool import *
 from tensorflow.contrib.gan.python.features.python.virtual_batchnorm import *
 # pylint: enable=unused-import,wildcard-import
 
@@ -33,5 +39,6 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = clip_weights.__all__
 _allowed_symbols += conditioning_utils.__all__
+_allowed_symbols += random_tensor_pool.__all__
 _allowed_symbols += virtual_batchnorm.__all__
 remove_undocumented(__name__, _allowed_symbols)

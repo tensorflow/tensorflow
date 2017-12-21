@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -40,6 +42,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=4)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([0, 13], partition_vals[0])
     self.assertAllEqual([17], partition_vals[1])
     self.assertAllEqual([2, 4], partition_vals[2])
@@ -61,6 +64,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=4)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([[0, 1, 2], [3, 4, 5]], partition_vals[0])
     self.assertAllEqual([[15, 16, 17]], partition_vals[1])
     self.assertAllEqual([[6, 7, 8], [12, 13, 14]], partition_vals[2])
@@ -85,6 +89,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=2)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(2, len(partition_vals))
     self.assertAllEqual(part1, partition_vals[0])
     self.assertAllEqual(part2, partition_vals[1])
 
@@ -106,6 +111,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=num_partitions)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(num_partitions, len(partition_vals))
     for i in range(num_partitions):
       # reshape because of empty parts
       parts_np = np.array(parts[i], dtype=np.float).reshape(-1, cols)
@@ -121,8 +127,29 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=2)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(2, len(partition_vals))
     self.assertAllEqual([3 + 4j, 7 + 8j], partition_vals[0])
     self.assertAllEqual([1 + 2j, 5 + 6j], partition_vals[1])
+
+  def testScalarPartitions(self):
+    data_list = [10, 13, 12, 11]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float64)
+      indices = 3
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=4)
+      partition_vals = sess.run(partitions)
+
+    self.assertEqual(4, len(partition_vals))
+    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
+                        partition_vals[0])
+    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
+                        partition_vals[1])
+    self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
+                        partition_vals[2])
+    self.assertAllEqual(np.array([10, 13, 12, 11],
+                                 dtype=np.float64).reshape(-1, 4),
+                        partition_vals[3])
 
   def testHigherRank(self):
     np.random.seed(7)
@@ -158,6 +185,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=4)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([], partition_vals[0])
     self.assertAllEqual([1, 3], partition_vals[1])
     self.assertAllEqual([], partition_vals[2])
@@ -173,6 +201,7 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=3)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(3, len(partition_vals))
     self.assertAllEqual([[]], partition_vals[0])
     self.assertAllEqual([[]], partition_vals[1])
     self.assertAllEqual(np.array([], dtype=np.float).reshape(0, 0),
@@ -188,8 +217,75 @@ class DynamicPartitionTest(test.TestCase):
           data, indices, num_partitions=2)
       partition_vals = sess.run(partitions)
 
+    self.assertEqual(2, len(partition_vals))
     self.assertAllEqual([], partition_vals[0])
     self.assertAllEqual([], partition_vals[1])
+
+  @unittest.skip("Fails on windows.")
+  def testGPUTooManyParts(self):
+    # This test only makes sense on the GPU. There we do not check
+    # for errors. In this case, we should discard all but the first
+    # num_partitions indices.
+    if not test.is_gpu_available():
+      return
+
+    data_list = [1, 2, 3, 4, 5, 6]
+    indices_list = [6, 5, 4, 3, 1, 0]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=2)
+      partition_vals = sess.run(partitions)
+
+    self.assertEqual(2, len(partition_vals))
+    self.assertAllEqual([6], partition_vals[0])
+    self.assertAllEqual([5], partition_vals[1])
+
+  @unittest.skip("Fails on windows.")
+  def testGPUPartsTooLarge(self):
+    # This test only makes sense on the GPU. There we do not check
+    # for errors. In this case, we should discard all the values
+    # larger than num_partitions.
+    if not test.is_gpu_available():
+      return
+
+    data_list = [1, 2, 3, 4, 5, 6]
+    indices_list = [10, 11, 2, 12, 0, 1000]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=5)
+      partition_vals = sess.run(partitions)
+
+    self.assertEqual(5, len(partition_vals))
+    self.assertAllEqual([5], partition_vals[0])
+    self.assertAllEqual([], partition_vals[1])
+    self.assertAllEqual([3], partition_vals[2])
+    self.assertAllEqual([], partition_vals[3])
+    self.assertAllEqual([], partition_vals[4])
+
+  @unittest.skip("Fails on windows.")
+  def testGPUAllIndicesBig(self):
+    # This test only makes sense on the GPU. There we do not check
+    # for errors. In this case, we should discard all the values
+    # and have an empty output.
+    if not test.is_gpu_available():
+      return
+
+    data_list = [1.1, 2.1, 3.1, 4.1, 5.1, 6.1]
+    indices_list = [90, 70, 60, 100, 110, 40]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=40)
+      partition_vals = sess.run(partitions)
+
+    self.assertEqual(40, len(partition_vals))
+    for i in range(40):
+      self.assertAllEqual([], partition_vals[i])
 
   def testErrorIndexOutOfRange(self):
     with self.test_session() as sess:

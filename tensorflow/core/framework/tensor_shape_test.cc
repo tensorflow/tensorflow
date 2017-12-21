@@ -359,7 +359,8 @@ Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " has negative dimensions");
+                                     " has negative dimensions; ",
+                                     "perhaps an un-fed placeholder?");
     }
     num_elements *= d.size();
     if (num_elements > kMaxElements) {

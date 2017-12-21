@@ -18,5 +18,12 @@ END
 1-D.  The `shape` of the `SparseTensor`.
 END
   }
-  summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
+  attr {
+    name: "out_type"
+    description: <<END
+The `dtype` to use for serialization; the supported types are `string`
+(default) and `variant`.
+END
+  }
+  summary: "Serialize a `SparseTensor` into a `[3]` `Tensor` object."
 }

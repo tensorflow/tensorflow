@@ -44,7 +44,7 @@ def _add_should_use_warning(x, fatal_error=False):
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
   del fatal_error
-  if x is None:  # special corner case where x is None
+  if x is None or x == []:  # pylint: disable=g-explicit-bool-comparison
     return x
 
   if context.in_eager_mode():

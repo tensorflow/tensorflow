@@ -103,14 +103,13 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {
   GraphDef actual;
   std::vector<string> send_keys, recv_keys;
   TF_CHECK_OK(ConstructFunctionGraphHelper(
-      test::function::XTimesTwo().signature(),
+      test::function::Swap().signature(),
       {{"T", DT_FLOAT}, {"_target", "/job:a/replica:0/task:0/cpu:0"}}, &actual,
       &send_keys, &recv_keys));
-
   GraphDef expected;
   protobuf::TextFormat::ParseFromString(R"(
 node {
-  name: "_recv_x_0"
+  name: "_recv_i0_0"
   op: "_Recv"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
@@ -140,7 +139,7 @@ node {
   attr {
     key: "tensor_name"
     value {
-      s: "x"
+      s: "i0"
     }
   }
   attr {
@@ -151,9 +150,51 @@ node {
   }
 }
 node {
-  name: "XTimesTwo"
-  op: "XTimesTwo"
-  input: "_recv_x_0"
+  name: "_recv_i1_1"
+  op: "_Recv"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "client_terminated"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:a/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:a/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "i1"
+    }
+  }
+  attr {
+    key: "tensor_type"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "Swap"
+  op: "Swap"
+  input: "_recv_i0_0"
+  input: "_recv_i1_1"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"
@@ -164,14 +205,14 @@ node {
   attr {
     key: "_target"
     value {
-      s: "/job:a/replica:0/task:0/device:CPU:0"
+      s: "/job:a/replica:0/task:0/cpu:0"
     }
   }
 }
 node {
-  name: "_send_y_0"
+  name: "_send_o0_0"
   op: "_Send"
-  input: "XTimesTwo"
+  input: "Swap"
   device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"
@@ -206,10 +247,53 @@ node {
   attr {
     key: "tensor_name"
     value {
-      s: "y"
+      s: "o0"
     }
   }
-})",
+}
+node {
+  name: "_send_o1_1"
+  op: "_Send"
+  input: "Swap:1"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "client_terminated"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:a/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:a/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "o1"
+    }
+  }
+}
+)",
                                         &expected);
   TF_EXPECT_GRAPH_EQ(expected, actual);
 }
@@ -234,16 +318,18 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, DISABLED_InstantiateAndRun) {
 TEST_F(ClusterFunctionLibraryRuntimeTest,
        DISABLED_InstantiateAndRunAttrSubstitution) {
   FunctionDefLibrary proto;
-  *(proto.add_function()) = test::function::XTimesTwo();
+  *(proto.add_function()) = test::function::Swap();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
 
-  Tensor y;
-  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y1, y2;
+  auto x1 = test::AsTensor<float>({1, 2, 3, 4});
+  auto x2 = test::AsTensor<float>({4, 3, 2, 1});
   TF_EXPECT_OK(InstantiateAndRun(
-      "XTimesTwo", lib_def,
+      "Swap", lib_def,
       {{"T", DT_FLOAT}, {"_target", "/job:localhost/replica:0/task:1/cpu:0"}},
-      {x}, {&y}));
-  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+      {x1, x2}, {&y1, &y2}));
+  test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({4, 3, 2, 1}));
+  test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({1, 2, 3, 4}));
 }
 
 }  // namespace tensorflow

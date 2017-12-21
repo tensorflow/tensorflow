@@ -54,7 +54,8 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::unique_ptr<const HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,
-                HloCostAnalysis::ShapeSizeFunction shape_size_function);
+                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -71,31 +72,21 @@ class GpuExecutable : public Executable {
   // empty, in which case compilation is left up to the GPU driver.
   const std::vector<uint8>& cubin() const { return cubin_; }
 
-  // Both overloads of ExecuteOnStream will fail if the compute capability of
-  // the stream doesn't match the compute capability passed to this object's
-  // constructor.
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
+  // ExecuteOnStream will fail if the compute capability of the stream doesn't
+  // match the compute capability passed to this object's constructor.
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   const Status EqualOrFail(const Executable& executable) {
     // TODO(b/62952745) Implement equality test on GPU executable.
     return Unimplemented("Equality test on GPU executable is not implemented.");
   }
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -139,9 +130,6 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  // Function to compute the size of a given Shape, in bytes.
-  const HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

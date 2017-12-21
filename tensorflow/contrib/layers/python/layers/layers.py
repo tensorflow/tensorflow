@@ -309,7 +309,6 @@ def _fused_batch_norm(inputs,
         new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
-    dtype = inputs.dtype.base_dtype
     if data_format == DATA_FORMAT_NHWC:
       params_shape = inputs_shape[-1:]
     else:
@@ -1403,7 +1402,8 @@ def dropout(inputs,
             noise_shape=None,
             is_training=True,
             outputs_collections=None,
-            scope=None):
+            scope=None,
+            seed=None):
   """Returns a dropout op applied to the input.
 
   With probability `keep_prob`, outputs the input element scaled up by
@@ -1421,6 +1421,8 @@ def dropout(inputs,
       Otherwise, inputs is returned.
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed} for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1430,6 +1432,7 @@ def dropout(inputs,
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dropout(rate=1 - keep_prob,
                                 noise_shape=noise_shape,
+                                seed=seed,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
@@ -2558,7 +2561,10 @@ def separable_convolution2d(
           regularizer=weights_regularizer,
           trainable=trainable,
           collections=weights_collections)
-      strides = [1, stride_h, stride_w, 1]
+      strides = [1, 1, stride_h,
+                 stride_w] if data_format.startswith('NC') else [
+                     1, stride_h, stride_w, 1
+                 ]
 
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
                                     rate=utils.two_element_tuple(rate),
@@ -2648,51 +2654,52 @@ def spatial_softmax(features,
     ValueError: If unexpected data_format specified.
     ValueError: If num_channels dimension is unspecified.
   """
-  shape = array_ops.shape(features)
-  static_shape = features.shape
-  if data_format == DATA_FORMAT_NHWC:
-    height, width, num_channels = shape[1], shape[2], static_shape[3]
-  elif data_format == DATA_FORMAT_NCHW:
-    num_channels, height, width = static_shape[1], shape[2], shape[3]
-  else:
-    raise ValueError('data_format has to be either NCHW or NHWC.')
-  if num_channels.value is None:
-    raise ValueError('The num_channels dimension of the inputs to '
-                     '`spatial_softmax` should be defined. Found `None`.')
-
-  with ops.name_scope(name, 'spatial_softmax', [features]) as name:
-    # Create tensors for x and y coordinate values, scaled to range [-1, 1].
-    pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
-                                      math_ops.lin_space(-1., 1., num=width),
-                                      indexing='ij')
-    pos_x = array_ops.reshape(pos_x, [height * width])
-    pos_y = array_ops.reshape(pos_y, [height * width])
-    if temperature is None:
-      temperature_collections = utils.get_variable_collections(
-          variables_collections, 'temperature')
-      temperature = variables.model_variable(
-          'temperature',
-          shape=(),
-          dtype=dtypes.float32,
-          initializer=init_ops.ones_initializer(),
-          collections=temperature_collections,
-          trainable=trainable)
-    if data_format == 'NCHW':
-      features = array_ops.reshape(features, [-1, height * width])
+  with variable_scope.variable_scope(name, 'spatial_softmax'):
+    shape = array_ops.shape(features)
+    static_shape = features.shape
+    if data_format == DATA_FORMAT_NHWC:
+      height, width, num_channels = shape[1], shape[2], static_shape[3]
+    elif data_format == DATA_FORMAT_NCHW:
+      num_channels, height, width = static_shape[1], shape[2], shape[3]
     else:
-      features = array_ops.reshape(
-          array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+      raise ValueError('data_format has to be either NCHW or NHWC.')
+    if num_channels.value is None:
+      raise ValueError('The num_channels dimension of the inputs to '
+                       '`spatial_softmax` should be defined. Found `None`.')
 
-    softmax_attention = nn.softmax(features/temperature)
-    expected_x = math_ops.reduce_sum(
-        pos_x * softmax_attention, [1], keep_dims=True)
-    expected_y = math_ops.reduce_sum(
-        pos_y * softmax_attention, [1], keep_dims=True)
-    expected_xy = array_ops.concat([expected_x, expected_y], 1)
-    feature_keypoints = array_ops.reshape(
-        expected_xy, [-1, num_channels.value * 2])
-    feature_keypoints.set_shape([None, num_channels.value * 2])
-    return feature_keypoints
+    with ops.name_scope('spatial_softmax_op', 'spatial_softmax_op', [features]):
+      # Create tensors for x and y coordinate values, scaled to range [-1, 1].
+      pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
+                                        math_ops.lin_space(-1., 1., num=width),
+                                        indexing='ij')
+      pos_x = array_ops.reshape(pos_x, [height * width])
+      pos_y = array_ops.reshape(pos_y, [height * width])
+      if temperature is None:
+        temperature_collections = utils.get_variable_collections(
+            variables_collections, 'temperature')
+        temperature = variables.model_variable(
+            'temperature',
+            shape=(),
+            dtype=dtypes.float32,
+            initializer=init_ops.ones_initializer(),
+            collections=temperature_collections,
+            trainable=trainable)
+      if data_format == 'NCHW':
+        features = array_ops.reshape(features, [-1, height * width])
+      else:
+        features = array_ops.reshape(
+            array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+
+      softmax_attention = nn.softmax(features/temperature)
+      expected_x = math_ops.reduce_sum(
+          pos_x * softmax_attention, [1], keep_dims=True)
+      expected_y = math_ops.reduce_sum(
+          pos_y * softmax_attention, [1], keep_dims=True)
+      expected_xy = array_ops.concat([expected_x, expected_y], 1)
+      feature_keypoints = array_ops.reshape(
+          expected_xy, [-1, num_channels.value * 2])
+      feature_keypoints.set_shape([None, num_channels.value * 2])
+  return feature_keypoints
 
 
 def stack(inputs, layer, stack_args, **kwargs):

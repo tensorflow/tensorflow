@@ -1345,10 +1345,19 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
+
+  def testDropoutSeed(self):
+    """Test that providing the same seed produces the same result."""
+    height, width = 10, 10
+    with self.test_session() as sess:
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, name='images')
+      output1 = _layers.dropout(images, seed=1)
+      output2 = _layers.dropout(images, seed=1)
+      self.assertAllEqual(*sess.run([output1, output2]))
 
   def testCreateDropoutNoTraining(self):
     height, width = 3, 3
@@ -1358,7 +1367,6 @@ class DropoutTest(test.TestCase):
       num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
       output = _layers.dropout(images, is_training=False)
       num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
-      sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])
@@ -1771,7 +1779,8 @@ class BatchNormTest(test.TestCase):
       dtype = dtypes.float32
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3)).astype(dtype.as_numpy_dtype)
+      images = np.random.uniform(size=(5, height, width, 3)).astype(
+          dtype.as_numpy_dtype)
       output = _layers.batch_norm(images, fused=fused)
       expected_name = ('BatchNorm/FusedBatchNorm' if fused else
                        'BatchNorm/batchnorm')
@@ -2657,18 +2666,18 @@ class BatchNormTest(test.TestCase):
     # Test case for 11673
     with self.test_session() as sess:
       a_32 = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
-      b_32 = _layers.batch_norm(a_32, center=False, data_format='NCHW',
-                                zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          a_32, center=False, data_format='NCHW', zero_debias_moving_mean=True)
       a_16 = array_ops.placeholder(dtypes.float16, shape=(10, 10, 10, 10))
-      b_16 = _layers.batch_norm(a_16, center=False, data_format='NCHW',
-                                zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          a_16, center=False, data_format='NCHW', zero_debias_moving_mean=True)
       sess.run(variables_lib.global_variables_initializer())
 
   def testVariablesAreFloat32(self):
     height, width = 3, 3
     with self.test_session():
-      images = random_ops.random_uniform((5, height, width, 3),
-                                         seed=1, dtype=dtypes.float16)
+      images = random_ops.random_uniform(
+          (5, height, width, 3), seed=1, dtype=dtypes.float16)
       _layers.batch_norm(images, scale=True)
       beta = variables.get_variables_by_name('beta')[0]
       gamma = variables.get_variables_by_name('gamma')[0]
@@ -2683,17 +2692,13 @@ class BatchNormTest(test.TestCase):
     channels = shape[1]
     images = np.arange(np.product(shape), dtype=dtype).reshape(shape)
     beta = init_ops.constant_initializer(
-        np.arange(
-            2, channels + 2, dtype=np.float32))
+        np.arange(2, channels + 2, dtype=np.float32))
     gamma = init_ops.constant_initializer(
-        np.arange(
-            10, channels + 10, dtype=np.float32) * 2.0)
+        np.arange(10, channels + 10, dtype=np.float32) * 2.0)
     mean = init_ops.constant_initializer(
-        np.arange(
-            3, channels + 3, dtype=np.float32) * 5.0)
+        np.arange(3, channels + 3, dtype=np.float32) * 5.0)
     variance = init_ops.constant_initializer(
-        np.arange(
-            1, channels + 1, dtype=np.float32) * 4.0)
+        np.arange(1, channels + 1, dtype=np.float32) * 4.0)
     output = _layers.batch_norm(
         images,
         fused=True,
@@ -2717,7 +2722,6 @@ class BatchNormTest(test.TestCase):
       res_32 = self._runFusedBatchNorm(shape, np.float32)
       res_16 = self._runFusedBatchNorm(shape, np.float16)
       self.assertAllClose(res_32, res_16, rtol=1e-3)
-
 
   def testAdjustmentCreated(self):
     # Tests that the adjustment is appropriately passed to and used by the core
@@ -3322,16 +3326,24 @@ class SeparableConv2dTest(test.TestCase):
           for model_variable in model_variables:
             self.assertEqual(trainable, model_variable in trainable_variables)
 
-  def testConvNCHW(self):
-    for num_filters, correct_output_filters in [(None, 6), (8, 8)]:
+  def testSepConvNCHW(self):
+    for num_filters, correct_output_filters in zip((None, 5), (6, 5)):
       with self.test_session():
-        batch, height, width = 4, 5, 6
+        batch, height, width = 4, 10, 12
+        kernel_dim, stride = 3, 2
         images = random_ops.random_uniform((batch, 3, height, width), seed=1)
         output = layers_lib.separable_conv2d(
-            images, num_filters, [3, 3], 2, padding='VALID', data_format='NCHW')
-        self.assertListEqual(
-            output.get_shape().as_list(), [batch, correct_output_filters,
-                                           height - 2, width - 2])
+            images,
+            num_outputs=num_filters,
+            kernel_size=[kernel_dim, kernel_dim],
+            depth_multiplier=2,
+            stride=stride,
+            padding='VALID',
+            data_format='NCHW')
+        self.assertListEqual(output.get_shape().as_list(), [
+            batch, correct_output_filters, (height - kernel_dim + 1) // stride,
+            (width - kernel_dim + 1) // stride
+        ])
 
 
 class ScaleGradientTests(test.TestCase):

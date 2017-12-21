@@ -17,7 +17,7 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc. This opkernel uses MKL library, create MKL
 // layout and primitives, use MKL dnn primitives to compute local
 // response normalization
-
+#undef INTEL_MKL
 #ifdef INTEL_MKL
 
 #define EIGEN_USE_THREADS
