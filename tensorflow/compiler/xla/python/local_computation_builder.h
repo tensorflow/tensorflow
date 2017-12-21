@@ -86,6 +86,8 @@ class LocalComputationBuilder {
   ComputationDataHandle Collapse(const ComputationDataHandle& operand,
                                  tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  ComputationDataHandle CrossReplicaSum(const ComputationDataHandle& operand);
+
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
                               tensorflow::gtl::ArraySlice<int64> limit_indices,

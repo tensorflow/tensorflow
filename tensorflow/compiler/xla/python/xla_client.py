@@ -391,6 +391,18 @@ class ComputationBuilder(object):
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
 
+  def CrossReplicaSum(self, operand):
+    """CrossReplicaSum op.
+
+    Args:
+      operand: the operand to sum across replica instances.
+
+    Returns:
+      A ComputationDataHandle that has the sum of the value among all replicas.
+    """
+    return _wrap_data_handle(
+        self._client.CrossReplicaSum(_unwrap_data_handle(operand)))
+
   def Collapse(self, operand, dimensions):
     """Collapse op."""
     return _wrap_data_handle(

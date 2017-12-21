@@ -124,6 +124,11 @@ ComputationDataHandle LocalComputationBuilder::Collapse(
   return builder_.Collapse(operand, dimensions);
 }
 
+ComputationDataHandle LocalComputationBuilder::CrossReplicaSum(
+    const ComputationDataHandle& operand) {
+  return builder_.CrossReplicaSum(operand);
+}
+
 ComputationDataHandle LocalComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,

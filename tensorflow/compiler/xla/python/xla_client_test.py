@@ -358,6 +358,18 @@ class SingleOpTest(LocalComputationTest):
     for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
       _ConvertAndTest(x, src_dtype, dst_dtype)
 
+  def testCrossReplicaSumOneReplica(self):
+    samples = [
+        NumpyArrayF32(42.0),
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples:
+      c = self._NewComputation()
+      c.CrossReplicaSum(c.Constant(lhs))
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
   def testDotMatrixVectorF32(self):
     c = self._NewComputation()
     lhs = NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]])

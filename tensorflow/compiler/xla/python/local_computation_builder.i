@@ -500,6 +500,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Broadcast;
 %unignore xla::swig::LocalComputationBuilder::Reshape;
 %unignore xla::swig::LocalComputationBuilder::Collapse;
+%unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;
 %unignore xla::swig::LocalComputationBuilder::Slice;
 %unignore xla::swig::LocalComputationBuilder::DynamicSlice;
 %unignore xla::swig::LocalComputationBuilder::DynamicUpdateSlice;
