@@ -6737,8 +6737,7 @@ class CohenKappaTest(test.TestCase):
     expect = 0.45
     labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
 
-    dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64,
-              dtypes_lib.float32, dtypes_lib.float64]
+    dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64]
     shapes = [(len(labels,)),  # 1-dim
               (len(labels), 1)]  # 2-dim
     weights = [None, np.ones_like(labels)]

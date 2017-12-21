@@ -3330,7 +3330,7 @@ def cohen_kappa(labels, predictions, num_classes, weights=None,
 
   Args:
     labels: 1-D `Tensor` of real labels for the classification task. Must be
-      one of the following types: int16, int32, int64, float32, float64.
+      one of the following types: int16, int32, int64.
     predictions: 1-D `Tensor` of predictions for a given classification.
       Must have the same type as `labels`.
     num_classes: The possible number of labels.
