@@ -22,18 +22,19 @@ limitations under the License.
 //
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
-//  ComputationDataHandle              <-> long
-//  ArraySlice<int64>                  <-  sequence of long
-//  ArraySlice<ComputationDataHandle>  <-  sequence of long
+//  ComputationDataHandle              <-> int
+//  ArraySlice<int64>                  <-  sequence of int
+//  ArraySlice<ComputationDataHandle>  <-  sequence of int
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                              <-> pair holding (dtype, dimensions)
 //  std::vector<Shape>                 <-  sequence of shape information pairs
 //  PrimitiveType                      <-  int
+//  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
+//  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
-// direction, or whether it is maintained bidirectionally. Also,
-// "long" and "int" denote the Python types so named, not C.
+// direction, or whether it is maintained bidirectionally.
 //
 // The Python objects corresponding to C++ Literals have the type:
 //
@@ -113,6 +114,27 @@ limitations under the License.
 
 using namespace xla;
 using namespace xla::swig;
+
+namespace xla {
+namespace swig {
+
+bool GetIntAttr(PyObject* o, const char* field, int64* result) {
+  PyObject* fo = PyObject_GetAttrString(o, field);
+  if (!fo) {
+    return false;
+  }
+  const int64 value = numpy::PyIntOrPyLongToLong(fo);
+  if (value == -1 && PyErr_Occurred()) {
+    Py_DECREF(fo);
+    return false;
+  }
+  Py_DECREF(fo);
+  *result = value;
+  return true;
+}
+
+}
+}
 %}
 
 // Required to use PyArray_* functions.
@@ -278,6 +300,189 @@ tensorflow::ImportNumpy();
   $1 = static_cast<PrimitiveType>(value);
 }
 
+// ArraySlice<pair<int64, in64>>
+
+%typemap(in) tensorflow::gtl::ArraySlice<std::pair<int64, int64> >
+    (std::vector<std::pair<int64, int64> > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    return NULL;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    if (!o) {
+      return NULL;
+    }
+    PyObject* first = PyTuple_GetItem(o, 0);
+    if (!first) {
+      Py_DECREF(o);
+      return NULL;
+    }
+    PyObject* first_pyint = numpy::PyNumberToPyInt(first);
+    if (!first_pyint) {
+      PyErr_SetString(
+          PyExc_TypeError,
+          "First pair item cannot be converted to int");
+      Py_DECREF(o);
+      return NULL;
+    }
+    PyObject* second = PyTuple_GetItem(o, 1);
+    if (!second) {
+      Py_DECREF(o);
+      Py_DECREF(first_pyint);
+      return NULL;
+    }
+    PyObject* second_pyint = numpy::PyNumberToPyInt(second);
+    if (!second_pyint) {
+      PyErr_SetString(
+          PyExc_TypeError,
+          "Second pair item cannot be converted to int");
+      Py_DECREF(o);
+      Py_DECREF(first_pyint);
+      return NULL;
+    }
+    const int64 first_value = numpy::PyIntOrPyLongToLong(first_pyint);
+    if (first_value == -1 && PyErr_Occurred()) {
+      Py_DECREF(o);
+      Py_DECREF(first_pyint);
+      Py_DECREF(second_pyint);
+      return NULL;
+    }
+    const int64 second_value = numpy::PyIntOrPyLongToLong(second_pyint);
+    if (second_value == -1 && PyErr_Occurred()) {
+      Py_DECREF(o);
+      Py_DECREF(first_pyint);
+      Py_DECREF(second_pyint);
+      return NULL;
+    }
+    temps.push_back(std::make_pair(first_value, second_value));
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
+// ConvolutionDimensionNumbers
+
+%typemap(in) const ConvolutionDimensionNumbers&
+    (ConvolutionDimensionNumbers dimension_numbers) {
+  int64 value;
+
+  if (!GetIntAttr($input, "input_batch_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_input_batch_dimension(value);
+
+  if (!GetIntAttr($input, "input_feature_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_input_feature_dimension(value);
+
+  if (!GetIntAttr($input, "output_batch_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_output_batch_dimension(value);
+
+  if (!GetIntAttr($input, "output_feature_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_output_feature_dimension(value);
+
+  if (!GetIntAttr($input, "kernel_output_feature_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_kernel_output_feature_dimension(value);
+
+  if (!GetIntAttr($input, "kernel_input_feature_dimension", &value)) {
+    return NULL;
+  }
+  dimension_numbers.set_kernel_input_feature_dimension(value);
+
+  PyObject* o;
+  int length;
+
+  o = PyObject_GetAttrString($input, "input_spatial_dimensions");
+  if (!o) {
+    return NULL;
+  }
+  length = PySequence_Size(o);
+  if (length == -1) {
+    Py_DECREF(o);
+    return NULL;
+  }
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(o, i);
+    if (!item) {
+      Py_DECREF(o);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(o);
+      return NULL;
+    }
+    dimension_numbers.add_input_spatial_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(o);
+
+  o = PyObject_GetAttrString($input, "kernel_spatial_dimensions");
+  if (!o) {
+    return NULL;
+  }
+  length = PySequence_Size(o);
+  if (length == -1) {
+    Py_DECREF(o);
+    return NULL;
+  }
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(o, i);
+    if (!item) {
+      Py_DECREF(o);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(o);
+      return NULL;
+    }
+    dimension_numbers.add_kernel_spatial_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(o);
+
+  o = PyObject_GetAttrString($input, "output_spatial_dimensions");
+  if (!o) {
+    return NULL;
+  }
+  length = PySequence_Size(o);
+  if (length == -1) {
+    Py_DECREF(o);
+    return NULL;
+  }
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(o, i);
+    if (!item) {
+      Py_DECREF(o);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(o);
+      return NULL;
+    }
+    dimension_numbers.add_output_spatial_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(o);
+
+  $1 = &dimension_numbers;
+}
+
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
@@ -314,6 +519,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Lt;
 %unignore xla::swig::LocalComputationBuilder::Le;
 %unignore xla::swig::LocalComputationBuilder::Dot;
+%unignore xla::swig::LocalComputationBuilder::ConvGeneralDilated;
 %unignore xla::swig::LocalComputationBuilder::Add;
 %unignore xla::swig::LocalComputationBuilder::Sub;
 %unignore xla::swig::LocalComputationBuilder::Mul;

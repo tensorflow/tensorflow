@@ -153,7 +153,15 @@ enum class AxesOrder {
 // because we'll be dropping the array anyway (e.g. some exotic array types
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
-enum class ArrayDataType { kNone, kBool, kFloat, kUint8, kInt32, kInt64 };
+enum class ArrayDataType {
+  kNone,
+  kBool,
+  kFloat,
+  kUint8,
+  kInt32,
+  kInt64,
+  kString
+};
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
 template <ArrayDataType A>
@@ -181,6 +189,10 @@ struct DataTypeImpl<ArrayDataType::kInt32> {
 template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
   typedef int64 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kString> {
+  typedef string Type;
 };
 
 template <ArrayDataType A>

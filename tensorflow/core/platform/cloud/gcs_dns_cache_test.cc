@@ -58,6 +58,10 @@ class TestHttpRequest : public HttpRequest {
   Status SetResultBuffer(std::vector<char>* out_buffer) override {
     return Status::OK();
   }
+  Status SetResultBufferDirect(char* buffer, size_t size) override {
+    return Status::OK();
+  }
+  size_t GetResultBufferDirectBytesTransferred() override { return 0; }
 
   string GetResponseHeader(const string& name) const override { return ""; }
   uint64 GetResponseCode() const override { return 0; }

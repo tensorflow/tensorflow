@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -325,6 +327,57 @@ Status CurlHttpRequest::SetResultBuffer(std::vector<char>* out_buffer) {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
                              &CurlHttpRequest::WriteCallback);
   return Status::OK();
+}
+
+Status CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
+  CHECK(buffer != nullptr);
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+
+  direct_response_ = DirectResponseState{buffer, size, 0};
+
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION,
+                             &CurlHttpRequest::WriteCallbackDirect);
+  return Status::OK();
+}
+
+size_t CurlHttpRequest::WriteCallbackDirect(const void* ptr, size_t size,
+                                            size_t nmemb, void* userdata) {
+  CHECK(ptr != nullptr);
+  auto that = reinterpret_cast<CurlHttpRequest*>(userdata);
+  DirectResponseState* state = &that->direct_response_;
+  CHECK(state->buffer_ != nullptr);
+  CHECK(state->bytes_transferred_ <= state->buffer_size_);
+
+  size_t curl_bytes_received = size * nmemb;
+  size_t user_buffer_bytes_available =
+      state->buffer_size_ - state->bytes_transferred_;
+
+  // The HTTP server may send a response body that is longer than what we
+  // expected. We must not use CHECK() for this situation, because that would
+  // imply a code bug (in this client code) where none exists; the violation of
+  // expectations would have been caused by the server, not the client. So we
+  // report a log warning, if an HTTP server is misbehaving.
+  if (curl_bytes_received > user_buffer_bytes_available) {
+    LOG(WARNING) << "The HTTP response body that we received is longer than we "
+                    "requested or expected. "
+                 << "Total bytes requested: " << state->buffer_size_
+                 << " Bytes received (so far) in HTTP response body: "
+                 << (state->bytes_transferred_ + curl_bytes_received);
+  }
+
+  size_t bytes_to_copy =
+      std::min<size_t>(curl_bytes_received, user_buffer_bytes_available);
+  memcpy(&state->buffer_[state->bytes_transferred_], ptr, bytes_to_copy);
+  state->bytes_transferred_ += bytes_to_copy;
+  return bytes_to_copy;
+}
+
+size_t CurlHttpRequest::GetResultBufferDirectBytesTransferred() {
+  CHECK(direct_response_.buffer_ != nullptr);
+  return direct_response_.bytes_transferred_;
 }
 
 Status CurlHttpRequest::SetTimeouts(uint32 connection, uint32 inactivity,

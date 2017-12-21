@@ -1066,6 +1066,48 @@ TEST_F(LayoutOptimizerTest, MergeOneInputNotConvertible) {
             "LayoutOptimizerTransposeNCHWToNHWC-Conv2D-0-1");
 }
 
+TEST_F(LayoutOptimizerTest, Complex) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto comp = ops::Complex(s.WithOpName("complex"), conv, conv);
+  auto i = ops::Identity(s.WithOpName("i"), comp);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto merge_node = node_map.GetNode("complex");
+  EXPECT_EQ(merge_node->input(0), "Conv2D");
+  EXPECT_EQ(merge_node->input(1), "Conv2D");
+  auto trans =
+      node_map.GetNode("LayoutOptimizerTransposeNCHWToNHWC-complex-0-0");
+  EXPECT_EQ(trans->attr().at("T").type(), DT_COMPLEX64);
+}
+
+TEST_F(LayoutOptimizerTest, IdentityNWithInputsVectorAnd4D) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  auto vector = ops::Const(s.WithOpName("vector"), 3.0f, {2});
+  auto identity_n = ops::IdentityN(s.WithOpName("identity_n"), {vector, conv});
+  auto add = ops::Add(s.WithOpName("add"), identity_n[0], identity_n[1]);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  auto i = node_map.GetNode("identity_n");
+  EXPECT_EQ(i->input(0), "vector");
+  EXPECT_EQ(i->input(1), "Conv2D");
+  auto trans =
+      node_map.GetNode("LayoutOptimizerTransposeNCHWToNHWC-identity_n-0-1");
+  EXPECT_EQ(trans->input(0), "identity_n:1");
+  auto add_node = node_map.GetNode("add");
+  EXPECT_EQ(add_node->input(0), "identity_n");
+  EXPECT_EQ(add_node->input(1),
+            "LayoutOptimizerTransposeNCHWToNHWC-identity_n-0-1");
+}
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

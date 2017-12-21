@@ -96,7 +96,7 @@ class LayoutUtil {
 
   // Returns the padded_dimensions array for the given Shape.  Requires that the
   // shape is an array and has a dense layout.
-  static tensorflow::gtl::ArraySlice<const int64> PaddedDimensions(
+  static tensorflow::gtl::ArraySlice<int64> PaddedDimensions(
       const Shape& shape);
 
   // Returns the given index of the padded_dimensions array for the given Shape.

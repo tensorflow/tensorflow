@@ -386,6 +386,46 @@ class SingleOpTest(LocalComputationTest):
     c.Dot(c.Constant(lhs), c.Constant(rhs))
     self._ExecuteAndCompareClose(c, expected=np.dot(lhs, rhs))
 
+  def testConvF32Same(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 2, 3, 4)
+    rhs = a(1, 2, 1, 2) * 10
+    c.Conv(c.Constant(lhs), c.Constant(rhs),
+           [1, 1], xla_client.PaddingType.SAME)
+    result = np.array([[[[640., 700., 760., 300.],
+                         [880., 940., 1000., 380.],
+                         [1120., 1180., 1240., 460.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvF32Valid(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 2, 3, 4)
+    rhs = a(1, 2, 1, 2) * 10
+    c.Conv(c.Constant(lhs), c.Constant(rhs),
+           [2, 1], xla_client.PaddingType.VALID)
+    result = np.array([[[[640., 700., 760.],
+                         [1120., 1180., 1240.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvWithGeneralPaddingF32(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+    c.ConvWithGeneralPadding(c.Constant(lhs), c.Constant(rhs),
+                             strides, pads, lhs_dilation, rhs_dilation)
+    result = np.array([[[[0., 0., 0.],
+                         [10., 20., 0.],
+                         [0., 0., 0.],
+                         [40., 50., 0.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
   def testBooleanNot(self):
     c = self._NewComputation()
     arr = NumpyArrayBool([True, False, True])

@@ -270,8 +270,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   return false;
 }
 
-/* static */ tensorflow::gtl::ArraySlice<const int64>
-LayoutUtil::PaddedDimensions(const Shape& shape) {
+/* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::PaddedDimensions(
+    const Shape& shape) {
   CHECK(IsDense(shape));
   return AsInt64Slice(shape.layout().padded_dimensions());
 }
