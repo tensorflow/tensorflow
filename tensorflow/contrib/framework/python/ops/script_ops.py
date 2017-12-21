@@ -104,8 +104,8 @@ def py_func(func,
     # If callable, assume same signature and call with tensors and get the types
     output_types = output_types(*args, **kwargs)
   if callable(output_shapes):
-      # If callable, assume same signature and call with tensors and get the shapes
-      output_shapes = output_shapes(*args, **kwargs)
+    # If callable, assume same signature and call with tensors and get the shapes
+    output_shapes = output_shapes(*args, **kwargs)
 
   flat_output_types = nest.flatten(output_types)
   args = (args, kwargs)
