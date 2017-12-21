@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_WINDOWS_COMPATIBILITY_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_WINDOWS_COMPATIBILITY_H_
+#include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 
 #ifdef _MSC_VER
 
-extern "C" {
+#include <math.h>
 
-void sincos(double x, double *sinv, double *cosv);
-void sincosf(float x, float *sinv, float *cosv);
+void sincos(double x, double *sinv, double *cosv) {
+  *sinv = sin(x);
+  *cosv = cos(x);
+}
 
+void sincosf(float x, float *sinv, float *cosv) {
+  *sinv = sinf(x);
+  *cosv = cosf(x);
 }
 
 #endif  // _MSC_VER
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_WINDOWS_COMPATIBILITY_H_

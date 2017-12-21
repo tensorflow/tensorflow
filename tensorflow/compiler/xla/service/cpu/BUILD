@@ -15,7 +15,6 @@ package_group(
 )
 
 load(":build_defs.bzl", "runtime_copts")
-load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
@@ -150,7 +149,11 @@ cc_library(
 
 cc_library(
     name = "simple_orc_jit",
-    srcs = ["simple_orc_jit.cc"] + if_windows(["windows_compatibility.h"]),
+    srcs = [
+        "simple_orc_jit.cc",
+        "windows_compatibility.h",
+        "windows_compatibility.cc",
+    ],
     hdrs = ["simple_orc_jit.h"],
     deps = [
         ":compiler_functor",
