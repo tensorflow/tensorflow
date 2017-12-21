@@ -164,24 +164,25 @@ struct FillFunctor<CPUDevice, T> {
 
 }  // end namespace functor
 
-template <typename Device, typename T, typename Index>
+template <typename Device, typename T>
 class FillOp : public OpKernel {
  public:
   explicit FillOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& Tdims = context->input(0);
-    OP_REQUIRES(context, IsLegacyVector(Tdims.shape()),
-                errors::InvalidArgument("dims must be a vector, got shape ",
-                                        Tdims.shape().DebugString()));
+    OP_REQUIRES(
+        context, IsLegacyVector(Tdims.shape()),
+        errors::InvalidArgument("dims must be a vector of int32, got shape ",
+                                Tdims.shape().DebugString()));
     const Tensor& Tvalue = context->input(1);
     OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
-    auto dims = Tdims.flat<Index>();
+    auto dims = Tdims.flat<int32>();
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                reinterpret_cast<const Index*>(dims.data()),
+                                reinterpret_cast<const int32*>(dims.data()),
                                 dims.size(), &shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
@@ -213,19 +214,12 @@ struct FillFunctor<SYCLDevice, T> {
 }  // namespace functor
 #endif  // TENSORFLOW_USE_SYCL
 
-#define REGISTER_KERNEL(D, TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int32>("index_type") \
-                              .HostMemory("dims"),                 \
-                          FillOp<D##Device, TYPE, int32>);         \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int64>("index_type") \
-                              .HostMemory("dims"),                 \
-                          FillOp<D##Device, TYPE, int64>);
+#define REGISTER_KERNEL(D, TYPE)                         \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                   \
+                              .Device(DEVICE_##D)        \
+                              .TypeConstraint<TYPE>("T") \
+                              .HostMemory("dims"),       \
+                          FillOp<D##Device, TYPE>);
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
@@ -247,11 +241,10 @@ REGISTER_KERNEL(SYCL, int64);
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
                             .HostMemory("dims")
                             .HostMemory("value")
                             .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
+                        FillOp<CPUDevice, int32>);
 #undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -274,11 +267,10 @@ REGISTER_KERNEL(GPU, bool);
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
                             .HostMemory("dims")
                             .HostMemory("value")
                             .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
+                        FillOp<CPUDevice, int32>);
 #endif
 
 #undef REGISTER_KERNEL
