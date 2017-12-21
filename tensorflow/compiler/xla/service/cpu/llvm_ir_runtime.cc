@@ -65,13 +65,13 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
       llvm::ConstantFP::get(vector_type, 9.0), &ir_builder);
 
   std::array<float, 7> numerator_coeffs(
-      {{-2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
-        5.12229709037114e-08f, 1.48572235717979e-05f, 6.37261928875436e-04f,
-        4.89352455891786e-03f}});
+      {-2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
+       5.12229709037114e-08f, 1.48572235717979e-05f, 6.37261928875436e-04f,
+       4.89352455891786e-03f});
 
   std::array<float, 4> denominator_coeffs(
-      {{1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
-        4.89352518554385e-03f}});
+      {1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
+       4.89352518554385e-03f});
 
   llvm::Value* input_squared =
       ir_builder.CreateFMul(input_clamped, input_clamped);
