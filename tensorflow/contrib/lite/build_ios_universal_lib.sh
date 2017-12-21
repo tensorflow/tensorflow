@@ -15,17 +15,104 @@
 # ==============================================================================
 
 set -e
-make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=x86_64 -j 8
-make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=i386 -j 8
-make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=armv7 -j 8
-make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=armv7s -j 8
-make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=arm64 -j 8
+get_cpu_count() {
+  case "${OSTYPE}" in
+    linux*)
+      grep processor /proc/cpuinfo | wc -l ;;
+    darwin*)
+      sysctl hw.ncpu | awk '{print $2}' ;;
+    cygwin*)
+      grep processor /proc/cpuinfo | wc -l ;;
+    *)
+      echo "1"
+      exit 1 ;;
+  esac
+  exit 0
+}
 
-lipo \
-tensorflow/contrib/lite/gen/lib/ios_x86_64/libtensorflow-lite.a \
-tensorflow/contrib/lite/gen/lib/ios_i386/libtensorflow-lite.a \
-tensorflow/contrib/lite/gen/lib/ios_armv7/libtensorflow-lite.a \
-tensorflow/contrib/lite/gen/lib/ios_armv7s/libtensorflow-lite.a \
-tensorflow/contrib/lite/gen/lib/ios_arm64/libtensorflow-lite.a \
--create \
--output tensorflow/contrib/lite/gen/lib/libtensorflow-lite.a
+get_job_count() {
+  echo $(($(get_cpu_count)))
+}
+
+JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
+function less_than_required_version() {
+  echo $1 | (IFS=. read -r major minor micro
+    if [ $major -ne $2 ]; then
+      [ $major -lt $2 ]
+    elif [ $minor -ne $3 ]; then
+      [ $minor -lt $3 ]
+    else
+      [ ${micro:-0} -lt $4 ]
+    fi
+  )
+}
+
+if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+fi
+
+ACTUAL_XCODE_VERSION=$(xcodebuild -version | head -n 1 | sed 's/Xcode //')
+REQUIRED_XCODE_VERSION=7.3.0
+if less_than_required_version $ACTUAL_XCODE_VERSION 7 3 0
+then
+    echo "error: Xcode ${REQUIRED_XCODE_VERSION} or later is required."
+    exit 1
+fi
+
+usage() {
+  echo "Usage: $(basename "$0") [-af]"
+  echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64,arm64)"
+  echo "default is [i386, x86_64, armv7, armv7s, arm64]"
+  exit 1
+}
+
+BUILD_TARGET="i386 x86_64 armv7 armv7s arm64"
+while getopts "a:" opt_name; do
+  case "$opt_name" in
+    a) BUILD_TARGET="${OPTARG}";;
+    *) usage;;
+  esac
+done
+shift $((OPTIND - 1))
+
+IFS=' ' read -r -a build_targets <<< "${BUILD_TARGET}"
+
+
+GENDIR=tensorflow/contrib/lite/gen/
+LIBDIR=${GENDIR}lib
+LIB_PREFIX=libtensorflow-lite
+
+#remove any old artifacts
+rm -rf ${LIBDIR}/${LIB_PREFIX}.a
+
+package_tf_library() {
+    tf_libs="${LIBDIR}/ios_${1}/${LIB_PREFIX}-${1}.a"
+    if [ -f "${LIBDIR}/${LIB_PREFIX}.a" ]; then
+        tf_libs="$tf_libs ${LIBDIR}/${LIB_PREFIX}.a"
+    fi
+    lipo \
+    $tf_libs \
+    -create \
+    -output ${LIBDIR}/${LIB_PREFIX}.a
+}
+
+build_tf_target() {
+    make -j"${JOB_COUNT}" -f tensorflow/contrib/lite/Makefile \
+    TARGET=IOS IOS_ARCH=${1} LIB_NAME=${LIB_PREFIX}-${1}.a
+    if [ $? -ne 0 ]
+    then
+        echo "${1} compilation failed."
+        exit 1
+    fi
+    package_tf_library "${1}"
+}
+
+for build_tf_element in "${build_targets[@]}"
+do
+    echo "$build_tf_element"
+    build_tf_target "$build_tf_element"
+done
+
+echo "Done building and packaging TF"
+file ${LIBDIR}/${LIB_PREFIX}.a
