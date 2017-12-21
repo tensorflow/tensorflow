@@ -119,7 +119,7 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
            ("[?,2];[?,2];[?];[?];[2];[2];"         // sparse outputs
             "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3]"));  // dense outputs
 
-  // Confirm an error from ParseSingleExampleAttrs.Init().
+  // Confirm an error from ParseExampleAttrs.Init().
   set_outputs(2, 3, true /* add_extra_shape */);
   INFER_ERROR("len(dense_keys) != len(dense_shapes)", op,
               "?;?;?;?;?;?;?;?;?;?");

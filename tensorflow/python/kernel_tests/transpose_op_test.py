@@ -38,35 +38,39 @@ class TransposeTest(test.TestCase):
     ret = ret.transpose(perm)
     return ret
 
-  def _compareCpu(self, x, p):
+  def _compareCpu(self, x, p, conjugate=False):
     np_ans = self._np_transpose(x, p)
+    if conjugate:
+      np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      y = array_ops.transpose(inx, p)
+      y = array_ops.transpose(inx, p, conjugate=conjugate)
       tf_ans = y.eval()
-      self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
+      self.assertAllEqual(np_ans, tf_ans)
 
       jacob_t = None
       # Gradient check on CPU.
       xs = list(np.shape(x))
       ys = list(np.shape(tf_ans))
-      if x.dtype == np.float32:
+      if x.dtype in [np.float32, np.complex64]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-3, 1e-3)
-      elif x.dtype == np.float64:
+      elif x.dtype in [np.float64, np.complex128]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-6, 1e-6)
 
       return tf_ans, jacob_t
 
-  def _compareGpu(self, x, p):
+  def _compareGpu(self, x, p, conjugate=False):
     np_ans = self._np_transpose(x, p)
+    if conjugate:
+      np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
-      y = array_ops.transpose(inx, p)
+      y = array_ops.transpose(inx, p, conjugate=conjugate)
       tf_ans = y.eval()
 
       self.assertAllEqual(np_ans, tf_ans)
@@ -92,10 +96,12 @@ class TransposeTest(test.TestCase):
     # generate all permutations of [0, 1, ... n-1] in random order.
     all_perm = np.random.permutation(
         [p for p in itertools.permutations(range(n))]).astype(np.int32)
-    for p in all_perm[:2]:
-      self._compareCpu(x, p)
-      if use_gpu:
-        self._compareGpu(x, p)
+    cs = [False, True] if x.dtype in [np.complex64, np.complex128] else [False]
+    for c in cs:
+      for p in all_perm[:2]:
+        self._compareCpu(x, p, conjugate=c)
+        if use_gpu:
+          self._compareGpu(x, p, conjugate=c)
 
   def _compare_cpu_gpu(self, x):
     n = np.ndim(x)
@@ -229,6 +235,80 @@ class TransposeTest(test.TestCase):
         self.assertAllEqual(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, y)
 
+  def testLargeSizeGPU(self):
+    # If no GPU available, skip the test
+    if not test.is_gpu_available(cuda_only=True):
+      return
+
+    large_shapes = [[1000000, 31, 3], [3, 1000000, 31], [3, 31, 1000000],
+                    [10000, 310, 3], [3, 10000, 310], [3, 310, 10000],
+                    [2, 1000, 1000], [1000, 2, 1000], [1000, 1000, 2]]
+    perms = [[0, 2, 1]] * 9
+
+    for input_shape, perm in zip(large_shapes, perms):
+      total_size = np.prod(input_shape)
+      inp = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_shape)
+      np_ans = self._np_transpose(inp, perm)
+      with self.test_session(use_gpu=True):
+        inx = ops.convert_to_tensor(inp)
+        y = array_ops.transpose(inx, perm)
+        tf_ans = y.eval()
+      self.assertAllEqual(np_ans, tf_ans)
+      self.assertShapeEqual(np_ans, y)
+
+  def testRandomizedSmallDimLargeSizeGPU(self):
+    # If no GPU available, skip the test
+    if not test.is_gpu_available(cuda_only=True):
+      return
+
+    # Draw 10 random shapes with large dimension sizes.
+    # 40% prob to generate dim[0] size within [1, 2047]
+    # 40% prob to generate dim[0] size within [2048, 4095]
+    # 20% prob to generate dim[0] size within [4096, 100000]
+    # 50% prob to use dim[1] as the small dim (<16)
+    num_samples = 10
+    total_size = 500000
+    small_size_limit = 2048
+    large_size_limit = 95905
+    small_size_percentage = 0.4
+    medium_size_percentage = 0.4
+    large_size_percentage = 0.2
+    perms = [[0, 2, 1]] * num_samples
+    dim_zero_sizes = []
+    dim_zero_sizes += list(
+        np.random.randint(
+            small_size_limit, size=int(small_size_percentage * num_samples)) +
+        1)
+    dim_zero_sizes += list(
+        np.random.randint(
+            small_size_limit, size=int(medium_size_percentage * num_samples)) +
+        small_size_limit)
+    dim_zero_sizes += list(
+        np.random.randint(
+            large_size_limit, size=int(large_size_percentage * num_samples)) +
+        small_size_limit * 2)
+    input_shapes = []
+    small_dim_limit = 16
+    for dim_zero_size in dim_zero_sizes:
+      small_dim_size = np.random.randint(small_dim_limit - 1) + 1
+      large_dim_size = int(
+          total_size / dim_zero_size / small_dim_size) + small_dim_limit
+      input_shapes += ([[dim_zero_size, small_dim_size, large_dim_size]]
+                       if np.random.randint(2) else
+                       [[dim_zero_size, large_dim_size, small_dim_size]])
+
+    for input_shape, perm in zip(input_shapes, perms):
+      # generate input data with random ints from 0 to 9.
+      inp = np.random.randint(10, size=input_shape)
+      np_ans = self._np_transpose(inp, perm)
+      with self.test_session(use_gpu=True):
+        inx = ops.convert_to_tensor(inp)
+        y = array_ops.transpose(inx, perm)
+        tf_ans = y.eval()
+      self.assertAllEqual(np_ans, tf_ans)
+      self.assertShapeEqual(np_ans, y)
+      self._ClearCachedSession()
+
   def testNop(self):
     self._compareCpu(np.arange(0, 6).reshape([3, 2]).astype(np.float32), [0, 1])
 
@@ -236,6 +316,19 @@ class TransposeTest(test.TestCase):
     self._compareCpu(
         np.arange(0, 8).reshape([2, 4]).astype(np.float32),
         np.array([1, 0]).astype(np.int32))
+
+  def testPermType(self):
+    for perm_dtype in [np.int64, np.int32]:
+      x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
+      p = np.array([1, 0]).astype(perm_dtype)
+      np_ans = np.copy(x).transpose(p)
+      with self.test_session(use_gpu=True):
+        inx = ops.convert_to_tensor(x)
+        inp = constant_op.constant(p)
+        y = array_ops.transpose(inx, inp)
+        tf_ans = y.eval()
+        self.assertShapeEqual(np_ans, y)
+        self.assertAllEqual(np_ans, tf_ans)
 
   def testHalf(self):
     self._compare(np.arange(0, 21).reshape([3, 7]).astype(np.float16))

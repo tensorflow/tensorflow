@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Tanh"
+  summary: "Computes hyperbolic tangent of `x` element-wise."
+}

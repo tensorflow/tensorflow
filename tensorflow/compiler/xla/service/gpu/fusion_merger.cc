@@ -83,11 +83,11 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
 // Returns the bytes read by all fusion parameters of instruction 'fusion'.
 double CalculateBytesReadByFusionInstruction(HloInstruction* fusion) {
   double bytes = 0.0;
-  for (const auto& fused_instruction : fusion->fused_instructions()) {
+  for (auto* fused_instruction : fusion->fused_instructions()) {
     if (fused_instruction->opcode() != HloOpcode::kParameter) {
       continue;
     }
-    bytes += CalculateBytesReadByFusionParameter(fused_instruction.get());
+    bytes += CalculateBytesReadByFusionParameter(fused_instruction);
   }
   return bytes;
 }
@@ -238,7 +238,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // re-use by the consumer), and so we honor that choice here as well.
   if (!std::all_of(fusion->fused_instructions().begin(),
                    fusion->fused_instructions().end(),
-                   [](const std::unique_ptr<HloInstruction>& instruction) {
+                   [](const HloInstruction* instruction) {
                      if (instruction->opcode() != HloOpcode::kParameter &&
                          GpuInstructionFusion::IsExpensive(*instruction)) {
                        return false;
@@ -293,14 +293,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 StatusOr<bool> FusionMerger::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "FusionMerger for module: " << module->name();
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     VLOG(1) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());

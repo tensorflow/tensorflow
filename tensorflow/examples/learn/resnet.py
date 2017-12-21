@@ -151,9 +151,7 @@ def res_net_model(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
   # Compute loss.
-  onehot_labels = tf.one_hot(tf.cast(labels, tf.int32), N_DIGITS, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Create training op.
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -190,8 +188,8 @@ def main(unused_args):
 
   # Calculate accuracy.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={X_FEATURE: mnist.train.images},
-      y=mnist.train.labels.astype(np.int32),
+      x={X_FEATURE: mnist.test.images},
+      y=mnist.test.labels.astype(np.int32),
       num_epochs=1,
       shuffle=False)
   scores = classifier.evaluate(input_fn=test_input_fn)

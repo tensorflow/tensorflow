@@ -21,14 +21,13 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
-namespace {
 
 // This OpKernel implements the _Arg Op for XLA JIT devices. It
 // associates its output with one of the arguments to a
 // subcomputation.
-class ArgOp : public XlaOpKernel {
+class XlaArgOp : public XlaOpKernel {
  public:
-  explicit ArgOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit XlaArgOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
   }
@@ -49,35 +48,13 @@ class ArgOp : public XlaOpKernel {
       return;
     }
 
-    XlaContext& xc = XlaContext::Get(ctx);
-    const XlaContext::Argument& arg = xc.args()[index_];
-    if (arg.is_resource) {
-      XlaResource::Kind kind;
-      switch (arg.kind) {
-        case XlaCompiler::Argument::kVariable:
-          kind = XlaResource::kVariable;
-          break;
-        case XlaCompiler::Argument::kTensorArray:
-          kind = XlaResource::kTensorArray;
-          break;
-        case XlaCompiler::Argument::kStack:
-          kind = XlaResource::kStack;
-          break;
-        default:
-          CHECK(false);
-      }
-
-      // TODO(phawkins): this code assumes that variables do not alias.
-      XlaResource* resource;
-      OP_REQUIRES_OK(ctx,
-                     xc.CreateResource(kind, index_, arg.name, arg.value.type,
-                                       arg.value.handle, &resource));
-      resource->tensor_array_size = arg.tensor_array_size;
-      ctx->SetResourceOutput(0, resource);
-    } else if (arg.value.is_constant) {
-      ctx->SetConstantOutput(0, arg.value.constant_value);
+    const XlaExpression& arg = XlaContext::Get(ctx).args()[index_];
+    if (arg.resource() != nullptr) {
+      ctx->SetResourceOutput(0, arg.resource());
+    } else if (arg.has_constant_value()) {
+      ctx->SetConstantOutput(0, arg.constant_value());
     } else {
-      ctx->SetOutput(0, arg.value.handle);
+      ctx->SetOutput(0, arg.handle());
     }
   }
 
@@ -85,10 +62,9 @@ class ArgOp : public XlaOpKernel {
   int index_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaArgOp);
 };
 
-REGISTER_XLA_OP(Name("_Arg").AllowResourceTypes(), ArgOp);
+REGISTER_XLA_OP(Name("_Arg").AllowResourceTypes(), XlaArgOp);
 
-}  // namespace
 }  // namespace tensorflow

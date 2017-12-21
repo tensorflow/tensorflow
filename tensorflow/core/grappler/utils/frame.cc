@@ -16,46 +16,75 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/frame.h"
 #include <deque>
 #include <stack>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace grappler {
 
-int IdentifyFrames(
-    const GraphDef& graph,
-    std::unordered_map<const NodeDef*, std::vector<int>>* frames) {
+Status IdentifyFrames(const GraphDef& graph, FrameMap* frame_map,
+                      int* num_frames) {
   NodeMap node_map(const_cast<GraphDef*>(&graph));
+  return IdentifyFramesWithNodeMap(graph, node_map, frame_map, num_frames);
+}
+
+Status IdentifyFramesWithNodeMap(const GraphDef& graph, const NodeMap& node_map,
+                                 FrameMap* frame_map, int* num_frames) {
   std::deque<std::pair<const NodeDef*, std::vector<int>>> ready_nodes;
   for (const NodeDef& node : graph.node()) {
     if (node.input_size() == 0) {
       std::vector<int> empty;
       ready_nodes.emplace_back(&node, empty);
+      (*frame_map)[&node] = empty;
     }
   }
-  int frame_id = 0;
+  std::map<string, int> name_to_id;
   while (!ready_nodes.empty()) {
     auto ready_node = ready_nodes.front();
     for (const auto& fanout : node_map.GetOutputs(ready_node.first->name())) {
-      if (frames->count(fanout) < 1) {
+      if (frame_map->count(fanout) < 1) {
         std::vector<int> frame_ids = ready_node.second;
         if (IsExit(*ready_node.first)) {
           frame_ids.pop_back();
         }
         if (IsEnter(*fanout)) {
-          frame_ids.push_back(frame_id);
-          frame_id++;
+          CHECK(fanout->attr().count("frame_name"))
+              << "Missing frame name for the Enter node " << fanout->name();
+          string name = fanout->attr().at("frame_name").s();
+          int id;
+          if (name_to_id.count(name)) {
+            id = name_to_id[name];
+          } else {
+            id = name_to_id.size();
+            name_to_id[name] = id;
+          }
+          frame_ids.push_back(id);
         }
         ready_nodes.emplace_back(fanout, frame_ids);
+        (*frame_map)[fanout] = frame_ids;
       } else {
-        CHECK(ready_node.second == (*frames)[fanout]);
+        auto frame_ids_fanout = (*frame_map)[fanout];
+        auto frame_ids_node = ready_node.second;
+        if (IsEnter(*fanout)) {
+          frame_ids_fanout.pop_back();
+        }
+        if (IsExit(*ready_node.first)) {
+          frame_ids_node.pop_back();
+        }
+        if (frame_ids_node != frame_ids_fanout) {
+          return errors::InvalidArgument(
+              "Invalid graph: Frame ids for node ", ready_node.first->name(),
+              " does not match frame ids for it's fanout.");
+        }
       }
     }
-    (*frames)[ready_node.first] = ready_node.second;
     ready_nodes.pop_front();
   }
-  return frame_id;
+  *num_frames = name_to_id.size();
+  return Status::OK();
 }
 
 }  // namespace grappler

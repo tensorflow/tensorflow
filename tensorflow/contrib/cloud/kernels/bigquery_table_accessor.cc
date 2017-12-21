@@ -142,7 +142,8 @@ BigQueryTableAccessor::BigQueryTableAccessor(
           project_id, dataset_id, table_id, timestamp_millis, row_buffer_size,
           end_point, columns, partition,
           std::unique_ptr<AuthProvider>(new GoogleAuthProvider()),
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory())) {
+          std::unique_ptr<HttpRequest::Factory>(
+              new CurlHttpRequest::Factory())) {
   row_buffer_.resize(row_buffer_size);
 }
 
@@ -201,22 +202,21 @@ Status BigQueryTableAccessor::ReadRow(int64* row_id, Example* example) {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     std::vector<char> output_buffer;
     output_buffer.reserve(kBufferSize);
-    TF_RETURN_IF_ERROR(request->Init());
 
     // The first time that we access BigQuery there is no page token. After that
     // we use the page token (which returns rows faster).
     if (!next_page_token_.empty()) {
-      TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      request->SetUri(strings::StrCat(
           BigQueryUriPrefix(), "data?maxResults=", ComputeMaxResultsArg(),
-          "&pageToken=", request->EscapeString(next_page_token_))));
+          "&pageToken=", request->EscapeString(next_page_token_)));
       first_buffered_row_index_ += row_buffer_.size();
     } else {
-      TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      request->SetUri(strings::StrCat(
           BigQueryUriPrefix(), "data?maxResults=", ComputeMaxResultsArg(),
-          "&startIndex=", first_buffered_row_index_)));
+          "&startIndex=", first_buffered_row_index_));
     }
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
+    request->AddAuthBearerHeader(auth_token);
+    request->SetResultBuffer(&output_buffer);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading rows from ",
                                     FullTableName());
 
@@ -292,10 +292,9 @@ Status BigQueryTableAccessor::ReadSchema() {
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> output_buffer;
   output_buffer.reserve(kBufferSize);
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(BigQueryUriPrefix()));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(&output_buffer));
+  request->SetUri(BigQueryUriPrefix());
+  request->AddAuthBearerHeader(auth_token);
+  request->SetResultBuffer(&output_buffer);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading schema for ",
                                   FullTableName());
 
@@ -392,7 +391,7 @@ Status BigQueryTableAccessor::AppendValueToExample(
 }
 
 string BigQueryTableAccessor::BigQueryTableAccessor::BigQueryUriPrefix() {
-  HttpRequest request;
+  CurlHttpRequest request;
   return strings::StrCat(bigquery_end_point_, "/projects/",
                          request.EscapeString(project_id_), "/datasets/",
                          request.EscapeString(dataset_id_), "/tables/",

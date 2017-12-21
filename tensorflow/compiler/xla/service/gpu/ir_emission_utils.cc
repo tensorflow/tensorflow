@@ -100,13 +100,17 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =
         hlo.convolution_dimension_numbers();
-    if (dnums.spatial_dimensions_size() > 3) {
+    if (dnums.input_spatial_dimensions_size() > 3) {
       return false;
     }
 
     // CuDNN does not accept zero-element arguments
     if (ShapeUtil::HasZeroElements(hlo.operand(0)->shape()) ||
         ShapeUtil::HasZeroElements(hlo.operand(1)->shape())) {
+      return false;
+    }
+
+    if (window_util::HasWindowReversal(hlo.window())) {
       return false;
     }
 
@@ -212,13 +216,6 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
-}
-
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo) {
-  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    hlo = hlo->operand(0);
-  }
-  return hlo;
 }
 
 }  // namespace gpu

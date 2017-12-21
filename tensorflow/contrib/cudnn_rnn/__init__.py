@@ -14,6 +14,8 @@
 # ==============================================================================
 """Ops for fused Cudnn RNN models.
 
+@@CudnnCompatibleGRUCell
+@@CudnnCompatibleLSTMCell
 @@CudnnGRU
 @@CudnnLSTM
 @@CudnnRNNRelu
@@ -28,17 +30,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnGRU
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnGRUSaveable
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnLSTM
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnLSTMSaveable
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNRelu
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNReluSaveable
-from tensorflow.contrib.cudnn_rnn.python.ops.cudnn_rnn_ops import CudnnRNNTanhSaveable
+# pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.cudnn_rnn.python.layers import *
+# pylint: enable=unused-import,wildcard-import
+
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    "CudnnCompatibleGRUCell",
+    "CudnnCompatibleLSTMCell",
     "CudnnGRU",
     "CudnnLSTM",
     "CudnnRNNRelu",
@@ -49,4 +50,4 @@ _allowed_symbols = [
     "CudnnRNNTanhSaveable",
 ]
 
-remove_undocumented(__name__)
+remove_undocumented(__name__, _allowed_symbols)

@@ -13,199 +13,113 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Implementation of the flags interface."""
+"""Import router for absl.flags. See https://github.com/abseil/abseil-py."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse as _argparse
+import logging as _logging
+import sys as _sys
 
-from tensorflow.python.platform import tf_logging as _logging
-from tensorflow.python.util.all_util import remove_undocumented
+# go/tf-wildcard-import
+from absl.flags import *  # pylint: disable=wildcard-import
+import six as _six
 
-_global_parser = _argparse.ArgumentParser()
-
-
-# pylint: disable=invalid-name
+from tensorflow.python.util import tf_decorator
 
 
-class _FlagValues(object):
-  """Global container and accessor for flags and their values."""
+# Since we wrap absl.flags DEFINE functions, we need to declare this module
+# does not affect key flags.
+disclaim_key_flags()  # pylint: disable=undefined-variable
 
-  def __init__(self):
-    self.__dict__['__flags'] = {}
-    self.__dict__['__parsed'] = False
-    self.__dict__['__required_flags'] = set()
 
-  def _parse_flags(self, args=None):
-    result, unparsed = _global_parser.parse_known_args(args=args)
-    for flag_name, val in vars(result).items():
-      self.__dict__['__flags'][flag_name] = val
-    self.__dict__['__parsed'] = True
-    self._assert_all_required()
-    return unparsed
+_RENAMED_ARGUMENTS = {
+    'flag_name': 'name',
+    'default_value': 'default',
+    'docstring': 'help',
+}
+
+
+def _wrap_define_function(original_function):
+  """Wraps absl.flags's define functions so tf.flags accepts old names."""
+
+  def wrapper(*args, **kwargs):
+    """Wrapper function that turns old keyword names to new ones."""
+    has_old_names = False
+    for old_name, new_name in _six.iteritems(_RENAMED_ARGUMENTS):
+      if old_name in kwargs:
+        has_old_names = True
+        value = kwargs.pop(old_name)
+        kwargs[new_name] = value
+    if has_old_names:
+      _logging.warning(
+          'Use of the keyword argument names (flag_name, default_value, '
+          'docstring) is deprecated, please use (name, default, help) instead.')
+    return original_function(*args, **kwargs)
+
+  return tf_decorator.make_decorator(original_function, wrapper)
+
+
+class _FlagValuesWrapper(object):
+  """Wrapper class for absl.flags.FLAGS.
+
+  The difference is that tf.flags.FLAGS implicitly parses flags with sys.argv
+  when accessing the FLAGS values before it's explicitly parsed,
+  while absl.flags.FLAGS raises an exception.
+  """
+
+  def __init__(self, flags_object):
+    self.__dict__['__wrapped'] = flags_object
+
+  def __getattribute__(self, name):
+    if name == '__dict__':
+      return super(_FlagValuesWrapper, self).__getattribute__(name)
+    return self.__dict__['__wrapped'].__getattribute__(name)
 
   def __getattr__(self, name):
-    """Retrieves the 'value' attribute of the flag --name."""
-    try:
-      parsed = self.__dict__['__parsed']
-    except KeyError:
-      # May happen during pickle.load or copy.copy
-      raise AttributeError(name)
-    if not parsed:
-      self._parse_flags()
-    if name not in self.__dict__['__flags']:
-      raise AttributeError(name)
-    return self.__dict__['__flags'][name]
+    wrapped = self.__dict__['__wrapped']
+    # To maintain backwards compatibility, implicitly parse flags when reading
+    # a flag.
+    if not wrapped.is_parsed():
+      wrapped(_sys.argv)
+    return wrapped.__getattr__(name)
 
   def __setattr__(self, name, value):
-    """Sets the 'value' attribute of the flag --name."""
-    if not self.__dict__['__parsed']:
-      self._parse_flags()
-    self.__dict__['__flags'][name] = value
-    self._assert_required(name)
+    return self.__dict__['__wrapped'].__setattr__(name, value)
 
-  def _add_required_flag(self, item):
-    self.__dict__['__required_flags'].add(item)
+  def __delattr__(self, name):
+    return self.__dict__['__wrapped'].__delattr__(name)
 
-  def _assert_required(self, flag_name):
-    if (flag_name not in self.__dict__['__flags'] or
-        self.__dict__['__flags'][flag_name] is None):
-      raise AttributeError('Flag --%s must be specified.' % flag_name)
+  def __dir__(self):
+    return self.__dict__['__wrapped'].__dir__()
 
-  def _assert_all_required(self):
-    for flag_name in self.__dict__['__required_flags']:
-      self._assert_required(flag_name)
+  def __getitem__(self, name):
+    return self.__dict__['__wrapped'].__getitem__(name)
 
+  def __setitem__(self, name, flag):
+    return self.__dict__['__wrapped'].__setitem__(name, flag)
 
-def _define_helper(flag_name, default_value, docstring, flagtype):
-  """Registers 'flag_name' with 'default_value' and 'docstring'."""
-  _global_parser.add_argument('--' + flag_name,
-                              default=default_value,
-                              help=docstring,
-                              type=flagtype)
+  def __len__(self):
+    return self.__dict__['__wrapped'].__len__()
 
+  def __iter__(self):
+    return self.__dict__['__wrapped'].__iter__()
 
-# Provides the global object that can be used to access flags.
-FLAGS = _FlagValues()
+  def __str__(self):
+    return self.__dict__['__wrapped'].__str__()
+
+  def __call__(self, *args, **kwargs):
+    return self.__dict__['__wrapped'].__call__(*args, **kwargs)
 
 
-def DEFINE_string(flag_name, default_value, docstring):
-  """Defines a flag of type 'string'.
+# pylint: disable=invalid-name,used-before-assignment
+# absl.flags APIs use `default` as the name of the default value argument.
+# Allow the following functions continue to accept `default_value`.
+DEFINE_string = _wrap_define_function(DEFINE_string)
+DEFINE_boolean = _wrap_define_function(DEFINE_boolean)
+DEFINE_bool = DEFINE_boolean
+DEFINE_float = _wrap_define_function(DEFINE_float)
+DEFINE_integer = _wrap_define_function(DEFINE_integer)
+# pylint: enable=invalid-name,used-before-assignment
 
-  Args:
-    flag_name: The name of the flag as a string.
-    default_value: The default value the flag should take as a string.
-    docstring: A helpful message explaining the use of the flag.
-  """
-  _define_helper(flag_name, default_value, docstring, str)
-
-
-def DEFINE_integer(flag_name, default_value, docstring):
-  """Defines a flag of type 'int'.
-
-  Args:
-    flag_name: The name of the flag as a string.
-    default_value: The default value the flag should take as an int.
-    docstring: A helpful message explaining the use of the flag.
-  """
-  _define_helper(flag_name, default_value, docstring, int)
-
-
-def DEFINE_boolean(flag_name, default_value, docstring):
-  """Defines a flag of type 'boolean'.
-
-  Args:
-    flag_name: The name of the flag as a string.
-    default_value: The default value the flag should take as a boolean.
-    docstring: A helpful message explaining the use of the flag.
-  """
-  # Register a custom function for 'bool' so --flag=True works.
-  def str2bool(v):
-    return v.lower() in ('true', 't', '1')
-  _global_parser.add_argument('--' + flag_name,
-                              nargs='?',
-                              const=True,
-                              help=docstring,
-                              default=default_value,
-                              type=str2bool)
-
-  # Add negated version, stay consistent with argparse with regard to
-  # dashes in flag names.
-  _global_parser.add_argument('--no' + flag_name,
-                              action='store_false',
-                              dest=flag_name.replace('-', '_'))
-
-
-# The internal google library defines the following alias, so we match
-# the API for consistency.
-DEFINE_bool = DEFINE_boolean  # pylint: disable=invalid-name
-
-
-def DEFINE_float(flag_name, default_value, docstring):
-  """Defines a flag of type 'float'.
-
-  Args:
-    flag_name: The name of the flag as a string.
-    default_value: The default value the flag should take as a float.
-    docstring: A helpful message explaining the use of the flag.
-  """
-  _define_helper(flag_name, default_value, docstring, float)
-
-
-def mark_flag_as_required(flag_name):
-  """Ensures that flag is not None during program execution.
-  
-  It is recommended to call this method like this:
-  
-    if __name__ == '__main__':
-      tf.flags.mark_flag_as_required('your_flag_name')
-      tf.app.run()
-  
-  Args:
-    flag_name: string, name of the flag to mark as required.
- 
-  Raises:
-    AttributeError: if flag_name is not registered as a valid flag name.
-      NOTE: The exception raised will change in the future. 
-  """
-  if _global_parser.get_default(flag_name) is not None:
-    _logging.warn(
-        'Flag %s has a non-None default value; therefore, '
-        'mark_flag_as_required will pass even if flag is not specified in the '
-        'command line!' % flag_name)
-  FLAGS._add_required_flag(flag_name)
-
-
-def mark_flags_as_required(flag_names):
-  """Ensures that flags are not None during program execution.
-  
-  Recommended usage:
-  
-    if __name__ == '__main__':
-      tf.flags.mark_flags_as_required(['flag1', 'flag2', 'flag3'])
-      tf.app.run()
-  
-  Args:
-    flag_names: a list/tuple of flag names to mark as required.
-
-  Raises:
-    AttributeError: If any of flag name has not already been defined as a flag.
-      NOTE: The exception raised will change in the future.
-  """
-  for flag_name in flag_names:
-    mark_flag_as_required(flag_name)
-
-
-_allowed_symbols = [
-    # We rely on gflags documentation.
-    'DEFINE_bool',
-    'DEFINE_boolean',
-    'DEFINE_float',
-    'DEFINE_integer',
-    'DEFINE_string',
-    'FLAGS',
-    'mark_flag_as_required',
-    'mark_flags_as_required',
-]
-remove_undocumented(__name__, _allowed_symbols)
+FLAGS = _FlagValuesWrapper(FLAGS)  # pylint: disable=used-before-assignment

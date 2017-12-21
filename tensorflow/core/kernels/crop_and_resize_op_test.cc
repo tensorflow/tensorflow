@@ -61,8 +61,12 @@ class CropAndResizeOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
-REGISTER_TEST(int8)
 REGISTER_TEST(uint8)
+REGISTER_TEST(uint16)
+REGISTER_TEST(int8)
+REGISTER_TEST(int16)
+REGISTER_TEST(int32)
+REGISTER_TEST(int64)
 
 #undef REGISTER_TEST
 
@@ -251,7 +255,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("box_ind has incompatible shape"))
+      StringPiece(s.ToString()).contains("box_index has incompatible shape"))
       << s;
 }
 
@@ -264,7 +268,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("box_ind has values outside [0, batch)"))
+                  .contains("box_index has values outside [0, batch_size)"))
       << s;
 }
 

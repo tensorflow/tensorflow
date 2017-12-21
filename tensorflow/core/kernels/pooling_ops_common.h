@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
+#endif  // GOOGLE_CUDA
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -82,7 +86,9 @@ class MaxPoolingOp : public OpKernel {
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC."));
+          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC ",
+                                  "on device type ",
+                                  DeviceTypeString(context->device_type())));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -256,6 +262,30 @@ class MaxPoolingOp : public OpKernel {
   TensorFormat data_format_;
 };
 
+template <typename Device>
+struct LaunchMaxPoolingNoMask_NCHW_VECT_C;
+
+#ifdef GOOGLE_CUDA
+template <>
+struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
+  static void launch(OpKernelContext* context, const PoolParameters& params,
+                     const Tensor& input, Tensor* output) {
+    bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
+        reinterpret_cast<const int32*>(input.flat<qint8>().data()),
+        params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
+        params.depth, params.out_height, params.out_width, params.window_rows,
+        params.window_cols, params.row_stride, params.col_stride,
+        params.pad_rows, params.pad_cols,
+        reinterpret_cast<int32*>(output->flat<qint8>().data()),
+        context->eigen_gpu_device());
+    if (!status) {
+      context->SetStatus(errors::Internal(
+          "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+    }
+  }
+};
+#endif
+
 template <typename Device, typename T>
 class MaxPoolingV2Op : public OpKernel {
  public:
@@ -266,8 +296,11 @@ class MaxPoolingV2Op : public OpKernel {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC."));
+          context,
+          data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW_VECT_C,
+          errors::InvalidArgument(
+              "MaxPoolingV2Op only supports NHWC or NCHW_VECT_C. Got: ",
+              data_format));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -315,8 +348,8 @@ class MaxPoolingV2Op : public OpKernel {
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
 
-    PoolParameters params{context,  ksize,       stride,
-                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    PoolParameters params{context,  ksize,        stride,
+                          padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
@@ -368,13 +401,21 @@ class MaxPoolingV2Op : public OpKernel {
     // Spatial MaxPooling implementation.
     //
     // TODO(vrv): Remove this once we no longer need it.
+#ifdef GOOGLE_CUDA
     if (std::is_same<Device, GPUDevice>::value) {
       Eigen::PaddingType pt = BrainPadding2EigenPadding(padding);
-      functor::SpatialMaxPooling<Device, T>()(
-          context->eigen_device<Device>(), output->tensor<T, 4>(),
-          tensor_in.tensor<T, 4>(), params.window_rows, params.window_cols,
-          params.row_stride, params.col_stride, pt);
-    } else {
+      if (std::is_same<T, qint8>::value) {
+        LaunchMaxPoolingNoMask_NCHW_VECT_C<GPUDevice>::launch(
+            context, params, tensor_in, output);
+      } else {
+        functor::SpatialMaxPooling<Device, T>()(
+            context->eigen_device<Device>(), output->tensor<T, 4>(),
+            tensor_in.tensor<T, 4>(), params.window_rows, params.window_cols,
+            params.row_stride, params.col_stride, pt);
+      }
+    } else
+#endif
+    {
       typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
           ConstEigenMatrixMap;
       typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>

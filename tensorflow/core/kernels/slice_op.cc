@@ -273,7 +273,6 @@ class MklSliceOp : public OpKernel {
       HANDLE_DIM(1);
       HANDLE_DIM(2);
       HANDLE_DIM(3);
-      HANDLE_DIM(4);
       HANDLE_DIM(5);
       HANDLE_DIM(6);
       HANDLE_DIM(7);
@@ -439,7 +438,7 @@ namespace functor {
   DECLARE_CPU_SPEC(T, 7);
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N);
-DECLARE_FOR_N(bfloat16);
+TF_CALL_bfloat16(DECLARE_FOR_N);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_CPU_SPEC
@@ -456,7 +455,7 @@ DECLARE_FOR_N(bfloat16);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
-REGISTER_SLICE(bfloat16);
+TF_CALL_bfloat16(REGISTER_SLICE);
 #undef REGISTER_SLICE
 #else
 #define REGISTER_SLICE(type)                             \
@@ -469,7 +468,7 @@ REGISTER_SLICE(bfloat16);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
-REGISTER_SLICE(bfloat16);
+TF_CALL_bfloat16(REGISTER_SLICE);
 #undef REGISTER_SLICE
 #endif  // INTEL_MKL
 
@@ -497,6 +496,7 @@ namespace functor {
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 TF_CALL_complex64(DECLARE_FOR_N);
 TF_CALL_complex128(DECLARE_FOR_N);
+TF_CALL_bfloat16(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 
 #undef DECLARE_FOR_N
@@ -515,6 +515,7 @@ DECLARE_FOR_N(int32);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

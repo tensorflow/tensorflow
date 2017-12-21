@@ -173,12 +173,6 @@ TEST_F(OpsUtilTest, Get2dOutputSizeVerbose) {
   VerifyGet2dOutputVerboseSizeValues(pad_struct2, error::OK);
 }
 
-// Test stride > ksize fails with INVALID_ARGUMENT.
-TEST_F(OpsUtilTest, GetBroadcastTest3_1_2_0) {
-  bcast_struct bcast = {{0, 3, 1, 2, 0}, {0, 3}};
-  VerifyBoundaries(bcast, error::INVALID_ARGUMENT);
-}
-
 // Test index * stride > in_size fails with INVALID_ARGUMENT.
 TEST_F(OpsUtilTest, GetBroadcastTestBadIndex) {
   bcast_struct bcast = {{2, 3, 1, 2, 0}, {0, 3}};
@@ -275,6 +269,38 @@ TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_1) {
 TEST_F(OpsUtilTest, GetBroadcastTest3_3_3_2) {
   bcast_struct bcast[] = {
       {{0, 3, 3, 3, 2}, {0, 1}},
+  };
+  for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
+    VerifyBcastValues(bcast[i]);
+  }
+}
+
+// in_size = 3, ksize = 1, stride = 2, pad_size = 0
+TEST_F(OpsUtilTest, GetBroadcastTest3_1_2_0) {
+  bcast_struct bcast[] = {
+      {{0, 3, 1, 2, 0}, {0, 1}},
+      {{1, 3, 1, 2, 0}, {2, 1}},
+  };
+  for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
+    VerifyBcastValues(bcast[i]);
+  }
+}
+
+// in_size = 3, ksize = 2, stride = 3, pad_size = 0
+TEST_F(OpsUtilTest, GetBroadcastTest3_2_3_0) {
+  bcast_struct bcast[] = {
+      {{0, 3, 2, 3, 0}, {0, 2}},
+  };
+  for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
+    VerifyBcastValues(bcast[i]);
+  }
+}
+
+// in_size = 3, ksize = 2, stride = 3, pad_size = 1
+TEST_F(OpsUtilTest, GetBroadcastTest3_2_3_1) {
+  bcast_struct bcast[] = {
+      {{0, 3, 2, 3, 1}, {0, 1}},
+      {{1, 3, 2, 3, 1}, {2, 1}},
   };
   for (size_t i = 0; i < sizeof(bcast) / sizeof(bcast[0]); ++i) {
     VerifyBcastValues(bcast[i]);

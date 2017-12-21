@@ -30,7 +30,11 @@ See the @{$python/tfdbg} guide.
 @@GrpcDebugWrapperSession
 @@LocalCLIDebugHook
 @@LocalCLIDebugWrapperSession
+@@TensorBoardDebugHook
+@@TensorBoardDebugWrapperSession
 @@WatchOptions
+
+@@reconstruct_non_debug_graph_def
 
 @@GradientsDebugger
 @@clear_gradient_debuggers
@@ -49,6 +53,8 @@ from tensorflow.python.debug.lib.debug_data import load_tensor_from_event_file
 
 from tensorflow.python.debug.lib.debug_gradients import GradientsDebugger
 
+from tensorflow.python.debug.lib.debug_graphs import reconstruct_non_debug_graph_def
+
 from tensorflow.python.debug.lib.debug_utils import add_debug_tensor_watch
 from tensorflow.python.debug.lib.debug_utils import watch_graph
 from tensorflow.python.debug.lib.debug_utils import watch_graph_with_blacklists
@@ -56,9 +62,11 @@ from tensorflow.python.debug.lib.debug_utils import watch_graph_with_blacklists
 from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapperSession
 from tensorflow.python.debug.wrappers.framework import WatchOptions
 from tensorflow.python.debug.wrappers.grpc_wrapper import GrpcDebugWrapperSession
+from tensorflow.python.debug.wrappers.grpc_wrapper import TensorBoardDebugWrapperSession
 from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
 from tensorflow.python.debug.wrappers.hooks import GrpcDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
+from tensorflow.python.debug.wrappers.hooks import TensorBoardDebugHook
 from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession
 
 from tensorflow.python.util import all_util as _all_util

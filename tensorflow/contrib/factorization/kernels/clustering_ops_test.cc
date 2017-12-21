@@ -116,6 +116,62 @@ RUN_BM_KmeansPlusPlusInitialization(k3RetriesPerSample);
 #undef RUN_BM_KmeansPlusPlusInitialization
 #undef BENCHMARK_KMEANS_PLUS_PLUS
 
+Graph* SetUpKMC2Initialization(int num_points) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor distances(DT_FLOAT, TensorShape({num_points}));
+  Tensor seed(DT_INT64, TensorShape({}));
+  distances.flat<float>().setRandom();
+  seed.flat<int64>().setConstant(12345);
+
+  TF_CHECK_OK(
+      NodeBuilder("KMC2ChainInitializationOp", "KMC2ChainInitialization")
+          .Input(test::graph::Constant(g, distances))
+          .Input(test::graph::Constant(g, seed))
+          .Finalize(g, nullptr /* node */));
+  return g;
+}
+
+template <int num_points, int num_to_sample, int num_dims>
+void BM_KMC2Initialization(int iters) {
+  testing::StopTiming();
+  testing::ItemsProcessed(static_cast<int64>(iters) * num_points * num_dims *
+                          num_to_sample);
+  testing::UseRealTime();
+  Graph* g = SetUpKMC2Initialization(num_points);
+  testing::StartTiming();
+  test::Benchmark("cpu", g).Run(iters);
+}
+#define BENCHMARK_KMC2(p, c, d)                           \
+  void BM_KMC2Initialization_##p##_##c##_##d(int iters) { \
+    BM_KMC2Initialization<p, c, d>(iters);                \
+  }                                                       \
+  BENCHMARK(BM_KMC2Initialization_##p##_##c##_##d);
+
+#define RUN_BM_KMC2Initialization                   \
+  BENCHMARK_KMC2(k10Points, k2Centers, k100Dim);    \
+  BENCHMARK_KMC2(k10Points, k5Centers, k100Dim);    \
+  BENCHMARK_KMC2(k10Points, k10Centers, k100Dim);   \
+  BENCHMARK_KMC2(k100Points, k10Centers, k100Dim);  \
+  BENCHMARK_KMC2(k100Points, k20Centers, k100Dim);  \
+  BENCHMARK_KMC2(k100Points, k50Centers, k100Dim);  \
+  BENCHMARK_KMC2(k100Points, k100Centers, k100Dim); \
+  BENCHMARK_KMC2(k1kPoints, k100Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1kPoints, k200Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1kPoints, k500Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1kPoints, k1kCenters, k100Dim);   \
+  BENCHMARK_KMC2(k10kPoints, k100Centers, k100Dim); \
+  BENCHMARK_KMC2(k10kPoints, k200Centers, k100Dim); \
+  BENCHMARK_KMC2(k10kPoints, k500Centers, k100Dim); \
+  BENCHMARK_KMC2(k10kPoints, k1kCenters, k100Dim);  \
+  BENCHMARK_KMC2(k1MPoints, k100Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1MPoints, k200Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1MPoints, k500Centers, k100Dim);  \
+  BENCHMARK_KMC2(k1MPoints, k1kCenters, k100Dim)
+
+RUN_BM_KMC2Initialization;
+#undef RUN_BM_KMC2Initialization
+#undef BENCHMARK_KMC2
+
 Graph* SetUpNearestNeighbors(int num_dims, int num_points, int num_centers,
                              int k) {
   Graph* g = new Graph(OpRegistry::Global());

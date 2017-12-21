@@ -18,7 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
 
@@ -51,9 +56,13 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
 def regression_signature_def(examples, predictions):
   """Creates regression signature from given examples and predictions.
 
+  This function produces signatures intended for use with the TensorFlow Serving
+  Regress API (tensorflow_serving/apis/prediction_service.proto), and so
+  constrains the input and output types to those allowed by TensorFlow Serving.
+
   Args:
-    examples: `Tensor`.
-    predictions: `Tensor`.
+    examples: A string `Tensor`, expected to accept serialized tf.Examples.
+    predictions: A float `Tensor`.
 
   Returns:
     A regression-flavored signature_def.
@@ -62,15 +71,22 @@ def regression_signature_def(examples, predictions):
     ValueError: If examples is `None`.
   """
   if examples is None:
-    raise ValueError('examples cannot be None for regression.')
+    raise ValueError('Regression examples cannot be None.')
+  if not isinstance(examples, ops.Tensor):
+    raise ValueError('Regression examples must be a string Tensor.')
   if predictions is None:
-    raise ValueError('predictions cannot be None for regression.')
+    raise ValueError('Regression predictions cannot be None.')
 
   input_tensor_info = utils.build_tensor_info(examples)
+  if input_tensor_info.dtype != types_pb2.DT_STRING:
+    raise ValueError('Regression examples must be a string Tensor.')
   signature_inputs = {signature_constants.REGRESS_INPUTS: input_tensor_info}
 
   output_tensor_info = utils.build_tensor_info(predictions)
+  if output_tensor_info.dtype != types_pb2.DT_FLOAT:
+    raise ValueError('Regression output must be a float Tensor.')
   signature_outputs = {signature_constants.REGRESS_OUTPUTS: output_tensor_info}
+
   signature_def = build_signature_def(
       signature_inputs, signature_outputs,
       signature_constants.REGRESS_METHOD_NAME)
@@ -81,10 +97,15 @@ def regression_signature_def(examples, predictions):
 def classification_signature_def(examples, classes, scores):
   """Creates classification signature from given examples and predictions.
 
+  This function produces signatures intended for use with the TensorFlow Serving
+  Classify API (tensorflow_serving/apis/prediction_service.proto), and so
+  constrains the input and output types to those allowed by TensorFlow Serving.
+
   Args:
-    examples: `Tensor`.
-    classes: `Tensor`.
-    scores: `Tensor`.
+    examples: A string `Tensor`, expected to accept serialized tf.Examples.
+    classes: A string `Tensor`.  Note that the ClassificationResponse message
+      requires that class labels are strings, not integers or anything else.
+    scores: a float `Tensor`.
 
   Returns:
     A classification-flavored signature_def.
@@ -93,21 +114,28 @@ def classification_signature_def(examples, classes, scores):
     ValueError: If examples is `None`.
   """
   if examples is None:
-    raise ValueError('examples cannot be None for classification.')
+    raise ValueError('Classification examples cannot be None.')
+  if not isinstance(examples, ops.Tensor):
+    raise ValueError('Classification examples must be a string Tensor.')
   if classes is None and scores is None:
-    raise ValueError('classes and scores cannot both be None for '
-                     'classification.')
+    raise ValueError('Classification classes and scores cannot both be None.')
 
   input_tensor_info = utils.build_tensor_info(examples)
+  if input_tensor_info.dtype != types_pb2.DT_STRING:
+    raise ValueError('Classification examples must be a string Tensor.')
   signature_inputs = {signature_constants.CLASSIFY_INPUTS: input_tensor_info}
 
   signature_outputs = {}
   if classes is not None:
     classes_tensor_info = utils.build_tensor_info(classes)
+    if classes_tensor_info.dtype != types_pb2.DT_STRING:
+      raise ValueError('Classification classes must be a string Tensor.')
     signature_outputs[signature_constants.CLASSIFY_OUTPUT_CLASSES] = (
         classes_tensor_info)
   if scores is not None:
     scores_tensor_info = utils.build_tensor_info(scores)
+    if scores_tensor_info.dtype != types_pb2.DT_FLOAT:
+      raise ValueError('Classification scores must be a float Tensor.')
     signature_outputs[signature_constants.CLASSIFY_OUTPUT_SCORES] = (
         scores_tensor_info)
 
@@ -121,6 +149,10 @@ def classification_signature_def(examples, classes, scores):
 def predict_signature_def(inputs, outputs):
   """Creates prediction signature from given inputs and outputs.
 
+  This function produces signatures intended for use with the TensorFlow Serving
+  Predict API (tensorflow_serving/apis/prediction_service.proto). This API
+  imposes no constraints on the input and output types.
+
   Args:
     inputs: dict of string to `Tensor`.
     outputs: dict of string to `Tensor`.
@@ -132,9 +164,9 @@ def predict_signature_def(inputs, outputs):
     ValueError: If inputs or outputs is `None`.
   """
   if inputs is None or not inputs:
-    raise ValueError('inputs cannot be None or empty for prediction.')
-  if outputs is None:
-    raise ValueError('outputs cannot be None or empty for prediction.')
+    raise ValueError('Prediction inputs cannot be None or empty.')
+  if outputs is None or not outputs:
+    raise ValueError('Prediction outputs cannot be None or empty.')
 
   signature_inputs = {key: utils.build_tensor_info(tensor)
                       for key, tensor in inputs.items()}
@@ -146,3 +178,156 @@ def predict_signature_def(inputs, outputs):
       signature_constants.PREDICT_METHOD_NAME)
 
   return signature_def
+
+
+def is_valid_signature(signature_def):
+  """Determine whether a SignatureDef can be served by TensorFlow Serving."""
+  if signature_def is None:
+    return False
+  return (_is_valid_classification_signature(signature_def) or
+          _is_valid_regression_signature(signature_def) or
+          _is_valid_predict_signature(signature_def))
+
+
+def _is_valid_predict_signature(signature_def):
+  """Determine whether the argument is a servable 'predict' SignatureDef."""
+  if signature_def.method_name != signature_constants.PREDICT_METHOD_NAME:
+    return False
+  if not signature_def.inputs.keys():
+    return False
+  if not signature_def.outputs.keys():
+    return False
+  return True
+
+
+def _is_valid_regression_signature(signature_def):
+  """Determine whether the argument is a servable 'regress' SignatureDef."""
+  if signature_def.method_name != signature_constants.REGRESS_METHOD_NAME:
+    return False
+
+  if (set(signature_def.inputs.keys())
+      != set([signature_constants.REGRESS_INPUTS])):
+    return False
+  if (signature_def.inputs[signature_constants.REGRESS_INPUTS].dtype !=
+      types_pb2.DT_STRING):
+    return False
+
+  if (set(signature_def.outputs.keys())
+      != set([signature_constants.REGRESS_OUTPUTS])):
+    return False
+  if (signature_def.outputs[signature_constants.REGRESS_OUTPUTS].dtype !=
+      types_pb2.DT_FLOAT):
+    return False
+
+  return True
+
+
+def _is_valid_classification_signature(signature_def):
+  """Determine whether the argument is a servable 'classify' SignatureDef."""
+  if signature_def.method_name != signature_constants.CLASSIFY_METHOD_NAME:
+    return False
+
+  if (set(signature_def.inputs.keys())
+      != set([signature_constants.CLASSIFY_INPUTS])):
+    return False
+  if (signature_def.inputs[signature_constants.CLASSIFY_INPUTS].dtype !=
+      types_pb2.DT_STRING):
+    return False
+
+  allowed_outputs = set([signature_constants.CLASSIFY_OUTPUT_CLASSES,
+                         signature_constants.CLASSIFY_OUTPUT_SCORES])
+
+  if not signature_def.outputs.keys():
+    return False
+  if set(signature_def.outputs.keys()) - allowed_outputs:
+    return False
+  if (signature_constants.CLASSIFY_OUTPUT_CLASSES in signature_def.outputs
+      and
+      signature_def.outputs[signature_constants.CLASSIFY_OUTPUT_CLASSES].dtype
+      != types_pb2.DT_STRING):
+    return False
+  if (signature_constants.CLASSIFY_OUTPUT_SCORES in signature_def.outputs
+      and
+      signature_def.outputs[signature_constants.CLASSIFY_OUTPUT_SCORES].dtype !=
+      types_pb2.DT_FLOAT):
+    return False
+
+  return True
+
+
+def _get_shapes_from_tensor_info_dict(tensor_info_dict):
+  """Returns a map of keys to TensorShape objects.
+
+  Args:
+    tensor_info_dict: map with TensorInfo proto as values.
+
+  Returns:
+    Map with corresponding TensorShape objects as values.
+  """
+  return {
+      key: tensor_shape.TensorShape(tensor_info.tensor_shape)
+      for key, tensor_info in tensor_info_dict.items()
+  }
+
+
+def _get_types_from_tensor_info_dict(tensor_info_dict):
+  """Returns a map of keys to DType objects.
+
+  Args:
+    tensor_info_dict: map with TensorInfo proto as values.
+
+  Returns:
+    Map with corresponding DType objects as values.
+  """
+  return {
+      key: dtypes.DType(tensor_info.dtype)
+      for key, tensor_info in tensor_info_dict.items()
+  }
+
+
+def get_signature_def_input_shapes(signature):
+  """Returns map of parameter names to their shapes.
+
+  Args:
+    signature: SignatureDef proto.
+
+  Returns:
+    Map from string to TensorShape objects.
+  """
+  return _get_shapes_from_tensor_info_dict(signature.inputs)
+
+
+def get_signature_def_input_types(signature):
+  """Returns map of output names to their types.
+
+  Args:
+    signature: SignatureDef proto.
+
+  Returns:
+    Map from string to DType objects.
+  """
+  return _get_types_from_tensor_info_dict(signature.inputs)
+
+
+def get_signature_def_output_shapes(signature):
+  """Returns map of output names to their shapes.
+
+  Args:
+    signature: SignatureDef proto.
+
+  Returns:
+    Map from string to TensorShape objects.
+  """
+  return _get_shapes_from_tensor_info_dict(signature.outputs)
+
+
+def get_signature_def_output_types(signature):
+  """Returns map of output names to their types.
+
+  Args:
+    signature: SignatureDef proto.
+
+  Returns:
+    Map from string to DType objects.
+  """
+  return _get_types_from_tensor_info_dict(signature.outputs)

@@ -2,11 +2,11 @@ workspace(name = "org_tensorflow")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "bc41b80486413aaa551860fc37471dbc0666e1dbb5236fb6177cb83b0c105846",
-    strip_prefix = "rules_closure-dec425a4ff3faf09a56c85d082e4eed05d8ce38f",
+    sha256 = "110fe68753413777944b473c25eed6368c4a0487cee23a7bac1b13cc49d3e257",
+    strip_prefix = "rules_closure-4af89ef1db659eb41f110df189b67d4cf14073e1",
     urls = [
-        "http://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dec425a4ff3faf09a56c85d082e4eed05d8ce38f.tar.gz",  # 2017-06-02
-        "https://github.com/bazelbuild/rules_closure/archive/dec425a4ff3faf09a56c85d082e4eed05d8ce38f.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/4af89ef1db659eb41f110df189b67d4cf14073e1.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/4af89ef1db659eb41f110df189b67d4cf14073e1.tar.gz",  # 2017-08-28
     ],
 )
 
@@ -22,12 +22,11 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #    api_level = 23,
 #    # Ensure that you have the build_tools_version below installed in the
 #    # SDK manager as it updates periodically.
-#    build_tools_version = "25.0.2",
+#    build_tools_version = "26.0.1",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)
 #
-# Android NDK r12b is recommended (higher may cause issues with Bazel)
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",

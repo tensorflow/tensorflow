@@ -32,6 +32,18 @@ message Node {
     string expression = 2;  // %multiply = [shape]multiply(operand1, operand2)
     string provenance = 3;  // Typically the TensorFlow operation name.
     string category = 4;
+    // Describes the physical memory layout of the instruction's primary input.
+    // e.g. for a convolution, this analyzes the image and ignores the kernel.
+    LayoutAnalysis layout = 5;
+    message LayoutAnalysis {
+      // The physical data layout, from most-minor to most-major dimensions.
+      repeated Dimension dimensions = 1;
+      message Dimension {
+        int32 size = 1;       // Size of the data in this dimension.
+        int32 alignment = 2;  // Data must be padded to a multiple of alignment.
+        string semantics = 3;  // What the dimension represents, e.g. "spatial".
+      }
+    }
   }
 }
 

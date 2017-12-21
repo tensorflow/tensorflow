@@ -273,14 +273,16 @@ class CursesUI(base_ui.BaseUI):
 
   _single_instance_lock = threading.Lock()
 
-  def __init__(self, on_ui_exit=None):
+  def __init__(self, on_ui_exit=None, config=None):
     """Constructor of CursesUI.
 
     Args:
       on_ui_exit: (Callable) Callback invoked when the UI exits.
+      config: An instance of `cli_config.CLIConfig()` carrying user-facing
+        configurations.
     """
 
-    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
+    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit, config=config)
 
     self._screen_init()
     self._screen_refresh_size()
@@ -445,8 +447,11 @@ class CursesUI(base_ui.BaseUI):
     curses.cbreak()
     self._stdscr.keypad(1)
 
-    self._mouse_enabled = enable_mouse_on_start
+    self._mouse_enabled = self.config.get("mouse_mode")
     self._screen_set_mousemask()
+    self.config.set_callback(
+        "mouse_mode",
+        lambda cfg: self._set_mouse_enabled(cfg.get("mouse_mode")))
 
     self._screen_create_command_window()
 

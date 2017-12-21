@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
-
 namespace {
 
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
@@ -89,6 +89,12 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT16:
       *out_tf_datatype = TF_UINT16;
       break;
+    case NPY_UINT32:
+      *out_tf_datatype = TF_UINT32;
+      break;
+    case NPY_UINT64:
+      *out_tf_datatype = TF_UINT64;
+      break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
       break;
@@ -120,6 +126,10 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
+      if (pyarray_type == Bfloat16NumpyType()) {
+        *out_tf_datatype = TF_BFLOAT16;
+        break;
+      }
       // TODO(mrry): Support these.
       return errors::Internal("Unsupported feed type");
   }
@@ -432,14 +442,6 @@ Status TensorToNdarray(const Tensor& t, PyObject** ret) {
     return tf_status;
   }
   return TF_TensorToPyArray(std::move(tf_tensor), ret);
-}
-
-Safe_PyObjectPtr make_safe(PyObject* o) {
-  return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
-}
-
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
 }
 
 }  // namespace tensorflow

@@ -278,14 +278,12 @@ class ExponentialMovingAverage(object):
   # Create an ExponentialMovingAverage object
   ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 
-  # Create the shadow variables, and add ops to maintain moving averages
-  # of var0 and var1.
-  maintain_averages_op = ema.apply([var0, var1])
-
-  # Create an op that will update the moving averages after each training
-  # step.  This is what we will use in place of the usual training op.
   with tf.control_dependencies([opt_op]):
-      training_op = tf.group(maintain_averages_op)
+      # Create the shadow variables, and add ops to maintain moving averages
+      # of var0 and var1. This also creates an op that will update the moving
+      # averages after each training step.  This is what we will use in place
+      # of the usual training op.
+      training_op = ema.apply([var0, var1])
 
   ...train the model by running training_op...
   ```
@@ -500,8 +498,9 @@ class ExponentialMovingAverage(object):
     # Collect all the variables with moving average,
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
-    # Make sure we restore variables without moving average as well.
-    for v in list(set(variables.global_variables()) - moving_avg_variables):
-      if v.op.name not in name_map:
+    # Make sure we restore variables without moving averages as well.
+    moving_avg_variable_names = set([v.name for v in moving_avg_variables])
+    for v in list(set(variables.global_variables())):
+      if v.name not in moving_avg_variable_names and v.op.name not in name_map:
         name_map[v.op.name] = v
     return name_map

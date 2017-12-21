@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_TILE_FUNCTOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,13 +30,13 @@ namespace internal {
 template <typename Device, typename T>
 void TileSimple(const Device& d, Tensor* out, const Tensor& in);
 
-template <typename Device, typename T, int NDIM>
+template <typename Device, typename T, typename Tmultiples, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
-                    const gtl::ArraySlice<int32>& broadcast_array) {
+                    const gtl::ArraySlice<Tmultiples>& broadcast_array) {
   auto x = in.tensor<T, NDIM>();
   auto y = out->tensor<T, NDIM>();
 
-  Eigen::array<int32, NDIM> b;
+  Eigen::array<Tmultiples, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
   if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
     // Use 32bit indexing to speed up the computations
@@ -45,9 +46,9 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
   }
 }
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tmultiples>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
-                    const gtl::ArraySlice<int32>&) {
+                    const gtl::ArraySlice<Tmultiples>&) {
   auto x = in.tensor<T, 0>();
   auto y = out->tensor<T, 0>();
   // In the scalar case we simply copy the input.
@@ -58,34 +59,42 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tmultiples>
 struct Tile {
   void operator()(const Device& d, Tensor* out, const Tensor& in,
-                  const gtl::ArraySlice<int32> broadcast_array) const {
+                  const gtl::ArraySlice<Tmultiples> broadcast_array) const {
     switch (in.dims()) {
       case 0:
-        internal::TileUsingEigen<Device, T>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples>(d, out, in,
+                                                        broadcast_array);
         break;
       case 1:
-        internal::TileUsingEigen<Device, T, 1>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 1>(d, out, in,
+                                                           broadcast_array);
         break;
       case 2:
-        internal::TileUsingEigen<Device, T, 2>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 2>(d, out, in,
+                                                           broadcast_array);
         break;
       case 3:
-        internal::TileUsingEigen<Device, T, 3>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 3>(d, out, in,
+                                                           broadcast_array);
         break;
       case 4:
-        internal::TileUsingEigen<Device, T, 4>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 4>(d, out, in,
+                                                           broadcast_array);
         break;
       case 5:
-        internal::TileUsingEigen<Device, T, 5>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 5>(d, out, in,
+                                                           broadcast_array);
         break;
       case 6:
-        internal::TileUsingEigen<Device, T, 6>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 6>(d, out, in,
+                                                           broadcast_array);
         break;
       case 7:
-        internal::TileUsingEigen<Device, T, 7>(d, out, in, broadcast_array);
+        internal::TileUsingEigen<Device, T, Tmultiples, 7>(d, out, in,
+                                                           broadcast_array);
         break;
       default:
         internal::TileSimple<Device, T>(d, out, in);

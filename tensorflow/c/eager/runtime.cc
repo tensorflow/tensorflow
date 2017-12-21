@@ -72,6 +72,8 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
       t |= TF_ATTR_SHAPE;
     } else if (type == "tensor") {
       t |= TF_ATTR_TENSOR;
+    } else if (type == "func") {
+      t |= TF_ATTR_FUNC;
     } else {
       return errors::Unimplemented(
           "TODO(agarwal): Enable support for ops with attributes of type '",
@@ -122,27 +124,38 @@ AttrBuilder& AttrBuilder::NumInputs(int n) {
   return *this;
 }
 
+void AttrBuilder::FillAttrValueMap(AttrValueMap* m,
+                                   bool include_those_in_node_def) const {
+  for (const auto& p : string_attrs_) {
+    SetInAttrValueMap(m, p.first, p.second);
+  }
+  for (const auto& p : int_attrs_) {
+    SetInAttrValueMap(m, p.first, p.second);
+  }
+  for (const auto& p : float_attrs_) {
+    SetInAttrValueMap(m, p.first, p.second);
+  }
+  for (const auto& p : bool_attrs_) {
+    SetInAttrValueMap(m, p.first, p.second);
+  }
+  for (const auto& p : type_attrs_) {
+    SetInAttrValueMap(m, p.first, p.second);
+  }
+  if (include_those_in_node_def && node_def_ != nullptr) {
+    for (AttrValueMap::const_iterator it = node_def_->attr().begin();
+         it != node_def_->attr().end(); ++it) {
+      m->insert(*it);
+    }
+  }
+}
+
 const NodeDef& AttrBuilder::BuildNodeDef() {
   if (node_def_finalized_) return *node_def_;
   MayBeInitializeNodeDef();
   for (int i = 0; i < num_inputs_; ++i) {
     node_def_->add_input("dummy_input");
   }
-  for (const auto& p : string_attrs_) {
-    SetInNodeDef(p.first, p.second);
-  }
-  for (const auto& p : int_attrs_) {
-    SetInNodeDef(p.first, p.second);
-  }
-  for (const auto& p : float_attrs_) {
-    SetInNodeDef(p.first, p.second);
-  }
-  for (const auto& p : bool_attrs_) {
-    SetInNodeDef(p.first, p.second);
-  }
-  for (const auto& p : type_attrs_) {
-    SetInNodeDef(p.first, p.second);
-  }
+  FillAttrValueMap(node_def_->mutable_attr(), false);
   node_def_finalized_ = true;
   return *node_def_;
 }
@@ -238,9 +251,8 @@ Status KernelAndDevice::InitOp(Device* device, const NodeDef& ndef,
 }
 
 // static
-Status KernelAndDevice::InitFn(const NodeDef& ndef,
-                               FunctionLibraryRuntime* flib,
-                               KernelAndDevice* out) {
+Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                             KernelAndDevice* out) {
   OpKernel* k = nullptr;
   Status s = flib->CreateKernel(ndef, &k);
   out->device_ = flib->device();

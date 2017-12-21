@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #include "tensorflow/compiler/xla/types.h"
@@ -66,7 +67,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(2, computation->instruction_count());
-  HloInstruction* constant = computation->instructions().begin()->get();
+  HloInstruction* constant = *computation->instructions().begin();
   EXPECT_EQ(42.0f, constant->literal().Get<float>({}));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
@@ -78,12 +79,12 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
   // Test that two identical constants with different layouts are commoned if
   // the pass is not layout sensitive.
   auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{0, 1})));
-  auto constant2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{1, 0})));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
@@ -110,12 +111,12 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
   // Test that two identical constants with different layouts are *not* commoned
   // if the pass is layout sensitive.
   auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{0, 1})));
-  auto constant2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   /*minor_to_major=*/{1, 0})));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
@@ -295,6 +296,40 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   EXPECT_THAT(tuple, op::Tuple(first_operand, first_operand));
 }
 
+TEST_F(HloCseTest, FusionInternalCSE) {
+  // Test that we can CSE expressions that live within a fusion node
+  // computation.
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape_r0, "p0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape_r0, "p1"));
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kAdd, param0, param1));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kAdd, param0, param1));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kMultiply, add1, add2));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto fused_computation =
+      computation
+          ->CreateFusionInstruction({mul, add1, add2},
+                                    HloInstruction::FusionKind::kLoop)
+          ->fused_instructions_computation();
+
+  EXPECT_EQ(5, fused_computation->instruction_count());
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_EQ(4, fused_computation->instruction_count());
+
+  auto root = fused_computation->root_instruction();
+  EXPECT_THAT(root, op::Multiply(root->operand(0), root->operand(0)));
+}
+
 TEST_F(HloCseTest, IdenticalExpressions) {
   // Test that two identical expressions are commoned. Build the following
   // computation:
@@ -435,7 +470,3 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

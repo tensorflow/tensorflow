@@ -36,7 +36,6 @@ See @{$python/contrib.training} guide.
 @@HParams
 @@HParamDef
 @@parse_values
-@@python_input
 """
 
 from __future__ import absolute_import
@@ -55,7 +54,6 @@ from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndH
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
 from tensorflow.contrib.training.python.training.feeding_queue_runner import FeedingQueueRunner
 from tensorflow.contrib.training.python.training.hparam import *
-from tensorflow.contrib.training.python.training.python_input import python_input
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *

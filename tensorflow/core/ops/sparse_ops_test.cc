@@ -187,8 +187,8 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
 
   // second output dim comes from b, depending on adjoint_b value.
   INFER_OK(op, "?;?;?;?", "[?,?]");
-  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");    // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");    // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
 
   set_adjoints(false, true);

@@ -117,7 +117,7 @@ def get_cxx_inc_directories(repository_ctx, cc):
   includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
   includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
 
-  includes_cpp_set = set(includes_cpp)
+  includes_cpp_set = depset(includes_cpp)
   return includes_cpp + [inc for inc in includes_c
                          if inc not in includes_cpp_set]
 
@@ -971,7 +971,6 @@ def _create_local_cuda_repository(repository_ctx):
                                '        ":cudnn-include",')
        })
   # Set up crosstool/
-  _file(repository_ctx, "crosstool:BUILD")
   cc = find_cc(repository_ctx)
   host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
   cuda_defines = {
@@ -981,11 +980,15 @@ def _create_local_cuda_repository(repository_ctx):
        }
   if _use_cuda_clang(repository_ctx):
     cuda_defines["%{clang_path}"] = cc
+    _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty"})
     _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
+    repository_ctx.file("crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc", "")
   else:
     nvcc_path = str(repository_ctx.path("%s/bin/nvcc%s" %
         (cuda_config.cuda_toolkit_path,
         ".exe" if cuda_config.cpu_value == "Windows" else "")))
+    _tpl(repository_ctx, "crosstool:BUILD",
+         {"%{linker_files}": ":crosstool_wrapper_driver_is_not_gcc"})
     _tpl(repository_ctx, "crosstool:CROSSTOOL_nvcc", cuda_defines, out="crosstool/CROSSTOOL")
     _tpl(repository_ctx,
          "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",

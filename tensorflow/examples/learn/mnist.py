@@ -77,9 +77,7 @@ def conv_model(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
   # Compute loss.
-  onehot_labels = tf.one_hot(tf.cast(labels, tf.int32), N_DIGITS, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Create training op.
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -97,6 +95,8 @@ def conv_model(features, labels, mode):
 
 
 def main(unused_args):
+  tf.logging.set_verbosity(tf.logging.INFO)
+
   ### Download and load MNIST dataset.
   mnist = tf.contrib.learn.datasets.DATASETS['mnist']('/tmp/mnist')
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
@@ -115,6 +115,7 @@ def main(unused_args):
   feature_columns = [
       tf.feature_column.numeric_column(
           X_FEATURE, shape=mnist.train.images.shape[1:])]
+
   classifier = tf.estimator.LinearClassifier(
       feature_columns=feature_columns, n_classes=N_DIGITS)
   classifier.train(input_fn=train_input_fn, steps=200)
