@@ -559,9 +559,11 @@ As the following list indicates, not all Estimators permit all types of
 
 For more examples on feature columns, view the following:
 
-* The @{$wide_and_deep$Wide & Deep Tutorial}
-* [Examples](https://github.com/tensorflow/models/tree/master/samples/cookbook/regression)
-  of DNNs and linear models that use feature columns.
+* The @{$low_level_intro#feature_columns$Low Level Introduction} demonstrates how
+  experiment directly with `feature_columns` using TensorFlow's low level APIs.
+* The @{$wide$wide} and @{$wide_and_deep$Wide & Deep} Tutorials solve a
+  binary classification problem using `feature_columns` on a variety of input
+  data types.
 
 To learn more about embeddings, see the following:
 
