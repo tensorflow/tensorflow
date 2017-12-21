@@ -169,7 +169,7 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
 
     # Keeps track of the latest version of Python graph object that has been
     # sent to the debug servers.
-    self._sent_graph_version = -sys.maxint
+    self._sent_graph_version = -1
 
   def run(self,
           fetches,
