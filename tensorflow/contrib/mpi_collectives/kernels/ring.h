@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_MPI_H_
 #define TENSORFLOW_CONTRIB_MPI_H_
 
-// #ifdef TENSORFLOW_USE_MPI
+#ifdef TENSORFLOW_USE_MPI
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -321,7 +321,7 @@ Status RingAllgather(OpKernelContext* context, const Tensor* input,
 }  // namespace contrib
 }  // namespace tensorflow
 
-// #endif  // TENSORFLOW_USE_MPI
+#endif  // TENSORFLOW_USE_MPI
 
 #undef TENSORFLOW_CONTRIB_MPI_H_
 #endif  // TENSORFLOW_CONTRIB_MPI_H_

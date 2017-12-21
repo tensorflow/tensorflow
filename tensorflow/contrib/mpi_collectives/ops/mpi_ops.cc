@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// #ifdef TENSORFLOW_USE_MPI
+#ifdef TENSORFLOW_USE_MPI
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -129,4 +129,4 @@ Output
 }  // namespace contrib
 }  // namespace tensorflow
 
-// #endif  // TENSORFLOW_USE_MPI
+#endif  // TENSORFLOW_USE_MPI

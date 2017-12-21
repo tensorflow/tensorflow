@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// #ifdef TENSORFLOW_USE_MPI
+#ifdef TENSORFLOW_USE_MPI
 
 #define EIGEN_USE_THREADS
 
@@ -77,4 +77,4 @@ GENERATE_ACCUMULATE(float);
 }  // namespace contrib
 }  // namespace tensorflow
 
-// #endif  // TENSORFLOW_USE_MPI
+#endif  // TENSORFLOW_USE_MPI

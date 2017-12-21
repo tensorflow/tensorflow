@@ -45,6 +45,7 @@ tf_custom_op_library(
     ],
     deps = [
         ":mpi_message_proto_cc",
+        "//tensorflow/core:lib_internal",
         "//third_party/mpi",
     ],
 )
@@ -66,6 +67,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
     ],

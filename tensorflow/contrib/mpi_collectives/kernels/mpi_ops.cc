@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// #ifdef TENSORFLOW_USE_MPI
+#ifdef TENSORFLOW_USE_MPI
 
 #include <queue>
 #include <thread>
@@ -1129,4 +1129,4 @@ REGISTER_KERNEL_BUILDER(
 }  // namespace contrib
 }  // namespace tensorflow
 
-// #endif  // TENSORFLOW_USE_MPI
+#endif  // TENSORFLOW_USE_MPI
