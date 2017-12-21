@@ -31,6 +31,7 @@ class TPUConfig(
         'num_shards',
         'per_host_input_for_training',
         'tpu_job_name',
+        'initial_infeed_sleep_secs',
     ])):
   """TPU related configuration required by `TPUEstimator`.
 
@@ -45,21 +46,22 @@ class TPUConfig(
       is invoked once on each host. To be precise, with a global batch size
       `train_batch_size` in `TPUEstimator` constructor, the batch size for each
       shard is `train_batch_size` // #hosts. With Per-Core input pipeline
-      deployment, the shard batch size is `train_batch_size` // #cores.  Note
-      that this only works for single-host TPU training now (tracked in
-      b/67051042). For multi-host, please use Per-Core, i.e., `False` for
-      `per_host_input_for_training`.
+      deployment, the shard batch size is `train_batch_size` // #cores.
     tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
       within TPUEstimator, however when using ClusterSpec propagation in more
       esoteric cluster configurations, you may need to specify the job name as a
       string.
+    initial_infeed_sleep_secs: The number of seconds the infeed thread should
+      wait before enqueueing the first batch. This helps avoid timeouts for
+      models that require a long compilation time.
   """
 
   def __new__(cls,
               iterations_per_loop=2,
               num_shards=2,
               per_host_input_for_training=True,
-              tpu_job_name=None):
+              tpu_job_name=None,
+              initial_infeed_sleep_secs=None):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
@@ -67,12 +69,18 @@ class TPUConfig(
 
     # Check num_shards.
     util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
+
+    # Check initial_infeed_sleep_secs.
+    if initial_infeed_sleep_secs:
+      util_lib.check_positive_integer(initial_infeed_sleep_secs,
+                                      'TPUConfig initial_infeed_sleep_secs')
     return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards,
         per_host_input_for_training=per_host_input_for_training,
-        tpu_job_name=tpu_job_name)
+        tpu_job_name=tpu_job_name,
+        initial_infeed_sleep_secs=initial_infeed_sleep_secs)
 
 
 class RunConfig(run_config_lib.RunConfig):
@@ -109,3 +117,12 @@ class RunConfig(run_config_lib.RunConfig):
   @property
   def tpu_config(self):
     return self._tpu_config
+
+  def replace(self, **kwargs):
+    if 'tpu_config' not in kwargs:
+      return super(RunConfig, self).replace(**kwargs)
+
+    tpu_config = kwargs.pop('tpu_config')
+    new_instance = super(RunConfig, self).replace(**kwargs)
+    new_instance._tpu_config = tpu_config  # pylint: disable=protected-access
+    return new_instance

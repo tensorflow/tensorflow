@@ -138,12 +138,12 @@ The following NVIDIA <i>software</i> must be installed on your system:
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with NVIDIA's Cuda Toolkit.
-  * cuDNN (>= v3). We recommend version 5.1. For details, see
+  * cuDNN (>= v3). We recommend version 6.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn),
     particularly the description of appending the appropriate pathname
     to your `LD_LIBRARY_PATH` environment variable.
 
-Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via 
+Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via
 
 <pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
 
@@ -180,7 +180,7 @@ If bazel is not installed on your system, install it now by following
 
 ### Install python dependencies
 
-To install TensorFlow, you must install the following packages:
+To build TensorFlow, you must install the following packages:
 
   * six
   * numpy, which is a numerical processing package that TensorFlow requires.
@@ -196,7 +196,11 @@ After installing pip, invoke the following commands:
 
 <pre> $ <b>sudo pip install six numpy wheel</b> </pre>
 
-
+Note: These are just the minimum requirements to _build_ tensorflow. Installing
+the pip package will download additional packages required to _run_ it. If you
+plan on executing tasks directly with `bazel` , without the pip installation,
+you may need to install additional python packages. For example, you should
+`pip install mock enum34` before running TensorFlow's tests with bazel.
 
 ### Optional: install TensorFlow for GPU prerequisites
 
@@ -441,6 +445,15 @@ Stack Overflow and specify the `tensorflow` tag.
   <td>Invoking `python` or `ipython` generates the following error:
   <pre>ImportError: cannot import name pywrap_tensorflow</pre></td>
 </tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/questions/45276830">45276830</a></td>
+  <td><pre>external/local_config_cc/BUILD:50:5: in apple_cc_toolchain rule
+  @local_config_cc//:cc-compiler-darwin_x86_64: Xcode version must be specified
+  to use an Apple CROSSTOOL.</pre>
+  </td>
+</tr>
+
 </table>
 
 ## Tested source configurations

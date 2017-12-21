@@ -99,6 +99,7 @@ class Literal {
     f16s_.clear();
     f32s_.clear();
     f64s_.clear();
+    c64s_.clear();
     tuple_literals_.clear();
   }
 
@@ -162,6 +163,11 @@ class Literal {
   int c64s_size() const { return c64s().size(); }
   const std::vector<complex64>& c64s() const { return c64s_; }
   std::vector<complex64>* mutable_c64s() { return &c64s_; }
+
+  int bf16s_size() const { return bf16s().size(); }
+  bfloat16 bf16s(int i) const { return bf16s_[i]; }
+  const std::vector<bfloat16>& bf16s() const { return bf16s_; }
+  std::vector<bfloat16>* mutable_bf16s() { return &bf16s_; }
 
   int tuple_literals_size() const { return tuple_literals().size(); }
   const Literal& tuple_literals(int i) const { return tuple_literals_[i]; }
@@ -280,11 +286,15 @@ class Literal {
   std::unique_ptr<Literal> Relayout(const Layout& new_layout,
                                     const ShapeIndex& shape_index = {}) const;
 
-  // Creates a new literal by reshaping this literal to have 'shape'. Both the
-  // original shape and 'shape' must contain the same number of elements. The
+  // An overload of Relayout which changes the layout of the entire shape rather
+  // than being limited to a single array within the shape.
+  std::unique_ptr<Literal> Relayout(const Shape& shape_with_layout) const;
+
+  // Creates a new literal by reshaping this literal to have the given
+  // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   StatusOr<std::unique_ptr<Literal>> Reshape(
-      tensorflow::gtl::ArraySlice<int64> shape) const;
+      tensorflow::gtl::ArraySlice<int64> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -331,7 +341,7 @@ class Literal {
 
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
-  static std::unique_ptr<Literal> CreateFullWithMonotonicDim0MajorLayout(
+  static std::unique_ptr<Literal> CreateFullWithDescendingLayout(
       tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value);
 
   // Creates a new literal from an array. The variants not ending with
@@ -450,7 +460,7 @@ class Literal {
   tensorflow::Status ValidateLiteral() const;
 
   // Returns a string representation of the literal value.
-  string ToString() const;
+  string ToString(bool print_layout = false) const;
 
   // Invokes the "per cell" callback for each element in the provided
   // literal with the element's indices and a string representation of
@@ -622,6 +632,7 @@ class Literal {
   std::vector<uint16> u16s_;
   std::vector<uint32> u32s_;
   std::vector<uint64> u64s_;
+  std::vector<bfloat16> bf16s_;
   std::vector<half> f16s_;
   std::vector<float> f32s_;
   std::vector<double> f64s_;
@@ -675,6 +686,9 @@ template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const;
 
 template <>
+tensorflow::gtl::ArraySlice<bfloat16> Literal::GetArraySlice<bfloat16>() const;
+
+template <>
 tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
     const;
 
@@ -715,6 +729,9 @@ template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice();
 
 template <>
+tensorflow::gtl::MutableArraySlice<bfloat16> Literal::GetMutableArraySlice();
+
+template <>
 tensorflow::gtl::MutableArraySlice<complex64> Literal::GetMutableArraySlice();
 
 template <>
@@ -746,6 +763,9 @@ void Literal::Resize<double>(int64 num_elements, double value);
 
 template <>
 void Literal::Resize<half>(int64 num_elements, half value);
+
+template <>
+void Literal::Resize<bfloat16>(int64 num_elements, bfloat16 value);
 
 template <>
 void Literal::Resize<complex64>(int64 num_elements, complex64 value);
@@ -990,6 +1010,14 @@ inline half Literal::Get<half>(
   return GetArraySlice<half>()[linear_index];
 }
 
+template <>
+inline bfloat16 Literal::Get<bfloat16>(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  CHECK(shape().element_type() == BF16);
+  int64 linear_index = LinearIndex(multi_index);
+  return GetArraySlice<bfloat16>()[linear_index];
+}
+
 template <typename NativeT>
 void Literal::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
                   NativeT value) {
@@ -1083,7 +1111,7 @@ void Literal::PopulateR2WithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64>(values.size()),
        static_cast<int64>(values.begin()->size())},
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
 
   const int64 dim0_size = values.size();
   const int64 dim1_size = values.begin()->size();
@@ -1114,9 +1142,10 @@ void Literal::PopulateR2(
 template <typename NativeT>
 void Literal::PopulateFromArrayWithLayout(const Array<NativeT>& values,
                                           const Layout& layout) {
+  CHECK_EQ(layout.format(), DENSE);
   *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
-      AsInt64Slice(layout.minor_to_major()));
+      LayoutUtil::MinorToMajor(layout));
   Reserve(values.num_elements());
   values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
                      NativeT value) { this->Set(indices, value); });
@@ -1204,10 +1233,9 @@ void Literal::PopulateWithValue(NativeT value,
 }
 
 template <typename NativeT>
-/* static */ std::unique_ptr<Literal>
-Literal::CreateFullWithMonotonicDim0MajorLayout(
+/* static */ std::unique_ptr<Literal> Literal::CreateFullWithDescendingLayout(
     tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
-  Shape this_shape = ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+  Shape this_shape = ShapeUtil::MakeShapeWithDescendingLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() = this_shape;

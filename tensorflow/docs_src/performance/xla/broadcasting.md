@@ -33,11 +33,11 @@ In Numpy, this is called [broadcasting]
 
 ## Principles
 
-XLA is a low-level infrastructure with a XLA language this is as strict and
-explicit as possible, avoiding implicit and "magical" features that may make
-some computations slightly easier to define, at the cost of more assumptions
-baked into user code that will be difficult to change in the long term. If
-necessary, implicit and magical features can be added in client-level wrappers.
+The XLA language is as strict and explicit as possible, avoiding implicit and
+"magical" features. Such features may make some computations slightly easier to
+define, at the cost of more assumptions baked into user code that will be
+difficult to change in the long term. If necessary, implicit and magical
+features can be added in client-level wrappers.
 
 In regards to broadcasting, explicit broadcasting specifications on operations
 between arrays of different ranks is required. This is different from Numpy,

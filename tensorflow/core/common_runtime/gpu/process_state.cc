@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -107,23 +109,20 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
   return MemDesc();
 }
 
-Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
+Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
+                                         TfGpuId tf_gpu_id,
                                          size_t total_bytes) {
 #if GOOGLE_CUDA
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
-  gpu::Platform* gpu_platform = GPUMachineManager();
+  GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
 
-  // Verify that gpu_id is legitimate.
-  CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount())
-      << "gpu_id is outside discovered device range";
-
-  if (gpu_id >= static_cast<int64>(gpu_allocators_.size())) {
-    gpu_allocators_.resize(gpu_id + 1);
-    if (FLAGS_brain_gpu_record_mem_types) gpu_al_.resize(gpu_id + 1);
+  if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    gpu_allocators_.resize(tf_gpu_id.value() + 1);
+    if (FLAGS_brain_gpu_record_mem_types) gpu_al_.resize(tf_gpu_id.value() + 1);
   }
 
-  if (gpu_allocators_[gpu_id] == nullptr) {
+  if (gpu_allocators_[tf_gpu_id.value()] == nullptr) {
     VisitableAllocator* gpu_allocator;
 
     // Validate allocator types.
@@ -132,45 +131,49 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
       return nullptr;
     }
 
-    gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes, options);
+    const CudaGpuId cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id);
+    gpu_allocator =
+        new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
+                            strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
     if (useCudaMemoryGuardAllocator()) {
-      gpu_allocator = new GPUDebugAllocator(gpu_allocator, gpu_id);
-      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, gpu_id);
+      gpu_allocator = new GPUDebugAllocator(gpu_allocator, cuda_gpu_id);
+      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, cuda_gpu_id);
     } else if (useCudaMallocAllocator()) {
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      gpu_allocator = new GPUcudaMallocAllocator(gpu_allocator, gpu_id);
+      gpu_allocator = new GPUcudaMallocAllocator(gpu_allocator, cuda_gpu_id);
     }
-    gpu_allocators_[gpu_id] = gpu_allocator;
+    gpu_allocators_[tf_gpu_id.value()] = gpu_allocator;
 
     // If there are any pending AllocVisitors for this bus, add
     // them now.
     gpu::StreamExecutor* se =
-        gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+        GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
       for (const auto& v : gpu_visitors_[bus_id]) {
-        gpu_allocators_[gpu_id]->AddAllocVisitor(v);
+        gpu_allocator->AddAllocVisitor(v);
       }
     }
     if (FLAGS_brain_gpu_record_mem_types) {
       MemDesc md;
       md.loc = MemDesc::GPU;
-      md.dev_index = gpu_id;
+      md.dev_index = cuda_gpu_id.value();
       md.gpu_registered = false;
       md.nic_registered = true;
-      if (static_cast<int64>(gpu_al_.size()) <= gpu_id)
-        gpu_al_.resize(gpu_id + 1);
-      gpu_al_[gpu_id] = new internal::RecordingAllocator(
-          &mem_desc_map_, gpu_allocators_[gpu_id], md, &mu_);
+      if (static_cast<int64>(gpu_al_.size()) <= tf_gpu_id.value()) {
+        gpu_al_.resize(tf_gpu_id.value() + 1);
+      }
+      gpu_al_[tf_gpu_id.value()] = new internal::RecordingAllocator(
+          &mem_desc_map_, gpu_allocator, md, &mu_);
     }
   }
-  if (FLAGS_brain_gpu_record_mem_types) return gpu_al_[gpu_id];
-  return gpu_allocators_[gpu_id];
+  if (FLAGS_brain_gpu_record_mem_types) return gpu_al_[tf_gpu_id.value()];
+  return gpu_allocators_[tf_gpu_id.value()];
 #else
   LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda.";
   return nullptr;
@@ -246,7 +249,7 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   gpu::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i] != nullptr) {
-      se = GPUMachineManager()->ExecutorForDevice(i).ValueOrDie();
+      se = GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
       break;
     }
   }
@@ -290,14 +293,12 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
 void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
 #if GOOGLE_CUDA
   mutex_lock lock(mu_);
-  gpu::Platform* gpu_platform = GPUMachineManager();
-  for (int gpu_id = 0; gpu_id < static_cast<int64>(gpu_allocators_.size());
-       ++gpu_id) {
+  for (int i = 0; i < static_cast<int64>(gpu_allocators_.size()); ++i) {
     gpu::StreamExecutor* se =
-        gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
-    if (gpu_allocators_[gpu_id] &&
+        GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
+    if (gpu_allocators_[i] &&
         (se->GetDeviceDescription().numa_node() + 1) == bus_id) {
-      gpu_allocators_[gpu_id]->AddAllocVisitor(visitor);
+      gpu_allocators_[i]->AddAllocVisitor(visitor);
     }
   }
   while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {

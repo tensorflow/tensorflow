@@ -11,5 +11,6 @@ py_library(
         "//tensorflow/contrib/eager/python/examples/resnet50",
         "//tensorflow/contrib/eager/python/examples/rnn_colorbot",
         "//tensorflow/contrib/eager/python/examples/rnn_ptb",
+        "//tensorflow/contrib/eager/python/examples/spinn:data",
     ],
 )

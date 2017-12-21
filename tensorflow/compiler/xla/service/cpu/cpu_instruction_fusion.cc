@@ -26,7 +26,7 @@ int64 BytesInDimension(const Shape& shape, int64 dimension) {
          shape.dimensions(dimension);
 }
 
-bool IsFusile(const HloInstruction& hlo) {
+bool CanBeLoopFused(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
   return hlo.IsElementwise() ||  //
@@ -42,6 +42,23 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
+bool IsMatrixVectorDot(const HloInstruction* hlo) {
+  const Shape& hlo_shape = hlo->shape();
+  return hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
+         (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
+}
+
+bool CanBeOutputFused(const HloInstruction* producer,
+                      const HloInstruction* consumer) {
+  return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
+         producer->user_count() == 1;
+}
+
+bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
+  return consumer->opcode() == HloOpcode::kAdd &&
+         (CanBeOutputFused(consumer->operand(0), consumer) ||
+          CanBeOutputFused(consumer->operand(1), consumer));
+}
 }  // namespace
 
 bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
@@ -52,7 +69,15 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   constexpr int kFusionThresholdBytes = 16 * 1024;
 
-  if (!IsFusile(*producer)) {
+  if (CanBeOutputFused(producer, consumer)) {
+    return true;
+  }
+
+  if (CanBeOutputFusedIntoSomeOperand(producer)) {
+    return false;
+  }
+
+  if (!CanBeLoopFused(*producer)) {
     VLOG(2) << "Producer is not fusile.";
     return false;
   }
@@ -108,16 +133,13 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion) {
-    // InstructionFusion::ShouldFuse above only allows kLoop and kInput fusions.
-    // The CPU backend does not create kInput fusions, so we only expect to see
-    // kLoop here.
-    CHECK(consumer->fusion_kind() == HloInstruction::FusionKind::kLoop);
+  if (consumer->opcode() == HloOpcode::kFusion &&
+      consumer->fusion_kind() == HloInstruction::FusionKind::kLoop) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
     return true;
   }
 
-  if (IsFusile(*consumer)) {
+  if (CanBeLoopFused(*consumer)) {
     VLOG(2) << "Fusing: consumer is elementwise or fusile.";
     return true;
   }
@@ -126,5 +148,11 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   return false;
 }
 
+HloInstruction::FusionKind CpuInstructionFusion::ChooseKind(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  return CanBeOutputFused(producer, consumer)
+             ? HloInstruction::FusionKind::kOutput
+             : HloInstruction::FusionKind::kLoop;
+}
 }  // namespace cpu
 }  // namespace xla

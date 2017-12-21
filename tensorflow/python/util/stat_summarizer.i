@@ -27,8 +27,8 @@ limitations under the License.
 
 %ignoreall
 
-%unignore NewStatSummarizer;
-%unignore DeleteStatSummarizer;
+%unignore _NewStatSummarizer;
+%unignore _DeleteStatSummarizer;
 %unignore tensorflow;
 %unignore tensorflow::StatSummarizer;
 %unignore tensorflow::StatSummarizer::StatSummarizer;
@@ -43,21 +43,20 @@ limitations under the License.
 
 // TODO(ashankar): Remove the unused argument from the API.
 %{
-tensorflow::StatSummarizer* NewStatSummarizer(
+tensorflow::StatSummarizer* _NewStatSummarizer(
       const string& unused) {
   return new tensorflow::StatSummarizer(tensorflow::StatSummarizerOptions());
 }
 %}
 
-
 %{
-void DeleteStatSummarizer(tensorflow::StatSummarizer* ss) {
+void _DeleteStatSummarizer(tensorflow::StatSummarizer* ss) {
   delete ss;
 }
 %}
 
-tensorflow::StatSummarizer* NewStatSummarizer(const string& unused);
-void DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
+tensorflow::StatSummarizer* _NewStatSummarizer(const string& unused);
+void _DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
 
 %extend tensorflow::StatSummarizer {
   void ProcessStepStatsStr(const string& step_stats_str) {
@@ -77,3 +76,21 @@ void DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
 
 %include "tensorflow/core/util/stat_summarizer.h"
 %unignoreall
+
+%insert("python") %{
+
+# Wrapping NewStatSummarizer and DeletStatSummarizer because
+# SWIG-generated functions are built-in functions and do not support
+# setting _tf_api_names attribute.
+
+def NewStatSummarizer(unused):
+  return _NewStatSummarizer(unused)
+
+def DeleteStatSummarizer(stat_summarizer):
+  _DeleteStatSummarizer(stat_summarizer)
+
+NewStatSummarizer._tf_api_names = ["contrib.stat_summarizer.NewStatSummarizer"]
+DeleteStatSummarizer._tf_api_names = [
+    "contrib.stat_summarizer.DeleteStatSummarizer"]
+StatSummarizer._tf_api_names = ["contrib.stat_summarizer.StatSummarizer"]
+%}

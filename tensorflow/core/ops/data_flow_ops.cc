@@ -1346,6 +1346,7 @@ REGISTER_OP("TensorArrayV3")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .Attr("dynamic_size: bool = false")
     .Attr("clear_after_read: bool = true")
+    .Attr("identical_element_shapes: bool = false")
     .Attr("tensor_array_name: string = ''")
     .Output("handle: resource")
     .Output("flow: float")
@@ -1374,6 +1375,12 @@ dynamic_size: A boolean that determines whether writes to the TensorArray
 clear_after_read: If true (default), Tensors in the TensorArray are cleared
   after being read.  This disables multiple read semantics but allows early
   release of memory.
+identical_element_shapes: If true (default is false), then all
+  elements in the TensorArray will be expected to have have identical shapes.
+  This allows certain behaviors, like dynamically checking for
+  consistent shapes on write, and being able to fill in properly
+  shaped zero tensors on stack -- even if the element_shape attribute
+  is not fully defined.
 tensor_array_name: Overrides the name used for the temporary tensor_array
   resource. Default value is the name of the 'TensorArray' op (which
   is guaranteed unique).
@@ -2490,6 +2497,7 @@ REGISTER_OP("RecordInput")
     .Attr("file_buffer_size: int = 10000")
     .Attr("file_parallelism: int = 16")
     .Attr("batch_size: int = 32")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2503,6 +2511,8 @@ file_shuffle_shift_ratio: Shifts the list of files after the list is randomly
 file_buffer_size: The randomization shuffling buffer.
 file_parallelism: How many sstables are opened and concurrently iterated over.
 batch_size: The batch size.
+compression_type: The type of compression for the file. Currently ZLIB and
+    GZIP are supported. Defaults to none.
 )doc");
 
 }  // namespace tensorflow

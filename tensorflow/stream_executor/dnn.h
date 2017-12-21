@@ -908,8 +908,8 @@ class DnnSupport {
   //    the running variance.
   //  reserve_space_1: saved mean, to be reused in the backward gradient
   //    computation.
-  //  reserve_space_2: saved variance, to be reused in the backward gradient
-  //    computation.
+  //  reserve_space_2: saved inv_var (1/sqrt(epsilon + variance), to be reused
+  //    in the backward gradient computation.
   //  is_training: Set to true for training, false for inference.
   //  var_to_inv_var: a function to convert the variance to inverted variance
   //    for cuDNN v4 forward inference.
@@ -957,6 +957,7 @@ class DnnSupport {
   //  y_backprop: gradient with regard to output y.
   //  x: input data.
   //  scale: scaling parameters.
+  //  inv_var: 1/sqrt(epsilon + variance) of x.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
   //    of the output.
   //  scale_offset_desc: dimensions of scale and offset.
@@ -967,7 +968,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
@@ -981,7 +982,7 @@ class DnnSupport {
   virtual bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
@@ -1132,7 +1133,7 @@ class DnnSupport {
   //    space in order to speed up the convolution operation.
   //  algorithm: an integer to specify which algorithm should be used for the
   //    operation. kDefaultAlgorithm means the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpretted by the
+  //    by default. The coding of the algorithm is be interpreted by the
   //    underlying implementation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
@@ -2023,7 +2024,7 @@ class DnnSupport {
   //  output_h_desc: descriptor for the output "h" state.
   //  output_h_data: the memory region that stores the output "h" data.
   //  output_c_desc: descriptor for the output "c" state.
-  //  output_c_data: the memory region that stores the outptu "c" data. This
+  //  output_c_data: the memory region that stores the output "c" data. This
   //    must be specified for LSTM models.
   //  is_training: whether this is used in training or inference. That decides
   //    whether respace_space data need to be produced.
@@ -2032,7 +2033,7 @@ class DnnSupport {
   //  retains the data and feed it to the backward pass.
   //  workspace_allocator: an allocator to create temporary workspace used in
   //    this kernel. The caller is responsible for retaining the memory long
-  //    enough for the lifespan of this operation, and recycles aftewards.
+  //    enough for the lifespan of this operation, and recycles afterwards.
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<Eigen::half>& input_data,
@@ -2111,7 +2112,7 @@ class DnnSupport {
   //  output_h_desc: descriptor for the output "h" state.
   //  output_h_data: the memory region that stores the output "h" data.
   //  output_c_desc: descriptor for the output "c" state.
-  //  output_c_data: the memory region that stores the outptu "c" data. This
+  //  output_c_data: the memory region that stores the output "c" data. This
   //    must be specified for LSTM models.
   //  output_backprop_data: the device memory region that contains the backprop
   //    to the output sequence.

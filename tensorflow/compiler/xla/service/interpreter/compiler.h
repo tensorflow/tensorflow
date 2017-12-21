@@ -43,8 +43,12 @@ class InterpreterCompiler : public Compiler {
   InterpreterCompiler() {}
   ~InterpreterCompiler() override {}
 
-  StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_modules,
+  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> hlo_module,
+      perftools::gputools::StreamExecutor* stream_exec) override;
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> hlo_module,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(

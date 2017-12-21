@@ -79,6 +79,11 @@ PrimitiveType NativeToPrimitiveType<double>() {
 }
 
 template <>
+PrimitiveType NativeToPrimitiveType<bfloat16>() {
+  return BF16;
+}
+
+template <>
 PrimitiveType NativeToPrimitiveType<half>() {
   return F16;
 }
@@ -89,7 +94,7 @@ PrimitiveType NativeToPrimitiveType<complex64>() {
 }
 
 bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64;
+  return type == F16 || type == F32 || type == F64 || type == BF16;
 }
 
 bool IsComplexType(PrimitiveType type) { return type == C64; }
@@ -118,6 +123,7 @@ int BitWidth(PrimitiveType type) {
     case S16:
     case U16:
     case F16:
+    case BF16:
       return 16;
 
     case U32:

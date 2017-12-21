@@ -85,13 +85,21 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Return a pointer to the entry computation of the module..
-  HloComputation* entry_computation() const {
+  const HloComputation* entry_computation() const {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation_;
+  }
+  HloComputation* entry_computation() {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
     return config_.mutable_entry_computation_layout();
+  }
+
+  ComputationLayout entry_computation_layout() const {
+    return config_.entry_computation_layout();
   }
 
   const VersionedComputationHandle& entry_computation_handle() const {
@@ -139,7 +147,12 @@ class HloModule {
 
   const HloModuleConfig& config() const { return config_; }
 
-  string ToString(bool include_large_constants = false) const;
+  // Return a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;

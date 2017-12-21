@@ -219,6 +219,10 @@ class FakeLibCurl : public LibCurl {
   }
   void curl_free(void* p) override { port::Free(p); }
 
+  const char* curl_easy_strerror(CURLcode errornum) override {
+    return "<unimplemented>";
+  }
+
   // Variables defining the behavior of this fake.
   string response_content_;
   uint64 response_code_;
@@ -263,7 +267,6 @@ TEST(CurlHttpRequestTest, GetRequest) {
 
   std::vector<char> scratch;
   scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
-  StringPiece result;
   scratch.reserve(100);
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
@@ -273,6 +276,39 @@ TEST(CurlHttpRequestTest, GetRequest) {
   TF_EXPECT_OK(http_request.Send());
 
   EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+
+  // Check interactions with libcurl.
+  EXPECT_TRUE(libcurl.is_initialized_);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url_);
+  EXPECT_EQ("100-199", libcurl.range_);
+  EXPECT_EQ("", libcurl.custom_request_);
+  EXPECT_EQ(1, libcurl.headers_->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
+  EXPECT_FALSE(libcurl.is_post_);
+  EXPECT_EQ(200, http_request.GetResponseCode());
+}
+
+TEST(CurlHttpRequestTest, GetRequest_Direct) {
+  FakeLibCurl libcurl("get response", 200);
+  CurlHttpRequest http_request(&libcurl);
+  TF_EXPECT_OK(http_request.Init());
+
+  std::vector<char> scratch(100, 0);
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(
+      http_request.SetResultBufferDirect(scratch.data(), scratch.capacity()));
+  TF_EXPECT_OK(http_request.Send());
+
+  string expected_response = "get response";
+  size_t response_bytes_transferred =
+      http_request.GetResultBufferDirectBytesTransferred();
+  EXPECT_EQ(response_bytes_transferred, expected_response.size());
+  EXPECT_EQ(
+      "get response",
+      string(scratch.begin(), scratch.begin() + response_bytes_transferred));
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -594,7 +630,6 @@ TEST(CurlHttpRequestTest, ErrorReturnsNoResponse) {
 
   std::vector<char> scratch;
   scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
-  StringPiece result;
   scratch.reserve(100);
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));

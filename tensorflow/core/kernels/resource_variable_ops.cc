@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
@@ -110,7 +111,6 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
 
 #if GOOGLE_CUDA
-
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
     ReadVariableOp);
@@ -130,6 +130,7 @@ REGISTER_KERNEL_BUILDER(
                           ResourceHandleOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -276,6 +277,64 @@ class AssignVariableOp : public OpKernel {
 };
 
 template <typename Device>
+Status VariantCopyFn(OpKernelContext* context, const Tensor& from, Tensor* to);
+
+#define CPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<CPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+
+#define INSTANTIATE_GET_VARIANT_COPY_FN(Device, TYPE_CALLER, TYPE_DENSE_COPY) \
+  template <>                                                                 \
+  Status VariantCopyFn<Device>(OpKernelContext * context, const Tensor& from, \
+                               Tensor* to) {                                  \
+    PersistentTensor tmp;                                                     \
+    Tensor* tensor;                                                           \
+    AllocatorAttributes attr;                                                 \
+    attr.set_gpu_compatible(true);                                            \
+    attr.set_nic_compatible(true);                                            \
+    TF_RETURN_IF_ERROR(context->allocate_persistent(                          \
+        from.dtype(), from.shape(), &tmp, &tensor, attr));                    \
+    switch (from.dtype()) {                                                   \
+      TYPE_CALLER(TYPE_DENSE_COPY);                                           \
+      default:                                                                \
+        return errors::InvalidArgument(                                       \
+            "VariantCopyFn: Could not perform a deep copy of variant "        \
+            "element of type: ",                                              \
+            DataTypeString(from.dtype()),                                     \
+            " using device: ", context->device()->name());                    \
+    }                                                                         \
+    *to = *tensor;                                                            \
+    return Status::OK();                                                      \
+  }
+
+INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
+
+#if GOOGLE_CUDA
+#define GPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<GPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+#define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
+  TF_CALL_GPU_ALL_TYPES(T);                 \
+  TF_CALL_int32(T);                         \
+  TF_CALL_int64(T);
+INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,
+                                GPU_DENSE_COPY);
+#undef TF_CALL_GPU_AND_ADDITIONAL_TYPES
+#undef GPU_DENSE_COPY
+#endif  // GOOGLE_CUDA
+
+#undef CPU_DENSE_COPY
+#undef INSTANTIATE_GET_VARIANT_COPY_FN
+
+template <typename Device>
 class AssignVariableOp<Device, Variant> : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -287,21 +346,15 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& value = context->input(1);
-    OP_REQUIRES(context, dtype_ == value.dtype(),
-                errors::InvalidArgument(
-                    "Variable and value dtypes don't match; respectively, ",
-                    dtype_, " and ", context->input(1).dtype()));
-
     Var* variable = nullptr;
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
                                 context, HandleFromInput(context, 0), &variable,
                                 [this, context](Var** ptr) {
-                                  *ptr = new Var(dtype_);
-                                  // Create an empty new Variant tensor.
+                                  // Created on host.
+                                  *ptr = new Var(DT_VARIANT);
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
-
     OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
@@ -309,16 +362,17 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                     DataTypeString(DT_VARIANT)));
 
     mutex_lock ml(*variable->mu());
-    // TODO(ebrevdo): Add a proper Variant deep copy / assign registry
-    // entry and use that here.  For now, use a serialization
-    // roundtrip to perform the copy on CPU.  This is OK because this
-    // op is not registered for GPU.
-    *variable->tensor() = Tensor();
-    TensorProto tmp;
-    value.AsProtoTensorContent(&tmp);
-    OP_REQUIRES(context, variable->tensor()->FromProto(tmp),
-                errors::Internal("Could not properly reserialize values "
-                                 "Variant.  Check logs for more details."));
+
+    *variable->tensor() = Tensor(DT_VARIANT, value.shape());
+    const auto elements_in = value.flat<Variant>();
+    auto elements_out = variable->tensor()->flat<Variant>();
+    auto copy_fn = std::bind(&VariantCopyFn<Device>, context,
+                             std::placeholders::_1, std::placeholders::_2);
+    for (int64 i = 0; i < elements_in.size(); ++i) {
+      OP_REQUIRES_OK(context, VariantDeviceCopy(
+                                  VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
+                                  elements_in(i), &elements_out(i), copy_fn));
+    };
   }
 
  private:
@@ -345,6 +399,7 @@ TF_CALL_variant(REGISTER_KERNELS);
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -464,8 +519,7 @@ class ResourceGatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c, params_flat,
-                            indices_flat, out_flat);
+      int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
 
       OP_REQUIRES(
           c, bad_i < 0,

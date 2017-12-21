@@ -736,7 +736,7 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   }
 }
 
-mutex DebugGrpcIO::streams_mu;
+mutex DebugGrpcIO::streams_mu(LINKER_INITIALIZED);
 
 int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
 // TODO(cais): Make this configurable?

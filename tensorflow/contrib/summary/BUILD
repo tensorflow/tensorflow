@@ -13,10 +13,7 @@ load(
 tf_gen_op_wrapper_py(
     name = "gen_summary_ops",
     out = "gen_summary_ops.py",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:summary_ops_op_lib",
-    ],
+    deps = ["//tensorflow/core:summary_ops_op_lib"],
 )
 
 py_test(
@@ -26,12 +23,35 @@ py_test(
     deps = [
         ":summary_ops",
         ":summary_test_util",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "summary_ops_graph_test",
+    srcs = ["summary_ops_graph_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":summary_ops",
+        ":summary_test_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
@@ -42,16 +62,20 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_summary_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "@six_archive//:six",
     ],
 )
 

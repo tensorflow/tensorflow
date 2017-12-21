@@ -36,5 +36,12 @@ const int tf_cxx11_abi_flag() {
   return 0;
 #endif
 }
+const int tf_monolithic_build() {
+#ifdef TENSORFLOW_MONOLITHIC_BUILD
+  return 1;
+#else
+  return 0;
+#endif
+}
 EOF
 

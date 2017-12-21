@@ -95,7 +95,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format)
     tf.train.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with tf.contrib.summary.create_summary_file_writer(
+    with tf.contrib.summary.create_file_writer(
         logdir, max_queue=0,
         name='t0').as_default(), tf.contrib.summary.always_record_summaries():
       with tf.device(device):
@@ -103,7 +103,7 @@ class ResNet50Test(tf.test.TestCase):
         images, labels = random_batch(2)
         train_one_step(model, images, labels, optimizer)
         self.assertEqual(320, len(model.variables))
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].tag, 'loss')
 

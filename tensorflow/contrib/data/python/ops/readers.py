@@ -18,14 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import dataset_ops as contrib_dataset_ops
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
@@ -156,8 +155,7 @@ def read_batch_features(file_pattern,
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be called with a `filenames` tensor
-      and (optional) `reader_args` and returns a `Dataset` of serialized
-      Examples.
+      and (optional) `reader_args` and returns a `Dataset` of Examples.
     reader_args: Additional arguments to pass to the reader class.
     randomize_input: Whether the input should be randomized.
     num_epochs: Integer specifying the number of times to read through the
@@ -166,7 +164,7 @@ def read_batch_features(file_pattern,
       shuffling but would increase memory usage and startup time.
 
   Returns:
-    A dict from keys in features to Tensor or SparseTensor objects.
+    A dict from keys in features to `Tensor` or `SparseTensor` objects.
   """
   filenames = _get_file_names(file_pattern, randomize_input)
   if reader_args:
@@ -174,32 +172,17 @@ def read_batch_features(file_pattern,
   else:
     dataset = reader(filenames)
   if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda unused_k, v: v)
-  elif dataset.output_types != dtypes.string:
-    raise TypeError("`reader` must be a dataset of `tf.string` values, "
-                    "or `(tf.string, tf.string)` key-value pairs.")
+    dataset = dataset.map(lambda _, v: v)
   if num_epochs != 1:
     dataset = dataset.repeat(num_epochs)
   if randomize_input:
     dataset = dataset.shuffle(capacity)
   dataset = dataset.batch(batch_size)
-  dataset = dataset.map(lambda x: _parse_example(x, features))
+  dataset = dataset.map(lambda x: parsing_ops.parse_example(x, features))
+  dataset = dataset.prefetch(1)
   iterator = dataset.make_one_shot_iterator()
   outputs = iterator.get_next()
-  index = 0
-  result = {}
-  for key in sorted(features.keys()):
-    feature = features[key]
-    if isinstance(feature, parsing_ops.FixedLenFeature):
-      result[key] = outputs[index]
-      index += 1
-    else:
-      result[key] = sparse_tensor_lib.SparseTensor(
-          indices=outputs[index],
-          values=outputs[index + 1],
-          dense_shape=outputs[index + 2])
-      index += 3
-  return result
+  return outputs
 
 
 def _get_file_names(file_pattern, randomize_input):
@@ -231,18 +214,6 @@ def _get_file_names(file_pattern, randomize_input):
   if not randomize_input:
     file_names = sorted(file_names)
   return file_names
-
-
-def _parse_example(serialized, features):
-  parsed = parsing_ops.parse_example(serialized, features)
-  result = []
-  for key in sorted(features.keys()):
-    val = parsed[key]
-    if isinstance(val, sparse_tensor_lib.SparseTensor):
-      result.extend([val.indices, val.values, val.dense_shape])
-    else:
-      result.append(val)
-  return tuple(result)
 
 
 class SqlDataset(contrib_dataset_ops.Dataset):
@@ -298,6 +269,10 @@ class _SqlDataset(dataset_ops.Dataset):
                                        self._data_source_name, self._query,
                                        nest.flatten(self.output_types),
                                        nest.flatten(self.output_shapes))
+
+  @property
+  def output_classes(self):
+    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
 
   @property
   def output_shapes(self):

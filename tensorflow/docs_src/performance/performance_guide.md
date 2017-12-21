@@ -18,6 +18,7 @@ following sections:
 *   [Input pipeline optimizations](#input-pipeline-optimization)
 *   [Data formats](#data-formats)
 *   [Common fused Ops](#common-fused-ops)
+*   [RNN Performance](#rnn-performance)
 *   [Building and installing from source](#building-and-installing-from-source)
 
 ### Input pipeline optimization
@@ -127,7 +128,7 @@ Reading large numbers of small files significantly impacts I/O performance.
 One approach to get maximum I/O throughput is to preprocess input data into
 larger (~100MB) `TFRecord` files. For smaller data sets (200MB-1GB), the best
 approach is often to load the entire data set into memory. The document
-[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#Data)
+[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#downloading-and-converting-to-tfrecord-format)
 includes information and scripts for creating `TFRecords` and this
 [script](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/generate_cifar10_tfrecords.py)
 converts the CIFAR-10 data set into `TFRecords`.
@@ -196,6 +197,57 @@ since before TensorFlow 1.0.
 ```python
 bn = tf.contrib.layers.batch_norm(input_layer, fused=True, data_format='NCHW')
 ```
+
+### RNN Performance
+
+There are many ways to specify an RNN computation in Tensorflow and they have
+have trade-offs with respect to model flexibility and performance. The
+@{tf.nn.rnn_cell.BasicLSTMCell} should be considered a reference implementation
+and used only as a last resort when no other options will work.
+
+When using one of the cells, rather than the fully fused RNN layers, you have a
+choice of whether to use @{tf.nn.static_rnn} or @{tf.nn.dynamic_rnn}.  There
+shouldn't generally be a performance difference at runtime, but large unroll
+amounts can increase the graph size of the @{tf.nn.static_rnn} and cause long
+compile times.  An additional advantage of @{tf.nn.dynamic_rnn} is that it can
+optionally swap memory from the GPU to the CPU to enable training of very long
+sequences.  Depending on the model and hardware configuration, this can come at
+a performance cost.  It is also possible to run multiple iterations of
+@{tf.nn.dynamic_rnn} and the underlying @{tf.while_loop} construct in parallel,
+although this is rarely useful with RNN models as they are inherently
+sequential.
+
+On NVIDIA GPUs, the use of @{tf.contrib.cudnn_rnn} should always be preferred
+unless you want layer normalization, which it doesn't support.  It is often at
+least an order of magnitude faster than @{tf.contrib.rnn.BasicLSTMCell} and
+@{tf.contrib.rnn.LSTMBlockCell} and uses 3-4x less memory than
+@{tf.contrib.rnn.BasicLSTMCell}.  Unfortunately, @{tf.contrib.cudnn_rnn} is not
+compatible with @{tf.train.SyncReplicasOptimizer} so you should either use a
+different synchronization mechanism (consider an all-reduce based strategy) or
+use the @{tf.contrib.rnn.LSTMBlockFusedCell} (at a significant performance
+penalty).
+
+If you need to run one step of the RNN at a time, as might be the case in
+reinforcement learning with a recurrent policy, then you should use the
+@{tf.contrib.rnn.LSTMBlockCell} with your own environment interaction loop
+inside a @{tf.while_loop} construct. Running one step of the RNN at a time and
+returning to python is possible but it will be slower.
+
+On CPUs, mobile devices, and if @{tf.contrib.cudnn_rnn} is not available on
+your GPU, the fastest and most memory efficient option is
+@{tf.contrib.rnn.LSTMBlockFusedCell}.
+
+For all of the less common cell types like @{tf.contrib.rnn.NASCell},
+@{tf.contrib.rnn.PhasedLSTMCell}, @{tf.contrib.rnn.UGRNNCell},
+@{tf.contrib.rnn.GLSTMCell}, @{tf.contrib.rnn.Conv1DLSTMCell},
+@{tf.contrib.rnn.Conv2DLSTMCell}, @{tf.contrib.rnn.LayerNormBasicLSTMCell},
+etc., one should be aware that they are implemented in the graph like
+@{tf.contrib.rnn.BasicLSTMCell} and as such will suffer from the same poor
+performance and high memory usage.  One should consider whether or not those
+trade-offs are worth it before using these cells. For example, while layer
+normalization can speed up convergence, because cuDNN is 20x faster the fastest
+wall clock time to convergence is usually obtained without it.
+
 
 ### Building and installing from source
 

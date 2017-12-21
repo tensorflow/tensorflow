@@ -56,6 +56,7 @@ tf_proto_library(
     cc_grpc_version = 1,
     protodeps = [
         ":debugger_event_metadata_proto",
+        "//tensorflow/core/profiler:protos_all",
     ] + tf_additional_all_protos(),
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -89,9 +90,9 @@ tf_cuda_library(
     deps = [
         ":debug",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_tracer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
@@ -123,6 +124,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
@@ -144,6 +146,7 @@ tf_cuda_library(
         ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",

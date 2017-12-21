@@ -25,6 +25,7 @@ import six
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import common
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 
@@ -214,51 +215,6 @@ def error(msg):
       RL("ERROR: " + msg, COLOR_RED)])
 
 
-def get_graph_element_name(elem):
-  """Obtain the name or string representation of a graph element.
-
-  If the graph element has the attribute "name", return name. Otherwise, return
-  a __str__ representation of the graph element. Certain graph elements, such as
-  `SparseTensor`s, do not have the attribute "name".
-
-  Args:
-    elem: The graph element in question.
-
-  Returns:
-    If the attribute 'name' is available, return the name. Otherwise, return
-    str(fetch).
-  """
-
-  return elem.name if hasattr(elem, "name") else str(elem)
-
-
-def _get_fetch_names(fetches):
-  """Get a flattened list of the names in run() call fetches.
-
-  Args:
-    fetches: Fetches of the `Session.run()` call. It maybe a Tensor, an
-      Operation or a Variable. It may also be nested lists, tuples or
-      dicts. See doc of `Session.run()` for more details.
-
-  Returns:
-    (list of str) A flattened list of fetch names from `fetches`.
-  """
-
-  lines = []
-  if isinstance(fetches, (list, tuple)):
-    for fetch in fetches:
-      lines.extend(_get_fetch_names(fetch))
-  elif isinstance(fetches, dict):
-    for key in fetches:
-      lines.extend(_get_fetch_names(fetches[key]))
-  else:
-    # This ought to be a Tensor, an Operation or a Variable, for which the name
-    # attribute should be available. (Bottom-out condition of the recursion.)
-    lines.append(get_graph_element_name(fetches))
-
-  return lines
-
-
 def _recommend_command(command, description, indent=2, create_link=False):
   """Generate a RichTextLines object that describes a recommended command.
 
@@ -327,14 +283,14 @@ def get_run_start_intro(run_call_count,
     (RichTextLines) Formatted intro message about the `Session.run()` call.
   """
 
-  fetch_lines = _get_fetch_names(fetches)
+  fetch_lines = common.get_flattened_names(fetches)
 
   if not feed_dict:
     feed_dict_lines = [debugger_cli_common.RichLine("  (Empty)")]
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
-      feed_key_name = get_graph_element_name(feed_key)
+      feed_key_name = common.get_graph_element_name(feed_key)
       feed_dict_line = debugger_cli_common.RichLine("  ")
       feed_dict_line += debugger_cli_common.RichLine(
           feed_key_name,
@@ -446,10 +402,10 @@ def get_run_short_description(run_call_count,
   description = "run #%d: " % run_call_count
 
   if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
-    description += "1 fetch (%s); " % get_graph_element_name(fetches)
+    description += "1 fetch (%s); " % common.get_graph_element_name(fetches)
   else:
     # Could be (nested) list, tuple, dict or namedtuple.
-    num_fetches = len(_get_fetch_names(fetches))
+    num_fetches = len(common.get_flattened_names(fetches))
     if num_fetches > 1:
       description += "%d fetches; " % num_fetches
     else:

@@ -222,6 +222,12 @@ static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 bool DataTypeCanUseMemcpy(DataType dt);
 
+// Returns true iff 'dt' is a real, non-quantized floating point type.
+bool DataTypeIsFloating(DataType dt);
+
+// Returns true iff 'dt' is a complex type.
+bool DataTypeIsComplex(DataType dt);
+
 bool DataTypeIsQuantized(DataType dt);
 
 // Is the dtype nonquantized integral?
@@ -232,6 +238,11 @@ bool DataTypeIsUnsigned(DataType dt);
 
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
+
+// Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
+// For DT_RESOURCE, the handle always sits on host (even if the underlying
+// object has device-allocated resources).
+bool DataTypeAlwaysOnHost(DataType dt);
 
 }  // namespace tensorflow
 

@@ -37,6 +37,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -66,7 +67,8 @@ class MicroBenchmarks(test.Benchmark):
       func()
     end = time.time()
     mean_us = (end - start) * 1e6 / num_iters
-    self.report_benchmark(iters=num_iters, wall_time=mean_us)
+    self.report_benchmark(iters=num_iters, wall_time=mean_us,
+                          extras={"examples_per_sec": num_iters/(end-start)})
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -133,6 +135,10 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: m * m
     self._run(func, num_iters)
 
+  def _benchmark_tf_multiply_op(self, m, num_iters):
+    func = lambda: math_ops.multiply(m, m)
+    self._run(func, num_iters)
+
   def benchmark_np_multiply(self):
     self._benchmark_np_multiply(self._m_2, 30000)
 
@@ -147,6 +153,59 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(GPU):
       m = self._m_2.gpu()
       self._benchmark_tf_multiply(m, 30000)
+
+  def benchmark_tf_multiply_op_CPU(self):
+    with context.device(CPU):
+      m = self._m_2.cpu()
+      self._benchmark_tf_multiply_op(m, 30000)
+
+  def benchmark_tf_multiply_op_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2.gpu()
+      self._benchmark_tf_multiply_op(m, 30000)
+
+  def benchmark_tf_identity(self):
+    m = self._m_2
+    self._run(lambda: gen_array_ops.identity(m), 30000)
+
+  def benchmark_tfe_py_execute_identity(self):
+    m = self._m_2
+    ctx_handle = context.context()._handle
+    attrs = ("T", self._m_2.dtype.as_datatype_enum)
+    inputs = [m]
+
+    def f():
+      pywrap_tensorflow.TFE_Py_Execute(
+          ctx_handle, None, "Identity", inputs, attrs, 1)
+
+    self._run(f, 30000)
+
+  def benchmark_tf_gradient_function_identity(self):
+    m = self._m_2
+    self._run(
+        lambda: backprop.gradients_function(gen_array_ops.identity, [0])(m),
+        30000)
+
+  def benchmark_tf_gradient_forward_identity(self):
+    with backprop.GradientTape() as tape:
+      m = self._m_2
+      tape.watch(m)
+      self._run(lambda: gen_array_ops.identity(m), 30000)
+
+  def benchmark_tf_gradient_tape_push_pop(self):
+
+    def f():
+      with backprop.GradientTape():
+        pass
+    self._run(f, 30000)
+
+  def benchmark_tf_gradient_function_no_op(self):
+    m = self._m_2
+    self._run(
+        lambda: backprop.gradients_function(lambda x: x, [0])(m),
+        30000)
 
   def _benchmark_np_matmul(self, m, transpose_b, num_iters):
     a = m.cpu().numpy()

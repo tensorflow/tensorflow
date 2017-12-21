@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -40,9 +41,32 @@ void GenerateLowerCaseOpName(const string& str, string* result);
 
 string DataTypeToPython(DataType dtype, const string& dtype_module);
 
+// Names that corresponds to a single input parameter.
+class ParamNames {
+ public:
+  // Create param based on Arg.
+  ParamNames(const string& name, const string& rename_to) : name_(name) {
+    rename_to_ = AvoidPythonReserved(rename_to);
+  }
+
+  // Get original parameter name.
+  string GetName() const { return name_; }
+
+  // Get the name to rename the parameter to. Note that AvoidPythonReserved
+  // has already been applied.
+  string GetRenameTo() const { return rename_to_; }
+
+ private:
+  // Original parameter name.
+  string name_;
+  // API name for this parameter.
+  string rename_to_;
+};
+
 class GenPythonOp {
  public:
-  GenPythonOp(const OpDef& op_def, const string& function_name);
+  GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
+              const string& function_name);
   virtual ~GenPythonOp();
 
   virtual string Code();
@@ -62,9 +86,11 @@ class GenPythonOp {
   void AddDocStringOutputs();
   void AddBody(const string& prefix);
   void AddBodyNoReturn(const string& apply_prefix);
+  void AddExport();
 
   // From constructor arguments
   const OpDef& op_def_;
+  const ApiDef& api_def_;
   const string function_name_;
   const int num_outs_;
 
@@ -80,7 +106,7 @@ class GenPythonOp {
 
   // All parameters, including inputs & non-inferred attrs, required and those
   // with defaults, except "name"
-  std::vector<string> param_names_;
+  std::vector<ParamNames> param_names_;
 };
 
 }  // namespace python_op_gen_internal

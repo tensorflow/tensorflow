@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import memory_trace
 from tensorflow.python.framework import errors
 
 # Trace of execution and memory usage.
@@ -48,28 +47,3 @@ class _NotOkStatusException(Exception):
 
 
 pywrap_tensorflow.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
-
-
-def enable_tracing():
-  """Enables tracing of execution and memory usage.
-
-  WARNING: tracing is not thread-safe.
-  """
-  # TODO(alive): Add code example in doc string.
-  global _active_trace
-  _active_trace = memory_trace.MemoryTrace()
-
-
-def flush_trace():
-  """Flushes the active trace, if it exists.
-
-  WARNING: tracing is not thread-safe.
-  """
-  # TODO(alive): Add code example in doc string.
-  if _active_trace is not None:
-    _active_trace.flush_trace()
-
-
-def active_trace():
-  """Returns the current global active trace of execution and memory usage."""
-  return _active_trace

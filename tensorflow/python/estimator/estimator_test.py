@@ -50,6 +50,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
@@ -910,6 +911,80 @@ class EstimatorGetVariablesTest(test.TestCase):
         set(['one', 'three', 'global_step']), set(est.get_variable_names()))
     self.assertEqual(1., est.get_variable_value('one'))
     self.assertEqual(3., est.get_variable_value('three'))
+
+
+class EstimatorDatasetIntegrationTest(test.TestCase):
+  """Tests dataset integration."""
+
+  def test_returned_by_input_fn(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors(([1.], [2.]))
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features + labels,  # 1 + 2
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(3., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_none_labels(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([7.])
+
+    def _model_fn(features, labels, mode):
+      self.assertIsNone(labels)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features,  # 7
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(7., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_predict(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([10.])
+
+    def _model_fn(features, labels, mode):
+      _ = labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,  # 10
+          loss=features,  # 10
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    self.assertEqual([10.], next(est.predict(input_fn=_input_fn)))
+
+  def test_batching(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensor_slices(([[1.], [2.]],
+                                                     [[10.], [20.]])).batch(1)
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,
+          loss=features + (0 if labels is None else labels),  # 11, 22
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn)
+    scores = est.evaluate(_input_fn)
+    # (11 + 22)/2 = 16.5
+    self.assertEqual(16.5, scores[model_fn_lib.LOSS_METRIC_KEY])
+    self.assertEqual([1., 2.], list(est.predict(_input_fn)))
 
 
 class EstimatorEvaluateTest(test.TestCase):
@@ -1909,6 +1984,71 @@ class EstimatorExportTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+
+  def test_export_savedmodel_respects_soft_placement(self):
+    def model_fn_with_a_gpu_op_but_no_kernel(features, labels, mode):
+      _, _ = features, labels
+      table = saver_test_utils.CheckpointedOp(name='v2')
+
+      update_global_step = state_ops.assign_add(training.get_global_step(), 1)
+      with ops.control_dependencies([update_global_step]):
+        train_op = table.insert('k1', 30.0)
+
+      #  In this test, there are no GPUs available.  The goal is to verify that
+      #  export_savedmodel executes nevertheless.
+      with ops.device('/gpu:0'):
+        string_op = string_ops.as_string(update_global_step)
+
+      with ops.control_dependencies([string_op]):
+        prediction = table.lookup('k1', 0.0)
+
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=prediction,
+          loss=constant_op.constant(1.),
+          train_op=train_op,
+          export_outputs={
+              'test': export_output.PredictOutput({
+                  'prediction': prediction
+              })
+          })
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_fn=model_fn_with_a_gpu_op_but_no_kernel)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn)
+
+    # At this point, if export_savedmodel executed with
+    # allow_soft_placement=True, then the GPU-assigned operation was silently
+    # placed on the CPU.  Otherwise, an exception would have been raised
+    # related to the fact that the requested GPU device isn't available.
+
+    # Expectations below assume that export_savedmodel has completed normally.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('saved_model.pb'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(gfile.Exists(os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    gfile.DeleteRecursively(tmpdir)
 
 
 class EstimatorHookOrderingTest(test.TestCase):

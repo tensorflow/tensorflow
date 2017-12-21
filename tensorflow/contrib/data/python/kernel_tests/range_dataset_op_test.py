@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.contrib.data.python.ops import counter
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import enumerate_ops
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
@@ -193,6 +194,27 @@ class RangeDatasetTest(test.TestCase):
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testCounter(self):
+    """Test dataset construction using `count`."""
+    iterator = (counter.Counter(start=3, step=4)
+                .make_one_shot_iterator())
+    get_next = iterator.get_next()
+    self.assertEqual([], get_next.shape.as_list())
+    self.assertEqual(dtypes.int64, get_next.dtype)
+
+    negative_iterator = (counter.Counter(start=0, step=-1)
+                         .make_one_shot_iterator())
+    negative_get_next = negative_iterator.get_next()
+
+    with self.test_session() as sess:
+      self.assertEqual(3, sess.run(get_next))
+      self.assertEqual(3 + 4, sess.run(get_next))
+      self.assertEqual(3 + 2 * 4, sess.run(get_next))
+
+      self.assertEqual(0, sess.run(negative_get_next))
+      self.assertEqual(-1, sess.run(negative_get_next))
+      self.assertEqual(-2, sess.run(negative_get_next))
 
   def _iterator_checkpoint_prefix(self):
     return os.path.join(self.get_temp_dir(), "iterator")
