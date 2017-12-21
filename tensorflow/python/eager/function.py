@@ -422,7 +422,8 @@ class GraphModeFunction(object):
 
   @property
   def name(self):
-    return self._function_def.name
+    """Returns the name of the function in Eager-compatible format."""
+    return self._function_def.name.encode("utf-8")
 
   def add_to_graph(self, g):
     if self._function_def.name not in g._functions:  # pylint: disable=protected-access
