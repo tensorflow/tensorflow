@@ -211,10 +211,9 @@ Status GoogleAuthProvider::GetTokenFromGce() {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     std::vector<char> response_buffer;
     const uint64 request_timestamp_sec = env_->NowSeconds();
-    TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(request->SetUri(kGceTokenUrl));
-    TF_RETURN_IF_ERROR(request->AddHeader("Metadata-Flavor", "Google"));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
+    request->SetUri(kGceTokenUrl);
+    request->AddHeader("Metadata-Flavor", "Google");
+    request->SetResultBuffer(&response_buffer);
     TF_RETURN_IF_ERROR(request->Send());
     StringPiece response =
         StringPiece(&response_buffer[0], response_buffer.size());

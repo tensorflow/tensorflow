@@ -118,6 +118,17 @@ ComputationDataHandle LocalComputationBuilder::Reshape(
   return builder_.Reshape(operand, dimensions, new_sizes);
 }
 
+ComputationDataHandle LocalComputationBuilder::Collapse(
+    const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return builder_.Collapse(operand, dimensions);
+}
+
+ComputationDataHandle LocalComputationBuilder::CrossReplicaSum(
+    const ComputationDataHandle& operand) {
+  return builder_.CrossReplicaSum(operand);
+}
+
 ComputationDataHandle LocalComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
@@ -193,6 +204,12 @@ ComputationDataHandle LocalComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
   return builder_.Transpose(operand, permutation);
+}
+
+ComputationDataHandle LocalComputationBuilder::Rev(
+    const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return builder_.Rev(operand, dimensions);
 }
 
 ComputationDataHandle LocalComputationBuilder::Map(

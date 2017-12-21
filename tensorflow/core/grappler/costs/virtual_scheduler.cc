@@ -75,7 +75,7 @@ struct RecvNodeDescriptor {
       : node(node_), port_num(port_num_), device(device_) {}
 };
 
-struct RecvNodeDescritorHash {
+struct RecvNodeDescriptorHash {
   std::size_t operator()(const RecvNodeDescriptor& recv_node) const {
     return std::hash<const NodeDef*>()(recv_node.node) ^
            std::hash<int>()(recv_node.port_num) ^
@@ -316,7 +316,7 @@ Status VirtualScheduler::Init() {
   }
 
   // To reuse _Recv ops.
-  std::unordered_map<RecvNodeDescriptor, const NodeDef*, RecvNodeDescritorHash,
+  std::unordered_map<RecvNodeDescriptor, const NodeDef*, RecvNodeDescriptorHash,
                      RecvNodeDescriptorEqual>
       cached_recv_nodes;
 

@@ -206,6 +206,7 @@ cc_library(
         "graph_transformations/resolve_constant_binary.cc",
         "graph_transformations/resolve_constant_concatenation.cc",
         "graph_transformations/resolve_constant_fake_quant.cc",
+        "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_tensorflow_shape.cc",
         "graph_transformations/resolve_constant_unary.cc",
         "graph_transformations/resolve_mean_attributes.cc",
