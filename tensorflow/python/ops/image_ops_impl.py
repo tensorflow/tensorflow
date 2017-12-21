@@ -147,6 +147,28 @@ def _Check3DImage(image, require_static=True):
     return []
 
 
+def _Assert3DImage(image):
+  """Assert that we are working with a properly shaped image.
+
+    Performs the check statically if possible (i.e. if the shape
+    is statically known). Otherwise adds a control dependency
+    to an assert op that checks the dynamic shape.
+
+    Args:
+      image: 3-D Tensor of shape [height, width, channels]
+
+    Raises:
+      ValueError: if `image.shape` is not a 3-vector.
+
+    Returns:
+      If the shape of `image` could be verified statically, `image` is
+      returned unchanged, otherwise there will be a control dependency
+      added that asserts the correct dynamic shape.
+    """
+  return control_flow_ops.with_dependencies(
+    _Check3DImage(image, require_static=False), image)
+
+
 def _CheckAtLeast3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
 
@@ -220,8 +242,7 @@ def random_flip_up_down(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
   result = control_flow_ops.cond(mirror_cond,
@@ -249,8 +270,7 @@ def random_flip_left_right(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
   result = control_flow_ops.cond(mirror_cond,
@@ -277,8 +297,7 @@ def flip_left_right(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
 
 
@@ -300,8 +319,7 @@ def flip_up_down(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
 
 
@@ -318,8 +336,7 @@ def rot90(image, k=1, name=None):
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
@@ -357,8 +374,7 @@ def transpose_image(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
 
 
@@ -392,8 +408,7 @@ def central_crop(image, central_fraction):
   if central_fraction == 1.0:
     return image
 
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
@@ -817,8 +832,7 @@ def per_image_standardization(image):
     ValueError: if the shape of 'image' is incompatible with this function.
   """
   image = ops.convert_to_tensor(image, name='image')
-  image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+  image = _Assert3DImage(image)
   num_pixels = math_ops.reduce_prod(array_ops.shape(image))
 
   image = math_ops.cast(image, dtype=dtypes.float32)
