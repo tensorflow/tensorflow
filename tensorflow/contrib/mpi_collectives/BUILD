@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_mpi_lib_defines",
     "tf_proto_library_cc",
 )
 
@@ -19,6 +20,11 @@ tf_proto_library_cc(
     visibility = [
         "//tensorflow:__subpackages__",
     ],
+)
+
+cc_library(
+    name = "mpi_defines",
+    defines = tf_additional_mpi_lib_defines(),
 )
 
 load(
@@ -44,8 +50,8 @@ tf_custom_op_library(
         "kernels/ring.h",
     ],
     deps = [
+        ":mpi_defines",
         ":mpi_message_proto_cc",
-        "//tensorflow/core:lib_internal",
         "//third_party/mpi",
     ],
 )
@@ -63,11 +69,11 @@ tf_kernel_library(
         "kernels/ring.cu.cc",
     ],
     deps = [
+        ":mpi_defines",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
     ],
@@ -105,7 +111,6 @@ tf_custom_op_py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
     ],
 )
 
