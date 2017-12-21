@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 #include "tensorflow/core/framework/numeric_types.h"
@@ -477,8 +479,61 @@ bool RegisterBfloat16Cast(int numpy_type, bool cast_is_safe) {
   return true;
 }
 
+template <typename InType, typename OutType, typename Functor>
+void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
+                 void* data) {
+  const char* i0 = args[0];
+  const char* i1 = args[1];
+  char* o = args[2];
+  for (npy_intp k = 0; k < *dimensions; k++) {
+    InType x = *reinterpret_cast<const InType*>(i0);
+    InType y = *reinterpret_cast<const InType*>(i1);
+    *reinterpret_cast<OutType*>(o) = Functor()(x, y);
+    i0 += steps[0];
+    i1 += steps[1];
+    o += steps[2];
+  }
+}
+
+template <typename Functor>
+void CompareUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
+                  void* data) {
+  BinaryUFunc<bfloat16, npy_bool, Functor>(args, dimensions, steps, data);
+}
+
+struct Bfloat16EqFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a == b; }
+};
+struct Bfloat16NeFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a != b; }
+};
+struct Bfloat16LtFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a < b; }
+};
+struct Bfloat16GtFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a > b; }
+};
+struct Bfloat16LeFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a <= b; }
+};
+struct Bfloat16GeFunctor {
+  npy_bool operator()(bfloat16 a, bfloat16 b) { return a >= b; }
+};
+
 // Initializes the module.
 bool Initialize() {
+  // It's critical to import umath to avoid crash in open source build.
+  import_umath1(false);
+
+  Safe_PyObjectPtr numpy_str = make_safe(MakePyString("numpy"));
+  if (!numpy_str) {
+    return false;
+  }
+  Safe_PyObjectPtr numpy = make_safe(PyImport_Import(numpy_str.get()));
+  if (!numpy) {
+    return false;
+  }
+
   // We hit a mysterious crash if we haven't initialized numpy before this:
   PyBfloat16_Type.tp_base = &PyGenericArrType_Type;
 
@@ -534,6 +589,57 @@ bool Initialize() {
   }
   if (!RegisterBfloat16Cast<complex128>(NPY_COMPLEX128,
                                         /*cast_is_safe=*/true)) {
+    return false;
+  }
+
+  // Register ufuncs
+  auto register_ufunc = [&](const char* name, PyUFuncGenericFunction fn,
+                            const std::array<int, 3>& types) {
+    Safe_PyObjectPtr ufunc_obj =
+        make_safe(PyObject_GetAttrString(numpy.get(), name));
+    if (!ufunc_obj) {
+      return false;
+    }
+    PyUFuncObject* ufunc = reinterpret_cast<PyUFuncObject*>(ufunc_obj.get());
+    if (types.size() != ufunc->nargs) {
+      PyErr_Format(PyExc_AssertionError,
+                   "ufunc %s takes %d arguments, loop takes %lu", name,
+                   ufunc->nargs, types.size());
+      return false;
+    }
+    if (PyUFunc_RegisterLoopForType(ufunc, npy_bfloat16_, fn,
+                                    const_cast<int*>(types.data()),
+                                    nullptr) < 0) {
+      return false;
+    }
+    return true;
+  };
+
+  // Comparisons
+  const std::array<int, 3> compare_types = {npy_bfloat16_, npy_bfloat16_,
+                                            NPY_BOOL};
+
+  if (!register_ufunc("equal", CompareUFunc<Bfloat16EqFunctor>,
+                      compare_types)) {
+    return false;
+  }
+  if (!register_ufunc("not_equal", CompareUFunc<Bfloat16NeFunctor>,
+                      compare_types)) {
+    return false;
+  }
+  if (!register_ufunc("less", CompareUFunc<Bfloat16LtFunctor>, compare_types)) {
+    return false;
+  }
+  if (!register_ufunc("greater", CompareUFunc<Bfloat16GtFunctor>,
+                      compare_types)) {
+    return false;
+  }
+  if (!register_ufunc("less_equal", CompareUFunc<Bfloat16LeFunctor>,
+                      compare_types)) {
+    return false;
+  }
+  if (!register_ufunc("greater_equal", CompareUFunc<Bfloat16GeFunctor>,
+                      compare_types)) {
     return false;
   }
   return true;

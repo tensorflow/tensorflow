@@ -341,7 +341,7 @@ class Literal {
 
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
-  static std::unique_ptr<Literal> CreateFullWithMonotonicDim0MajorLayout(
+  static std::unique_ptr<Literal> CreateFullWithDescendingLayout(
       tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value);
 
   // Creates a new literal from an array. The variants not ending with
@@ -1233,10 +1233,9 @@ void Literal::PopulateWithValue(NativeT value,
 }
 
 template <typename NativeT>
-/* static */ std::unique_ptr<Literal>
-Literal::CreateFullWithMonotonicDim0MajorLayout(
+/* static */ std::unique_ptr<Literal> Literal::CreateFullWithDescendingLayout(
     tensorflow::gtl::ArraySlice<int64> dimensions, NativeT value) {
-  Shape this_shape = ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+  Shape this_shape = ShapeUtil::MakeShapeWithDescendingLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() = this_shape;

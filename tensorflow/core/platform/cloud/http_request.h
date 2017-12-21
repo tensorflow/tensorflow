@@ -101,6 +101,20 @@ class HttpRequest {
   /// read. Existing content of the vector will be cleared.
   virtual Status SetResultBuffer(std::vector<char>* out_buffer) = 0;
 
+  /// \brief Specifies the buffer for receiving the response body.
+  ///
+  /// This method should be used when a caller knows the upper bound of the
+  /// size of the response data.  The caller provides a pre-allocated buffer
+  /// and its size. After the Send() method is called, the
+  /// GetResultBufferDirectBytesTransferred() method may be used to learn to the
+  /// number of bytes that were transferred using this method.
+  virtual Status SetResultBufferDirect(char* buffer, size_t size) = 0;
+
+  /// \brief Returns the number of bytes transferred, when using
+  /// SetResultBufferDirect(). This method may only be used when using
+  /// SetResultBufferDirect().
+  virtual size_t GetResultBufferDirectBytesTransferred() = 0;
+
   /// \brief Returns the response headers of a completed request.
   ///
   /// If the header is not found, returns an empty string.
