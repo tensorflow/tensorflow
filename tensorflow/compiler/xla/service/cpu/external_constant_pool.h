@@ -50,8 +50,8 @@ class ExternalConstantPool {
   const uint8* Find(const string& name);
 
  private:
-  // We need to `free()` pointers allocated into `entries_` since we allocate
-  // them with `posix_memalign`.
+  // We need to `AlignedFree` pointers allocated into `entries_` since we
+  // allocate them with `AlignedMalloc`.
   struct FreeDeleter {
     void operator()(void* ptr) { tensorflow::port::AlignedFree(ptr); }
   };
