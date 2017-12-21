@@ -177,8 +177,9 @@ The basic deep neural network model must define the following three sections:
 
 ### Define the input layer
 
-Call @{tf.feature_column.input_layer} to convert your feature dictionary and
-feature columns into input for your model. For example:
+The first line of the `model_fn` calls @{tf.feature_column.input_layer} to
+convert the feature dictionary and `feature_columns` into input for your model,
+as follows:
 
 ```python
     # Use `input_layer` to apply the feature columns.
@@ -577,14 +578,13 @@ function for custom Estimators; everything else is the same.
 For more details, be sure to check out:
 
 * The
-[official TensorFlow implementation of MNIST](https://github.com/tensorflow/models/tree/master/official/mnist),
-which uses a custom estimator.
-
+  [official TensorFlow implementation of MNIST](https://github.com/tensorflow/models/tree/master/official/mnist),
+  which uses a custom estimator.
 * The TensorFlow
-[official models repository](https://github.com/tensorflow/models/tree/master/official),
-which contains more curated examples using custom estimators.
-
+  [official models repository](https://github.com/tensorflow/models/tree/master/official),
+  which contains more curated examples using custom estimators.
 * This [TensorBoard video](https://youtu.be/eBbEDRsCmv4), which introduces
-TensorBoard.
-
-
+  TensorBoard.
+* The @{$low_level_intro$Low Level Introduction}, which demonstrates
+  how to experiment directly with TensorFlow's low level APIs, making debugging
+  easier.
