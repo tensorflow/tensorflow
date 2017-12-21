@@ -1277,10 +1277,22 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                                 true_computation(), new_operands[2],
                                 false_computation());
       break;
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateSend(new_operands[0], channel_id());
+      break;
     case HloOpcode::kSendDone:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateSendDone(new_operands[0]);
+      break;
+    case HloOpcode::kRecv:
+      CHECK_EQ(new_operands.size(), 0);
+      clone = CreateRecv(shape, channel_id());
+      break;
+    case HloOpcode::kRecvDone:
+      CHECK_EQ(new_operands.size(), 1);
+      clone = CreateRecvDone(new_operands[0]);
+      break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
