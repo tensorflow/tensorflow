@@ -14,7 +14,9 @@
 # ==============================================================================
 """Resource management library.
 
+@@get_abs_path
 @@get_data_files_path
+@@get_path_root
 @@get_path_to_datafile
 @@get_root_dir_with_all_resources
 @@load_resource
@@ -31,6 +33,43 @@ from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.all_util import remove_undocumented
 
 
+def get_path_root(path, levels):
+  """Get the absolute path to a containg directory of a file.
+
+  Args:
+    path: a string resource path to the contained file.
+    levels: a integer indicating how many levels to go up.
+
+  Returns:
+    The absolute path for the containing directory.
+  """
+  path = _os.path.dirname(path)
+
+  for _ in xrange(levels):
+    path = _os.path.join(path, _os.pardir)
+
+  path = _os.path.abspath(path)
+  return path
+
+
+def get_abs_path(path, frame, level):
+  """Get the absolute path relative to a file in the callstack.
+
+  Args:
+    path: a string resource path relative to tensorflow/.
+    frame: a integer indicating the position in the callstack.
+    level: a integer indicating the level of the file.
+
+  Returns:
+    The absolute path for the given relative path.
+  """
+  loc = _inspect.getfile(_sys._getframe(frame))
+  root = get_path_root(loc, level)
+  path = _os.path.join(root, path)
+  path = _os.path.abspath(path)
+  return path
+
+
 def load_resource(path):
   """Load the resource at given path, where path is relative to tensorflow/.
 
@@ -43,10 +82,8 @@ def load_resource(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  tensorflow_root = (_os.path.join(
-      _os.path.dirname(__file__), _os.pardir, _os.pardir))
-  path = _os.path.join(tensorflow_root, path)
-  path = _os.path.abspath(path)
+  path = _os.path.join(get_path_root(__file__, 2), path)
+
   with open(path, 'rb') as f:
     return f.read()
 

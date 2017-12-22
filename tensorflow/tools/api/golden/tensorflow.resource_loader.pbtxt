@@ -1,8 +1,16 @@
 path: "tensorflow.resource_loader"
 tf_module {
   member_method {
+    name: "get_abs_path"
+    argspec: "args=[\'path\', \'frame\', \'level\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_data_files_path"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_path_root"
+    argspec: "args=[\'path\', \'levels\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_path_to_datafile"
