@@ -39,22 +39,40 @@ def random_dataset():
   return tf.data.Dataset.from_tensors((images, labels))
 
 
+def train_one_epoch(defun=False):
+  model = mnist.MNISTModel(data_format())
+  if defun:
+    model.call = tfe.defun(model.call)
+  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+  dataset = random_dataset()
+  with tf.device(device()):
+    tf.train.get_or_create_global_step()
+    mnist.train_one_epoch(model, optimizer, dataset)
+
+
+def evaluate(defun=False):
+  model = mnist.MNISTModel(data_format())
+  dataset = random_dataset()
+  if defun:
+    model.call = tfe.defun(model.call)
+  with tf.device(device()):
+    tf.train.get_or_create_global_step()
+    mnist.test(model, dataset)
+
+
 class MNISTTest(tf.test.TestCase):
 
   def testTrainOneEpoch(self):
-    model = mnist.MNISTModel(data_format())
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
-    dataset = random_dataset()
-    with tf.device(device()):
-      tf.train.get_or_create_global_step()
-      mnist.train_one_epoch(model, optimizer, dataset)
+    train_one_epoch(defun=False)
 
   def testTest(self):
-    model = mnist.MNISTModel(data_format())
-    dataset = random_dataset()
-    with tf.device(device()):
-      tf.train.get_or_create_global_step()
-      mnist.test(model, dataset)
+    evaluate(defun=False)
+
+  def testTrainOneEpochWithDefunCall(self):
+    train_one_epoch(defun=True)
+
+  def testTestWithDefunCall(self):
+    evaluate(defun=True)
 
 
 if __name__ == "__main__":

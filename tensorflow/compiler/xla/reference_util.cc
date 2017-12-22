@@ -606,8 +606,12 @@ ReferenceUtil::ReduceToRowArray2D(
                    i2 == 0 || (dim_set.count(2) && i2 < array.n3()); ++i2) {
                 for (int64 i3 = 0;
                      i3 == 0 || (dim_set.count(3) && i3 < array.n4()); ++i3) {
-                  accumulator = reduce_function(
-                      accumulator, array(a0 + i0, a1 + i1, a2 + i2, a3 + i3));
+                  // Handle zero-sized arrays.
+                  if (array.n1() > 0 && array.n2() > 0 && array.n3() > 0 &&
+                      array.n4() > 0) {
+                    accumulator = reduce_function(
+                        accumulator, array(a0 + i0, a1 + i1, a2 + i2, a3 + i3));
+                  }
                 }
               }
             }

@@ -2124,6 +2124,41 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "zero_sized_hlo_elimination",
+    srcs = ["zero_sized_hlo_elimination.cc"],
+    hdrs = ["zero_sized_hlo_elimination.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "zero_sized_hlo_elimination_test",
+    srcs = ["zero_sized_hlo_elimination_test.cc"],
+    deps = [
+        ":hlo",
+        ":shape_inference",
+        ":zero_sized_hlo_elimination",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "pool",
     hdrs = ["pool.h"],
     deps = [

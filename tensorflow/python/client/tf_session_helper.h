@@ -174,6 +174,21 @@ TF_Function* TF_GraphToFunction_wrapper(
     const NameVector& output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* out_status);
 
+// Set the shapes and types for the output's handle.
+//
+// The sizes of 'shapes', 'ranks', and 'types' must be equal; `shapes[i]`
+// contains the shape of the handle's i-th value, `ranks[i]` contains the i-th
+// shape's rank, and `types[i]` contains the i-th value's dtype. If the i-th
+// shape is unknown, then `ranks[i]` must be equal to -1.
+//
+// The space between the double angle brackets below looks extraneous, but
+// our version of SWIG cannot parse ">>".
+void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+    TF_Graph* graph, TF_Output output,
+    const std::vector<std::vector<int64_t> >& shapes,
+    const std::vector<int>& ranks, const std::vector<TF_DataType>& types,
+    TF_Status* status);
+
 // Set the shape of output. If unknown is true, `num_dims` must be set to
 // -1 and `dims` is set to nullptr.
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,

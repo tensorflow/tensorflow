@@ -118,9 +118,14 @@ FirstReadyManager::FirstReadyManager(
     : ReadyNodeManager(), node_state_(node_state) {
   std::make_heap(nodes_.begin(), nodes_.end());
   greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    // Note: we need a node with minimum time_ready, not
-    // maximum; hence, using a > b for comparison function.
-    return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
+    if (node_state_->at(a).time_ready == node_state_->at(b).time_ready) {
+      // Use Node name as tie-breaker for deterministic node scheduling.
+      return a->name().compare(b->name()) > 0;
+    } else {
+      // Note: we need a node with minimum time_ready, not
+      // maximum; hence, using a > b for comparison function.
+      return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
+    }
   };
 }
 
@@ -972,6 +977,17 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
     }
   }
   return Summary();
+}
+
+const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
+    const {
+  std::unordered_map<string, int64> result;
+  for (const auto& device : device_) {
+    const string& name = device.first;
+    const DeviceState& state = device.second;
+    result[name] = state.max_memory_usage;
+  }
+  return result;
 }
 
 }  // end namespace grappler

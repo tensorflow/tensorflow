@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -705,37 +705,38 @@ class IteratorGetNextOp : public AsyncOpKernel {
     IteratorResource* iterator;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
-
     // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
-    thread_pool_->Schedule([this, ctx, iterator, done]() {
-      core::ScopedUnref unref_iterator(iterator);
+    thread_pool_->Schedule(std::bind(
+        [this, ctx, iterator](DoneCallback done) {
+          core::ScopedUnref unref_iterator(iterator);
 
-      std::vector<Tensor> components;
-      bool end_of_sequence = false;
+          std::vector<Tensor> components;
+          bool end_of_sequence = false;
 
-      IteratorContext::Params params;
-      params.env = ctx->env();
-      params.stats_aggregator_getter = [iterator]() {
-        return iterator->stats_aggregator();
-      };
-      params.runner = *(ctx->runner());
-      IteratorContext iter_ctx(std::move(params));
+          IteratorContext::Params params;
+          params.env = ctx->env();
+          params.stats_aggregator_getter = [iterator]() {
+            return iterator->stats_aggregator();
+          };
+          params.runner = *(ctx->runner());
+          IteratorContext iter_ctx(std::move(params));
 
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                        errors::OutOfRange("End of sequence"), done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
+              done);
+          OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
+                            errors::OutOfRange("End of sequence"), done);
 
-      for (int i = 0; i < components.size(); ++i) {
-        // TODO(mrry): Check that the shapes match the shape attrs.
-        ctx->set_output(i, components[i]);
-      }
+          for (int i = 0; i < components.size(); ++i) {
+            // TODO(mrry): Check that the shapes match the shape attrs.
+            ctx->set_output(i, components[i]);
+          }
 
-      done();
-    });
+          done();
+        },
+        std::move(done)));
   }
 
  private:

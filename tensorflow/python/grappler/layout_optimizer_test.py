@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -279,7 +280,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_split_0', nodes)
+      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_split_0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSplitVWithNonConstAxis(self):
@@ -313,7 +314,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-SplitV-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_SplitV_2', nodes)
+      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_SplitV_2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testPadWithConstPaddings(self):
@@ -348,6 +349,152 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
       self.assertIn('LayoutOptimizer-Pad-PaddingsConst', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testConcatWithControlDependency(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      axis = constant_op.constant(3)
+      var = variables.Variable(3)
+      assign = state_ops.assign(var, 6)
+      with ops.control_dependencies([assign]):
+        concat = array_ops.concat([conv, conv], axis)
+      output = array_ops.identity(concat)
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-concat-0-0', nodes)
+      self.assertIn('LayoutOptimizer-concat-Const_2', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testFill(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = array_ops.placeholder(dtype='float32')
+      conv = _two_layer_model(x)
+      shape = array_ops.shape(conv)
+      scalar = array_ops.constant(5.7)
+      fill = array_ops.fill(shape, scalar)
+      output = array_ops.identity(fill)
+
+      x_val = [3.4] * 784
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={x: x_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                x: x_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      num_vec_permute = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        if node.name.startswith('LayoutOptimizerVecPermute'):
+          num_vec_permute += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      # Two vector permute nodes were initially added in the Expand phase of
+      # LayoutOptimizer; they cancelled out each other in the Collapse phase.
+      expected_vec_permute = 0
+      self.assertEqual(expected_vec_permute, num_vec_permute)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Fill-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testReverseWithConstDims(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      dims = constant_op.constant([3, 1], name='DimsConst')
+      reverse = array_ops.reverse(conv, dims)
+      output = array_ops.identity(reverse)
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-ReverseV2-0-0', nodes)
+      self.assertIn('LayoutOptimizer-ReverseV2-DimsConst', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testReverseWithNonConstDims(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      dims = array_ops.placeholder(dtype='int32')
+      reverse = array_ops.reverse(conv, dims)
+      output = array_ops.identity(reverse)
+
+      dims_val = [2, 3]
+      with session.Session() as sess:
+        output_val_ref = sess.run(output, feed_dict={dims: dims_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={
+                dims: dims_val
+            })
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-ReverseV2-0-0', nodes)
+      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_ReverseV2_1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testTernaryOp(self):

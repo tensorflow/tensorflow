@@ -727,6 +727,29 @@ Status IrEmitter::HandleRng(HloInstruction* random) {
       .EmitLoop(IrName(random));
 }
 
+Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormInference directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "BatchNormRewriter or to a cudnn CustomCall using "
+      "CudnnBatchNormRewriter.");
+}
+
+Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormTraining directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "BatchNormRewriter or to a cudnn CustomCall using "
+      "CudnnBatchNormRewriter.");
+}
+
+Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormGrad directly.  It should "
+      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
+      "to a cudnn CustomCall using CudnnBatchNormRewriter.");
+}
+
 Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   auto pred = conditional->operand(0);
   auto true_arg = conditional->operand(1);

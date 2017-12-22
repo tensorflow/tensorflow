@@ -32,7 +32,7 @@ class MemoryInputStream : public io::InputStreamInterface {
   explicit MemoryInputStream(const char* buffer, size_t length)
       : buf_(buffer), len_(length), pos_(0) {}
 
-  ~MemoryInputStream(){};
+  ~MemoryInputStream() override {}
 
   Status ReadNBytes(int64 bytes_to_read, string* result) override {
     result->clear();
@@ -75,7 +75,7 @@ class DecodeCompressedOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("compression_type", &compression_type_));
     OP_REQUIRES(context,
-                (compression_type_ == "" || compression_type_ == "ZLIB" ||
+                (compression_type_.empty() || compression_type_ == "ZLIB" ||
                  compression_type_ == "GZIP"),
                 errors::InvalidArgument(
                     "Only ZLIB, GZIP or NONE are supported compressions"));
@@ -91,7 +91,7 @@ class DecodeCompressedOp : public OpKernel {
                    context->allocate_output("output", bytes_tensor->shape(),
                                             &output_tensor));
     auto output_flat = output_tensor->flat<string>();
-    if (compression_type_ == "") {
+    if (compression_type_.empty()) {
       for (int64 i = 0; i < bytes_flat.size(); i++) {
         output_flat(i) = bytes_flat(i);
       }
@@ -106,7 +106,7 @@ class DecodeCompressedOp : public OpKernel {
             new io::ZlibInputStream(
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
-        std::string output_string;
+        string output_string;
         Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
         output_flat(i) = output_string;
@@ -116,7 +116,7 @@ class DecodeCompressedOp : public OpKernel {
 
  private:
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
-  std::string compression_type_;
+  string compression_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeCompressed").Device(DEVICE_CPU),

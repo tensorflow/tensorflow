@@ -410,7 +410,7 @@ class ParseExampleTest(test.TestCase):
             bname: bytes_feature([b"b0_str"]),
         })), example(features=features({
             aname: float_feature([-1, -1]),
-            bname: bytes_feature([b"b1"]),
+            bname: bytes_feature([b""]),
         }))
     ]
 
@@ -419,7 +419,7 @@ class ParseExampleTest(test.TestCase):
         bname: np.array(["b0_str"], dtype=bytes).reshape(1, 1, 1, 1)
     }, {
         aname: np.array([-1, -1], dtype=np.float32).reshape(1, 2, 1),
-        bname: np.array(["b1"], dtype=bytes).reshape(1, 1, 1, 1)
+        bname: np.array([""], dtype=bytes).reshape(1, 1, 1, 1)
     }]
 
     for proto, expected_output in zip(original, expected_outputs):

@@ -1364,7 +1364,7 @@ def tf_py_wrap_cc(name,
 # 1. When --define=no_tensorflow_py_deps=true, the py_test depends on a marker
 #    file of the pip package, the test gets to rerun when the pip package change.
 #    Note that this only works on Windows. See the definition of
-#    //tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
+#    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps=[], data=[], **kwargs):
   native.py_test(

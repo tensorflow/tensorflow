@@ -1709,11 +1709,11 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   flr = pflr.GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   tensorflow::Graph graph(fld);
-  tensorflow::GraphConstructorOptions gc_opts;
-  const auto& tf_convert_status =
-      tensorflow::ConvertGraphDefToGraph(gc_opts, graphdef_copy, &graph);
+  tensorflow::ImportGraphDefOptions gc_opts;
+  const auto& tf_convert_status = tensorflow::ImportGraphDef(
+      gc_opts, graphdef_copy, &graph, nullptr, nullptr);
   if (!tf_convert_status.ok()) {
-    LOG(ERROR) << "tensorflow::ConvertGraphDefToGraph failed with status: "
+    LOG(ERROR) << "tensorflow::ImportGraphDef failed with status: "
                << tf_convert_status.ToString();
     return false;
   }

@@ -127,8 +127,26 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   return false;
 }
 
+const char* const kCudnnBatchNormForwardInferenceCallTarget =
+    "__cudnn$batchNormalizationForwardInference";
+const char* const kCudnnBatchNormForwardTrainingCallTarget =
+    "__cudnn$batchNormalizationForwardTraining";
+const char* const kCudnnBatchNormBackwardCallTarget =
+    "__cudnn$batchNormalizationBackward";
+
+bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnBatchNormForwardInferenceCallTarget ||
+         target == kCudnnBatchNormForwardTrainingCallTarget ||
+         target == kCudnnBatchNormBackwardCallTarget;
+}
+
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return ImplementedAsGemm(hlo) || ImplementedAsDnnConvolution(hlo);
+  return ImplementedAsGemm(hlo) || ImplementedAsDnnConvolution(hlo) ||
+         IsCustomCallToDnnBatchNorm(hlo);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
