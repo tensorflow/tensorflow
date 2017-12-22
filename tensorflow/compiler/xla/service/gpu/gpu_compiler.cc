@@ -140,8 +140,6 @@ tensorflow::Status OptimizeHloModule(
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
-    pipeline.AddPass<ZeroSizedHloElimination>();
-    pipeline.AddPass<HloDCE>();
     pipeline.AddPass<DotDecomposer>();
     {
       auto& pass =
@@ -159,6 +157,10 @@ tensorflow::Status OptimizeHloModule(
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
           /*use_fusion=*/false);
+
+      // BatchNormExpander can create zero-sized ops, so zero-sized HLO
+      // elimination has to come after that pass.
+      pipeline.AddPass<ZeroSizedHloElimination>();
 
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,

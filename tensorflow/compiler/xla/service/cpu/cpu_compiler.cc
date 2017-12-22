@@ -275,8 +275,6 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
-  pipeline.AddPass<ZeroSizedHloElimination>();
-  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvCanonicalization>();
   {
@@ -293,6 +291,11 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_strength_reduction=*/false);
+
+    // BatchNormExpander can create zero-sized ops, so zero-sized HLO
+    // elimination has to come after that pass.
+    pipeline.AddPass<ZeroSizedHloElimination>();
+
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
