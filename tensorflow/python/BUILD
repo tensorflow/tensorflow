@@ -4411,6 +4411,24 @@ py_test(
     ],
 )
 
+py_test(
+    name = "datasets_test",
+    size = "small",
+    srcs = [
+        "grappler/datasets_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":tf_item",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data",
+    ],
+)
+
 py_library(
     name = "tf_cluster",
     srcs = [
