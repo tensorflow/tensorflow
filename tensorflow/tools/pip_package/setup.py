@@ -177,7 +177,9 @@ def find_files(pattern, root):
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
-matches += ['../' + x for x in find_files('*', '_solib_local') if '.py' not in x]
+matches += [
+    '../' + x for x in find_files('*', '_solib_local') if '.py' not in x
+]
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

@@ -28,8 +28,11 @@ from tensorflow.python.platform import test
 
 class RecordInputOpTest(test.TestCase):
 
-  def generateTestData(self, prefix, n, m,
-      compression_type=tf_record.TFRecordCompressionType.NONE):
+  def generateTestData(self,
+                       prefix,
+                       n,
+                       m,
+                       compression_type=tf_record.TFRecordCompressionType.NONE):
     options = tf_record.TFRecordOptions(compression_type)
     for i in range(n):
       f = os.path.join(self.get_temp_dir(), prefix + "." + str(i))
@@ -55,7 +58,10 @@ class RecordInputOpTest(test.TestCase):
 
   def testRecordInputSimpleGzip(self):
     with self.test_session() as sess:
-      self.generateTestData("basic", 1, 1,
+      self.generateTestData(
+          "basic",
+          1,
+          1,
           compression_type=tf_record.TFRecordCompressionType.GZIP)
 
       yield_op = data_flow_ops.RecordInput(
@@ -64,14 +70,17 @@ class RecordInputOpTest(test.TestCase):
           buffer_size=1,
           batch_size=1,
           name="record_input",
-          compression_type=
-              tf_record.TFRecordCompressionType.GZIP).get_yield_op()
+          compression_type=tf_record.TFRecordCompressionType.GZIP).get_yield_op(
+          )
 
       self.assertEqual(sess.run(yield_op), b"0000000000")
 
   def testRecordInputSimpleZlib(self):
     with self.test_session() as sess:
-      self.generateTestData("basic", 1, 1,
+      self.generateTestData(
+          "basic",
+          1,
+          1,
           compression_type=tf_record.TFRecordCompressionType.ZLIB)
 
       yield_op = data_flow_ops.RecordInput(
@@ -80,8 +89,8 @@ class RecordInputOpTest(test.TestCase):
           buffer_size=1,
           batch_size=1,
           name="record_input",
-          compression_type=
-              tf_record.TFRecordCompressionType.ZLIB).get_yield_op()
+          compression_type=tf_record.TFRecordCompressionType.ZLIB).get_yield_op(
+          )
 
       self.assertEqual(sess.run(yield_op), b"0000000000")
 

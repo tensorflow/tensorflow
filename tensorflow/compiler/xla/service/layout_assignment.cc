@@ -476,6 +476,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
           body_layout.result_shape(), instruction, 0,
           /*mandatory=*/true));
     } else if (instruction->opcode() == HloOpcode::kCustomCall) {
+      if (!CustomCallRequiresMajorFirstLayout(instruction)) {
+        continue;
+      }
       // Add constraints for kCustomCall instruction operands and instructions.
       // For now we only support major-first layouts for all inputs and outputs.
       Shape result_shape = ShapeUtil::MakeShapeWithDescendingLayout(
@@ -600,11 +603,9 @@ Status CheckConstantLayout(HloInstruction* constant) {
   return Status::OK();
 }
 
-// Check that all layouts in the module have been set and satisfy all necessary
-// conditions.
-Status CheckLayouts(
-    HloModule* module,
-    const std::map<HloComputation*, ComputationLayout>& computation_layouts) {
+}  // namespace
+
+Status LayoutAssignment::CheckLayouts(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -648,10 +649,12 @@ Status CheckLayouts(
         case HloOpcode::kCall:
           TF_RETURN_IF_ERROR(CheckCallLayout(
               instruction,
-              FindOrDie(computation_layouts, instruction->to_apply())));
+              FindOrDie(computation_layouts_, instruction->to_apply())));
           break;
         case HloOpcode::kCustomCall:
-          TF_RETURN_IF_ERROR(CheckCustomCallLayout(instruction));
+          if (CustomCallRequiresMajorFirstLayout(instruction)) {
+            TF_RETURN_IF_ERROR(CheckCustomCallLayout(instruction));
+          }
           break;
         case HloOpcode::kFusion:
           TF_RETURN_IF_ERROR(CheckFusionLayout(instruction));
@@ -659,7 +662,7 @@ Status CheckLayouts(
         case HloOpcode::kParameter:
           TF_RETURN_IF_ERROR(CheckParameterLayout(
               instruction,
-              FindOrDie(computation_layouts, instruction->parent())));
+              FindOrDie(computation_layouts_, instruction->parent())));
           break;
         case HloOpcode::kConstant:
           TF_RETURN_IF_ERROR(CheckConstantLayout(instruction));
@@ -667,8 +670,8 @@ Status CheckLayouts(
         case HloOpcode::kWhile:
           TF_RETURN_IF_ERROR(CheckWhileLayout(
               instruction,
-              FindOrDie(computation_layouts, instruction->while_condition()),
-              FindOrDie(computation_layouts, instruction->while_body())));
+              FindOrDie(computation_layouts_, instruction->while_condition()),
+              FindOrDie(computation_layouts_, instruction->while_body())));
           break;
         default:
           break;
@@ -680,14 +683,12 @@ Status CheckLayouts(
   // computation root.
   TF_RET_CHECK(ShapeUtil::Equal(
       module->entry_computation()->root_instruction()->shape(),
-      FindOrDie(computation_layouts, module->entry_computation())
+      FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout()
           .shape()));
 
   return Status::OK();
 }
-
-}  // namespace
 
 LayoutAssignment::LayoutAssignment(ComputationLayout* entry_computation_layout)
     : entry_computation_layout_(entry_computation_layout) {
@@ -1302,8 +1303,8 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
     TF_RET_CHECK(LayoutUtil::HasLayout(instruction->shape()));
   }
 
-  // Copy the root instruction's result if the it does not match the result
-  // layout constraint
+  // Copy the root instruction's result if its layout does not match the result
+  // layout constraint.
   if (constraints.ResultLayout() != nullptr &&
       !constraints.ResultLayout()->MatchesLayoutInShape(
           computation->root_instruction()->shape())) {
@@ -1421,7 +1422,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     }
   }
 
-  TF_RETURN_IF_ERROR(CheckLayouts(module, computation_layouts_));
+  TF_RETURN_IF_ERROR(CheckLayouts(module));
 
   VLOG(3) << "After layout assignment:";
   XLA_VLOG_LINES(3, module->ToString());

@@ -49,7 +49,6 @@ xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
     xla::cpu::runtime::V4F32SSE x);
 #endif
-
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_

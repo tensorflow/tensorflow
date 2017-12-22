@@ -194,6 +194,21 @@ TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
 
+// Set the shapes and types of the output's handle.
+//
+// The lengths of the arrays pointed to by `shapes`, `ranks`, and `types` must
+// all be equal to `num_shapes_and_types`. If `ranks[i] != -1`, (i.e., if the
+// rank is known), then it must be equal to the length of `shapes[i]`; if
+// `ranks[i] == 1`, then `shapes[i]` may be nullptr.
+//
+// TODO(akshayka): Implement a corresponding getter method.
+void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
+                                           int num_shapes_and_types,
+                                           const int64_t** shapes,
+                                           const int* ranks,
+                                           const TF_DataType* types,
+                                           TF_Status* status);
+
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
                     const char* mutation_type);
 

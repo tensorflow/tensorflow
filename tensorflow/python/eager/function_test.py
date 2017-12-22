@@ -146,7 +146,7 @@ class FunctionTest(test.TestCase):
     step_op = function.make_defun_op(step)
 
     self.assertEqual(step_op.output_dtypes, dtypes.float32)
-    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape(None))
+    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape([]))
     self.assertAllEqual(step_op(), 2.0)
 
   def testDefunOpGraphModeNoneOutput(self):
@@ -178,6 +178,42 @@ class FunctionTest(test.TestCase):
       return v.read_value()
 
     self.assertEqual(3.0, float(f()))
+
+  def testDefunShapeInferenceWithCapturedResourceVariable(self):
+    v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+
+    def f():
+      x = constant_op.constant([[1, 2], [3, 4]])
+      out = math_ops.matmul(v, x)
+      self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+    compiled = function.defun(f)
+    compiled()
+
+  def testDefunShapeInferenceWithCapturedResourceVariableInGraphMode(self):
+    with context.graph_mode():
+      v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+
+      def f():
+        x = constant_op.constant([[1, 2], [3, 4]])
+        out = math_ops.matmul(v, x)
+        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+      compiled = function.defun(f)
+      compiled()
+
+  def testDefunShapeInferenceWithCapturedVariableInGraphMode(self):
+    with context.graph_mode():
+      v = variables.Variable([[1, 2], [3, 4]])
+
+      def f():
+        x = constant_op.constant([[1, 2], [3, 4]])
+        out = math_ops.matmul(v, x)
+        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+      # Check that shape inference works while creating the defun
+      compiled = function.defun(f)
+      compiled()
 
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)

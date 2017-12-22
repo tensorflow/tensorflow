@@ -52,12 +52,12 @@ class DecodeLibsvmOp : public OpKernel {
     for (int i = 0; i < input_flat.size(); ++i) {
       std::vector<string> entries =
           str_util::Split(input_flat(i), " ", str_util::SkipEmpty());
-      OP_REQUIRES(ctx, (entries.size() > 0),
+      OP_REQUIRES(ctx, !entries.empty(),
                   errors::InvalidArgument("No entries found for input[", i,
                                           "]: \"", input_flat(i), "\""));
       Tlabel label_value;
       OP_REQUIRES(
-          ctx, ConvertHelper<Tlabel>(entries[0].c_str(), &label_value),
+          ctx, ConvertHelper<Tlabel>(entries[0], &label_value),
           errors::InvalidArgument("Label format incorrect: ", entries[0]));
       label(i) = label_value;
       for (int j = 1; j < entries.size(); j++) {

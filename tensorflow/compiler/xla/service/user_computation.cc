@@ -1238,6 +1238,14 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
+  if (tensorflow::StringPiece(custom_call_request.call_target_name())
+          .starts_with("$")) {
+    return InvalidArgument(
+        "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+        "are reserved for internal use.",
+        custom_call_request.call_target_name().c_str());
+  }
+
   const ComputationDataHandle handle = CreateComputationDataHandle();
 
   OperationRequest& request =

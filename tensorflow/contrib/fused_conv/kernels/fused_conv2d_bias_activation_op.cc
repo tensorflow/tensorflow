@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/activation_mode.h"
@@ -278,6 +279,28 @@ Status TransformNHWCToNCHW(OpKernelContext* ctx, const Tensor& nhwc_tensor,
   return Status::OK();
 }
 
+// Adjusts padding so cudnn supports it. Sets `adjusted_padding` to be the
+// adjusted padding, and `extra_padding_before` and `extra_padding_after` to be
+// the extra padding that FusedConv needs to apply before calling cudnn.
+void AdjustPaddingForCudnn(int padding, bool is_int8x4, int filter_size,
+                           int* adjusted_padding, int* extra_padding_before,
+                           int* extra_padding_after) {
+#if CUDNN_VERSION < 7000
+  if (is_int8x4 && filter_size >= 6) {
+    // TODO(b/70795525): Remove after NVIDIA fixes this bug with int8 fused
+    // convolution. I don't know cuDNN7 still has the bug, so enable this
+    // workaround for cuDNN6 or older.
+    *adjusted_padding = 0;
+    *extra_padding_before = padding / 2;
+    *extra_padding_after = padding - *extra_padding_before;
+    return;
+  }
+#endif
+  *adjusted_padding = padding / 2 * 2;
+  *extra_padding_before = 0;
+  *extra_padding_after = padding % 2;
+}
+
 template <typename T, typename BiasType, typename ScaleType>
 void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     launch(OpKernelContext* ctx, bool cudnn_use_autotune,
@@ -338,12 +361,21 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
         0, (output_rows - 1) * row_stride + filter_rows - conv_input_rows);
     padding_cols = std::max<int>(
         0, (output_cols - 1) * col_stride + filter_cols - conv_input_cols);
-    const int padding_rows_parity = padding_rows & 1;
-    const int padding_cols_parity = padding_cols & 1;
-    if ((padding_rows_parity | padding_cols_parity) != 0) {
+    int extra_top_padding = 0;
+    int extra_bottom_padding = 0;
+    int extra_left_padding = 0;
+    int extra_right_padding = 0;
+    AdjustPaddingForCudnn(padding_rows, is_int8x4, filter_rows, &padding_rows,
+                          &extra_top_padding, &extra_bottom_padding);
+    AdjustPaddingForCudnn(padding_cols, is_int8x4, filter_cols, &padding_cols,
+                          &extra_left_padding, &extra_right_padding);
+    if (extra_top_padding != 0 || extra_bottom_padding != 0 ||
+        extra_left_padding != 0 || extra_right_padding != 0) {
       Tensor transformed_input;
-      const int new_conv_input_rows = conv_input_rows + padding_rows_parity;
-      const int new_conv_input_cols = conv_input_cols + padding_cols_parity;
+      const int new_conv_input_rows =
+          conv_input_rows + extra_top_padding + extra_bottom_padding;
+      const int new_conv_input_cols =
+          conv_input_cols + extra_left_padding + extra_right_padding;
 
       using VectT = typename Int8x4ToInt32<typename RawType<T>::type>::type;
       auto pad_data_format = is_int8x4 ? FORMAT_NCHW : data_format;
@@ -361,8 +393,9 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
           maybe_padded_conv_input.reinterpret_last_dimension<VectT, 4>());
 
       functor::PadInput<GPUDevice, VectT, int, 4>()(
-          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor, {{0, 0}},
-          {{padding_rows_parity, padding_cols_parity}},
+          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor,
+          {{extra_top_padding, extra_left_padding}},
+          {{extra_bottom_padding, extra_right_padding}},
           padded_conv_input_eigen_tensor, pad_data_format);
 
       conv_input = &maybe_padded_conv_input;
@@ -439,6 +472,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       .set_feature_map_count(output_depth)
       .set_layout(data_layout);
   dnn::ConvolutionDescriptor conv_desc;
+  CHECK_EQ(0, padding_rows % 2);
+  CHECK_EQ(0, padding_cols % 2);
   conv_desc.set_vertical_filter_stride(row_stride)
       .set_horizontal_filter_stride(col_stride)
       .set_zero_padding_height(padding_rows / 2)

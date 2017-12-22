@@ -2940,7 +2940,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(
@@ -2963,7 +2962,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(
@@ -2987,7 +2985,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(
