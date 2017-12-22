@@ -268,13 +268,13 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
 
 @ops.RegisterGradient("Svd")
 def _SvdGrad(op, grad_s, grad_u, grad_v):
-  """Gradient for Svd based on Giles' algorithm. Reference at top of file."""
+  """Gradient for the singular value decomposition."""
 
-  if op.get_attr("compute_uv") and not op.get_attr("full_matrices"):
-    raise NotImplementedError(
-        "SVD gradient is not implemented for compute_uv=True and "
-        "full_matrices=False.")
-
+  # The derivation for the compute_uv=False case, and most of
+  # the derivation for the full_matrices=True case, are in
+  # Giles' paper (see reference at top of file).  A derivation for
+  # the full_matrices=False case is available at
+  # https://j-towns.github.io/papers/svd-derivative.pdf
   a = op.inputs[0]
   a_shape = a.get_shape().with_rank_at_least(2)
 
@@ -300,7 +300,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
         "SVD gradient has not been implemented for input with unknown "
         "inner matrix shape.")
 
-  if not op.get_attr("full_matrices") or not op.get_attr("compute_uv"):
+  if not op.get_attr("compute_uv"):
     s, u, v = linalg_ops.svd(a, compute_uv=True, full_matrices=True)
   else:
     s = op.outputs[0]
@@ -329,14 +329,10 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
       grad_a.set_shape(a_shape)
       return grad_a
 
-    # TODO(rmlarsen): Define a gradient that is numerically stable for
-    # abs(m-n) > 1. Currently this does not work because there are effectively
-    # multiple singular values with value zero. I am not sure if this is a true
-    # instability or if it simply throws off the finite difference gradient
-    # checker.
-    if abs(m - n) > 1:
+    if op.get_attr("full_matrices") and abs(m - n) > 1:
       raise NotImplementedError(
-          "svd gradient is not implemented for abs(m - n) > 1")
+          "svd gradient is not implemented for abs(m - n) > 1 "
+          "when full_matrices is True")
     s_mat = array_ops.matrix_diag(s)
     s2 = math_ops.square(s)
 
@@ -352,32 +348,45 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
             array_ops.expand_dims(s2, -2) - array_ops.expand_dims(s2, -1)),
         array_ops.zeros_like(s))
     s_inv_mat = array_ops.matrix_diag(math_ops.reciprocal(s))
+
+    v1 = v[..., :, :m]
+    grad_v1 = grad_v[..., :, :m]
+
     u_gu = math_ops.matmul(u, grad_u, adjoint_a=True)
-    v_gv = math_ops.matmul(v, grad_v, adjoint_a=True)
+    v_gv = math_ops.matmul(v1, grad_v1, adjoint_a=True)
 
-    if m == n:
-      f_u = f * u_gu
-      f_v = f * v_gv
-    else:
-      dv2 = array_ops.matrix_transpose(v_gv[..., m:n, :m]) - v_gv[..., :m, m:n]
-      f_u = f * u_gu
-      f_v = f * v_gv[..., :m, :m]
+    f_u = f * u_gu
+    f_v = f * v_gv
 
-    grad_a_nouv = (
+    term1_nouv = (
         grad_s_mat + math_ops.matmul(f_u + _linalg.adjoint(f_u), s_mat) +
         math_ops.matmul(s_mat, f_v + _linalg.adjoint(f_v)))
 
-    if m != n:
-      grad_a_nouv = array_ops.concat(
-          [grad_a_nouv, math_ops.matmul(s_inv_mat, dv2)], -1)
+    term1 = math_ops.matmul(u, math_ops.matmul(term1_nouv, v1, adjoint_b=True))
+
+    if m == n:
+      grad_a_before_transpose = term1
+    else:
+      gv1t = array_ops.matrix_transpose(grad_v1)
+      gv1t_v1 = math_ops.matmul(gv1t, v1)
+      term2_nous = gv1t - math_ops.matmul(gv1t_v1, v1, adjoint_b=True)
+
+      if op.get_attr("full_matrices"):
+        v2 = v[..., :, m:n]
+        grad_v2 = grad_v[..., :, m:n]
+
+        v1t_gv2 = math_ops.matmul(v1, grad_v2, adjoint_a=True)
+        term2_nous -= math_ops.matmul(v1t_gv2, v2, adjoint_b=True)
+
+      u_s_inv = math_ops.matmul(u, s_inv_mat)
+      term2 = math_ops.matmul(u_s_inv, term2_nous)
+
+      grad_a_before_transpose = term1 + term2
 
     if use_adjoint:
-      # Use (U X V^H)^H = V (U X)^H.
-      grad_a = math_ops.matmul(
-          v, math_ops.matmul(u, grad_a_nouv), adjoint_b=True)
+      grad_a = array_ops.matrix_transpose(grad_a_before_transpose)
     else:
-      grad_a = math_ops.matmul(u,
-                               math_ops.matmul(grad_a_nouv, v, adjoint_b=True))
+      grad_a = grad_a_before_transpose
 
     grad_a.set_shape(a_shape)
     return grad_a

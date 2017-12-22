@@ -102,9 +102,21 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32SSE != nullptr);
-  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32AVX != nullptr);
-  intrinsics.neon_intrinsics = (&__xla_cpu_runtime_ExpV4F32NEON != nullptr);
+#ifdef __SSE4_1__
+  intrinsics.sse_intrinsics = true;
+#else
+  intrinsics.sse_intrinsics = false;
+#endif
+#ifdef __AVX__
+  intrinsics.avx_intrinsics = true;
+#else
+  intrinsics.avx_intrinsics = false;
+#endif
+#ifdef __ARM_NEON__
+  intrinsics.neon_intrinsics = true;
+#else
+  intrinsics.neon_intrinsics = false;
+#endif
   return intrinsics;
 }
 
@@ -201,12 +213,18 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
+#ifdef __ARM_NEON__
   REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32NEON);
-  REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32SSE);
-  REGISTER_CPU_RUNTIME_SYMBOL(ExpV8F32AVX);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32NEON);
+#endif
+#ifdef __SSE4_1__
+  REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32SSE);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32SSE);
+#endif
+#ifdef __AVX__
+  REGISTER_CPU_RUNTIME_SYMBOL(ExpV8F32AVX);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV8F32AVX);
+#endif
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
@@ -275,7 +293,11 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(scalbln, double (*)(double, long));
   REGISTER_LIBM_SYMBOL(scalbn, double (*)(double, int));
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
+#ifdef __APPLE__
+  REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
+#else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
+#endif
   REGISTER_LIBM_SYMBOL(sinh, double (*)(double));
   REGISTER_LIBM_SYMBOL(sqrt, double (*)(double));
   REGISTER_LIBM_SYMBOL(tan, double (*)(double));

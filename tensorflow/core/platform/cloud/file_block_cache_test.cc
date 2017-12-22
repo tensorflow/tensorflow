@@ -482,7 +482,7 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
   FileBlockCache cache(block_size, block_size, 0, fetcher);
   // Fork off thread for parallel read.
   std::unique_ptr<Thread> concurrent(
-      Env::Default()->StartThread({}, "concurrent", [&cache] {
+      Env::Default()->StartThread({}, "concurrent", [&cache, block_size] {
         std::vector<char> out;
         TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);

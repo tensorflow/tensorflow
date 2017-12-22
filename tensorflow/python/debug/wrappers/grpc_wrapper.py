@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import traceback
 
 # Google-internal import(s).
@@ -139,7 +138,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
 
 
 class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
-  """A tfdbg Session wrapper that can be used with TensroBoard Debugger Plugin.
+  """A tfdbg Session wrapper that can be used with TensorBoard Debugger Plugin.
 
   This wrapper is the same as `GrpcDebugWrapperSession`, except that it uses a
     predefined `watch_fn` that
@@ -169,7 +168,7 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
 
     # Keeps track of the latest version of Python graph object that has been
     # sent to the debug servers.
-    self._sent_graph_version = -sys.maxint
+    self._sent_graph_version = -1
 
   def run(self,
           fetches,

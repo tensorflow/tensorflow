@@ -2677,7 +2677,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
       // clang-format on
   };
-#if CUDNN_VERSION >= 5110
+#if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }

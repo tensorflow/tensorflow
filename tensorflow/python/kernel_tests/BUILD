@@ -294,6 +294,19 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "decode_compressed_op_test",
+    size = "small",
+    srcs = ["decode_compressed_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:parsing_ops",
+    ],
+)
+
 cuda_py_test(
     name = "determinant_op_test",
     size = "small",

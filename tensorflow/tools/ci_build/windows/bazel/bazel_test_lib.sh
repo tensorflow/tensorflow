@@ -21,7 +21,6 @@ failing_cpu_cc_tests="\
     //tensorflow/core:lib_core_status_test + \
     //tensorflow/core:lib_monitoring_collection_registry_test + \
     //tensorflow/core:lib_strings_numbers_test + \
-    //tensorflow/core:lib_strings_str_util_test + \
     //tensorflow/core/platform/hadoop:hadoop_file_system_test + \
     //tensorflow/core:platform_file_system_test + \
     //tensorflow/core:platform_logging_test + \

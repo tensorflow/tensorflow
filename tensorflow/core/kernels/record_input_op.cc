@@ -36,6 +36,7 @@ class RecordInputOp : public OpKernel {
     GETATTR(int64, file_buffer_size);
     GETATTR(int64, file_parallelism);
     GETATTR(int64, batch_size);
+    GETATTR(string, compression_type);
 #undef GETATTR
 
     RecordYielder::Options yopts;
@@ -44,6 +45,7 @@ class RecordInputOp : public OpKernel {
     yopts.bufsize = file_buffer_size;
     yopts.file_shuffle_shift_ratio = file_shuffle_shift_ratio;
     yopts.parallelism = file_parallelism;
+    yopts.compression_type = compression_type;
     yielder_ = std::unique_ptr<RecordYielder>(new RecordYielder(ctx, yopts));
 
     batch_size_ = batch_size;

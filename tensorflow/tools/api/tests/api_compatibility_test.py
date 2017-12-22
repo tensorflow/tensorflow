@@ -248,8 +248,8 @@ class ApiCompatibilityTest(test.TestCase):
       logging.info('No differences found between API and golden.')
 
   @unittest.skipUnless(
-      sys.version_info.major == 2 and os.uname()[0] == 'Linux',
-      'API compabitility test goldens are generated using python2 on Linux.')
+      sys.version_info.major == 2,
+      'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibility(self):
     # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
@@ -335,7 +333,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
         log_usage=log_usage)
 
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
-    self._sent_graph_version = -sys.maxint
+    self._sent_graph_version = -1
 
   def before_run(self, run_context):
     self._sent_graph_version = grpc_wrapper.publish_traceback(
