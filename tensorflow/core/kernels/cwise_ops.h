@@ -115,6 +115,32 @@ struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+template <typename Scalar, typename Exponent>
+struct safe_scalar_binary_pow_op {
+  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
+  static_assert(std::is_integral<Exponent>::value && std::is_signed<Exponent>::value, "Signed integer type expected");
+
+  bool* const error;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error) : error(error) {}
+
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
+                                             const Exponent& b) const {
+    const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
+    if (TF_PREDICT_TRUE(safe_b >= 0)) {
+      return numext::pow(a, safe_b);
+    } else {
+      *error = true;
+      return 0;
+    }
+  }
+};
+
+template <typename Scalar, typename Exponent>
+struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
+  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
   static_assert(std::is_integral<T>::value, "Integer type expected");
@@ -740,6 +766,9 @@ struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
+
+template <typename T>
+struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> { static const bool has_errors = true; };
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
