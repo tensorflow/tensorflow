@@ -46,6 +46,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
+from tensorflow.python.framework import ops as framework_ops
 
 
 __all__ = [
@@ -560,7 +561,9 @@ def gan_train_ops(
   """
   # Create global step increment op.
   global_step = training_util.get_or_create_global_step()
-  global_step_inc = global_step.assign_add(1)
+  with framework_ops.control_dependencies([loss.generator_loss,
+                                           loss.discriminator_loss]):
+    global_step_inc = global_step.assign_add(1)
 
   # Get generator and discriminator update ops. We split them so that update
   # ops aren't accidentally run multiple times. For now, throw an error if
