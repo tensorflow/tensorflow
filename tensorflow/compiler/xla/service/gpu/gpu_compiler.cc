@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -147,13 +148,18 @@ tensorflow::Status OptimizeHloModule(
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddInvariantChecker<HloVerifier>(shape_size_function);
 
-      // TODO(b/62764704): Do not expand on GPU, use cuDNN's BatchNorm APIs
-      // instead.
+      // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
+      // where possible.  Not every batchnorm op can be implemented as a call to
+      // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
+      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        pass.AddPass<CudnnBatchNormRewriter>();
+      }
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true,
           /*use_fusion=*/false);
+
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
