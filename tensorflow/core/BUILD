@@ -79,6 +79,7 @@ load(
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
+    "if_windows",
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
@@ -274,7 +275,9 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
+    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()) + if_windows([
+        "platform/windows/integral_types.h",
+    ]),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
 )
