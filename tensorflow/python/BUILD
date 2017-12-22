@@ -4442,23 +4442,23 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "cluster_test",
     size = "small",
     srcs = [
         "grappler/cluster_test.py",
     ],
-    srcs_version = "PY2AND3",
-    tags = [
-        "grappler",
-        "no_pip",  # tf_optimizer is not available in pip.
-    ],
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":tf_cluster",
         ":tf_item",
         "//tensorflow/core:protos_all_py",
+    ],
+    shard_count = 10,
+    tags = [
+        "grappler",
+        "no_pip",  # tf_optimizer is not available in pip.
     ],
 )
 
