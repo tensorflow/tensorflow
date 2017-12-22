@@ -1036,50 +1036,15 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
-  string opcode_specific_info = [&]() -> string {
-    switch (instr->opcode()) {
-      case HloOpcode::kRng:
-        return RandomDistribution_Name(instr->random_distribution());
-      case HloOpcode::kConvolution:
-        return StrCat(
-            HtmlLikeStringSanitize(
-                instr->ConvolutionDimensionNumbersToString()),
-            "<br/>",
-            HtmlLikeStringSanitize(window_util::ToString(instr->window())));
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kTranspose:
-      case HloOpcode::kReduce:
-        return Printf("dims={%s}", Join(instr->dimensions(), ","));
-      case HloOpcode::kGetTupleElement:
-        return Printf("index=%lld", instr->tuple_index());
-      case HloOpcode::kBatchNormTraining:
-      case HloOpcode::kBatchNormGrad:
-        return Printf("feature_index=%lld", instr->feature_index());
-      case HloOpcode::kCustomCall:
-        return Printf("target=%s", instr->custom_call_target());
-      case HloOpcode::kSlice:
-        return std::all_of(instr->slice_strides().begin(),
-                           instr->slice_strides().end(),
-                           [](int64 stride) { return stride == 1; })
-                   ? ""
-                   : StrCat("stride=", VectorString(instr->slice_strides()));
-      case HloOpcode::kSend:
-      case HloOpcode::kSendDone:
-      case HloOpcode::kRecv:
-      case HloOpcode::kRecvDone:
-        return StrCat("channel_id=", instr->channel_id());
-      default:
-        return "";
-    }
-  }();
-
   std::vector<string> lines;
-  if (!opcode_specific_info.empty()) {
-    lines.push_back(opcode_specific_info);
+
+  // Get the instruction's extra attributes excluding the names of its
+  // subcomputations, since those are drawn explicitly in the graph.
+  for (const auto& line : instr->ExtraAttributesToString(
+           HloPrintOptions().set_print_subcomputation_references(false))) {
+    lines.push_back(HtmlLikeStringSanitize(line));
   }
-  if (instr->has_sharding()) {
-    lines.push_back(StrCat("sharding=", instr->sharding().ToString()));
-  }
+
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
