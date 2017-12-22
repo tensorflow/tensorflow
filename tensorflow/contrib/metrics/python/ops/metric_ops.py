@@ -3343,8 +3343,8 @@ def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
 
   Returns:
     kappa: Scalar float `Tensor` representing the current Cohen's kappa.
-    update_op: `Operation` that increments `total_po`, `total_pe_row` and
-      `total_pe_col` variables appropriately and whose value matches `kappa`.
+    update_op: `Operation` that increments `po`, `pe_row` and `pe_col`
+      variables appropriately and whose value matches `kappa`.
 
   Raises:
     ValueError: If `num_classes` is less than 2, or `predictions` and `labels`
