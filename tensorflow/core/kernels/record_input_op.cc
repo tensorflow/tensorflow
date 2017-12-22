@@ -38,7 +38,6 @@ class RecordInputOp : public OpKernel {
     GETATTR(int64, batch_size);
     GETATTR(string, compression_type);
 #undef GETATTR
-    string compression_type;
     ctx->GetAttr("compression_type", &compression_type);
 
     RecordYielder::Options yopts;
