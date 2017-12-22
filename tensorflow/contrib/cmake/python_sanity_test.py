@@ -61,6 +61,19 @@ def read_entries(test):
       test.entries.append(line)
 
 
+def test_invalid_files(test):
+  for entry in test.entries:
+    if entry.find("*") == -1:
+      valid = os.path.isfile(abs_path(entry))
+    else:
+      valid = os.path.isdir(abs_path(entry[:entry.rfind("/")]))
+
+    if not valid:
+      problem = "'" + test.entries_file + "' contains invalid '" + entry + "'"
+      solution = ("Please remove the invalid entry (or add the missing "
+                  "file(s)).")
+      raise AssertionError(problem + "\n" + solution)
+
 def test_invalid_directories(test):
   for entry in test.entries:
     if not os.path.isdir(abs_path(entry)):
@@ -68,7 +81,6 @@ def test_invalid_directories(test):
       solution = ("Please remove the invalid entry (or add the missing "
                   "directory).")
       raise AssertionError(problem + "\n" + solution)
-
 
 def test_missing_directory(test, path):
   if path in test.whitelist:
@@ -122,6 +134,46 @@ class PythonProtoCCTest(unittest.TestCase):
 
   def testInvalidEntries(self):
     test_invalid_directories(self)
+
+
+class TestSourcesPythonTest(unittest.TestCase):
+
+  def setUp(self):
+    self.entries_file = "tensorflow/contrib/cmake/test_srcs_py.txt"
+    read_entries(self)
+
+  def testInvalidEntries(self):
+    test_invalid_files(self)
+
+
+class TestSourcesPythonExcludeTest(unittest.TestCase):
+
+  def setUp(self):
+    self.entries_file = "tensorflow/contrib/cmake/test_srcs_py_exclude.txt"
+    read_entries(self)
+
+  def testInvalidEntries(self):
+    test_invalid_files(self)
+
+
+class TestSourcesPythonExcludeWinTest(unittest.TestCase):
+
+  def setUp(self):
+    self.entries_file = "tensorflow/contrib/cmake/test_srcs_py_exclude_win.txt"
+    read_entries(self)
+
+  def testInvalidEntries(self):
+    test_invalid_files(self)
+
+
+class TestSourcesPythonMoreTest(unittest.TestCase):
+
+  def setUp(self):
+    self.entries_file = "tensorflow/contrib/cmake/test_srcs_py_more.txt"
+    read_entries(self)
+
+  def testInvalidEntries(self):
+    test_invalid_files(self)
 
 
 if __name__ == "__main__":

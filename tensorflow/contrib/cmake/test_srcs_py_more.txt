@@ -1,0 +1,7 @@
+tensorflow/contrib/legacy_seq2seq/*_test.py
+tensorflow/contrib/linalg/*_test.py
+tensorflow/contrib/graph_editor/*_test.py
+tensorflow/contrib/bayesflow/*_test.py
+tensorflow/contrib/framework/*_test.py
+tensorflow/contrib/distributions/*_test.py
+tensorflow/contrib/learn/*_test.py
