@@ -634,8 +634,7 @@ class Layer(object):
             except AttributeError:
               pass
           input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
-          with ops.init_scope():
-            self.build(input_shapes)
+          self.build(input_shapes)
         try:
           # Note: not all sub-classes of Layer call Layer.__init__ (especially
           # the ones under tensorflow/python/keras). Hence we recompute this
