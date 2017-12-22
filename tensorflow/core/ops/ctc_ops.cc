@@ -142,7 +142,6 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Input("sequence_length: int32")
     .Attr("beam_width: int >= 1")
     .Attr("top_paths: int >= 1")
-    .Attr("merge_repeated: bool = true")
     .Output("decoded_indices: top_paths * int64")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
@@ -180,17 +179,14 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Doc(R"doc(
 Performs beam search decoding on the logits given in input.
 
-A note about the attribute merge_repeated: For the beam search decoder,
-this means that if consecutive entries in a beam are the same, only
-the first of these is emitted.  That is, when the top path is "A B B B B",
-"A B" is returned if merge_repeated = True but "A B B B B" is
-returned if merge_repeated = False.
+For the beam search decoder, if consecutive entries in a beam are the same,
+only the first of these is emitted.  That is, when the top path is "A B B B B",
+"A B" is returned.
 
 inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
 sequence_length: A vector containing sequence lengths, size `(batch)`.
 beam_width: A scalar >= 0 (beam search beam width).
 top_paths: A scalar >= 0, <= beam_width (controls output size).
-merge_repeated: If true, merge repeated classes in output.
 decoded_indices: A list (length: top_paths) of indices matrices.  Matrix j,
   size `(total_decoded_outputs[j] x 2)`, has indices of a
   `SparseTensor<int64, 2>`.  The rows store: [batch, time].
