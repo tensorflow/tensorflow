@@ -428,6 +428,9 @@ std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
   // to physical dimension calculation is correct after relayout.
   add_testcase({1, 2, 3, 4}, 0, 100, 100);
 
+  // Zero-sized tensor.
+  add_testcase({1, 0, 100, 42}, 0, 100, 100);
+
   return params;
 }
 
@@ -524,6 +527,10 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   builder.BatchNormTraining(input_activations, scale_activations,
                             offset_activations, epsilon, feature_index);
 
+  // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
+  // disables constant folding, but we want it enabled for our zero-sized tensor
+  // testcase.
+  execution_options_.mutable_debug_options()->clear_xla_disable_hlo_passes();
   ComputeAndCompareTuple(
       &builder, expected,
       {input_data.get(), scale_data.get(), offset_data.get()},
@@ -626,6 +633,11 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
                              offset_activations, mean_activations,
                              variance_activations, epsilon, feature_index);
 
+  // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
+  // disables constant folding, but we want it enabled for our zero-sized tensor
+  // testcase.
+  execution_options_.mutable_debug_options()->clear_xla_disable_hlo_passes();
+
   ComputeAndCompareR4<float>(
       &builder, expected,
       {input_data.get(), scale_data.get(), offset_data.get(), mean_data.get(),
@@ -671,7 +683,11 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   std::vector<float> mean(feature_bound);
 
   for (int64 i = 0; i < feature_bound; ++i) {
-    mean[i] = sum[i] / num_elements_per_feature;
+    if (num_elements_per_feature > 0) {
+      mean[i] = sum[i] / num_elements_per_feature;
+    } else {
+      mean[i] = 0;
+    }
   }
 
   std::vector<float> mean_square(feature_bound);
@@ -681,7 +697,11 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
 
   std::vector<float> square_mean(feature_bound);
   for (int64 i = 0; i < feature_bound; ++i) {
-    square_mean[i] = sum_squared[i] / num_elements_per_feature;
+    if (num_elements_per_feature > 0) {
+      square_mean[i] = sum_squared[i] / num_elements_per_feature;
+    } else {
+      square_mean[i] = 0;
+    }
   }
 
   std::vector<float> var(feature_bound);
@@ -759,8 +779,12 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       grad_activation, scale4D, [](float a, float b) { return a * b; });
 
   grad_activation = *ReferenceUtil::MapArray4D(
-      grad_activation, rsqrt_var_add_epsilon,
-      [=](float a, float b) { return a * b / num_elements_per_feature; });
+      grad_activation, rsqrt_var_add_epsilon, [=](float a, float b) {
+        if (num_elements_per_feature > 0) {
+          return a * b / num_elements_per_feature;
+        }
+        return 0.f;
+      });
 
   auto expected_grad_activation =
       Literal::CreateR4FromArray4D<float>(grad_activation);
@@ -798,6 +822,11 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       *Literal::MakeTuple({expected_grad_activation.get(),
                            Literal::CreateR1<float>(grad_scale).get(),
                            Literal::CreateR1<float>(grad_offset).get()});
+
+  // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
+  // disables constant folding, but we want it enabled for our zero-sized tensor
+  // testcase.
+  execution_options_.mutable_debug_options()->clear_xla_disable_hlo_passes();
 
   ComputeAndCompareTuple(&builder, expected,
                          {input_data.get(), scale_data.get(), mean_data.get(),
