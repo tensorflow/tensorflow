@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
@@ -348,6 +349,41 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
       self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
       self.assertIn('LayoutOptimizer-Pad-PaddingsConst', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testConcatWithControlDependency(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      axis = constant_op.constant(3)
+      var = variables.Variable(3)
+      assign = state_ops.assign(var, 6)
+      with ops.control_dependencies([assign]):
+        concat = array_ops.concat([conv, conv], axis)
+      output = array_ops.identity(concat)
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-concat-0-0', nodes)
+      self.assertIn('LayoutOptimizer-concat-Const_2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testFill(self):

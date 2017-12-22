@@ -4540,6 +4540,7 @@ cuda_py_test(
         ":nn",
         ":ops",
         ":random_ops",
+        ":state_ops",
         ":tf_cluster",
         ":tf_optimizer",
         ":training",

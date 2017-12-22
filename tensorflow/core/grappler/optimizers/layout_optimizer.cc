@@ -318,6 +318,49 @@ bool IsBinaryOp(const NodeDef& node) {
   return is_binary;
 }
 
+std::vector<int> NonControlInputs(const NodeDef& node) {
+  std::vector<int> pos;
+  for (int i = 0; i < node.input_size(); i++) {
+    if (!IsControlInput(node.input(i))) {
+      pos.push_back(i);
+    }
+  }
+  return pos;
+}
+
+std::vector<int> DataInputPosConcat(const NodeDef& node) {
+  int n = node.attr().at("N").i();
+  std::vector<int> input_pos;
+  int start = (IsConcatV1(node)) ? 1 : 0;
+  int end = start + n;
+  for (int i = start; i < end; i++) {
+    input_pos.push_back(i);
+  }
+  return input_pos;
+}
+
+std::vector<int> DataInputPos(const NodeDef& node) {
+  if (IsSplit(node)) {
+    return {1};
+  }
+  if (IsBinaryOp(node) || IsUnaryGrad(node)) {
+    return {0, 1};
+  }
+  if (IsBetainc(node) || IsSelect(node)) {
+    return {0, 1, 2};
+  }
+  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node)) {
+    return NonControlInputs(node);
+  }
+  if (IsConcat(node)) {
+    return DataInputPosConcat(node);
+  }
+  if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
+    return {0};
+  }
+  return {};
+}
+
 class GraphProcessor {
  public:
   GraphProcessor(const VirtualPlacer& virtual_placer,
@@ -1142,30 +1185,6 @@ class AgnosticNodeProcessor : public NodeProcessor {
   }
 
   bool IsNodeAfterNCHWToNHWC() const { return IsNodeAfterNCHWToNHWC(*node_); }
-
- private:
-  std::vector<int> DataInputPos(const NodeDef& node) const {
-    if (IsSplit(node) || IsConcatV1(node)) {
-      return {1};
-    }
-    if (IsBinaryOp(node) || IsUnaryGrad(node)) {
-      return {0, 1};
-    }
-    if (IsBetainc(node) || IsSelect(node)) {
-      return {0, 1, 2};
-    }
-    if (IsShapeN(node) || IsIdentityN(node)) {
-      std::vector<int> pos;
-      for (int i = 0; i < node.input_size(); i++) {
-        pos.push_back(i);
-      }
-      return pos;
-    }
-    if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
-      return {0};
-    }
-    return {};
-  }
 };
 
 class AddNProcessor : public AgnosticNodeProcessor {
@@ -1175,12 +1194,7 @@ class AddNProcessor : public AgnosticNodeProcessor {
 
  protected:
   std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    input_pos.reserve(node_->input_size());
-    for (int i = 0; i < node_->input_size(); i++) {
-      input_pos.push_back(i);
-    }
-    return input_pos;
+    return NonControlInputs(*node_);
   }
 };
 
@@ -1325,24 +1339,20 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   explicit ConcatProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {
     // For Concat,  the concat axis is the first input; for ConcatV2,
-    // the last input.
-    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : (node_->input_size() - 1);
+    // the last input. Note that if with control inputs, the number of inputs
+    // is larger than the integer attribute N.
+    int n = node_->attr().at("N").i();
+    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : n;
   }
 
  protected:
   std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    int start = (IsConcatV1(*node_)) ? 1 : 0;
-    int end =
-        (IsConcatV1(*node_)) ? node_->input_size() : (node_->input_size() - 1);
-    for (int i = start; i < end; i++) {
-      input_pos.push_back(i);
-    }
-    return input_pos;
+    return DataInputPosConcat(*node_);
   }
 
   Status CustomizedProcessing() override {
-    DataType dtype = node_->attr().at("Tidx").type();
+    DataType dtype =
+        (IsConcatV1(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
     TF_RETURN_IF_ERROR(
         UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap", dtype));
     return Status::OK();
@@ -1384,10 +1394,13 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
       auto input = node_map_->GetNode(node_->input(i));
       int port;
       ParseNodeName(node_->input(i), &port);
-      if (IsPortDimsFour(*input, port) &&
-          (IsNodeAfterNCHWToNHWC(*input) ||
-           IsTransposeNCHWToNHWC(input->name()))) {
-        input_pos.push_back(i);
+      // Skip control input.
+      if (port != -1) {
+        if (IsPortDimsFour(*input, port) &&
+            (IsNodeAfterNCHWToNHWC(*input) ||
+             IsTransposeNCHWToNHWC(input->name()))) {
+          input_pos.push_back(i);
+        }
       }
     }
     return input_pos;
@@ -1399,6 +1412,19 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
       output_pos.insert(input_pos);
     }
     return output_pos;
+  }
+};
+
+class ShapeProcessor : public IdentityNProcessor {
+ public:
+  explicit ShapeProcessor(const OptimizeContext& opt_cxt)
+      : IdentityNProcessor(opt_cxt) {}
+
+ protected:
+  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+
+  Status CustomizedProcessing() override {
+    return AddTransformToOutputs("DataFormatVecPermute");
   }
 };
 
@@ -1520,47 +1546,6 @@ class UnaryGradProcessor : public AgnosticNodeProcessor {
 
  protected:
   std::vector<int> GetInputPos() const override { return {0, 1}; }
-};
-
-class ShapeProcessor : public AgnosticNodeProcessor {
- public:
-  explicit ShapeProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  bool ShouldProcess() const override {
-    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsOnGPU();
-  }
-
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    for (int i = 0; i < node_->input_size(); i++) {
-      auto input = node_map_->GetNode(node_->input(i));
-      int port;
-      ParseNodeName(node_->input(i), &port);
-      if (IsPortDimsFour(*input, port) &&
-          (IsNodeAfterNCHWToNHWC(*input) ||
-           IsTransposeNCHWToNHWC(input->name()))) {
-        input_pos.push_back(i);
-      }
-    }
-    return input_pos;
-  }
-
-  std::set<int> GetOutputPos() const override {
-    std::set<int> output_pos{};
-    for (const auto& input_pos : GetInputPos()) {
-      output_pos.insert(input_pos);
-    }
-    return output_pos;
-  }
-
-  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
-
-  Status CustomizedProcessing() override {
-    return AddTransformToOutputs("DataFormatVecPermute");
-  }
 };
 
 class SliceProcessor : public AgnosticNodeProcessor {
