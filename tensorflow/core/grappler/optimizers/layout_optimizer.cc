@@ -116,6 +116,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Exit",
                                           "Exp",
                                           "Expm1",
+                                          "Fill",
                                           "Floor",
                                           "FloorDiv",
                                           "FloorMod",
@@ -209,22 +210,46 @@ bool IsNodeByLayoutOptimizer(const string& node_name) {
   return false;
 }
 
-bool IsNodeNHWCToNCHW(const string& node_name) {
-  const string transpose_node_prefix = kTransposeNHWCToNCHW;
-  string prefix = node_name.substr(0, transpose_node_prefix.length());
-  if (prefix.compare(transpose_node_prefix) == 0) {
+bool IsNodeNHWCToNCHW(const string& node_name, const string& prefix_const) {
+  const string transform_prefix = prefix_const;
+  string prefix = node_name.substr(0, transform_prefix.length());
+  if (prefix.compare(transform_prefix) == 0) {
     return true;
   }
   return false;
 }
 
-bool IsNodeNCHWToNHWC(const string& node_name) {
-  const string transpose_node_prefix = kTransposeNCHWToNHWC;
-  string prefix = node_name.substr(0, transpose_node_prefix.length());
-  if (prefix.compare(transpose_node_prefix) == 0) {
+bool IsNodeNCHWToNHWC(const string& node_name, const string& prefix_const) {
+  const string transform_prefix = prefix_const;
+  string prefix = node_name.substr(0, transform_prefix.length());
+  if (prefix.compare(transform_prefix) == 0) {
     return true;
   }
   return false;
+}
+
+bool IsTransposeNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kTransposeNHWCToNCHW);
+}
+
+bool IsTransposeNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kTransposeNCHWToNHWC);
+}
+
+bool IsDimMapNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kDimMapNHWCToNCHW);
+}
+
+bool IsDimMapNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kDimMapNCHWToNHWC);
+}
+
+bool IsVecPermuteNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kVecPermuteNHWCToNCHW);
+}
+
+bool IsVecPermuteNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kVecPermuteNCHWToNHWC);
 }
 
 bool IsConcat(const NodeDef& node) {
@@ -422,12 +447,12 @@ class NodeProcessor : public GraphProcessor {
 
   bool IsPortZeroDimsFour(const NodeDef& node) const {
     return NodeProcessor::IsPortZeroDimsN(node, 4) ||
-           IsNodeNCHWToNHWC(node.name());
+           IsTransposeNCHWToNHWC(node.name());
   }
 
   bool IsPortDimsFour(const NodeDef& node, int port) const {
     return NodeProcessor::IsPortDimsN(node, port, 4) ||
-           IsNodeNCHWToNHWC(node.name());
+           IsTransposeNCHWToNHWC(node.name());
   }
 
   bool IsNHWC() const {
@@ -514,10 +539,7 @@ class NodeProcessor : public GraphProcessor {
     return UpdateAttrValue(added_node, permute);
   }
 
-  virtual std::vector<int> GetInputPos() const {
-    std::vector<int> input_pos = {0};
-    return input_pos;
-  }
+  virtual std::vector<int> GetInputPos() const { return {0}; }
 
   virtual std::set<int> GetOutputPos() const {
     // For most nodes, no need to process control nodes or nodes that use an
@@ -781,7 +803,7 @@ class NodeProcessor : public GraphProcessor {
       string suffix = strings::StrCat(node_->name(), "_", pos);
       string input = NodeName(node_->input(pos));
       string depended_node;
-      if (!IsNodeNCHWToNHWC(input)) {
+      if (!IsTransposeNCHWToNHWC(input)) {
         depended_node = input;
       } else {
         auto input_node = node_map_->GetNode(input);
@@ -859,10 +881,7 @@ class AvgPoolGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {1};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {1}; }
   Status CustomizedProcessing() override {
     return UpdateAttrValueOfInput(0, true);
   }
@@ -976,10 +995,7 @@ class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
     return Conv2DProcessor::IsGemmUsed(filter_shape, input_shape);
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 2}; }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
   // No need to update output shape, as it is always of shape
@@ -1000,10 +1016,7 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     return Conv2DProcessor::IsGemmUsed(filter_shape, input_shape);
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {2}; }
 
   Status CustomizedProcessing() override {
     TF_RETURN_IF_ERROR(
@@ -1022,10 +1035,7 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
     return NodeProcessor::ShouldProcess() && IsTraining();
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 1}; }
 
  private:
   bool IsTraining() const {
@@ -1044,10 +1054,7 @@ class MaxPoolGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1, 2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
 };
 
 class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
@@ -1115,7 +1122,9 @@ class AgnosticNodeProcessor : public NodeProcessor {
     while (!queue.empty()) {
       NodeDef* current_node = queue.front();
       queue.pop_front();
-      if (IsNodeNCHWToNHWC(current_node->name())) {
+      if (IsTransposeNCHWToNHWC(current_node->name()) ||
+          IsDimMapNCHWToNHWC(current_node->name()) ||
+          IsVecPermuteNCHWToNHWC(current_node->name())) {
         return true;
       }
       // We only continue searching if the path is connected through
@@ -1342,6 +1351,22 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   int axis_node_pos_;
 };
 
+class FillProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit FillProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {}; }
+
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("index_type").type();
+    TF_RETURN_IF_ERROR(
+        UpdateOrTransformParamInput(0, "DataFormatVecPermute", dtype));
+    return Status::OK();
+  }
+};
+
 class IdentityNProcessor : public AgnosticNodeProcessor {
  public:
   explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
@@ -1360,7 +1385,8 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
       int port;
       ParseNodeName(node_->input(i), &port);
       if (IsPortDimsFour(*input, port) &&
-          (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
+          (IsNodeAfterNCHWToNHWC(*input) ||
+           IsTransposeNCHWToNHWC(input->name()))) {
         input_pos.push_back(i);
       }
     }
@@ -1401,7 +1427,7 @@ class MergeProcessor : public AgnosticNodeProcessor {
     for (const auto& input : node_->input()) {
       auto input_node = node_map_->GetNode(input);
       if (IsNodeAfterNCHWToNHWC(*input_node) ||
-          IsNodeNCHWToNHWC(input_node->name())) {
+          IsTransposeNCHWToNHWC(input_node->name())) {
         continue;
       }
       return false;
@@ -1484,10 +1510,7 @@ class TernaryOpProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1, 2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
 };
 
 class UnaryGradProcessor : public AgnosticNodeProcessor {
@@ -1496,10 +1519,7 @@ class UnaryGradProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 1}; }
 };
 
 class ShapeProcessor : public AgnosticNodeProcessor {
@@ -1520,7 +1540,8 @@ class ShapeProcessor : public AgnosticNodeProcessor {
       int port;
       ParseNodeName(node_->input(i), &port);
       if (IsPortDimsFour(*input, port) &&
-          (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
+          (IsNodeAfterNCHWToNHWC(*input) ||
+           IsTransposeNCHWToNHWC(input->name()))) {
         input_pos.push_back(i);
       }
     }
@@ -1577,7 +1598,7 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
     int input_port;
     auto input = node_map_->GetNode(node_->input(0));
     ParseNodeName(node_->input(0), &input_port);
-    if (IsNodeNCHWToNHWC(input->name())) {
+    if (IsTransposeNCHWToNHWC(input->name())) {
       input = node_map_->GetNode(input->input(0));
       ParseNodeName(input->input(0), &input_port);
     }
@@ -1775,6 +1796,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
+          } else if (IsFill(*node)) {
+            node_processor.reset(new FillProcessor(opt_cxt));
           } else if (IsIdentityN(*node)) {
             node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
@@ -1816,8 +1839,16 @@ class DataLayoutOptimizer : GraphProcessor {
     for (int i = 0; i < graph_->node_size(); i++) {
       auto node = graph_->mutable_node(i);
       node->mutable_attr()->erase("_output_shapes");
-      if (IsNodeNHWCToNCHW(node->name())) {
-        if (IsNodeNCHWToNHWC(node->input(0))) {
+      if (IsTransposeNHWCToNCHW(node->name()) ||
+          IsDimMapNHWCToNCHW(node->name()) ||
+          IsVecPermuteNHWCToNCHW(node->name())) {
+        bool transpose_pair = IsTransposeNHWCToNCHW(node->name()) &&
+                              IsTransposeNCHWToNHWC(node->input(0));
+        bool dim_map_pair = IsDimMapNHWCToNCHW(node->name()) &&
+                            IsDimMapNCHWToNHWC(node->input(0));
+        bool vec_permute_pair = IsVecPermuteNHWCToNCHW(node->name()) &&
+                                IsVecPermuteNCHWToNHWC(node->input(0));
+        if (transpose_pair || dim_map_pair || vec_permute_pair) {
           const string& trans_first = node->input(0);
           const string& trans_second = node->name();
           auto outputs = node_map_->GetOutputs(trans_second);
