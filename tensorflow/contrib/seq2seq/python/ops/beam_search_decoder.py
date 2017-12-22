@@ -236,7 +236,8 @@ class BeamSearchDecoder(decoder.Decoder):
                initial_state,
                beam_width,
                output_layer=None,
-               length_penalty_weight=0.0):
+               length_penalty_weight=0.0,
+               reorder_tensor_arrays=True):
     """Initialize the BeamSearchDecoder.
 
     Args:
@@ -251,6 +252,10 @@ class BeamSearchDecoder(decoder.Decoder):
         `tf.layers.Dense`.  Optional layer to apply to the RNN output prior
         to storing the result or sampling.
       length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
+      reorder_tensor_arrays: If `True`, `TensorArray`s' elements within the cell
+        state will be reordered according to the beam search path. Set this to
+        `False` if the cell state contains `TensorArray`s that are not amenable
+        to reordering.
 
     Raises:
       TypeError: if `cell` is not an instance of `RNNCell`,
@@ -266,6 +271,7 @@ class BeamSearchDecoder(decoder.Decoder):
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
     self._output_layer = output_layer
+    self._reorder_tensor_arrays = reorder_tensor_arrays
 
     if callable(embedding):
       self._embedding_fn = embedding
@@ -397,10 +403,11 @@ class BeamSearchDecoder(decoder.Decoder):
         outputs.parent_ids,
         max_sequence_lengths=max_sequence_lengths,
         end_token=self._end_token)
-    final_state = final_state._replace(cell_state=nest.map_structure(
-        lambda t: _maybe_sort_array_beams(
-            t, outputs.parent_ids, final_state.lengths),
-        final_state.cell_state))
+    if self._reorder_tensor_arrays:
+      final_state = final_state._replace(cell_state=nest.map_structure(
+          lambda t: _maybe_sort_array_beams(
+              t, outputs.parent_ids, final_state.lengths),
+          final_state.cell_state))
     outputs = FinalBeamSearchDecoderOutput(
         beam_search_decoder_output=outputs, predicted_ids=predicted_ids)
     return outputs, final_state
