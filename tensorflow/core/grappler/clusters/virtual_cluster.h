@@ -35,8 +35,6 @@ class VirtualCluster : public Cluster {
 
   ~VirtualCluster() override;
 
-  string type() const override { return "virtual"; }
-
   Status Provision() override;
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
