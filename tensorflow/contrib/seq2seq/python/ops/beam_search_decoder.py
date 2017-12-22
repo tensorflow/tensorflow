@@ -405,7 +405,7 @@ class BeamSearchDecoder(decoder.Decoder):
         end_token=self._end_token)
     if self._reorder_tensor_arrays:
       final_state = final_state._replace(cell_state=nest.map_structure(
-          lambda t: _maybe_sort_array_beams(
+          lambda t: self._maybe_sort_array_beams(
               t, outputs.parent_ids, final_state.lengths),
           final_state.cell_state))
     outputs = FinalBeamSearchDecoderOutput(
@@ -529,6 +529,39 @@ class BeamSearchDecoder(decoder.Decoder):
       return self._merge_batch_beams(t, s)
     else:
       return t
+
+  def _maybe_sort_array_beams(self, t, parent_ids, sequence_length):
+    """Maybe sorts beams within a `TensorArray`.
+
+    Args:
+      t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
+        `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]` where
+        `s` is the depth shape.
+      parent_ids: The parent ids of shape `[max_time, batch_size, beam_width]`.
+      sequence_length: The sequence length of shape `[batch_size, beam_width]`.
+
+    Returns:
+      A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if it
+      is not a `TensorArray` or does not meet shape requirements.
+    """
+    if (not isinstance(t, tensor_array_ops.TensorArray)
+        or not t._infer_shape or not t._element_shape):  # pylint: disable=protected-access
+      return t
+    shape = t._element_shape[0]  # pylint: disable=protected-access
+    batch_size = tensor_util.constant_value(self._batch_size)
+    reshaped_shape = tensor_shape.TensorShape(
+        [batch_size, self._beam_width, None])
+    if (shape.ndims >= 1 and shape[0] == batch_size * self._beam_width
+        or shape.ndims >= 2
+        and shape[0] == batch_size and shape[1] == self._beam_width):
+      return gather_tree_from_array(t, parent_ids, sequence_length)
+    else:
+      raise ValueError("TensorArray reordering expects elements to be "
+                       "reshapable to %s which is incompatible with the "
+                       "current shape %s. Consider setting "
+                       "reorder_tensor_arrays to False to disable TensorArray "
+                       "reordering during the beam search."
+                       % (reshaped_shape, shape))
 
   def step(self, time, inputs, state, name=None):
     """Perform a decoding step.
@@ -884,23 +917,3 @@ def _tensor_gather_helper(gather_indices, gather_from, batch_size,
     output = array_ops.reshape(output, final_shape, name="output")
     output.set_shape(final_static_shape)
     return output
-
-
-def _maybe_sort_array_beams(t, parent_ids, sequence_length):
-  """Maybe sorts beams within a `TensorArray`.
-
-  Args:
-    t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
-      `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]` where
-      `s` is the depth shape.
-    parent_ids: The parent ids of shape `[max_time, batch_size, beam_width]`.
-    sequence_length: The sequence length of shape `[batch_size, beam_width]`.
-
-  Returns:
-    A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if it
-    is not a `TensorArray`.
-  """
-  if isinstance(t, tensor_array_ops.TensorArray):
-    return gather_tree_from_array(t, parent_ids, sequence_length)
-  else:
-    return t
