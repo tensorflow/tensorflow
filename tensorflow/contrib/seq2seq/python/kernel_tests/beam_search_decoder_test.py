@@ -73,37 +73,44 @@ class TestGatherTree(test.TestCase):
 
     self.assertAllEqual(expected_result, res_)
 
-  def test_gather_tree_from_array(self):
-    # Only define a slice in depth of the array to simplify the declaration.
-    sliced_array = np.array(
+  def _test_gather_tree_from_array(self,
+                                   depth_ndims=0,
+                                   merged_batch_beam=False):
+    array = np.array(
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [0, 0, 0]],
          [[2, 3, 4], [5, 6, 7], [8, 9, 10], [11, 12, 0]]]).transpose([1, 0, 2])
     parent_ids = np.array(
         [[[0, 0, 0], [0, 1, 1], [2, 1, 2], [-1, -1, -1]],
          [[0, 0, 0], [1, 1, 0], [2, 0, 1], [0, 1, 0]]]).transpose([1, 0, 2])
-    expected_sliced_array = np.array(
+    expected_array = np.array(
         [[[2, 2, 2], [6, 5, 6], [7, 8, 9], [0, 0, 0]],
          [[2, 3, 2], [7, 5, 7], [8, 9, 8], [11, 12, 0]]]).transpose([1, 0, 2])
     sequence_length = [[3, 3, 3], [4, 4, 3]]
 
-    sliced_array = ops.convert_to_tensor(
-        sliced_array, dtype=dtypes.float32)
-    expected_sliced_array = ops.convert_to_tensor(
-        expected_sliced_array, dtype=dtypes.float32)
+    array = ops.convert_to_tensor(
+        array, dtype=dtypes.float32)
+    expected_array = ops.convert_to_tensor(
+        expected_array, dtype=dtypes.float32)
 
-    max_time = array_ops.shape(sliced_array)[0]
-    batch_size = array_ops.shape(sliced_array)[1]
-    beam_width = array_ops.shape(sliced_array)[2]
+    max_time = array_ops.shape(array)[0]
+    batch_size = array_ops.shape(array)[1]
+    beam_width = array_ops.shape(array)[2]
 
-    def _tile_in_depth(tensor_slice, depth):
-      tensor = array_ops.tile(
-          array_ops.expand_dims(tensor_slice, -1), [1, 1, 1, depth])
-      tensor = array_ops.reshape(
-          tensor, [max_time, batch_size, beam_width, depth])
+    def _tile_in_depth(tensor):
+      # Generate higher rank tensors by concatenating tensor and tensor + 1.
+      for _ in range(depth_ndims):
+        tensor = array_ops.stack([tensor, tensor + 1], -1)
       return tensor
 
-    array = _tile_in_depth(sliced_array, 10)
-    expected_array = _tile_in_depth(expected_sliced_array, 10)
+    if merged_batch_beam:
+      array = array_ops.reshape(
+          array, [max_time, batch_size * beam_width])
+      expected_array = array_ops.reshape(
+          expected_array, [max_time, batch_size * beam_width])
+
+    if depth_ndims > 0:
+      array = _tile_in_depth(array)
+      expected_array = _tile_in_depth(expected_array)
 
     array = tensor_array_ops.TensorArray(
         array.dtype, size=0, dynamic_size=True).unstack(array)
@@ -115,6 +122,17 @@ class TestGatherTree(test.TestCase):
       expected_array = sess.run(expected_array)
       self.assertAllEqual(expected_array, sorted_array)
 
+  def test_gather_tree_from_array_scalar(self):
+    self._test_gather_tree_from_array()
+
+  def test_gather_tree_from_array_1d(self):
+    self._test_gather_tree_from_array(depth_ndims=1)
+
+  def test_gather_tree_from_array_1d_with_merged_batch_beam(self):
+    self._test_gather_tree_from_array(depth_ndims=1, merged_batch_beam=True)
+
+  def test_gather_tree_from_array_2d(self):
+    self._test_gather_tree_from_array(depth_ndims=2)
 
 class TestEosMasking(test.TestCase):
   """Tests EOS masking used in beam search."""

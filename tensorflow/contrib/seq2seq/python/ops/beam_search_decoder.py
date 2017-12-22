@@ -126,7 +126,8 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
 
   Args:
     t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
-      `[batch_size, beam_width, depth]`.
+      `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]` where
+      `s` is the depth shape.
     parent_ids: The parent ids of shape `[max_time, batch_size, beam_width]`.
     sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
@@ -162,25 +163,28 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
   sorted_beam_ids = array_ops.where(
       math_ops.cast(mask, dtypes.bool), x=sorted_beam_ids, y=beam_ids)
 
-  # Gather from each tensor in t according to sorted_beam_ids.
-  def _collect(collector, i):
-    gathered = _tensor_gather_helper(
-        gather_indices=sorted_beam_ids[i],
-        gather_from=t.read(i),
-        batch_size=batch_size,
-        range_size=beam_width,
-        gather_shape=[batch_size * beam_width, -1])
-    return collector.write(i, gathered), i + 1
+  # Generate indices for gather_nd.
+  time_ind = array_ops.tile(array_ops.reshape(
+      math_ops.range(max_time), [-1, 1, 1]), [1, batch_size, beam_width])
+  batch_ind = array_ops.tile(array_ops.reshape(
+      math_ops.range(batch_size), [-1, 1, 1]), [1, max_time, beam_width])
+  batch_ind = array_ops.transpose(batch_ind, perm=[1, 0, 2])
+  indices = array_ops.stack([time_ind, batch_ind, sorted_beam_ids], -1)
 
-  collected = tensor_array_ops.TensorArray(
+  # Gather from a tensor with collapsed additional dimensions.
+  gather_from = t.stack()
+  final_shape = array_ops.shape(gather_from)
+  gather_from = array_ops.reshape(
+      gather_from, [max_time, batch_size, beam_width, -1])
+  ordered = array_ops.gather_nd(gather_from, indices)
+  ordered = array_ops.reshape(ordered, final_shape)
+
+  # Return the result as a TensorArray.
+  ordered_ta = tensor_array_ops.TensorArray(
       t.dtype, size=t.size(), dynamic_size=False)
-  collected, _ = control_flow_ops.while_loop(
-      lambda _, i: i < t.size(),
-      _collect,
-      loop_vars=(collected, 0),
-      parallel_iterations=1)
+  ordered_ta = ordered_ta.unstack(ordered)
 
-  return collected
+  return ordered_ta
 
 
 def _check_maybe(t):
@@ -880,7 +884,8 @@ def _maybe_sort_array_beams(t, parent_ids, sequence_length):
 
   Args:
     t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
-      `[batch_size, beam_width, depth]`.
+      `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]` where
+      `s` is the depth shape.
     parent_ids: The parent ids of shape `[max_time, batch_size, beam_width]`.
     sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
