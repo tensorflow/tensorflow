@@ -3160,27 +3160,26 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
 }
 
 string HloInstruction::DotDimensionNumbersToString() const {
-  string result;
+  std::vector<string> result;
   if (dot_dimension_numbers_ == nullptr) {
-    return result;
+    return "";
   }
   const DotDimensionNumbers& dnums = *dot_dimension_numbers_;
   if (!dnums.lhs_batch_dimensions().empty()) {
-    result += "lhs_batch_dims=";
-    StrAppend(&result, Join(dnums.lhs_batch_dimensions(), ","));
+    result.push_back(StrCat("lhs_batch_dims={",
+                            Join(dnums.lhs_batch_dimensions(), ","), "}"));
   }
-  result += "lhs_contracting_dims=";
-  StrAppend(&result, Join(dnums.lhs_contracting_dimensions(), ","));
+  result.push_back(StrCat("lhs_contracting_dims={",
+                          Join(dnums.lhs_contracting_dimensions(), ","), "}"));
 
-  result += ",";
   if (!dnums.rhs_batch_dimensions().empty()) {
-    result += "rhs_batch_dims=";
-    StrAppend(&result, Join(dnums.rhs_batch_dimensions(), ","));
+    result.push_back(StrCat("rhs_batch_dims={",
+                            Join(dnums.rhs_batch_dimensions(), ","), "}"));
   }
-  result += "rhs_contracting_dims=";
-  StrAppend(&result, Join(dnums.rhs_contracting_dimensions(), ","));
+  result.push_back(StrCat("rhs_contracting_dims={",
+                          Join(dnums.rhs_contracting_dimensions(), ","), "}"));
 
-  return result;
+  return Join(result, ", ");
 }
 
 bool HloInstruction::CouldBeBitcast() const {
