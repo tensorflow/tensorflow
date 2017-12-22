@@ -41,7 +41,8 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
   } else if ((op == "Pow") &&
-             DataTypeIsInteger(ctx->op_kernel().input_type(1))) {
+             DataTypeIsInteger(ctx->op_kernel().input_type(0)) &&
+             DataTypeIsSigned(ctx->op_kernel().input_type(1))) {
     ctx->CtxFailure(errors::InvalidArgument(
         "Integers to negative integer powers are not allowed"));
   } else {
