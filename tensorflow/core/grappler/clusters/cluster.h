@@ -38,6 +38,9 @@ class Cluster {
   explicit Cluster(int timeout_s);
   virtual ~Cluster();
 
+  // Returns a string that represent the type of cluster that was instantiated.
+  virtual string type() const = 0;
+
   // Provision the hardware resources needed to run TensorFlow and start a
   // TensorFlow session that can take advantage of these resources.
   // The actual resources that are leveraged depend on the type of cluster

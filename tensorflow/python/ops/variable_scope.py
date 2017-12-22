@@ -1870,7 +1870,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
       name_scope = ops.get_name_scope()
       if name_scope:
         # Hack to reenter
-        name_scope = name_scope + "/"
+        name_scope += "/"
         current_name_scope = ops.name_scope(name_scope)
       else:
         # Root scope
@@ -1886,7 +1886,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
       if name_scope or current_name_scope:
-        self._current_name_scope = current_name_scope or ops.name_scope(name_scope)
+        self._current_name_scope = current_name_scope or ops.name_scope(
+            name_scope)
         current_name_scope_name = self._current_name_scope.__enter__()
         if isinstance(self._name_or_scope, six.string_types):
           old_name_scope = current_name_scope_name
@@ -1924,7 +1925,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if self._reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
-      self._current_name_scope = current_name_scope or ops.name_scope(self._default_name)
+      self._current_name_scope = current_name_scope or ops.name_scope(
+          self._default_name)
       current_name_scope_name = self._current_name_scope.__enter__()
       unique_default_name = _get_unique_variable_scope(self._default_name)
       self._cached_pure_variable_scope = _pure_variable_scope(

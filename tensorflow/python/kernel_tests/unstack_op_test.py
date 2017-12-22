@@ -43,7 +43,9 @@ class UnstackOpTest(test.TestCase):
     np.random.seed(7)
     with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        for dtype in [np.bool, np.float16, np.float32, np.float64, np.int32, np.int64]:
+        for dtype in [
+            np.bool, np.float16, np.float32, np.float64, np.int32, np.int64
+        ]:
           data = np.random.randn(*shape).astype(dtype)
           # Convert data to a single tensorflow tensor
           x = constant_op.constant(data)
@@ -56,7 +58,7 @@ class UnstackOpTest(test.TestCase):
 
   def testSimpleGpu(self):
     if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
+      self.skipTest('No GPU available')
     np.random.seed(7)
     with self.test_session(use_gpu=True, force_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):

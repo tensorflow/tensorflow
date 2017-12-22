@@ -66,22 +66,25 @@ with tf.device('/cpu:0'):
 If using `tf.estimator.Estimator` the input function is automatically placed on
 the CPU.
 
-#### Using the Dataset API
+#### Using the tf.data API
 
-The @{$datasets$Dataset API} is replacing `queue_runner` as the recommended API
-for building input pipelines. The API was added to contrib as part of TensorFlow
-1.2 and will move to core in the near future. This
+The @{$datasets$tf.data API} is replacing `queue_runner` as the recommended API
+for building input pipelines. This
 [ResNet example](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/cifar10_main.py)
 ([arXiv:1512.03385](https://arxiv.org/abs/1512.03385))
-training CIFAR-10 illustrates the use of the Dataset API along with
-`tf.estimator.Estimator`. The Dataset API utilizes C++ multi-threading and has a
-much lower overhead than the Python-based `queue_runner` that is limited by
-Python's multi-threading performance.
+training CIFAR-10 illustrates the use of the `tf.data` API along with
+`tf.estimator.Estimator`.
+
+The `tf.data` API utilizes C++ multi-threading and has a much lower overhead
+than the Python-based `queue_runner` that is limited by Python's multi-threading
+performance. A detailed performance guide for the `tf.data` API can be found
+[here](#datasets_performance).
 
 While feeding data using a `feed_dict` offers a high level of flexibility, in
-most instances using `feed_dict` does not scale optimally. However, in instances
-where only a single GPU is being used the difference can be negligible. Using
-the Dataset API is still strongly recommended. Try to avoid the following:
+general `feed_dict` does not provide a scalable solution. If only a single GPU
+is used, the difference between the `tf.data` API and `feed_dict` performance
+may be negligible. Our recommendation is to avoid using `feed_dict` for all but
+trivial examples. In particular, avoid using `feed_dict` with large inputs:
 
 ```python
 # feed_dict often results in suboptimal performance when using large inputs.

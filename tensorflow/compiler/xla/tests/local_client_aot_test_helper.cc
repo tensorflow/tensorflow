@@ -63,8 +63,6 @@ int main(int argc, char** argv) {
     triple_string = "x86_64-apple-macosx";
   } else if (target_cpu == "arm") {
     triple_string = "aarch64-none-linux-gnu";
-  } else if (target_cpu == "ppc") {
-    triple_string = "powerpc64le-unknown-linux-gnu";
   } else if (target_cpu == "local") {
     triple_string = xla::llvm_ir::AsString(llvm::sys::getDefaultTargetTriple());
   } else {

@@ -18,9 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import gzip
-import sys
 import zlib
 
 from six import BytesIO
@@ -33,15 +31,15 @@ from tensorflow.python.platform import test
 
 class DecodeCompressedOpTest(test.TestCase):
 
-  def _compress(self, bytes, compression_type):
-    if compression_type == "":
-      return bytes
+  def _compress(self, bytes_in, compression_type):
+    if not compression_type:
+      return bytes_in
     elif compression_type == "ZLIB":
-      return zlib.compress(bytes)
+      return zlib.compress(bytes_in)
     else:
       out = BytesIO()
       with gzip.GzipFile(fileobj=out, mode="wb") as f:
-        f.write(bytes)
+        f.write(bytes_in)
       return out.getvalue()
 
   def testDecompress(self):

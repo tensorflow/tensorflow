@@ -598,6 +598,23 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return Status::OK();
   }
 
+  // A / Const => A * (1 / Const)
+  //
+  // (Backends can do this transformation, but generally only if the constant is
+  // a scalar.)
+  if (lhs->opcode() != HloOpcode::kConstant &&
+      rhs->opcode() == HloOpcode::kConstant) {
+    HloInstruction* one =
+        computation_->AddInstruction(HloInstruction::CreateConstant(
+            Literal::One(lhs->shape().element_type()).CloneToUnique()));
+    HloInstruction* inverse =
+        computation_->AddInstruction(HloInstruction::CreateBinary(
+            rhs->shape(), HloOpcode::kDivide, one, rhs));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kMultiply, lhs, inverse));
+  }
+
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (lhs->opcode() == HloOpcode::kDivide &&
       rhs->opcode() == HloOpcode::kDivide) {

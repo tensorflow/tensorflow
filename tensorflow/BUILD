@@ -486,6 +486,7 @@ filegroup(
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
         "//tensorflow/contrib/learn/python/learn/datasets:all_files",
+        "//tensorflow/contrib/libsvm:all_files",
         "//tensorflow/contrib/linalg:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lite:all_files",

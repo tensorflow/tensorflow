@@ -35,6 +35,7 @@ tf_kernel_library(
         "gather_op.cc",
         "gather_op_helpers.h",
         "identity_op.cc",
+        "image_ops.cc",
         "image_resize_ops.cc",
         "index_ops.cc",
         "l2loss_op.cc",

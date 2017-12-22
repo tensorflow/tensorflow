@@ -385,7 +385,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   A `values[i]` comes from a position `k` in the feature of an example at batch
   entry `batch`. This positional information is recorded in `indices[i]` as
   `[batch, index_0, index_1, ...]` where `index_j` is the `k-th` value of
-  the feature in the example at with key `SparseFeature.index_key[j].
+  the feature in the example at with key `SparseFeature.index_key[j]`.
   In other words, we split the indices (except the first index indicating the
   batch entry) of a `SparseTensor` by dimension into different features of the
   `Example`. Due to its complexity a `VarLenFeature` should be preferred over a
@@ -1234,7 +1234,7 @@ def parse_single_example_v2(serialized, features, name=None):
   A `values[i]` comes from a position `k` in the feature of an example at batch
   entry `batch`. This positional information is recorded in `indices[i]` as
   `[batch, index_0, index_1, ...]` where `index_j` is the `k-th` value of
-  the feature in the example at with key `SparseFeature.index_key[j].
+  the feature in the example at with key `SparseFeature.index_key[j]`.
   In other words, we split the indices (except the first index indicating the
   batch entry) of a `SparseTensor` by dimension into different features of the
   `Example`. Due to its complexity a `VarLenFeature` should be preferred over a

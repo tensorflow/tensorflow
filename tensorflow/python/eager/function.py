@@ -68,7 +68,24 @@ def capture_value(tensor_map, value, dtype, name):
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
-      captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
+      handle_data = value._handle_data  # pylint: disable=protected-access
+      captured_value._handle_data = handle_data  # pylint: disable=protected-access
+      if handle_data is not None and handle_data.is_set:
+        # Ensure that shapes and dtypes are propagated.
+        shapes, types = zip(*[(pair.shape, pair.dtype)
+                              for pair in handle_data.shape_and_type])
+        ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
+        shapes = [[d.size for d in s.dim]
+                  if not s.unknown_rank else None for s in shapes]
+        with errors.raise_exception_on_not_ok_status() as status:
+          pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+              captured_value._op._graph._c_graph,  # pylint: disable=protected-access
+              captured_value._as_tf_output(),  # pylint: disable=protected-access
+              shapes,
+              ranks,
+              types,
+              status)
+
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]

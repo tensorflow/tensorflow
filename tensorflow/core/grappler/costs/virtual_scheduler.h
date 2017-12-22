@@ -261,6 +261,9 @@ class VirtualScheduler {
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
 
+  // Return per device peak memory usage.
+  const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
+
  protected:
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
     return &device_;
