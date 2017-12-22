@@ -152,11 +152,6 @@ CpuCompiler::CpuCompiler() {
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
   LLVMInitializeAArch64Disassembler();
-  LLVMInitializePowerPCTarget();
-  LLVMInitializePowerPCTargetInfo();
-  LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializePowerPCDisassembler();
 }
 
 namespace {

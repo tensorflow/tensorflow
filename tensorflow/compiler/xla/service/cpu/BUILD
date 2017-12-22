@@ -138,8 +138,6 @@ cc_library(
         "@llvm//:core",
         "@llvm//:mc",  # fixdeps: keep
         "@llvm//:object",
-        "@llvm//:powerpc_code_gen",  # fixdeps: keep
-        "@llvm//:powerpc_disassembler",  # fixdeps: keep
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
@@ -376,7 +374,6 @@ cc_library(
         "@llvm//:mc",
         "@llvm//:mc_disassembler",
         "@llvm//:object",
-        "@llvm//:powerpc_disassembler",  # fixdeps: keep
         "@llvm//:support",
         "@llvm//:target",
         "@llvm//:x86_disassembler",  # fixdeps: keep
