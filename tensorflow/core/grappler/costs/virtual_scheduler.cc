@@ -979,5 +979,16 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
   return Summary();
 }
 
+const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
+    const {
+  std::unordered_map<string, int64> result;
+  for (const auto& device : device_) {
+    const string& name = device.first;
+    const DeviceState& state = device.second;
+    result[name] = state.max_memory_usage;
+  }
+  return result;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
