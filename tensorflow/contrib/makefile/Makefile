@@ -818,6 +818,7 @@ $(OBJDIR)%.pb_text.o: $(PBTGENDIR)%.pb_text.cc
 $(PROTO_OBJS): $(PROTO_CC_SRCS) $(PBT_GEN_FILES)
 
 # Host compilation rules.
+
 # For normal manually-created TensorFlow C++ source files.
 $(HOST_OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
