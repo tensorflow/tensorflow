@@ -258,7 +258,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       return tfe.Iterator(ds)
 
     self._benchmark_eager_train(
-        'eager_train_dataset', make_iterator, defun=True)
+        'eager_train_dataset_with_defun', make_iterator, defun=True)
 
 
 if __name__ == '__main__':
