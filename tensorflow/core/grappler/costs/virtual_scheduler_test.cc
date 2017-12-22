@@ -1247,6 +1247,70 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
+TEST_F(VirtualSchedulerTest, DeterminismInFirstReadyManager) {
+  FirstReadyManager manager1 = FirstReadyManager(&node_states_);
+  FirstReadyManager manager2 = FirstReadyManager(&node_states_);
+
+  // 6 nodes with same time_ready.
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeDef node10;
+  NodeDef node11;
+  NodeDef node12;
+  NodeSetUp("Node7", kConv2D, kCPU0, 1000, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU0, 1000, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU0, 1000, &node9);
+  NodeSetUp("Node10", kConv2D, kCPU0, 1000, &node10);
+  NodeSetUp("Node11", kConv2D, kCPU0, 1000, &node11);
+  NodeSetUp("Node12", kConv2D, kCPU0, 1000, &node12);
+
+  // Add the above 6 nodes to manager1.
+  manager1.AddNode(&node7);
+  manager1.AddNode(&node8);
+  manager1.AddNode(&node9);
+  manager1.AddNode(&node10);
+  manager1.AddNode(&node11);
+  manager1.AddNode(&node12);
+
+  // Add the above 6 nodes to manager2, but in a different order.
+  manager2.AddNode(&node8);
+  manager2.AddNode(&node11);
+  manager2.AddNode(&node9);
+  manager2.AddNode(&node10);
+  manager2.AddNode(&node7);
+  manager2.AddNode(&node12);
+
+  // Expect both managers return the same nodes for deterministic node
+  // scheduling.
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_TRUE(manager1.Empty());
+  EXPECT_TRUE(manager2.Empty());
+}
+
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeCompositeNodeManager) {
   CompositeNodeManager manager = CompositeNodeManager(&node_states_);
 
@@ -1313,7 +1377,7 @@ TEST_F(VirtualSchedulerTest, MultiDeviceSendRecvComopsiteNodeManager) {
   NodeSetUp("Send1", kSend, kChannelFrom0To1, 2002, &send1);
   NodeSetUp("Send2", kSend, kChannelFrom1To0, 2005, &send2);
   NodeSetUp("Recv1", kRecv, kCPU0, 2003, &recv1);
-  NodeSetUp("Recv2", kRecv, kCPU1, 2003, &recv2);
+  NodeSetUp("Recv2", kRecv, kCPU1, 2004, &recv2);
 
   // Insert nodes.
   manager.AddNode(&node1_);
