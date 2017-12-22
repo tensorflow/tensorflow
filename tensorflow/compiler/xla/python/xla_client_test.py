@@ -358,6 +358,18 @@ class SingleOpTest(LocalComputationTest):
     for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
       _ConvertAndTest(x, src_dtype, dst_dtype)
 
+  def testCrossReplicaSumOneReplica(self):
+    samples = [
+        NumpyArrayF32(42.0),
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples:
+      c = self._NewComputation()
+      c.CrossReplicaSum(c.Constant(lhs))
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
   def testDotMatrixVectorF32(self):
     c = self._NewComputation()
     lhs = NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]])
@@ -593,6 +605,21 @@ class SingleOpTest(LocalComputationTest):
         dimensions=[0, 1],
         new_sizes=[2, 3])
     self._ExecuteAndCompareExact(c, expected=[[1, 2, 3], [4, 5, 6]])
+
+  def testCollapse(self):
+    c = self._NewComputation()
+    c.Collapse(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[1, 2])
+    self._ExecuteAndCompareExact(c, expected=[[1, 2, 3, 4], [5, 6, 7, 8]])
+
+  def testRev(self):
+    c = self._NewComputation()
+    c.Rev(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[0, 2])
+    self._ExecuteAndCompareExact(
+        c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
 
   def testSelect(self):
     c = self._NewComputation()

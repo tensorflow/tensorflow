@@ -960,7 +960,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y = nn_ops.data_format_dim_map(x)
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
-      self.assertEqual(y_val, y_val_expected)
+      self.assertAllEqual(y_val, y_val_expected)
 
   def test(self):
     self._test(0, 0)
@@ -971,6 +971,10 @@ class DataFormatDimMapTest(test_lib.TestCase):
     self._test(-2, 3)
     self._test(-3, 2)
     self._test(-4, 0)
+    self._test([1, 3], [2, 1])
+    self._test([1, 3, -2], [2, 1, 3])
+    self._test([1, -3, -2], [2, 2, 3])
+    self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
 
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):

@@ -219,6 +219,27 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "variational_sgd_optimizer_test",
+    size = "small",
+    srcs = ["python/kernel_tests/variational_sgd_optimizer_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_seed",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

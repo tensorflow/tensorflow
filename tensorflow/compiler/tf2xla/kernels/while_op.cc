@@ -50,25 +50,25 @@ Status MakeXlaCompilerArgumentsFromInputs(
       XlaResource* resource;
       TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
 
-      arg.initialized = resource->value.handle() > 0;
+      arg.initialized = resource->initialized();
       arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = resource->kind;
+      arg.resource_kind = resource->kind();
       if (arg.resource_kind == XlaResource::kTensorArray) {
         *has_tensor_arrays = true;
       }
 
-      arg.type = resource->type;
+      arg.type = resource->type();
       if (arg.initialized) {
         TF_RETURN_IF_ERROR(resource->PackedShape(ctx->builder(), &arg.shape));
       } else {
         *has_uninitialized_vars = true;
       }
-      arg.tensor_array_size = resource->tensor_array_size;
-      for (const auto& gradient : resource->tensor_array_gradients) {
+      arg.tensor_array_size = resource->tensor_array_size();
+      for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
-      arg.name = resource->name;
-      VLOG(2) << "    resource " << resource->name
+      arg.name = resource->name();
+      VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << xla::ShapeUtil::HumanString(arg.shape)
               << " initialized: " << arg.initialized;
@@ -162,13 +162,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         }
         std::unique_ptr<xla::Literal> zero =
             xla::Literal::CreateFromShape(shape);
-        resource->value = builder->ConstantLiteral(*zero);
+        OP_REQUIRES_OK(ctx, resource->SetValue(
+                                update.type, builder->ConstantLiteral(*zero)));
       }
 
       // Add any TensorArray gradients touched by the body to the enclosing
       // graph.
       for (const string& grad_source : update.tensor_array_gradients_accessed) {
-        VLOG(4) << "TensorArray " << resource->name << " accessed gradient "
+        VLOG(4) << "TensorArray " << resource->name() << " accessed gradient "
                 << grad_source;
         XlaResource* gradient;
         OP_REQUIRES_OK(ctx, resource->GetOrCreateTensorArrayGradient(
@@ -177,7 +178,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
       // Add all of the TensorArray gradients to the argument. For simplicity,
       // we always pass all known gradients.
-      for (const auto& gradient : resource->tensor_array_gradients) {
+      for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
 
@@ -283,10 +284,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx,
                      resource->SetFromPack(
                          arguments[update.input_index].tensor_array_gradients,
-                         builder->GetTupleElement(while_result, pos), builder));
+                         builder->GetTupleElement(while_result, pos),
+                         /*reset_initial_values=*/false, builder));
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
-            << " name: " << resource->name << " modified: " << update.modified
+            << " name: " << resource->name() << " modified: " << update.modified
             << " type: " << DataTypeString(update.type)
             << " shape: " << xla::ShapeUtil::HumanString(update.shape);
     // Copies the identity of the resource variable from input to output

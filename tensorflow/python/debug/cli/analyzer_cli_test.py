@@ -1018,6 +1018,24 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
 
+  def testPrintTensorAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul.npy")
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "-w", npy_path],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\":" % tensor_name,
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+    ], out.lines[:4])
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[7.0], [-2.0]], np.load(npy_path))
+
   def testPrintTensorHighlightingRanges(self):
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
@@ -1223,6 +1241,27 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "",
         "array([[ 49., -14.],",
         "       [-14.,   4.]])"], out.lines)
+
+  def testEvalExpressionAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul_eval.npy")
+    out = self._registry.dispatch_command(
+        "eval",
+        ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name), "-w",
+         npy_path], screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"from eval of expression "
+        "'np.matmul(`simple_mul_add/matmul:0`, "
+        "`simple_mul_add/matmul:0`.T)'\":",
+        "  dtype: float64",
+        "  shape: (2, 2)",
+        ""], out.lines[:4])
+
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[49.0, -14.0], [-14.0, 4.0]], np.load(npy_path))
 
   def testAddGetTensorFilterLambda(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,

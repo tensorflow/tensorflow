@@ -184,7 +184,7 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
+      executable_->ExecuteOnStreamWrapper(
           &service_options, options.execution_profile(), arguments));
   return ScopedShapedBuffer::MakeScoped(result.get(),
                                         actual_options.allocator());

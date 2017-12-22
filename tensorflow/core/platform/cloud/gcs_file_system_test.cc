@@ -2358,8 +2358,8 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
 
   std::unique_ptr<HttpRequest> request;
   TF_EXPECT_OK(fs.CreateHttpRequest(&request));
-  TF_EXPECT_OK(request->SetUri("https://www.googleapis.com/fake"));
-  TF_EXPECT_OK(request->AddHeader("Hello", "world"));
+  request->SetUri("https://www.googleapis.com/fake");
+  request->AddHeader("Hello", "world");
   TF_EXPECT_OK(request->Send());
 }
 

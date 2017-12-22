@@ -54,32 +54,42 @@ _TASK_TYPE_KEY = 'type'
 _TASK_ID_KEY = 'index'
 _CLUSTER_KEY = 'cluster'
 _SERVICE_KEY = 'service'
+_TF_SESSION_MASTER_KEY = 'tf_session_master'
+_MODEL_DIR_KEY = 'model_dir'
 _LOCAL_MASTER = ''
 _GRPC_SCHEME = 'grpc://'
 
 
-def _get_master(cluster_spec, task_type, task_id):
-  """Returns the appropriate string for the TensorFlow master."""
+def _get_tf_session_master(cluster_spec, task_type, task_id, tf_config):
+  """Returns the appropriate address for TensorFlow master.
+
+  The order of precedence to deteremine the TF session master is as follows:
+  1. If `tf_session_master` is set in TF_CONFIG environment variable, takes it.
+  2. If the cluster has only one ndoe, returns empty string ''.
+  3. Returns the grpc address according to the task type and id in the cluster.
+     This is between-graph replication.
+
+  Note: task_type and task_id must be validated. Typically, validated using
+  `_validate_task_type_and_task_id`.
+
+  Args:
+    cluster_spec: A `ClusterSpec` instance.
+    task_type: String. Task type for current node.
+    task_id: Int. Task id for current node.
+    tf_config: Dict. Python dict for the TF_CONFIG environment variable.
+
+  Raises:
+    RuntimeError: If `cluster_spec` is not set.
+
+  """
+  if _TF_SESSION_MASTER_KEY in tf_config:
+    return tf_config[_TF_SESSION_MASTER_KEY]
+
   if not cluster_spec:
-    raise RuntimeError(
-        'Internal error: `_get_master` does not expect empty cluster_spec.')
+    raise RuntimeError('Internal error: `_get_tf_session_master` '
+                       'does not expect empty cluster_spec.')
 
   jobs = cluster_spec.jobs
-  # Lookup the master in cluster_spec using task_type and task_id,
-  # if possible.
-  if task_type not in jobs:
-    raise ValueError(
-        '%s is not a valid task_type in the cluster_spec:\n'
-        '%s\n\n'
-        'Note that these values may be coming from the TF_CONFIG environment '
-        'variable.' % (task_type, cluster_spec))
-  addresses = cluster_spec.job_tasks(task_type)
-  if not 0 <= task_id < len(addresses):
-    raise ValueError(
-        '%d is not a valid task_id for task_type %s in the cluster_spec:\n'
-        '%s\n\n'
-        'Note that these values may be coming from the TF_CONFIG environment '
-        'variable.' % (task_id, task_type, cluster_spec))
 
   # If there is only one node in the cluster, do things locally by setting
   # master to ''.  If a service or user sets TF_CONFIG with a single node, it's
@@ -87,6 +97,9 @@ def _get_master(cluster_spec, task_type, task_id):
   if len(jobs) == 1 and len(cluster_spec.job_tasks(jobs[0])) == 1:
     return _LOCAL_MASTER
 
+  # Lookup the master in cluster_spec using task_type and task_id,
+  # if possible.
+  addresses = cluster_spec.job_tasks(task_type)
   return _GRPC_SCHEME + addresses[task_id]
 
 
@@ -147,6 +160,25 @@ def _validate_task_type_and_task_id(cluster_spec, task_env, chief_task_type):
   # cluster spec, which will be checked later (when retrieving the `master`)
   if task_id < 0:
     raise ValueError('Task index must be non-negative number.')
+
+  # Evaluator is not part of the training cluster.
+  if task_type == TaskType.EVALUATOR:
+    return task_type, task_id
+
+  if task_type not in cluster_spec.jobs:
+    raise ValueError(
+        '%s is not a valid task_type in the cluster_spec:\n'
+        '%s\n\n'
+        'Note that these values may be coming from the TF_CONFIG environment '
+        'variable.' % (task_type, cluster_spec))
+  addresses = cluster_spec.job_tasks(task_type)
+  if not 0 <= task_id < len(addresses):
+    raise ValueError(
+        '%d is not a valid task_id for task_type %s in the cluster_spec:\n'
+        '%s\n\n'
+        'Note that these values may be coming from the TF_CONFIG environment '
+        'variable.' % (task_id, task_type, cluster_spec))
+
   return task_type, task_id
 
 
@@ -365,6 +397,12 @@ class RunConfig(object):
           save_checkpoints_secs is not None):
       raise ValueError(_SAVE_CKPT_ERR)
 
+    tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV, '{}'))
+    if tf_config:
+      logging.info('TF_CONFIG environment variable: %s', tf_config)
+
+    model_dir = _get_model_dir(tf_config, model_dir)
+
     RunConfig._replace(
         self,
         allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
@@ -378,14 +416,10 @@ class RunConfig(object):
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps)
 
-    self._init_distributed_setting_from_environment_var()
+    self._init_distributed_setting_from_environment_var(tf_config)
 
-  def _init_distributed_setting_from_environment_var(self):
-    """Initialize distributed properties based on environment variable."""
-
-    tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV) or '{}')
-    if tf_config:
-      logging.info('TF_CONFIG environment variable: %s', tf_config)
+  def _init_distributed_setting_from_environment_var(self, tf_config):
+    """Initialize distributed properties based on `tf_config`."""
 
     self._service = _validate_service(tf_config.get(_SERVICE_KEY))
     self._cluster_spec = server_lib.ClusterSpec(tf_config.get(_CLUSTER_KEY, {}))
@@ -401,8 +435,8 @@ class RunConfig(object):
           self._cluster_spec, task_env, TaskType.CHIEF)
 
       if self._task_type != TaskType.EVALUATOR:
-        self._master = _get_master(
-            self._cluster_spec, self._task_type, self._task_id)
+        self._master = _get_tf_session_master(
+            self._cluster_spec, self._task_type, self._task_id, tf_config)
         self._num_ps_replicas = _count_ps(self._cluster_spec)
         self._num_worker_replicas = _count_worker(
             self._cluster_spec, chief_task_type=TaskType.CHIEF)
@@ -426,7 +460,7 @@ class RunConfig(object):
         raise ValueError(
             'If "cluster" is not set in TF_CONFIG, task index must be 0.')
 
-      self._master = ''
+      self._master = tf_config.get(_TF_SESSION_MASTER_KEY, _LOCAL_MASTER)
       self._is_chief = True
       self._num_ps_replicas = 0
       self._num_worker_replicas = 1
@@ -450,8 +484,8 @@ class RunConfig(object):
       raise ValueError('If `master` node exists in `cluster`, task_type '
                        '`evaluator` is not supported.')
 
-    self._master = _get_master(
-        self._cluster_spec, self._task_type, self._task_id)
+    self._master = _get_tf_session_master(self._cluster_spec, self._task_type,
+                                          self._task_id, tf_config)
     self._num_ps_replicas = _count_ps(self._cluster_spec)
     self._num_worker_replicas = _count_worker(
         self._cluster_spec, chief_task_type=TaskType.MASTER)
@@ -600,3 +634,31 @@ class RunConfig(object):
     _validate_save_ckpt_with_replaced_keys(config, kwargs.keys())
     _validate_properties(config)
     return config
+
+
+def _get_model_dir(tf_config, model_dir):
+  """Returns `model_dir` based user provided `tf_config` or `model_dir`."""
+  # pylint: disable=g-explicit-bool-comparison
+
+  # Empty string is treated as False in Python condition check, which triggers
+  # some confusing error messages. For example, 'a or b' returns None if a is ''
+  # and b is None. `None` is allowed for model_dir but '' is not allowed. Here,
+  # explicitly check empty string to provide clear error message.
+  if model_dir == '':
+    raise ValueError('model_dir should be non-empty.')
+
+  model_dir_in_tf_config = tf_config.get('model_dir')
+  if model_dir_in_tf_config == '':
+    raise ValueError('model_dir in TF_CONFIG should be non-empty.')
+
+  if model_dir_in_tf_config:
+    if model_dir and model_dir_in_tf_config != model_dir:
+      raise ValueError(
+          '`model_dir` provided in RunConfig construct, if set, '
+          'must have the same value as the model_dir in TF_CONFIG. '
+          'model_dir: {}\nTF_CONFIG["model_dir"]: {}.\n'.format(
+              model_dir, model_dir_in_tf_config))
+
+    logging.info('Using model_dir in TF_CONFIG: %s', model_dir_in_tf_config)
+
+  return model_dir or model_dir_in_tf_config
