@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if TF_XLA_HAS_SSE4_1
+#ifdef TF_XLA_HAS_SSE4_1
 
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
     xla::cpu::runtime::V4F32SSE x) {

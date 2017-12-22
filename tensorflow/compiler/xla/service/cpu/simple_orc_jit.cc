@@ -102,9 +102,21 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = TF_XLA_HAS_SSE4_1;
-  intrinsics.avx_intrinsics = TF_XLA_HAS_AVX;
-  intrinsics.neon_intrinsics = TF_XLA_HAS_NEON;
+#ifdef TF_XLA_HAS_SSE4_1
+  intrinsics.sse_intrinsics = true;
+#else
+  intrinsics.sse_intrinsics = false;
+#endif
+#ifdef TF_XLA_HAS_AVX
+  intrinsics.avx_intrinsics = true;
+#else
+  intrinsics.avx_intrinsics = false;
+#endif
+#ifdef TF_XLA_HAS_NEON
+  intrinsics.neon_intrinsics = true;
+#else
+  intrinsics.neon_intrinsics = false;
+#endif
   return intrinsics;
 }
 
@@ -201,15 +213,15 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
-#if TF_XLA_HAS_NEON
+#ifdef TF_XLA_HAS_NEON
   REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32NEON);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32NEON);
 #endif
-#if TF_XLA_HAS_SSE4_1
+#ifdef TF_XLA_HAS_SSE4_1
   REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32SSE);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32SSE);
 #endif
-#if TF_XLA_HAS_AVX
+#ifdef TF_XLA_HAS_AVX
   REGISTER_CPU_RUNTIME_SYMBOL(ExpV8F32AVX);
   REGISTER_CPU_RUNTIME_SYMBOL(LogV8F32AVX);
 #endif

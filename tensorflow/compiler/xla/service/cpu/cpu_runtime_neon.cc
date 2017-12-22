@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if TF_XLA_HAS_NEON
+#ifdef TF_XLA_HAS_NEON
 
 xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
     xla::cpu::runtime::V4F32NEON x) {

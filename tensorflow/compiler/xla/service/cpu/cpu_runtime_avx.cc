@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if TF_XLA_HAS_AVX
+#ifdef TF_XLA_HAS_AVX
 xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
     xla::cpu::runtime::V8F32AVX x) {
   return Eigen::internal::pexp(x);

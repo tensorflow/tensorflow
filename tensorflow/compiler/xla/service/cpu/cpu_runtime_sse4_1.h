@@ -26,11 +26,9 @@ limitations under the License.
 
 // MSVC does not have __SSE4_1__ macro. Eigen enables EIGEN_VECTORIZE_SSE4_1
 // when __AVX__ is defined, we should do the same.
-#if defined(__SSE4_1__) || defined(__AVX__)
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
 #include <smmintrin.h>
-#define TF_XLA_HAS_SSE4_1 1
-#else
-#define TF_XLA_HAS_SSE4_1 0
+#define TF_XLA_HAS_SSE4_1
 #endif
 
 namespace xla {
@@ -40,7 +38,7 @@ namespace runtime {
 extern const char *const kExpV4F32SSESymbolName;
 extern const char *const kLogV4F32SSESymbolName;
 
-#if TF_XLA_HAS_SSE4_1
+#ifdef TF_XLA_HAS_SSE4_1
 typedef __m128 V4F32SSE;
 #endif
 
@@ -50,7 +48,7 @@ typedef __m128 V4F32SSE;
 
 extern "C" {
 
-#if TF_XLA_HAS_SSE4_1
+#ifdef TF_XLA_HAS_SSE4_1
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.

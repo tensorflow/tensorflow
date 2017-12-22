@@ -26,9 +26,7 @@ limitations under the License.
 
 #if defined(__AVX__)
 #include <immintrin.h>
-#define TF_XLA_HAS_AVX 1
-#else
-#define TF_XLA_HAS_AVX 0
+#define TF_XLA_HAS_AVX
 #endif
 
 namespace xla {
@@ -38,7 +36,7 @@ namespace runtime {
 extern const char *const kExpV8F32AVXSymbolName;
 extern const char *const kLogV8F32AVXSymbolName;
 
-#if TF_XLA_HAS_AVX
+#ifdef TF_XLA_HAS_AVX
 typedef __m256 V8F32AVX;
 #endif
 }  // namespace runtime
@@ -47,7 +45,7 @@ typedef __m256 V8F32AVX;
 
 extern "C" {
 
-#if TF_XLA_HAS_AVX
+#ifdef TF_XLA_HAS_AVX
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.

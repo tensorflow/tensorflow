@@ -27,9 +27,7 @@ limitations under the License.
 // __attribute__((__vector_size__(*))).  Unfortunately, the typedef for the ARM
 // NEON SIMD types is not portable, so the type has to come from <arm_neon.h>
 #include <arm_neon.h>
-#define TF_XLA_HAS_NEON 1
-#else
-#define TF_XLA_HAS_NEON 0
+#define TF_XLA_HAS_NEON
 #endif  // __ARM_NEON__
 
 namespace xla {
@@ -39,7 +37,7 @@ namespace runtime {
 extern const char *const kExpV4F32NEONSymbolName;
 extern const char *const kLogV4F32NEONSymbolName;
 
-#if TF_XLA_HAS_NEON
+#ifdef TF_XLA_HAS_NEON
 typedef float32x4_t V4F32NEON;
 #endif  // TF_XLA_HAS_NEON
 
@@ -49,7 +47,7 @@ typedef float32x4_t V4F32NEON;
 
 extern "C" {
 
-#if TF_XLA_HAS_NEON
+#ifdef TF_XLA_HAS_NEON
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
