@@ -152,6 +152,7 @@ py_test(
     size = "small",
     srcs = ["dnn_tree_combined_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":dnn_tree_combined_estimator",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",

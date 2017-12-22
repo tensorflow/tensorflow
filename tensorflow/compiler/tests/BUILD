@@ -283,6 +283,9 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

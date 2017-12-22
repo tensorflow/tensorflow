@@ -30,21 +30,22 @@ class DecodeLibsvmOpTest(test.TestCase):
 
   def testBasic(self):
     with self.test_session() as sess:
-      content = ["1 1:3.4 2:0.5 4:0.231",
-                 "1 2:2.5 3:inf 5:0.503",
-                 "2 3:2.5 2:nan 1:0.105"]
-      sparse_features, labels = libsvm_ops.decode_libsvm(content,
-                                                         num_features=6)
-      features = sparse_ops.sparse_tensor_to_dense(sparse_features,
-                                                   validate_indices=False)
+      content = [
+          "1 1:3.4 2:0.5 4:0.231", "1 2:2.5 3:inf 5:0.503",
+          "2 3:2.5 2:nan 1:0.105"
+      ]
+      sparse_features, labels = libsvm_ops.decode_libsvm(
+          content, num_features=6)
+      features = sparse_ops.sparse_tensor_to_dense(
+          sparse_features, validate_indices=False)
 
       self.assertAllEqual(labels.get_shape().as_list(), [3])
 
       features, labels = sess.run([features, labels])
       self.assertAllEqual(labels, [1, 1, 2])
-      self.assertAllClose(features, [[0, 3.4, 0.5, 0, 0.231, 0],
-                                     [0, 0, 2.5, np.inf, 0, 0.503],
-                                     [0, 0.105, np.nan, 2.5, 0, 0]])
+      self.assertAllClose(
+          features, [[0, 3.4, 0.5, 0, 0.231, 0], [0, 0, 2.5, np.inf, 0, 0.503],
+                     [0, 0.105, np.nan, 2.5, 0, 0]])
 
   def testNDimension(self):
     with self.test_session() as sess:
@@ -53,19 +54,17 @@ class DecodeLibsvmOpTest(test.TestCase):
                  ["2 3:2.5 2:nan 1:0.105", "2 3:2.5 2:nan 1:0.105"]]
       sparse_features, labels = libsvm_ops.decode_libsvm(
           content, num_features=6, label_dtype=dtypes.float64)
-      features = sparse_ops.sparse_tensor_to_dense(sparse_features,
-                                                   validate_indices=False)
+      features = sparse_ops.sparse_tensor_to_dense(
+          sparse_features, validate_indices=False)
 
       self.assertAllEqual(labels.get_shape().as_list(), [3, 2])
 
       features, labels = sess.run([features, labels])
       self.assertAllEqual(labels, [[1, 1], [1, 1], [2, 2]])
-      self.assertAllClose(features, [[[0, 3.4, 0.5, 0, 0.231, 0],
-                                     [0, 3.4, 0.5, 0, 0.231, 0]],
-                                    [[0, 0, 2.5, np.inf, 0, 0.503],
-                                     [0, 0, 2.5, np.inf, 0, 0.503]],
-                                    [[0, 0.105, np.nan, 2.5, 0, 0],
-                                     [0, 0.105, np.nan, 2.5, 0, 0]]])
+      self.assertAllClose(
+          features, [[[0, 3.4, 0.5, 0, 0.231, 0], [0, 3.4, 0.5, 0, 0.231, 0]], [
+              [0, 0, 2.5, np.inf, 0, 0.503], [0, 0, 2.5, np.inf, 0, 0.503]
+          ], [[0, 0.105, np.nan, 2.5, 0, 0], [0, 0.105, np.nan, 2.5, 0, 0]]])
 
 
 if __name__ == "__main__":

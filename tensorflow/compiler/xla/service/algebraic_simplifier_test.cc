@@ -398,6 +398,29 @@ TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
   EXPECT_EQ(0, negate_shape.dimensions_size());
 }
 
+// A / Const => A * (1 / Const)
+TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {3});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR1<float>({0.f, 1.f, 2.f})));
+  builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kDivide,
+                                                      param0, constant));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Multiply(param0, op::Divide(op::Constant(), constant)));
+}
+
 // pow(pow(A, X), Y) => pow(A, X*Y)
 TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});

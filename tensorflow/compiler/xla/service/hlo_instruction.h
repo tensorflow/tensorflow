@@ -63,6 +63,7 @@ class HloPrintOptions {
   // compact operands, no indentation.
   HloPrintOptions()
       : print_large_constants_(false),
+        print_subcomputation_references_(true),
         print_metadata_(true),
         compact_operands_(false),
         print_operand_shape_(true),
@@ -73,6 +74,7 @@ class HloPrintOptions {
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
         .set_print_large_constants(true)
+        .set_print_subcomputation_references(true)
         .set_print_metadata(false)
         .set_print_operand_shape(false)
         .set_print_program_shape(false)
@@ -82,6 +84,17 @@ class HloPrintOptions {
   // If true, large constants will be printed out.
   HloPrintOptions& set_print_large_constants(bool value) {
     print_large_constants_ = value;
+    return *this;
+  }
+
+  // If true, the names of subcomputations (e.g. a fusion node's fused
+  // computation) won't be printed.  This makes the resulting text not parsable.
+  //
+  // A CustomCall's call target is printed even if
+  // print_subcomputation_references is false, because the call target isn't an
+  // HloComputation.
+  HloPrintOptions& set_print_subcomputation_references(bool value) {
+    print_subcomputation_references_ = value;
     return *this;
   }
 
@@ -123,6 +136,9 @@ class HloPrintOptions {
   }
 
   bool print_large_constants() const { return print_large_constants_; }
+  bool print_subcomputation_references() const {
+    return print_subcomputation_references_;
+  }
   bool print_metadata() const { return print_metadata_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
@@ -132,6 +148,7 @@ class HloPrintOptions {
 
  private:
   bool print_large_constants_;
+  bool print_subcomputation_references_;
   bool print_metadata_;
   bool compact_operands_;
   bool print_operand_shape_;
