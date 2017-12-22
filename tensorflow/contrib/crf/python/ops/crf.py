@@ -70,25 +70,6 @@ __all__ = [
 ]
 
 
-def _lengths_to_masks(lengths, max_length):
-  """Creates a binary matrix that can be used to mask away padding.
-
-  Args:
-    lengths: A vector of integers representing lengths.
-    max_length: An integer indicating the maximum length. All values in
-      lengths should be less than max_length.
-  Returns:
-    masks: Masks that can be used to get rid of padding.
-  """
-  tiled_ranges = array_ops.tile(
-      array_ops.expand_dims(math_ops.range(max_length), 0),
-      [array_ops.shape(lengths)[0], 1])
-  lengths = array_ops.expand_dims(lengths, 1)
-  masks = math_ops.to_float(
-      math_ops.to_int64(tiled_ranges) < math_ops.to_int64(lengths))
-  return masks
-
-
 def crf_sequence_score(inputs, tag_indices, sequence_lengths,
                        transition_params):
   """Computes the unnormalized score for a tag sequence.
@@ -234,7 +215,9 @@ def crf_unary_score(tag_indices, sequence_lengths, inputs):
       array_ops.gather(flattened_inputs, flattened_tag_indices),
       [batch_size, max_seq_len])
 
-  masks = _lengths_to_masks(sequence_lengths, array_ops.shape(tag_indices)[1])
+  masks = array_ops.sequence_mask(sequence_lengths,
+                                  maxlen=array_ops.shape(tag_indices)[1],
+                                  dtype=dtypes.float32)
 
   unary_scores = math_ops.reduce_sum(unary_scores * masks, 1)
   return unary_scores
@@ -268,7 +251,9 @@ def crf_binary_score(tag_indices, sequence_lengths, transition_params):
   binary_scores = array_ops.gather(flattened_transition_params,
                                    flattened_transition_indices)
 
-  masks = _lengths_to_masks(sequence_lengths, array_ops.shape(tag_indices)[1])
+  masks = array_ops.sequence_mask(sequence_lengths,
+                                  maxlen=array_ops.shape(tag_indices)[1],
+                                  dtype=dtypes.float32)
   truncated_masks = array_ops.slice(masks, [0, 1], [-1, -1])
   binary_scores = math_ops.reduce_sum(binary_scores * truncated_masks, 1)
   return binary_scores
