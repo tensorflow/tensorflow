@@ -23,11 +23,12 @@ package(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
-cc_library(
+tf_cc_library(
     name = "jit",
     visibility = [":friends"],
     deps = [
@@ -41,7 +42,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_cpu_jit",
     visibility = ["//visibility:public"],
     deps = [
@@ -53,7 +54,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_gpu_jit",
     visibility = ["//visibility:public"],
     deps = if_cuda([
@@ -65,7 +66,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_cpu_device",
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
@@ -82,7 +83,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_gpu_device",
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
@@ -99,7 +100,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_interpreter_device",
     srcs = ["xla_interpreter_device.cc"],
     deps = [
@@ -112,7 +113,7 @@ cc_library(
 
 # Internal targets below this point.
 
-cc_library(
+tf_cc_library(
     name = "common",
     srcs = [
         "defs.cc",
@@ -123,7 +124,7 @@ cc_library(
     visibility = [":friends"],
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_device",
     srcs = [
         "xla_device.cc",
@@ -164,7 +165,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_compilation_cache",
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
@@ -184,7 +185,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "jit_compilation_passes",
     srcs = ["jit_compilation_pass_registration.cc"],
     deps = [
@@ -194,7 +195,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_to_functiondef",
     srcs = ["graph_to_functiondef.cc"],
     hdrs = ["graph_to_functiondef.h"],
@@ -206,7 +207,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "create_xla_launch_op",
     srcs = [
         "create_xla_launch_op.cc",
@@ -223,7 +224,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
@@ -259,7 +260,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
 )

@@ -637,7 +637,7 @@ cuda_py_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "randomized_tests_library",
     testonly = 1,
     srcs = ["randomized_tests.cc"],

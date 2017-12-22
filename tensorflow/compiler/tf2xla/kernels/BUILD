@@ -5,6 +5,7 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 tf_kernel_library(
     name = "xla_ops",
@@ -161,7 +162,7 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
@@ -173,7 +174,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],

@@ -5,8 +5,9 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "functional_ops",
     srcs = ["functional_ops.cc"],
     deps = [
@@ -15,7 +16,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "sendrecv_ops",
     srcs = ["sendrecv_ops.cc"],
     deps = [

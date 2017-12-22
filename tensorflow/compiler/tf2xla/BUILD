@@ -24,8 +24,9 @@ package(
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "tf2xla_supported_ops_lib",
     srcs = ["tf2xla_supported_ops.cc"],
     hdrs = ["tf2xla_supported_ops.h"],
@@ -58,7 +59,7 @@ xla_proto_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
     hdrs = ["tf2xla.h"],
@@ -82,7 +83,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
@@ -96,7 +97,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_jit_compiled_cpu_function",
     srcs = ["xla_jit_compiled_cpu_function.cc"],
     hdrs = ["xla_jit_compiled_cpu_function.h"],
@@ -117,7 +118,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "xla_compiler",
     srcs = [
         "graph_compiler.cc",
@@ -172,7 +173,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "common",
     srcs = [
         "literal_util.cc",
@@ -198,7 +199,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "sharding_util",
     srcs = ["sharding_util.cc"],
     hdrs = ["sharding_util.h"],
@@ -230,7 +231,7 @@ tf_cc_test(
 
 # Internal targets below this point.
 
-cc_library(
+tf_cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
@@ -356,7 +357,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "const_analysis",
     srcs = ["const_analysis.cc"],
     hdrs = ["const_analysis.h"],
@@ -385,7 +386,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dump_graph",
     srcs = [
         "dump_graph.cc",
@@ -406,7 +407,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "functionalize_control_flow",
     srcs = ["functionalize_control_flow.cc"],
     hdrs = ["functionalize_control_flow.h"],
@@ -450,7 +451,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],

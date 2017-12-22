@@ -23,8 +23,9 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "hlo_lexer",
     srcs = ["hlo_lexer.cc"],
     hdrs = [
@@ -42,7 +43,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_parser",
     srcs = ["hlo_parser.cc"],
     hdrs = ["hlo_parser.h"],

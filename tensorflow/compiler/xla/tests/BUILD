@@ -29,13 +29,14 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites"
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
 
 # Target to add main for tests. Do not link this target and
 # //third_party/tensorflow/core:test_main into the same target.
-cc_library(
+tf_cc_library(
     name = "xla_internal_test_main",
     testonly = True,
     srcs = ["xla_internal_test_main.cc"],
@@ -46,7 +47,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "test_macros_header",
     testonly = True,
     hdrs = ["test_macros.h"],
@@ -59,7 +60,7 @@ cc_library(
 # Generate a test_macros_${BACKEND} library per backend with the proper copts.
 generate_backend_test_macros()
 
-cc_library(
+tf_cc_library(
     name = "test_utils",
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
@@ -77,7 +78,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "literal_test_util",
     testonly = True,
     srcs = ["literal_test_util.cc"],
@@ -98,7 +99,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_test_base",
     testonly = True,
     srcs = ["hlo_test_base.cc"],
@@ -127,7 +128,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_verified_test_base",
     testonly = True,
     srcs = ["hlo_verified_test_base.cc"],
@@ -166,7 +167,7 @@ genrule(
     tools = [":local_client_aot_test_helper"],
 )
 
-cc_library(
+tf_cc_library(
     name = "client_library_test_base",
     testonly = True,
     srcs = ["client_library_test_base.cc"],
@@ -196,7 +197,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "llvm_irgen_test_base",
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
@@ -210,7 +211,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "codegen_test_base",
     testonly = True,
     srcs = ["codegen_test_base.cc"],
@@ -223,7 +224,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "filecheck",
     testonly = True,
     srcs = ["filecheck.cc"],
@@ -239,7 +240,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "local_client_test_base",
     testonly = True,
     srcs = ["local_client_test_base.cc"],
@@ -960,7 +961,7 @@ xla_test(
 )
 
 # External xla_test targets can add "reduce_window_test_library" to xla_test_library_deps, in order
-# to refer to the cc_library compiled with the correct backend macros. The following test target
+# to refer to the tf_cc_library compiled with the correct backend macros. The following test target
 # "reduce_window_test" is an example.
 xla_test_library(
     name = "reduce_window_test_library",

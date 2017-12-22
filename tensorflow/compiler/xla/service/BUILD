@@ -14,6 +14,7 @@ package_group(
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 xla_proto_library(
@@ -38,7 +39,7 @@ filegroup(
     ]),
 )
 
-cc_library(
+tf_cc_library(
     name = "shape_inference",
     srcs = ["shape_inference.cc"],
     hdrs = ["shape_inference.h"],
@@ -80,7 +81,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_evaluator",
     srcs = ["hlo_evaluator.cc"],
     hdrs = ["hlo_evaluator.h"],
@@ -125,7 +126,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo",
     srcs = [
         "dfs_hlo_visitor.cc",
@@ -167,7 +168,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_reachability",
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
@@ -192,7 +193,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_matchers",
     testonly = 1,
     srcs = ["hlo_matchers.cc"],
@@ -214,7 +215,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "versioned_computation_handle",
     srcs = ["versioned_computation_handle.cc"],
     hdrs = ["versioned_computation_handle.h"],
@@ -257,7 +258,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "call_graph",
     srcs = ["call_graph.cc"],
     hdrs = ["call_graph.h"],
@@ -288,7 +289,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "flatten_call_graph",
     srcs = ["flatten_call_graph.cc"],
     hdrs = ["flatten_call_graph.h"],
@@ -302,7 +303,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "call_inliner",
     srcs = ["call_inliner.cc"],
     hdrs = ["call_inliner.h"],
@@ -356,7 +357,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "user_computation",
     srcs = ["user_computation.cc"],
     hdrs = ["user_computation.h"],
@@ -395,7 +396,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "platform_util",
     srcs = ["platform_util.cc"],
     hdrs = ["platform_util.h"],
@@ -410,7 +411,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "backend",
     srcs = ["backend.cc"],
     hdrs = ["backend.h"],
@@ -432,7 +433,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "service",
     srcs = ["service.cc"],
     hdrs = ["service.h"],
@@ -475,7 +476,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "local_service",
     srcs = ["local_service.cc"],
     hdrs = ["local_service.h"],
@@ -507,7 +508,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compile_only_service",
     srcs = ["compile_only_service.cc"],
     hdrs = ["compile_only_service.h"],
@@ -530,7 +531,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cpu_plugin",
     deps = [
         ":service",
@@ -540,7 +541,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "gpu_plugin",
     deps = [
         ":service",
@@ -551,7 +552,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "interpreter_plugin",
     deps = [
         ":service",
@@ -562,7 +563,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shaped_buffer",
     srcs = ["shaped_buffer.cc"],
     hdrs = ["shaped_buffer.h"],
@@ -580,7 +581,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = [
@@ -612,7 +613,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
@@ -629,7 +630,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "llvm_compiler",
     srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
@@ -639,7 +640,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "transfer_manager",
     srcs = ["transfer_manager.cc"],
     hdrs = ["transfer_manager.h"],
@@ -657,7 +658,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "allocation_tracker",
     srcs = ["allocation_tracker.cc"],
     hdrs = ["allocation_tracker.h"],
@@ -676,7 +677,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "execution_tracker",
     srcs = ["execution_tracker.cc"],
     hdrs = ["execution_tracker.h"],
@@ -692,7 +693,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "computation_tracker",
     srcs = ["computation_tracker.cc"],
     hdrs = ["computation_tracker.h"],
@@ -711,7 +712,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "channel_tracker",
     srcs = ["channel_tracker.cc"],
     hdrs = ["channel_tracker.h"],
@@ -731,7 +732,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "name_uniquer",
     srcs = ["name_uniquer.cc"],
     hdrs = ["name_uniquer.h"],
@@ -753,7 +754,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "liveness_util",
     srcs = ["liveness_util.cc"],
     hdrs = ["liveness_util.h"],
@@ -780,7 +781,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "buffer_liveness",
     srcs = [
         "buffer_liveness.cc",
@@ -818,7 +819,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "buffer_assignment",
     srcs = [
         "buffer_assignment.cc",
@@ -871,7 +872,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_ordering",
     srcs = ["hlo_ordering.cc"],
     hdrs = ["hlo_ordering.h"],
@@ -908,7 +909,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "heap_simulator",
     srcs = ["heap_simulator.cc"],
     hdrs = ["heap_simulator.h"],
@@ -942,7 +943,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_scheduling",
     srcs = ["hlo_scheduling.cc"],
     hdrs = ["hlo_scheduling.h"],
@@ -976,7 +977,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_query",
     srcs = ["hlo_query.cc"],
     hdrs = ["hlo_query.h"],
@@ -987,7 +988,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "instruction_fusion",
     srcs = ["instruction_fusion.cc"],
     hdrs = ["instruction_fusion.h"],
@@ -1010,7 +1011,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "batchnorm_expander",
     srcs = ["batchnorm_expander.cc"],
     hdrs = ["batchnorm_expander.h"],
@@ -1051,7 +1052,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "algebraic_simplifier",
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
@@ -1092,7 +1093,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
     hdrs = ["while_loop_simplifier.h"],
@@ -1118,7 +1119,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "defuser",
     srcs = ["defuser.cc"],
     hdrs = ["defuser.h"],
@@ -1145,7 +1146,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dot_decomposer",
     srcs = ["dot_decomposer.cc"],
     hdrs = ["dot_decomposer.h"],
@@ -1160,7 +1161,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
     hdrs = ["tuple_simplifier.h"],
@@ -1190,7 +1191,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "reshape_mover",
     srcs = ["reshape_mover.cc"],
     hdrs = ["reshape_mover.h"],
@@ -1224,7 +1225,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "inliner",
     srcs = ["inliner.cc"],
     hdrs = ["inliner.h"],
@@ -1257,7 +1258,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "computation_placer",
     srcs = ["computation_placer.cc"],
     hdrs = ["computation_placer.h"],
@@ -1277,7 +1278,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform computation placer registration
 )
 
-cc_library(
+tf_cc_library(
     name = "human_readable_profile_builder",
     srcs = ["human_readable_profile_builder.cc"],
     hdrs = ["human_readable_profile_builder.h"],
@@ -1289,7 +1290,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "generic_transfer_manager",
     srcs = ["generic_transfer_manager.cc"],
     hdrs = ["generic_transfer_manager.h"],
@@ -1309,7 +1310,7 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_cost_analysis",
     srcs = ["hlo_cost_analysis.cc"],
     hdrs = ["hlo_cost_analysis.h"],
@@ -1352,7 +1353,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_execution_profile",
     srcs = ["hlo_execution_profile.cc"],
     hdrs = ["hlo_execution_profile.h"],
@@ -1426,7 +1427,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "logical_buffer",
     srcs = ["logical_buffer.cc"],
     hdrs = ["logical_buffer.h"],
@@ -1441,7 +1442,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_value",
     srcs = ["hlo_value.cc"],
     hdrs = ["hlo_value.h"],
@@ -1457,7 +1458,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_dataflow_analysis",
     srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],
@@ -1498,7 +1499,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_buffer",
     srcs = ["hlo_buffer.cc"],
     hdrs = ["hlo_buffer.h"],
@@ -1514,7 +1515,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_alias_analysis",
     srcs = ["hlo_alias_analysis.cc"],
     hdrs = ["hlo_alias_analysis.h"],
@@ -1557,7 +1558,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "logical_buffer_analysis",
     srcs = ["logical_buffer_analysis.cc"],
     hdrs = ["logical_buffer_analysis.h"],
@@ -1571,7 +1572,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tuple_points_to_analysis",
     srcs = ["tuple_points_to_analysis.cc"],
     hdrs = ["tuple_points_to_analysis.h"],
@@ -1609,7 +1610,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "compilation_cache",
     srcs = ["compilation_cache.cc"],
     hdrs = ["compilation_cache.h"],
@@ -1623,7 +1624,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "layout_assignment",
     srcs = [
         "layout_assignment.cc",
@@ -1649,7 +1650,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "copy_insertion",
     srcs = ["copy_insertion.cc"],
     hdrs = ["copy_insertion.h"],
@@ -1692,7 +1693,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_dce",
     srcs = ["hlo_dce.cc"],
     hdrs = ["hlo_dce.h"],
@@ -1708,7 +1709,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_verifier",
     srcs = ["hlo_verifier.cc"],
     hdrs = ["hlo_verifier.h"],
@@ -1736,7 +1737,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],
@@ -1818,7 +1819,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_pass",
     hdrs = [
         "hlo_pass_fix.h",
@@ -1833,7 +1834,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_pass_pipeline",
     srcs = [
         "hlo_pass_pipeline.cc",
@@ -1853,7 +1854,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_cse",
     srcs = ["hlo_cse.cc"],
     hdrs = ["hlo_cse.h"],
@@ -1888,7 +1889,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_constant_folding",
     srcs = ["hlo_constant_folding.cc"],
     hdrs = ["hlo_constant_folding.h"],
@@ -1922,7 +1923,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_element_type_converter",
     srcs = ["hlo_element_type_converter.cc"],
     hdrs = ["hlo_element_type_converter.h"],
@@ -1938,7 +1939,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "device_memory_allocator",
     srcs = ["device_memory_allocator.cc"],
     hdrs = ["device_memory_allocator.h"],
@@ -1952,7 +1953,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "elemental_ir_emitter",
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
@@ -1976,7 +1977,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_module_config",
     srcs = ["hlo_module_config.cc"],
     hdrs = ["hlo_module_config.h"],
@@ -1991,7 +1992,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "computation_layout",
     srcs = ["computation_layout.cc"],
     hdrs = ["computation_layout.h"],
@@ -2003,7 +2004,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_subcomputation_unification",
     srcs = ["hlo_subcomputation_unification.cc"],
     hdrs = ["hlo_subcomputation_unification.h"],
@@ -2026,7 +2027,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_tfgraph_builder",
     srcs = ["hlo_tfgraph_builder.cc"],
     hdrs = ["hlo_tfgraph_builder.h"],
@@ -2054,7 +2055,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
@@ -2089,7 +2090,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "transpose_folding",
     srcs = ["transpose_folding.cc"],
     hdrs = ["transpose_folding.h"],
@@ -2123,7 +2124,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "pool",
     hdrs = ["pool.h"],
     deps = [
@@ -2142,7 +2143,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_proto_util",
     srcs = ["hlo_proto_util.cc"],
     hdrs = ["hlo_proto_util.h"],
@@ -2154,7 +2155,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "reduce_precision_insertion",
     srcs = ["reduce_precision_insertion.cc"],
     hdrs = ["reduce_precision_insertion.h"],
@@ -2185,7 +2186,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_runner",
     srcs = ["hlo_runner.cc"],
     hdrs = ["hlo_runner.h"],
@@ -2209,7 +2210,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hlo_profile_printer",
     srcs = ["hlo_profile_printer.cc"],
     hdrs = ["hlo_profile_printer.h"],

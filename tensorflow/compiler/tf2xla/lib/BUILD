@@ -6,6 +6,8 @@ package(
     default_visibility = ["//tensorflow/compiler/tf2xla:friends"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -17,7 +19,7 @@ filegroup(
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 
-cc_library(
+tf_cc_library(
     name = "batch_dot",
     srcs = ["batch_dot.cc"],
     hdrs = ["batch_dot.h"],
@@ -31,7 +33,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cholesky",
     srcs = ["cholesky.cc"],
     hdrs = ["cholesky.h"],
@@ -49,7 +51,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "triangular_solve",
     srcs = ["triangular_solve.cc"],
     hdrs = ["triangular_solve.h"],
@@ -89,7 +91,7 @@ xla_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],

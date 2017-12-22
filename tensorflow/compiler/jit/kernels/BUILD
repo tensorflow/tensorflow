@@ -6,7 +6,9 @@ package(
     ],
 )
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "xla_launch_op",
     srcs = ["xla_launch_op.cc"],
     hdrs = ["xla_launch_op.h"],
@@ -28,7 +30,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_check_op",
     srcs = ["parallel_check_op.cc"],
     visibility = ["//tensorflow/compiler/jit:friends"],

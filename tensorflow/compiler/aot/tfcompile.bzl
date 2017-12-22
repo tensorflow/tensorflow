@@ -202,6 +202,7 @@ def tf_library(name, graph, config,
   need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
+      copts = tf_copts(),
       srcs=[object_file],
       hdrs=[header_file],
       visibility=visibility,

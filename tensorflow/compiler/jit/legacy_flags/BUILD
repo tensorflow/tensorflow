@@ -16,7 +16,9 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "encapsulate_subgraphs_pass_flags",
     srcs = ["encapsulate_subgraphs_pass_flags.cc"],
     hdrs = ["encapsulate_subgraphs_pass_flags.h"],
@@ -28,7 +30,7 @@ cc_library(
         ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mark_for_compilation_pass_flags",
     srcs = ["mark_for_compilation_pass_flags.cc"],
     hdrs = ["mark_for_compilation_pass_flags.h"],
@@ -40,7 +42,7 @@ cc_library(
         ],
 )
 
-cc_library(
+tf_cc_library(
     name = "parallel_check_op_flags",
     srcs = ["parallel_check_op_flags.cc"],
     hdrs = ["parallel_check_op_flags.h"],
