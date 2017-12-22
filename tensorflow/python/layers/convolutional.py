@@ -1622,22 +1622,16 @@ class Conv3DTranspose(Conv3D):
       outputs.set_shape(out_shape)
 
     if self.use_bias:
-      outputs_shape = outputs.shape.as_list()
-      if self.data_format == 'channels_first':
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1],
-            outputs_shape[2] * outputs_shape[3], outputs_shape[4]
-        ])
-      else:
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1] * outputs_shape[2],
-            outputs_shape[3], outputs_shape[4]
-        ])
-      outputs_4d = nn.bias_add(
-          outputs_4d,
-          self.bias,
-          data_format=utils.convert_data_format(self.data_format, ndim=4))
-      outputs = array_ops.reshape(outputs_4d, outputs_shape)
+        if self.data_format == 'channels_first':
+            outputs_shape = outputs.shape.as_list()
+            outputs_4d = array_ops.reshape(outputs,
+                                           [outputs_shape[0], outputs_shape[1],
+                                            outputs_shape[2] * outputs_shape[3],
+                                            outputs_shape[4]])
+            outputs_4d = nn.bias_add(outputs_4d, self.bias, data_format='NCHW')
+            outputs = array_ops.reshape(outputs_4d, outputs_shape)
+        else:
+            outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
     if self.activation is not None:
       return self.activation(outputs)
