@@ -222,17 +222,17 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
-#ifndef NVIDIA_TEGRA
+//#ifndef NVIDIA_TEGRA
 REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
-REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
-#endif
+REGISTER_KERNEL(GPU, bool);
+//#endif
 REGISTER_KERNEL(GPU, float);
 // Currently we do not support filling strings and complex64 on GPU
 
