@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -274,6 +275,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<ZeroSizedHloElimination>();
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvCanonicalization>();
   {

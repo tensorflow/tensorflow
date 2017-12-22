@@ -127,6 +127,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
+        "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",  # fixdeps: keep
         "//tensorflow/core:lib",  # fixdeps: keep
         "//tensorflow/core:stream_executor_no_cuda",
