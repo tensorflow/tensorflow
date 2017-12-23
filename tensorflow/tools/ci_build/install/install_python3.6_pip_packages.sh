@@ -24,6 +24,13 @@
 add-apt-repository -y ppa:fkrull/deadsnakes
 apt-get update
 
+# Install bz2 dep
+apt-get install libbz2-dev
+# Install curses dep
+apt-get install libncurses5 libncurses5-dev libncursesw5
+# Install readline dep
+apt-get install libreadline6-dev
+
 set -e
 # Install Python 3.6 and dev library
 wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
@@ -62,6 +69,8 @@ pip3 install scikit-learn==0.18.1
 
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
+
+pip3 install readline
 
 # Install recent-enough version of wheel for Python 3.6 wheel builds
 pip3 install wheel==0.29.0
