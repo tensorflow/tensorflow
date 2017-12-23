@@ -1,0 +1,70 @@
+stadium baseball
+airfield
+church outdoor
+amusement arcade
+bedroom
+elevator lobby
+restaurant
+beach
+auditorium
+coffee shop
+canyon
+castle
+baseball field
+nursery
+soccer field
+boxing ring
+bazaar outdoor
+airport terminal
+playground
+arena performance
+apartment building outdoor
+ice skating rink outdoor
+elevator door
+parking lot
+greenhouse outdoor
+kitchen
+shower
+bookstore
+drugstore
+computer room
+parking garage outdoor
+amusement park
+cafeteria
+arena hockey
+office
+general store outdoor
+conference center
+food court
+house
+bathroom
+office building
+music studio
+aquarium
+construction site
+campus
+gas station
+closet
+market outdoor
+mountain
+stadium football
+church indoor
+swimming pool outdoor
+ice skating rink indoor
+golf course
+greenhouse indoor
+shopping mall indoor
+martial arts gym
+stadium soccer
+department store
+recreation room
+bazaar indoor
+classroom
+hospital
+parking garage indoor
+football field
+physics laboratory
+athletic field outdoor
+airplane cabin
+museum indoor
+swimming pool indoor
