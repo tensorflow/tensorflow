@@ -28,7 +28,7 @@ apt-get install libbz2-dev
 # Install curses dep
 apt-get install libncurses5 libncurses5-dev libncursesw5
 # Install readline dep
-apt-get install libreadline6-dev
+apt-get install libreadline6 libreadline6-dev
 
 apt-get update
 
