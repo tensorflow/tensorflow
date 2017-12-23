@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
 
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -55,7 +56,7 @@ Tensor* OpsTestBase::GetOutput(int output_index) {
       auto dst = managed_output->tensor_data();
       context_->eigen_gpu_device().memcpy(const_cast<char*>(dst.data()),
                                           src.data(), src.size());
-      context_->eigen_gpu_device().synchronize();
+      GPUUtil::Sync(device_.get());
       managed_outputs_[output_index] = managed_output;
     }
     output = managed_outputs_[output_index];
