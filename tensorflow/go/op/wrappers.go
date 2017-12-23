@@ -5953,7 +5953,7 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 	return op.Output(0)
 }
 
-// Creates a dataset that yields a SparseTensor for each element of the input.
+// Creates a dataset that batches input elements into a SparseTensor.
 //
 // Arguments:
 //	input_dataset: A handle to an input dataset. Must have a single component.
