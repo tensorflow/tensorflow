@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -118,11 +119,14 @@ struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
 template <typename Scalar, typename Exponent>
 struct safe_scalar_binary_pow_op {
   static_assert(std::is_integral<Scalar>::value, "Integer type expected");
-  static_assert(std::is_integral<Exponent>::value && std::is_signed<Exponent>::value, "Signed integer type expected");
+  static_assert(std::is_integral<Exponent>::value &&
+                    std::is_signed<Exponent>::value,
+                "Signed integer type expected");
 
   bool* const error;
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error) : error(error) {}
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error)
+      : error(error) {}
 
   EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
                                              const Exponent& b) const {
@@ -768,7 +772,9 @@ template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
 
 template <typename T>
-struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> { static const bool has_errors = true; };
+struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
+  static const bool has_errors = true;
+};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
