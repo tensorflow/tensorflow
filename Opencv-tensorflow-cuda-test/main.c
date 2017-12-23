@@ -9,7 +9,7 @@
 void main(int argc, char** argv)
 {
 	init_main_interface();
-	char* filename = "C:\\Users\\chemf\\source\\repos\\Opencv-tensorflow-test\\Test-15.jpg";
+	char* filename = "Test-15.jpg";
 	int flag = 1;
 	IplImage* src = cvLoadImage(filename,1);
 	IplImage* dst = cvCreateImage(cvSize(src->width, src->height), 32, 3);
