@@ -25,7 +25,7 @@ from tensorflow.python.ops import manip_ops
 
 @ops.RegisterGradient("Roll")
 def _RollGrad(op, grad):
-  # The gradient should be just the roll reversed
+  # The gradient is just the roll reversed
   shift = op.inputs[1]
   axis = op.inputs[2]
   roll_grad = manip_ops.roll(grad, -shift, axis)

@@ -4,8 +4,8 @@ op {
     name: "shift"
     description: <<END
 `shift[i]` specifies the number of places by which elements are shifted
-along the dimension specified by `axis[i]`. Negative shifts will roll the
-elements in the opposite direction.
+positively (towards larger indices) along the dimension specified by
+`axis[i]`. Negative shifts will roll the elements in the opposite direction.
 END
   }
   in_arg {
@@ -19,14 +19,18 @@ END
   out_arg {
     name: "output"
     description: <<END
-Has the same shape and size as the input. The elements are shifted by
-the offsets of `shift` along the dimensions of `axis`.
+Has the same shape and size as the input. The elements are shifted
+positively (towards larger indices) by the offsets of `shift` along the
+dimensions of `axis`.
 END
   }
-  summary: "Rolls the elements of a tensor by the offsets of `shift` along the dimensions"
+  summary: "Rolls the elements of a tensor along an axis."
   description: <<END
-of `axis`. Elements that roll passed the last position will wrap around
-to the first.
+The elements are shifted positively (towards larger indices) by the offset of
+`shift` along the dimension of `axis`. Negative `shift` values will shift
+elements in the opposite direction. Elements that roll passed the last position
+will wrap around to the first and vice versa. Multiple shifts along multiple
+axes may be specified.
 
 For example:
 

@@ -110,7 +110,7 @@ class RollTest(test_util.TensorFlowTestCase):
     axis = [0, 1]
     with self.test_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "shift and axis must be the same size"):
+                                   "shift and axis must have the same size"):
         manip_ops.roll(tensor, shift, axis).eval()
 
   def testRollAxisOutOfRangeRaises(self):

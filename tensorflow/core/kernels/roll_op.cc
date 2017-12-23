@@ -27,29 +27,34 @@ namespace tensorflow {
 
 #define EIGEN_USE_THREADS
 using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
+// dim_size - the size of each dimension
+// dim_range - the number of indices over in the flattened tensor
+//    you need to skip in order to make it over from one side of a dimension
+//    to the other. Used to make the shifts wrap around after a threshold.
+// threshold - the index for each dimension that the roll starts to wrap
+//    back to the front
 template <typename T>
-void DoRoll(OpKernelContext* context, const int64 N, const int D,
-            const gtl::ArraySlice<int>& dim_size, const T* input, T* output,
-            const gtl::ArraySlice<int>& threshold,
+void DoRoll(OpKernelContext* context, const int64 num_elements,
+            const int num_dims, const gtl::ArraySlice<int>& dim_size,
+            const T* input, T* output, const gtl::ArraySlice<int>& threshold,
             const gtl::ArraySlice<int64>& dim_range) {
-  auto work = [input, output, D, &dim_size, &threshold, &dim_range](int64 start,
-                                                                    int64 end) {
+  auto work = [input, output, num_dims, &dim_size, &threshold,
+               &dim_range](int64 start, int64 end) {
     // array of indices for each dimension
-    gtl::InlinedVector<int, 4> indices(D);
+    gtl::InlinedVector<int, 4> indices(num_dims);
     int offset = 0;  // the shift along the flattened tensor for current element
     // initialize indices and offset
-    for (int d = 0; d < D; d++) {
+    for (int i = 0; i < num_dims; i++) {
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
-      // along a dimension. dim_size[d] != 0 because we set it to max(dim, 1)
-      const int64 stride = dim_range[d] / dim_size[d];
-      const int shift = dim_size[d] - threshold[d];
-      const int indx = (start / stride) % dim_size[d];
-      indices[d] = indx;
+      // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
+      const int64 stride = dim_range[i] / dim_size[i];
+      const int shift = dim_size[i] - threshold[i];
+      const int indx = (start / stride) % dim_size[i];
+      indices[i] = indx;
       // calculate dimension index after the shift
-      const int shifted_indx = (indx + shift) % dim_size[d];
+      const int shifted_indx = (indx + shift) % dim_size[i];
       offset += (shifted_indx - indx) * stride;
     }
 
@@ -57,40 +62,65 @@ void DoRoll(OpKernelContext* context, const int64 N, const int D,
       output[i + offset] = input[i];
       // create next combination of indices
       // while at it adjust offset if needed
-      for (int d = D - 1; d >= 0; d--) {
-        const int indx = (indices[d] + 1) % dim_size[d];
-        indices[d] = indx;
+      for (int j = num_dims - 1; j >= 0; j--) {
+        const int indx = (indices[j] + 1) % dim_size[j];
+        indices[j] = indx;
         if (indx != 0) {
-          if (indx == threshold[d]) {  // we've reached the threshold
-            // dim_range[d] = threshold[d] + shift[d]
-            // offset = shift[d] + ... other offsets
-            // offset - dim_range[d] = -threshold[d] + ... other offsets
+          if (indx == threshold[j]) {  // we've reached the threshold
+            // dim_range[j] = threshold[j] + shift[j]
+            // offset = shift[j] + ... other offsets
+            // offset - dim_range[j] = -threshold[j] + ... other offsets
             // thus we undo our previous offset as well as add a new offset of
-            // -threshold[d] in one opperation
-            offset -= dim_range[d];  // now wraps around
+            // -threshold[j] in one opperation
+            offset -= dim_range[j];  // now wraps around
           }
           break;                         // indx != 0 don't need to carry
-        } else if (threshold[d] != 0) {  // if threshold is 0 shift is 0
-          offset += dim_range[d];        // indx became 0 so reverse wrap around
+        } else if (threshold[j] != 0) {  // if threshold is 0 shift is 0
+          offset += dim_range[j];        // indx became 0 so reverse wrap around
         }
       }
     }
   };
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-  const int cost_per_unit = 50;  // rough esitmate
-  Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
-        std::move(work));
+  // 15 - expiramentally determined with float and bool types
+  const int cost_per_element = 15 * sizeof(T);  // rough esitmate
+  Shard(worker_threads->num_threads, worker_threads->workers, num_elements,
+        cost_per_element, std::move(work));
 }
 
+// dim_size - the size of each dimension
+// dim_range - the number of indices over in the flattened tensor
+//    you need to skip in order to make it over from one side of a dimension
+//    to the other. Used to make the shifts wrap around after a threshold.
+// threshold - the index for each dimension that the roll starts to wrap
+//    back to the front
+// isd - inner shift dimension
 template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
-void DoRollV2(OpKernelContext* context, const int64 N, const int D,
-              const gtl::ArraySlice<int>& dim_size, const T* input, T* output,
-              const gtl::ArraySlice<int>& threshold,
-              const gtl::ArraySlice<int64>& dim_range, const int64 isd) {
-  auto work = [input, output, D, &dim_size, &threshold, &dim_range, isd](
+void DoRollWithMemcpy(OpKernelContext* context, const int64 num_elements,
+                      const int num_dims, const gtl::ArraySlice<int>& dim_size,
+                      const T* input, T* output,
+                      const gtl::ArraySlice<int>& threshold,
+                      const gtl::ArraySlice<int64>& dim_range,
+                      const int64 isd) {
+  auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
                   int64 start, int64 end) {
+    // the number of indices over in the flattened tensor you need to skip in
+    // order to make it over from one side of the isd to the other
+    const int64 isd_range = std::max<int>(dim_range[isd], 1);
+    // the distance along the flattend tensor to the next element in the isd
+    const int64 isd_stride = isd_range / std::max<int>(dim_size[isd], 1);
+
+    // start and end represent the i-th group currently so we will convert
+    // them into numbers representing the i-th elements.
+    // there are 2 groups per isd one for all elements before threshold[isd]
+    // and another for all elements after threshold[isd].
+    const int64 start_remainder = (start % 2) * threshold[isd] * isd_stride;
+    const int64 end_remainder = (end % 2) * threshold[isd] * isd_stride;
+    start = (start / 2) * isd_range + start_remainder;
+    end = (end / 2) * isd_range + end_remainder;
+
     const T* in_ptr = &input[0];
     T* out_ptr = &output[0];
     in_ptr += start;
@@ -98,21 +128,21 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
 
     // array of indices for each dimension
     // indicies = [i, j, k, l, m, n]
-    gtl::InlinedVector<int, 4> indicies(D);
+    gtl::InlinedVector<int, 4> indicies(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64 remainder_offset = 0;
     // initialize indicies
-    for (int d = 0; d < D; d++) {
+    for (int i = 0; i < num_dims; i++) {
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
-      // along a dimension. dim_size[d] != 0 because we set it to max(dim, 1)
-      const int64 stride = dim_range[d] / dim_size[d];
-      const int shift = dim_size[d] - threshold[d];
-      const int indx = (start / stride) % dim_size[d];
-      indicies[d] = indx;
+      // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
+      const int64 stride = dim_range[i] / dim_size[i];
+      const int shift = dim_size[i] - threshold[i];
+      const int indx = (start / stride) % dim_size[i];
+      indicies[i] = indx;
       // calculate dimension index after the shift
-      int out_indx = (indx + shift) % dim_size[d];
-      if (d > isd) {
+      int out_indx = (indx + shift) % dim_size[i];
+      if (i > isd) {
         // trailing zeroes for indices after the inner shifted dimension
         out_indx = 0;
         remainder_offset += (out_indx - indx) * stride;
@@ -120,9 +150,7 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
       out_ptr += (out_indx - indx) * stride;
     }
     // set trailing zeroes for indices after the inner shifted dimension
-    for (int d = D - 1; d > isd; d--) indicies[d] = 0;
-    // the distance along the flattend tensor to the next element in the isd
-    const int64 isd_stride = dim_range[isd] / dim_size[isd];
+    for (int i = num_dims - 1; i > isd; i--) indicies[i] = 0;
 
     // the number of indices in the isd dimension the next group will skip
     // to make it to the next threshold or end point
@@ -156,18 +184,18 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
       //            +1 +1 +1 +isd_indx_skip
       // indicies = [i, j, k, l, 0, 0]
       //                      ^isd
-      for (int d = isd; d >= 0; d--) {
+      for (int j = isd; j >= 0; j--) {
         int inc = 1;
-        if (d == isd) inc = isd_indx_skip;
-        const int indx = (indicies[d] + inc) % dim_size[d];
-        indicies[d] = indx;
+        if (j == isd) inc = isd_indx_skip;
+        const int indx = (indicies[j] + inc) % dim_size[j];
+        indicies[j] = indx;
         if (indx != 0) {
-          if (indx == threshold[d]) {
-            out_ptr -= dim_range[d];  // now wraps around
+          if (indx == threshold[j]) {
+            out_ptr -= dim_range[j];  // now wraps around
           }
           break;                         // indx != 0 don't need to carry
-        } else if (threshold[d] != 0) {  // if threshold is 0 shift is 0
-          out_ptr += dim_range[d];       // indx became 0 so reverse wrap around
+        } else if (threshold[j] != 0) {  // if threshold is 0 shift is 0
+          out_ptr += dim_range[j];       // indx became 0 so reverse wrap around
         }
       }
 
@@ -184,9 +212,11 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   const int64 ave_group_size = dim_range[isd] / 2;
-  const int cost_per_unit = 50 / std::max<int>(ave_group_size, 1);  // rough esitmate
-  Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
-        std::move(work));
+  const int total_work = 2 * num_elements / std::max<int>(dim_range[isd], 1);
+  // 25000 - expiramentally determined with float and bool types
+  const int cost_per_group = 25000 * sizeof(T) * ave_group_size;
+  Shard(worker_threads->num_threads, worker_threads->workers, total_work,
+        cost_per_group, std::move(work));
 }
 
 template <typename Device, typename T, typename Tshift, typename Taxis>
@@ -215,41 +245,41 @@ class RollOp : public OpKernel {
                     axis.shape().DebugString()));
     OP_REQUIRES(
         context, shift.shape() == axis.shape(),
-        errors::InvalidArgument("shift and axis must be the same size"));
-    const int64 N = input.NumElements();
-    const int M = static_cast<int>(shift_flat.size());
-    const int D = input.dims();
+        errors::InvalidArgument("shift and axis must have the same size"));
+    const int64 num_elements = input.NumElements();
+    const int num_shifts = static_cast<int>(shift_flat.size());
+    const int num_dims = input.dims();
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    gtl::InlinedVector<int, 4> shift_mod_sum(D, 0);
-    for (int m = 0; m < M; m++) {
-      const int a = axis_flat(m);
-      OP_REQUIRES(context, a < D,
-                  errors::InvalidArgument("axis ", a, " is out of range"));
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(a)), 1);
-      const int sum = shift_mod_sum[a] + static_cast<int>(shift_flat(m));
+    gtl::InlinedVector<int, 4> shift_mod_sum(num_dims, 0);
+    for (int i = 0; i < num_shifts; i++) {
+      const int axis = axis_flat(i);
+      OP_REQUIRES(context, axis < num_dims,
+                  errors::InvalidArgument("axis ", axis, " is out of range"));
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
+      const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
       // modulo that works with negatives: ((x % y) + y) % y
-      shift_mod_sum[a] = (sum % ds + ds) % ds;
+      shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    gtl::InlinedVector<int, 4> dim_size(D);
-    // threshold[d] is the index that the roll starts to wrap back to the front
-    gtl::InlinedVector<int, 4> threshold(D);
+    gtl::InlinedVector<int, 4> dim_size(num_dims);
+    // threshold[i] is the index that the roll starts to wrap back to the front
+    gtl::InlinedVector<int, 4> threshold(num_dims);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64, 4> dim_range(D);
-    int64 dim_size_prod = 1;
+    gtl::InlinedVector<int64, 4> dim_range(num_dims);
+    int64 dim_size_prod = 1;  // dimension size product
     // inner shift dimension (inner most shifted dimension)
     int64 isd = 0;
-    for (int d = D - 1; d >= 0; d--) {
-      if (isd == 0 && shift_mod_sum[d] != 0) isd = d;
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(d)), 1);
-      dim_size[d] = ds;
-      threshold[d] = (ds - shift_mod_sum[d]) % ds;
-      dim_size_prod *= static_cast<int64>(input.dim_size(d));
-      dim_range[d] = dim_size_prod;
+    for (int i = num_dims - 1; i >= 0; i--) {
+      if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
+      dim_size[i] = ds;
+      threshold[i] = (ds - shift_mod_sum[i]) % ds;
+      dim_size_prod *= static_cast<int64>(input.dim_size(i));
+      dim_range[i] = dim_size_prod;
     }
 
     Tensor* output = NULL;
@@ -258,16 +288,15 @@ class RollOp : public OpKernel {
     auto input_flat = input.flat<T>().data();
     auto output_flat = output->flat<T>().data();
 
-    if (std::is_same<Device, CPUDevice>::value || N > kint32max) {
-      // if N > kint32max this is too large for GPUs so we'll use CPU
+    if (std::is_same<Device, CPUDevice>::value) {
       if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
         // V2 copies memory in groups instead of element by element
-        DoRollV2<T>(context, N, D, dim_size, input_flat, output_flat, threshold,
-                    dim_range, isd);
+        DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size,
+                            input_flat, output_flat, threshold, dim_range, isd);
       } else {
         // incase memcpy does not work for current data type
-        DoRoll<T>(context, N, D, dim_size, input_flat, output_flat, threshold,
-                  dim_range);
+        DoRoll<T>(context, num_elements, num_dims, dim_size, input_flat,
+                  output_flat, threshold, dim_range);
       }
     }
   }
@@ -301,6 +330,5 @@ class RollOp : public OpKernel {
                           RollOp<CPUDevice, type, int64, int64>)
 
 TF_CALL_ALL_TYPES(REGISTER_CPU);
-REGISTER_CPU(bfloat16);
 #undef REGISTER_CPU
 }  // namespace tensorflow

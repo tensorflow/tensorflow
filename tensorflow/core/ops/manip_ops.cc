@@ -32,9 +32,11 @@ REGISTER_OP("Roll")
     .Doc(R"doc(
 Rolls the elements of a tensor along an axis.
 
-The elements are shifted with the offset of `shift` along the
-dimension of `axis`. Elements that roll passed the last position will wrap
-around to the first. Multiple shifts along multiple axes may be specified.
+The elements are shifted positively (towards larger indices) by the offset of
+`shift` along the dimension of `axis`. Negative `shift` values will shift
+elements in the opposite direction. Elements that roll passed the last position
+will wrap around to the first and vice versa. Multiple shifts along multiple
+axes may be specified.
 
 For example:
 
@@ -52,13 +54,14 @@ roll(t, shift=[2, -3], axis=[1, 1]) ==> [[1, 2, 3, 4, 0], [6, 7, 8, 9, 5]]
 ```
 
 shift: `shift[i]` specifies the number of places by which elements are shifted
-  along the dimension specified by `axis[i]`. Negative shifts will roll the
-  elements in the opposite direction.
+  positively (towards larger indices) along the dimension specified by
+  `axis[i]`. Negative shifts will roll the elements in the opposite direction.
 axis: `axis[i]` specifies the dimension that the shift `shift[i]` should occur.
   if the same axis is referenced more than once, the total shift for that axis
   will be the sum of all the shifts that belong to that axis.
-output: Has the same shape and size as the input. The elements are shifted by
-  the offsets of `shift` along the dimensions of `axis`.
+output: Has the same shape and size as the input. The elements are shifted
+  positively (towards larger indices) by the offsets of `shift` along the
+  dimensions of `axis`.
 )doc");
 
 }  // namespace tensorflow
