@@ -1406,9 +1406,6 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddDynamicUpdateSliceInstruction(
           arg->dynamic_update_slice_request());
       break;
-    case OpRequest::kFftRequest:
-      handle_status = computation->AddFftInstruction(arg->fft_request());
-      break;
     case OpRequest::kGetTupleElementRequest:
       handle_status = computation->AddGetTupleElementInstruction(
           arg->get_tuple_element_request());
@@ -1521,6 +1518,8 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddRecvInstruction(arg->recv_request());
       break;
     }
+    case OpRequest::kFftRequest:
+      return Unimplemented("FftRequest not implemented in XLA service.");
     case OpRequest::OP_NOT_SET:
       return InvalidArgument("XLA service received OpRequest with OP_NOT_SET");
     default:

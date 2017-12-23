@@ -161,7 +161,6 @@ cc_library(
         ":external_constant_pool",
         ":orc_jit_memory_mapper",
         ":runtime_conv2d",
-        ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_matmul",
         ":runtime_single_threaded_conv2d",
@@ -496,24 +495,6 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "runtime_fft",
-    srcs = [
-        "runtime_fft.cc",
-        "runtime_fft_impl.h",
-    ],
-    hdrs = ["runtime_fft.h"],
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )

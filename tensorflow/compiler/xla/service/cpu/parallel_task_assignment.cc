@@ -126,7 +126,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
     HloInstruction* instruction) {
   // Currently, we do not assign parallel tasks to instructions with at least
   // one of the following properties:
-  // *) Internal threading (library calls to kConv, kDot, kFft, kCustomCall).
+  // *) Internal threading (library calls to kConv, kDot, and kCustomCall).
   // *) Emit custom loops (kSelectAndScatter, FusionKind::kTransposeDot).
   // *) Tuple-shaped.
   // TODO(b/27458679) Parallelize instructions which are skipped here.
@@ -137,7 +137,6 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       instruction->opcode() == HloOpcode::kSelectAndScatter ||
       instruction->opcode() == HloOpcode::kGetTupleElement ||
       instruction->opcode() == HloOpcode::kBitcast ||
-      instruction->opcode() == HloOpcode::kFft ||
       (instruction->opcode() == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction)) ||
       PotentiallyImplementedAsEigenDot(*instruction) ||

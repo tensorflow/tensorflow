@@ -261,11 +261,6 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Creates an FFT op, of the type indicated by fft_type.
-  static std::unique_ptr<HloInstruction> CreateFft(
-      const Shape& shape, HloInstruction* operand, FftType fft_type,
-      tensorflow::gtl::ArraySlice<int64> fft_length);
-
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
@@ -1036,16 +1031,6 @@ class HloInstruction {
     return *convolution_dimension_numbers_;
   }
 
-  FftType fft_type() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_type_;
-  }
-
-  const std::vector<int64>& fft_length() const {
-    CHECK_EQ(HloOpcode::kFft, opcode_);
-    return fft_length_;
-  }
-
   // Returns the dump string of the convolution dimension numbers.
   string ConvolutionDimensionNumbersToString() const;
 
@@ -1317,12 +1302,6 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
-
-  // Describes FFT type for an FFT instruction.
-  FftType fft_type_;
-
-  // Indicates the FFT length for an FFT instruction.
-  std::vector<int64> fft_length_;
 
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
