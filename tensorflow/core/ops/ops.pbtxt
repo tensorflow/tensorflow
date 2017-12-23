@@ -7192,7 +7192,7 @@ op {
     has_minimum: true
     minimum: 1
   }
-  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
 }
 op {
   name: "DenseToSparseSetOperation"
