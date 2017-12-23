@@ -133,6 +133,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddConvolveInstruction(
       const ConvolveRequest& convolve_request);
 
+  // Enqueues an FFT instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddFftInstruction(
+      const FftRequest& fft_request);
+
   // Enqueues a cross replica sum instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCrossReplicaSumInstruction(
       const CrossReplicaSumRequest& cross_replica_sum_request);

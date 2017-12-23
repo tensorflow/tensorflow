@@ -1121,6 +1121,31 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddFftInstruction(
+    const FftRequest& fft_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(fft_request.operand()));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferFftShape(
+                          operand->output_shape(), fft_request.fft_type(),
+                          AsInt64Slice(fft_request.fft_length())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_fft_request() = fft_request;
+
+  VLOG(1) << "AddFftInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << fft_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
     const CrossReplicaSumRequest& cross_replica_sum_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1671,6 +1696,13 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       PureFunctionalVisitor(session_computation, convolve_request.lhs(),
                             num_parameters, visited, is_functional);
       PureFunctionalVisitor(session_computation, convolve_request.rhs(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      PureFunctionalVisitor(session_computation, fft_request.operand(),
                             num_parameters, visited, is_functional);
       break;
     }
@@ -2406,6 +2438,12 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      apply(fft_request.operand());
+      break;
+    }
+
     case OpRequest::kBatchNormTrainingRequest: {
       const BatchNormTrainingRequest& batch_norm_training_request =
           request.request().batch_norm_training_request();
@@ -2877,6 +2915,15 @@ void ComputationLowerer::Visit(
       hlo_instruction = add_instruction(HloInstruction::CreateConvolve(
           request.output_shape(), lhs, rhs, convolve_request.window(),
           convolve_request.dimension_numbers()));
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      HloInstruction* operand = lookup_instruction(fft_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateFft(
+          request.output_shape(), operand, fft_request.fft_type(),
+          AsInt64Slice(fft_request.fft_length())));
       break;
     }
 
