@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 using tensorflow::string;
 
@@ -335,6 +336,47 @@ TEST(CAPI, Execute) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteOp(matmul);
   TFE_DeleteTensorHandle(m);
+  TFE_DeleteContext(ctx, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(1, num_retvals);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
+  TFE_DeleteTensorHandle(retvals[0]);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  float product[4] = {0};
+  EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
+  memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(7, product[0]);
+  EXPECT_EQ(10, product[1]);
+  EXPECT_EQ(15, product[2]);
+  EXPECT_EQ(22, product[3]);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, ExecuteWithTracing) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  TFE_ContextEnableRunMetadata(ctx);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* matmul = MatMulOp(ctx, m, m);
+  TFE_TensorHandle* retvals[2] = {nullptr};
+  int num_retvals = 2;  // Should be reduced to 1 by the TFE_Execute call.
+  TFE_Execute(matmul, &retvals[0], &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(matmul);
+  TFE_DeleteTensorHandle(m);
+  TF_Buffer* b = TF_NewBuffer();
+  TFE_ContextExportRunMetadata(ctx, b, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  tensorflow::RunMetadata rm;
+  EXPECT_TRUE(
+      rm.ParseFromString({reinterpret_cast<const char*>(b->data), b->length}));
+  TF_DeleteBuffer(b);
   TFE_DeleteContext(ctx, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   ASSERT_EQ(1, num_retvals);

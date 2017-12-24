@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 
@@ -27,96 +28,18 @@ namespace tensorflow {
 // compile-time constants.
 Status BackwardsConstAnalysis(const Graph& g,
                               std::vector<bool>* compile_time_const_args) {
-  // TODO(phawkins): annotate these on the kernel registrations, rather than
-  // using a hard-coded list.
-  // (operator, argument) pairs that must be compile-time constants.
-  const std::unordered_multimap<string, string> compile_time_const_inputs = {
-      {"All", "reduction_indices"},
-      {"Any", "reduction_indices"},
-      {"ArgMin", "dimension"},
-      {"ArgMax", "dimension"},
-      {"AvgPoolGrad", "orig_input_shape"},
-      {"AvgPool3DGrad", "orig_input_shape"},
-      {"BatchToSpace", "crops"},
-      {"BatchToSpaceND", "block_shape"},
-      {"BatchToSpaceND", "crops"},
-      {"BroadcastArgs", "s0"},
-      {"BroadcastArgs", "s1"},
-      {"BroadcastGradientArgs", "s0"},
-      {"BroadcastGradientArgs", "s1"},
-      {"Concat", "concat_dim"},
-      {"ConcatV2", "axis"},
-      {"ConcatOffset", "concat_dim"},
-      {"ConcatOffset", "shape"},
-      {"Conv2DBackpropFilter", "filter_sizes"},
-      {"Conv2DBackpropInput", "input_sizes"},
-      {"Conv3DBackpropFilterV2", "filter_sizes"},
-      {"Conv3DBackpropInputV2", "input_sizes"},
-      {"Cumprod", "axis"},
-      {"Cumsum", "axis"},
-      {"DepthwiseConv2dNativeBackpropFilter", "filter_sizes"},
-      {"DepthwiseConv2dNativeBackpropInput", "input_sizes"},
-      {"DynamicStitch", "indices"},
-      {"ExpandDims", "dim"},
-      {"Fill", "dims"},
-      {"GatherV2", "axis"},
-      {"InvertPermutation", "x"},
-      {"LinSpace", "start"},
-      {"LinSpace", "stop"},
-      {"LinSpace", "num"},
-      {"Max", "reduction_indices"},
-      {"Mean", "reduction_indices"},
-      {"Min", "reduction_indices"},
-      {"OneHot", "depth"},
-      {"Pad", "paddings"},
-      {"PadV2", "paddings"},
-      {"MirrorPad", "paddings"},
-      {"Multinomial", "num_samples"},
-      {"Prod", "reduction_indices"},
-      {"RandomStandardNormal", "shape"},
-      {"RandomUniform", "shape"},
-      {"RandomUniformInt", "shape"},
-      {"Range", "start"},
-      {"Range", "limit"},
-      {"Range", "delta"},
-      {"Reshape", "shape"},
-      {"ResizeBilinear", "size"},
-      {"ResourceStridedSliceAssign", "begin"},
-      {"ResourceStridedSliceAssign", "end"},
-      {"ResourceStridedSliceAssign", "strides"},
-      {"Reverse", "dims"},
-      {"ReverseV2", "axis"},
-      {"Slice", "begin"},
-      {"Slice", "size"},
-      {"SpaceToBatch", "paddings"},
-      {"SpaceToBatchND", "block_shape"},
-      {"SpaceToBatchND", "paddings"},
-      {"Split", "split_dim"},
-      {"SplitV", "split_dim"},
-      {"SplitV", "size_splits"},
-      {"StackV2", "max_size"},
-      {"StridedSlice", "begin"},
-      {"StridedSlice", "end"},
-      {"StridedSlice", "strides"},
-      {"StridedSliceGrad", "shape"},
-      {"StridedSliceGrad", "begin"},
-      {"StridedSliceGrad", "end"},
-      {"StridedSliceGrad", "strides"},
-      {"Sum", "reduction_indices"},
-      {"TensorArrayV3", "size"},
-      {"TensorArraySplitV3", "lengths"},
-      {"Tile", "multiples"},
-      {"Transpose", "perm"}};
-
   // Operators that don't look at the data of their inputs, just the shapes.
   const std::unordered_set<string> metadata_ops = {
-      "Rank", "Shape", "ShapeN", "Size",
+      "Rank",
+      "Shape",
+      "ShapeN",
+      "Size",
   };
 
   Status status;
   std::unordered_set<Node*> must_be_const;
-  auto visit = [&status, &metadata_ops, &compile_time_const_inputs,
-                &must_be_const, compile_time_const_args](Node* node) {
+  auto visit = [&status, &metadata_ops, &must_be_const,
+                compile_time_const_args](Node* node) {
     if (!status.ok()) return;
 
     // If this is a metadata-only op, don't propagate the const requirement.
@@ -139,16 +62,17 @@ Status BackwardsConstAnalysis(const Graph& g,
     }
 
     // Mark any compile-time constant operator arguments as const.
-    auto range = compile_time_const_inputs.equal_range(node->type_string());
-    if (range.first == range.second) return;
+    const std::unordered_set<string>* const_inputs =
+        XlaOpRegistry::CompileTimeConstantInputs(node->type_string());
+    if (!const_inputs) return;
 
     NameRangeMap input_name_ranges;
     status =
         NameRangesForNode(*node, node->op_def(), &input_name_ranges, nullptr);
     if (!status.ok()) return;
 
-    for (auto it = range.first; it != range.second; ++it) {
-      auto name_range = input_name_ranges.find(it->second);
+    for (const string& input : *const_inputs) {
+      auto name_range = input_name_ranges.find(input);
       if (name_range == input_name_ranges.end()) continue;
 
       for (Edge const* edge : node->in_edges()) {

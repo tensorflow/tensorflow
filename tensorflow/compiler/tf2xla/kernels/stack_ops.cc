@@ -129,7 +129,7 @@ class StackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
 };
 
-REGISTER_XLA_OP(Name("StackV2"), StackOp);
+REGISTER_XLA_OP(Name("StackV2").CompileTimeConstInput("max_size"), StackOp);
 
 class StackPushOp : public XlaOpKernel {
  public:

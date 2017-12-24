@@ -29,7 +29,8 @@ class TestVirtualScheduler : public VirtualScheduler {
  public:
   TestVirtualScheduler(const GrapplerItem* grappler_item,
                        const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(grappler_item, use_static_shapes, cluster) {}
+      : VirtualScheduler(grappler_item, use_static_shapes, cluster,
+                         &ready_node_manager_) {}
 
   FRIEND_TEST(VirtualSchedulerTest, CalculateOutputSize);
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
@@ -37,6 +38,9 @@ class TestVirtualScheduler : public VirtualScheduler {
   FRIEND_TEST(VirtualSchedulerTest, ComplexDependency);
   FRIEND_TEST(VirtualSchedulerTest, Variable);
   FRIEND_TEST(VirtualSchedulerTest, InterDeviceTransfer);
+
+ protected:
+  FirstReadyManager ready_node_manager_;
 };
 
 class VirtualSchedulerTest : public ::testing::Test {
@@ -1148,23 +1152,24 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
 
   manager.AddNode(&node1_);
   EXPECT_EQ("Node1", manager.GetCurrNode()->name());
 }
 
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
 }
 
 TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1191,8 +1196,8 @@ TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1248,8 +1253,10 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
 }
 
 TEST_F(VirtualSchedulerTest, DeterminismInFirstReadyManager) {
-  FirstReadyManager manager1 = FirstReadyManager(&node_states_);
-  FirstReadyManager manager2 = FirstReadyManager(&node_states_);
+  FirstReadyManager manager1;
+  manager1.Init(&node_states_);
+  FirstReadyManager manager2;
+  manager2.Init(&node_states_);
 
   // 6 nodes with same time_ready.
   NodeDef node7;
@@ -1312,15 +1319,16 @@ TEST_F(VirtualSchedulerTest, DeterminismInFirstReadyManager) {
 }
 
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeCompositeNodeManager) {
-  CompositeNodeManager manager = CompositeNodeManager(&node_states_);
-
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
 }
 
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeComopsiteNodeManager) {
-  CompositeNodeManager manager = CompositeNodeManager(&node_states_);
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
 
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
@@ -1328,7 +1336,8 @@ TEST_F(VirtualSchedulerTest, RemoveSingleNodeComopsiteNodeManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleComopsiteNodeManager) {
-  CompositeNodeManager manager = CompositeNodeManager(&node_states_);
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
 
   // Add the nodes to LIFOManager.
   manager.AddNode(&node1_);
@@ -1359,8 +1368,8 @@ TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleComopsiteNodeManager) {
 }
 
 TEST_F(VirtualSchedulerTest, MultiDeviceSendRecvComopsiteNodeManager) {
-  CompositeNodeManager manager = CompositeNodeManager(&node_states_);
-
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
   // Additional nodes on kCPU1
   NodeDef node7;
   NodeDef node8;

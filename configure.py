@@ -265,19 +265,6 @@ def reset_tf_configure_bazelrc():
     f.write('import %workspace%/.tf_configure.bazelrc\n')
 
 
-def run_gen_git_source(environ_cp):
-  """Run the gen_git_source to create links.
-
-  The links are for bazel to track dependencies for git hash propagation.
-
-  Args:
-    environ_cp: copy of the os.environ.
-  """
-  cmd = '"%s" tensorflow/tools/git/gen_git_source.py --configure %s' % (
-      environ_cp.get('PYTHON_BIN_PATH'), os.getcwd())
-  os.system(cmd)
-
-
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
 
@@ -1251,7 +1238,6 @@ def main():
   reset_tf_configure_bazelrc()
   cleanup_makefile()
   setup_python(environ_cp)
-  run_gen_git_source(environ_cp)
 
   if is_windows():
     environ_cp['TF_NEED_S3'] = '0'

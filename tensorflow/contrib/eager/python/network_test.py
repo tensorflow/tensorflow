@@ -105,13 +105,15 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
+  # TODO(akshayka): This test should be changed once an API for compiling
+  # `call` into a defun is implemented.
   def testReplacingNetworkCallWithDefun(self):
     net = MyNetwork(name="abcd")
-    net.call = function.defun(net.call)
     x = constant_op.constant([[2.0]])
     net(x)  # Force variables to be created.
     self.evaluate(net.trainable_variables[0].assign([[17.0]]))
 
+    net.call = function.defun(net.call)
     result = net(x)  # Build and execute the TensorFlow function
     self.assertEqual(34.0, self.evaluate(result))
 

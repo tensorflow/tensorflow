@@ -1710,6 +1710,7 @@ bool InlineAllFunctions(GraphDef* graphdef) {
 
   tensorflow::Graph graph(fld);
   tensorflow::ImportGraphDefOptions gc_opts;
+  gc_opts.validate_shape = false;
   const auto& tf_convert_status = tensorflow::ImportGraphDef(
       gc_opts, graphdef_copy, &graph, nullptr, nullptr);
   if (!tf_convert_status.ok()) {

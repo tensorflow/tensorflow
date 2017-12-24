@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
@@ -31,7 +32,8 @@ class VirtualCluster : public Cluster {
  public:
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
-                 OpLevelCostEstimator* node_estimator);
+                 OpLevelCostEstimator* node_estimator,
+                 ReadyNodeManager* node_manager);
 
   ~VirtualCluster() override;
 
@@ -45,6 +47,7 @@ class VirtualCluster : public Cluster {
 
  private:
   std::unique_ptr<OpLevelCostEstimator> node_estimator_;
+  std::unique_ptr<ReadyNodeManager> node_manager_;
 };
 
 }  // end namespace grappler

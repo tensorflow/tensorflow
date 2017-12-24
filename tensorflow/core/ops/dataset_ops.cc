@@ -437,13 +437,11 @@ REGISTER_OP("DenseToSparseBatchDataset")
     .Input("batch_size: int64")
     .Input("row_shape: int64")
     .Output("handle: variant")
-    // NOTE(mrry): the 0th and 2nd elements will be DT_INT64.
     .Attr("output_types: list(type) >= 1")
-    // NOTE(mrry): the 1st and 2nd elements will be vectors.
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Creates a dataset that yields a SparseTensor for each element of the input.
+Creates a dataset that batches input elements into a SparseTensor.
 
 input_dataset: A handle to an input dataset. Must have a single component.
 batch_size: A scalar representing the number of elements to accumulate in a

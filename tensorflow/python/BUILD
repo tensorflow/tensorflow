@@ -4418,7 +4418,10 @@ py_test(
         "grappler/datasets_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    tags = [
+        "grappler",
+        "no_pip",  # tf_optimizer is not available in pip.
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4547,9 +4550,9 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    shard_count = 10,
     tags = [
         "grappler",
-        "manual",
     ],
 )
 

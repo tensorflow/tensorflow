@@ -455,14 +455,16 @@ class AvgPool2DGradOp : public AvgPoolGradOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP(Name("AvgPoolGrad"), AvgPool2DGradOp);
+REGISTER_XLA_OP(Name("AvgPoolGrad").CompileTimeConstInput("orig_input_shape"),
+                AvgPool2DGradOp);
 
 class AvgPool3DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool3DGradOp(OpKernelConstruction* ctx)
       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP(Name("AvgPool3DGrad"), AvgPool3DGradOp);
+REGISTER_XLA_OP(Name("AvgPool3DGrad").CompileTimeConstInput("orig_input_shape"),
+                AvgPool3DGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow
