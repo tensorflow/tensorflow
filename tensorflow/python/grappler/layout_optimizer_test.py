@@ -823,7 +823,7 @@ class LayoutOptimizerTest(test.TestCase):
     for node in optimized_graph.node:
       if node.op in ['Conv2D', 'Conv2DBackpropFilter', 'Conv2DBackpropInput']:
         found += 1
-        self.assertEqual(node.attr['data_format'].s, 'NCHW')
+        self.assertEqual(node.attr['data_format'].s, b'NCHW')
     self.assertEqual(found, 5)
 
   def testDepthwise(self):
@@ -840,7 +840,7 @@ class LayoutOptimizerTest(test.TestCase):
           'DepthwiseConv2dNativeBackpropInput'
       ]:
         found += 1
-        self.assertEqual(node.attr['data_format'].s, 'NCHW')
+        self.assertEqual(node.attr['data_format'].s, b'NCHW')
     self.assertEqual(found, 6)
 
   def testCheckpointCompatibility(self):

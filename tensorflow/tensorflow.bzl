@@ -1565,9 +1565,9 @@ def tf_version_info_genrule():
   native.genrule(
       name="version_info_gen",
       srcs=[
-          clean_dep("//tensorflow/tools/git:gen/spec.json"),
-          clean_dep("//tensorflow/tools/git:gen/head"),
-          clean_dep("//tensorflow/tools/git:gen/branch_ref"),
+          clean_dep("@local_config_git//:gen/spec.json"),
+          clean_dep("@local_config_git//:gen/head"),
+          clean_dep("@local_config_git//:gen/branch_ref"),
       ],
       outs=["util/version_info.cc"],
       cmd=

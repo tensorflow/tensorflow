@@ -113,10 +113,17 @@ void LIFOManager::RemoveCurrNode() {
   curr_pos_ = nodes_.end();  // Reset curr_pos_.
 }
 
-FirstReadyManager::FirstReadyManager(
-    const std::unordered_map<const NodeDef*, NodeState>* node_state)
-    : ReadyNodeManager(), node_state_(node_state) {
+FirstReadyManager::FirstReadyManager() : ReadyNodeManager() {
   std::make_heap(nodes_.begin(), nodes_.end());
+}
+
+void FirstReadyManager::Init(
+    const std::unordered_map<const NodeDef*, NodeState>* node_state) {
+  // Reset the node state since different instances of the scheduler can reuse
+  // the same node_manager.
+  node_state_ = node_state;
+  nodes_.clear();
+  waiting_queue_.clear();
   greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
     if (node_state_->at(a).time_ready == node_state_->at(b).time_ready) {
       // Use Node name as tie-breaker for deterministic node scheduling.
@@ -163,12 +170,14 @@ void FirstReadyManager::DrainWaitingQueue() {
   waiting_queue_.clear();
 }
 
-CompositeNodeManager::CompositeNodeManager(
-    const std::unordered_map<const NodeDef*, NodeState>* node_state)
-    : ReadyNodeManager(),
-      send_manager_(node_state),
-      recv_manager_(node_state),
-      node_state_(node_state) {
+CompositeNodeManager::CompositeNodeManager()
+    : ReadyNodeManager(), send_manager_(), recv_manager_() {}
+
+void CompositeNodeManager::Init(
+    const std::unordered_map<const NodeDef*, NodeState>* node_state) {
+  node_state_ = node_state;
+  send_manager_.Init(node_state);
+  recv_manager_.Init(node_state);
   curr_node_ = nullptr;
 }
 
@@ -241,11 +250,11 @@ bool CompositeNodeManager::Empty() const {
   return empty && send_manager_.Empty() && recv_manager_.Empty();
 }
 
-// VirtualScheduler
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
-                                   Cluster* cluster)
-    : ready_nodes_(ReadyNodeManagerFactory("FirstReady")),
+                                   Cluster* cluster,
+                                   ReadyNodeManager* ready_nodes)
+    : ready_nodes_(ready_nodes),
       graph_costs_(Costs::ZeroCosts()),
       graph_properties_(*grappler_item),
       cluster_(cluster),
@@ -262,9 +271,9 @@ ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
   } else if (ready_node_manager == "LIFO") {
     return new LIFOManager();
   } else if (ready_node_manager == "FirstReady") {
-    return new FirstReadyManager(GetNodeStates());
+    return new FirstReadyManager();
   } else if (ready_node_manager == "Composite") {
-    return new CompositeNodeManager(GetNodeStates());
+    return new CompositeNodeManager();
   }
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
@@ -274,7 +283,7 @@ Status VirtualScheduler::Init() {
   // necessary information for emulating tensorflow op scheduling and
   // construct internal data structures (NodeState and DeviceState) for virtual
   // scheduling.
-
+  ready_nodes_->Init(GetNodeStates());
   // Construct graph properties.
   Status status;
   if (use_static_shapes_) {

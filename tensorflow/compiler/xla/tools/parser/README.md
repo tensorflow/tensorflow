@@ -1,4 +1,4 @@
-# HloModule string syntax
+# HLO Text Syntax
 
 ```yacc
 hlo_module

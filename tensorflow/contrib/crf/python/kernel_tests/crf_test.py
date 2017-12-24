@@ -179,17 +179,6 @@ class CrfTest(test.TestCase):
       tf_total_log_likelihood = sess.run(total_log_likelihood)
       self.assertAllClose(tf_total_log_likelihood, 0.0)
 
-  def testLengthsToMasks(self):
-    with self.test_session() as sess:
-      sequence_lengths = [4, 1, 8, 2]
-      max_sequence_length = max(sequence_lengths)
-      mask = crf._lengths_to_masks(sequence_lengths, max_sequence_length)
-      tf_mask = sess.run(mask)
-      self.assertEqual(len(tf_mask), len(sequence_lengths))
-      for m, l in zip(tf_mask, sequence_lengths):
-        self.assertAllEqual(m[:l], [1] * l)
-        self.assertAllEqual(m[l:], [0] * (len(m) - l))
-
   def testViterbiDecode(self):
     inputs = np.array(
         [[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]], dtype=np.float32)
