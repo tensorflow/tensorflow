@@ -3361,7 +3361,11 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
+#ifndef INTEL_MKL_DNN
     .Output("workspace: T")
+#else
+    .Output("workspace: uint8")
+#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .Attr("depth_radius: int = 5")
@@ -3385,7 +3389,11 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
+#ifndef INTEL_MKL_DNN
     .Input("workspace: T")
+#else
+    .Input("workspace: uint8")
+#endif
     .Input("mkl_input_grads: uint8")
     .Input("mkl_input_image: uint8")
     .Input("mkl_output_image: uint8")
