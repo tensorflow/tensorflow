@@ -103,9 +103,8 @@ def _kwarg_names(func):
 
 
 def _add_op(op):
-  key = arg_scope_func_key(op)
-  if key not in _DECORATED_OPS:
-    _DECORATED_OPS[key] = _kwarg_names(op)
+  key_op = _key_op(op)
+  _DECORATED_OPS[key_op] = _kwarg_names(op)
 
 
 @tf_contextlib.contextmanager
