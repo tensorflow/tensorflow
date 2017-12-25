@@ -83,6 +83,7 @@ py_test(
     deps = [
         ":init_py",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:gradient_checker",
         "//tensorflow/python:framework_test_lib",
     ],
 )

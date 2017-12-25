@@ -21,8 +21,11 @@ from __future__ import print_function
 import numpy
 
 from tensorflow.contrib.periodic_resample import periodic_resample
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -102,6 +105,18 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
           errors_impl.InvalidArgumentError,
           '4, to be the same as the length of the desired shape, 3'):
         periodic_resample(input_tensor, [None, 4, 4]).eval()
+
+  def testPeriodicResampleGradient(self):
+    desired_shape = numpy.array([4, 4, None])
+    result_shape = (4, 4, 1)
+    input_shape = (2, 2, 4)
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      x = array_ops.placeholder(dtypes.float32, shape=input_shape)
+      output = periodic_resample(x, desired_shape)
+      error = gradient_checker.compute_gradient_error(
+          x, input_shape, output, result_shape)
+      self.assertLess(error, 1e-4)
 
 
 if __name__ == '__main__':

@@ -101,4 +101,20 @@ output: Periodically resampled tensor that has dimensions specified as in
 
 )doc");
 
+
+REGISTER_OP("PeriodicResampleOpGrad")
+    .Attr("T: numbertype")
+    .Input("grad: T")
+    .Attr("original_shape: shape")
+    .Attr("desired_shape: shape")
+    .Output("grad_values: T")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      tensorflow::TensorShape original_shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("original_shape", &original_shape));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(original_shape, &s));
+      c->set_output(0, s);
+      return Status::OK();
+});
+
 }  // namespace tensorflow
