@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
@@ -26,56 +27,68 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
-
-
-def spatial_pyramid_pooling(inputs, spatial_bin_dimensions=None, mode='max'):
+def spatial_pyramid_pooling(inputs, bin_dimensions=None, pooling_mode='max'):
   """Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
+
+    This layer allows the network to use arbitrary input dimensions. It generates fixed-length representations
+    for each feature map. It should be inserted before any fully-connected layer in the network.
+    Pyramid pooling is robust to object deformations as pooling is done at different scales.
 
   Args:
     inputs: The tensor over which to pool. Must have rank 4.
-    spatial_bin_dimensions: The list of bin sizes over which pooling is to be done.
-    mode: Pooling mode 'max' or 'avg'.
+    bin_dimensions: The list of number of pool region for pooling. The length of pool_dims
+      is the level of the spatial pyramid. Each int in the list is the number of regions in
+      that pool. For e.g. [1, 2, 4] would be 3 regions with 1x1, 2x2 and 4x4 pools, so 21
+      outputs per feature map.
+    pooling_mode: Pooling mode 'max' or 'avg'.
 
   Returns:
     Output tensor.
   """
-  layer = SpatialPyramidPooling(spatial_bin_dimensions=spatial_bin_dimensions, mode=mode)
+  layer = SpatialPyramidPooling(bin_dimensions=bin_dimensions, pooling_mode=pooling_mode)
   return layer.apply(inputs)
 
 
 class SpatialPyramidPooling(base.Layer):
   """Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
 
+    This layer allows the network to use arbitrary input dimensions. It generates fixed-length representations
+    for each feature map. It should be inserted before any fully-connected layer in the network.
+    Pyramid pooling is robust to object deformations as pooling is done at different scales.
+
     Arguments:
-        spatial_bin_dimensions: The list of dimensions define the output dimension
-          of each pooling level. The value of each dimenstion is the level of
-          the spatial pyramid.
-        mode: Pooling mode 'max' or 'avg'.
+      bin_dimensions: The list of different scales at which pooling is performed.
+        The length of bin_dimensions is the level of the spatial pyramid. Each int in the list
+        is the number of regions in that pool. For e.g. [1, 2, 4] would be 3 regions with
+        1x1, 2x2 and 4x4 pools, so 21 outputs per feature map.
+      pooling_mode: Pooling mode 'max' or 'avg'.
   """
 
-  def __init__(self, spatial_bin_dimensions=None, mode='max', **kwargs):
+  def __init__(self, bin_dimensions=None, pooling_mode='max', **kwargs):
     super(SpatialPyramidPooling, self).__init__(**kwargs)
-    self.mode = mode
-    self.spatial_bin_dimensions = spatial_bin_dimensions if spatial_bin_dimensions is not None else [4, 2, 1]
+    self.pooling_mode = pooling_mode
+    self.bin_dimensions = [4, 2, 1]
+    if bin_dimensions is not None:
+      self.bin_dimensions = bin_dimensions
+    self.input_spec = InputSpec(ndim=4)
 
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):
     pool_list = []
-    for bin_dimension in self.spatial_bin_dimensions:
-      pool_list += self.__spatial_pooling_in_bins(inputs, bin_dimension)
+    for bin_dimension in self.bin_dimensions:
+      pool_list += self._spatial_pooling_in_bins(inputs, bin_dimension)
     return array_ops.concat(values=pool_list, axis=1)
 
   def _compute_output_shape(self, input_shape):
-    num_features = sum(p * p for p in self.spatial_bin_dimensions)
+    num_features = sum(p * p for p in self.bin_dimensions)
     return tensor_shape.TensorShape([None, input_shape[0] * num_features])
 
+  def _spatial_pooling_in_bins(self, inputs, bin_dimension):
+    """Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
 
-  def __spatial_pooling_in_bins(self, inputs, bin_dimension):
-    """
     Args:
       inputs: The tensor over which to pool. Must have rank 4.
-      bin_dimension: The list of bin dimenstions (bin size) over which
-        spatial pooling is performed.
-      mode: Pooling mode `max` or `avg`.
+      bin_dimension: It defines the number of pools region for the operation. For e.g. bin_dimension = 2 will result in
+        a 2x2 pools per feature map.
 
     Returns:
       The output list of (bin_dimension * bin_dimension) tensors.
@@ -88,13 +101,13 @@ class SpatialPyramidPooling(base.Layer):
     input_height = math_ops.cast(array_ops.gather(inputs_shape, 1), dtypes.float32)
     input_width = math_ops.cast(array_ops.gather(inputs_shape, 2), dtypes.float32)
 
-    if self.mode == 'max':
+    if self.pooling_mode == 'max':
       pooling_op = math_ops.reduce_max
-    elif self.mode == 'avg':
+    elif self.pooling_mode == 'avg':
       pooling_op = math_ops.reduce_mean
     else:
       msg = "Mode must be either 'max' or 'avg'. Got '{0}'"
-      raise ValueError(msg.format(self.mode))
+      raise ValueError(msg.format(self.pooling_mode))
 
     result = []
     for row in range(bin_dimension):
