@@ -518,6 +518,15 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
     }
     return;
   }
+  std::unique_ptr<tensorflow::NodeExecStats> maybe_stats;
+  if (ctx->should_store_metadata.load()) {
+    maybe_stats.reset(new tensorflow::NodeExecStats);
+    maybe_stats->set_node_name(op->name);
+    maybe_stats->set_all_start_micros(tensorflow::Env::Default()->NowMicros());
+    maybe_stats->set_op_start_rel_micros(0);
+    maybe_stats->set_scheduled_micros(tensorflow::Env::Default()->NowMicros());
+    // TODO(apassos) track referenced tensors
+  }
   // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
   // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def,
   // which is GUARDED_BY(ctx->functions_mu). But knowledge of the implementation
@@ -525,12 +534,38 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
   // This is quite subtle. Re-work things to make this better?  (Would it make
   // sense for FunctionLibraryRuntime to ensure thread-safe access to
-  // FunctionLibraryDefinition?).
-  status->status = kernel->Run(&op->inputs, &outputs);
+  // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
+  // for ops which are a part of functions.
+  status->status = kernel->Run(&op->inputs, &outputs, maybe_stats.get());
   for (auto* t : copied_tensors) {
     TFE_DeleteTensorHandle(t);
   }
   if (!status->status.ok()) return;
+  if (maybe_stats != nullptr) {
+    maybe_stats->set_op_end_rel_micros(tensorflow::Env::Default()->NowMicros() -
+                                       maybe_stats->all_start_micros());
+    tensorflow::mutex_lock ml(ctx->metadata_mu);
+    if (ctx->should_store_metadata.load()) {
+      auto* step_stats = ctx->run_metadata.mutable_step_stats();
+      // Lazily initialize the RunMetadata with information about all devices if
+      // this is the first call.
+      while (step_stats->dev_stats_size() < ctx->devices().size()) {
+        step_stats->add_dev_stats();
+      }
+      // Find the current device's index.
+      int device_idx = 0;
+      for (int i = 0; i < ctx->devices().size(); ++i) {
+        if (ctx->devices()[i] == device) {
+          device_idx = i;
+          break;
+        }
+      }
+      // Populate the device stats for this device.
+      auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
+      dev_stats->set_device(device->name());
+      *dev_stats->add_node_stats() = *maybe_stats;
+    }
+  }
   *num_retvals = std::min<int>(*num_retvals, outputs.size());
   for (int i = 0; i < *num_retvals; ++i) {
     tensorflow::Device* d = IsCPU(device) ? nullptr : device;
@@ -576,4 +611,21 @@ const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     return nullptr;
   }
   return &h->t;
+}
+
+void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
+  ctx->should_store_metadata.store(true);
+}
+
+void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->metadata_mu);
+  ctx->should_store_metadata.store(false);
+  ctx->run_metadata.Clear();
+}
+
+void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
+                                  TF_Status* status) {
+  tensorflow::mutex_lock ml(ctx->metadata_mu);
+  status->status = MessageToBuffer(ctx->run_metadata, buf);
+  ctx->run_metadata.Clear();
 }

@@ -127,6 +127,8 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
+  virtual void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
@@ -137,6 +139,8 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
+  virtual void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -157,6 +161,8 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -176,8 +182,9 @@ class LIFOManager : public ReadyNodeManager {
 // time_ready value (it depends on C++ STL push_heap and pop_heap).
 class FirstReadyManager : public ReadyNodeManager {
  public:
-  FirstReadyManager(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state);
+  FirstReadyManager();
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
   ~FirstReadyManager() override {}
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
   const NodeDef* GetCurrNode() override;
@@ -212,10 +219,11 @@ class FirstReadyManager : public ReadyNodeManager {
 // _Send and _Recv, fairly, in terms of their time_ready.
 class CompositeNodeManager : public ReadyNodeManager {
  public:
-  CompositeNodeManager(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state);
+  CompositeNodeManager();
   ~CompositeNodeManager() override {}
 
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -244,8 +252,8 @@ class CompositeNodeManager : public ReadyNodeManager {
 class VirtualScheduler {
  public:
   VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster);
-
+                   const bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
   // Initializes NodeState and DeviceState from grappler_item_ and
   // graph_properties_.
   Status Init();
@@ -260,6 +268,9 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
+  // Methods called from constructor.
+  static ReadyNodeManager* ReadyNodeManagerFactory(
+      const string& ready_node_manager);
 
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
@@ -285,9 +296,6 @@ class VirtualScheduler {
   const string kAttrDstDevice = "dst_device_";
   const string kChannelDevice = "Channel";
 
-  // Methods called from constructor.
-  ReadyNodeManager* ReadyNodeManagerFactory(const string& ready_node_manager);
-
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -304,7 +312,7 @@ class VirtualScheduler {
   bool IsPersistentNode(const NodeDef* node) const;
 
   // Scheduler states:
-  std::unique_ptr<ReadyNodeManager> ready_nodes_;
+  ReadyNodeManager* ready_nodes_;  // Not owned.
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;
 

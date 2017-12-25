@@ -6868,6 +6868,29 @@ op {
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
 op {
+  name: "DecodeCompressed"
+  input_arg {
+    name: "bytes"
+    description: "A Tensor of string which is compressed."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor with the same shape as input `bytes`, uncompressed\nfrom bytes."
+    type: DT_STRING
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+  }
+  summary: "Decompress strings."
+  description: "This op decompresses each element of the `bytes` input `Tensor`, which\nis assumed to be compressed using the given `compression_type`.\n\nThe `output` is a string `Tensor` of the same shape as `bytes`,\neach element containing the decompressed data from the corresponding\nelement in `bytes`."
+}
+op {
   name: "DecodeGif"
   input_arg {
     name: "contents"
@@ -7169,7 +7192,7 @@ op {
     has_minimum: true
     minimum: 1
   }
-  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -10888,6 +10911,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -20070,6 +20095,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -21286,6 +21313,14 @@ op {
       i: 32
     }
     description: "The batch size."
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The type of compression for the file. Currently ZLIB and\nGZIP are supported. Defaults to none."
   }
   summary: "Emits randomized records."
   is_stateful: true

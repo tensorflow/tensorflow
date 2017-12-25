@@ -62,7 +62,7 @@ def parse_branch_ref(filename):
     raise RuntimeError("Git directory has unparseable HEAD")
 
 
-def configure(src_base_path, debug=False):
+def configure(src_base_path, gen_path, debug=False):
   """Configure `src_base_path` to embed git hashes if available."""
 
   # TODO(aselle): No files generated or symlinked here are deleted by
@@ -71,7 +71,6 @@ def configure(src_base_path, debug=False):
   # without running ./configure again.
 
   git_path = os.path.join(src_base_path, ".git")
-  gen_path = os.path.join(src_base_path, "tensorflow", "tools", "git", "gen")
 
   # Remove and recreate the path
   if os.path.exists(gen_path):
@@ -261,6 +260,10 @@ parser.add_argument(
     help="Path to configure as a git repo dependency tracking sentinel")
 
 parser.add_argument(
+    "--gen_root_path", type=str,
+    help="Root path to place generated git files (created by --configure).")
+
+parser.add_argument(
     "--generate",
     type=str,
     help="Generate given spec-file, HEAD-symlink-file, ref-symlink-file",
@@ -274,7 +277,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.configure is not None:
-  configure(args.configure, debug=args.debug)
+  if args.gen_root_path is None:
+    raise RuntimeError("Must pass --gen_root_path arg when running --configure")
+  configure(args.configure, args.gen_root_path, debug=args.debug)
 elif args.generate is not None:
   generate(args.generate)
 elif args.raw_generate is not None:
