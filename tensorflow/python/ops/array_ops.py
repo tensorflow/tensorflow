@@ -70,6 +70,7 @@ See the @{$python/array_ops} guide.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
+@@guarantee_const
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -125,11 +126,8 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    try:
-      in_device = input.device
-    except AttributeError:
-      input = ops.convert_to_tensor(input)
-      in_device = input.device
+    input = ops.convert_to_tensor(input)
+    in_device = input.device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
     if context.context().device_name != in_device:
       return input._copy()  # pylint: disable=protected-access
@@ -1305,7 +1303,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   size_splits = ops.convert_to_tensor(num_or_size_splits)
   if size_splits._rank() == 0 and size_splits.dtype.is_integer:
     return gen_array_ops._split(
-        split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
+        axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
   if num is None:
     num = size_splits._shape_tuple()[0]
@@ -1315,7 +1313,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   return gen_array_ops._split_v(
       value=value,
       size_splits=size_splits,
-      split_dim=axis,
+      axis=axis,
       num_split=num,
       name=name)
 
@@ -2537,9 +2535,9 @@ def where(condition, x=None, y=None, name=None):
     with ops.name_scope(name, "Where", [condition]) as name:
       condition = ops.convert_to_tensor(
           condition, preferred_dtype=dtypes.bool, name="condition")
-      return gen_array_ops.where(input=condition, name=name)
+      return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
-    return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
+    return gen_math_ops._select(condition=condition, x=x, y=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 

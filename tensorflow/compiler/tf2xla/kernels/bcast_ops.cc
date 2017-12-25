@@ -65,7 +65,10 @@ class BCastArgsOp : public XlaOpKernel {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
 };
-REGISTER_XLA_OP(Name("BroadcastArgs"), BCastArgsOp);
+REGISTER_XLA_OP(Name("BroadcastArgs")
+                    .CompileTimeConstInput("s0")
+                    .CompileTimeConstInput("s1"),
+                BCastArgsOp);
 
 // Given shapes of two tensors, computes the reduction indices for the
 // gradient computation.
@@ -121,7 +124,10 @@ class BCastGradArgsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
 };
 
-REGISTER_XLA_OP(Name("BroadcastGradientArgs"), BCastGradArgsOp);
+REGISTER_XLA_OP(Name("BroadcastGradientArgs")
+                    .CompileTimeConstInput("s0")
+                    .CompileTimeConstInput("s1"),
+                BCastGradArgsOp);
 
 }  // namespace
 }  // namespace tensorflow

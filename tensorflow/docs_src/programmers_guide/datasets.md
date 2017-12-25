@@ -1,16 +1,16 @@
 # Importing Data
 
-The @{tf.data.Dataset$`Dataset`} API enables you to build complex input pipelines from
+The `tf.data` API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
 for training. The pipeline for a text model might involve extracting symbols
 from raw text data, converting them to embedding identifiers with a lookup
-table, and batching together sequences of different lengths. The `Dataset` API
+table, and batching together sequences of different lengths. The `tf.data` API
 makes it easy to deal with large amounts of data, different data formats, and
 complicated transformations.
 
-The `Dataset` API introduces two new abstractions to TensorFlow:
+The `tf.data` API introduces two new abstractions to TensorFlow:
 
 * A `tf.data.Dataset` represents a sequence of elements, in which
   each element contains one or more `Tensor` objects. For example, in an image
@@ -121,7 +121,7 @@ dataset3 = dataset3.filter(lambda x, (y, z): ...)
 ### Creating an iterator
 
 Once you have built a `Dataset` to represent your input data, the next step is to
-create an `Iterator` to access elements from that dataset.  The `Dataset` API
+create an `Iterator` to access elements from that dataset.  The `tf.data` API
 currently supports the following iterators, in increasing level of
 sophistication:
 
@@ -190,8 +190,8 @@ validation_dataset = tf.data.Dataset.range(50)
 # A reinitializable iterator is defined by its structure. We could use the
 # `output_types` and `output_shapes` properties of either `training_dataset`
 # or `validation_dataset` here, because they are compatible.
-iterator = Iterator.from_structure(training_dataset.output_types,
-                                   training_dataset.output_shapes)
+iterator = tf.data.Iterator.from_structure(training_dataset.output_types,
+                                           training_dataset.output_shapes)
 next_element = iterator.get_next()
 
 training_init_op = iterator.make_initializer(training_dataset)
@@ -379,7 +379,7 @@ sess.run(iterator.initializer, feed_dict={features_placeholder: features,
 
 ### Consuming TFRecord data
 
-The `Dataset` API supports a variety of file formats so that you can process
+The `tf.data` API supports a variety of file formats so that you can process
 large datasets that do not fit in memory. For example, the TFRecord file format
 is a simple record-oriented binary format that many TensorFlow applications use
 for training data. The `tf.data.TFRecordDataset` class enables you to
@@ -454,9 +454,6 @@ dataset = dataset.flat_map(
         .skip(1)
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
-
-For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
-in @{$get_started/linear_regression}.
 
 <!--
 TODO(mrry): Add these sections.
@@ -628,7 +625,7 @@ TODO(mrry): Add this section.
 
 ### Processing multiple epochs
 
-The `Dataset` API offers two main ways to process multiple epochs of the same
+The `tf.data` API offers two main ways to process multiple epochs of the same
 data.
 
 The simplest way to iterate over a dataset in multiple epochs is to use the
@@ -693,7 +690,7 @@ dataset = dataset.repeat()
 The @{tf.train.MonitoredTrainingSession} API simplifies many aspects of running
 TensorFlow in a distributed setting. `MonitoredTrainingSession` uses the
 @{tf.errors.OutOfRangeError} to signal that training has completed, so to use it
-with the `Dataset` API, we recommend using
+with the `tf.data` API, we recommend using
 `Dataset.make_one_shot_iterator()`. For example:
 
 ```python
@@ -735,7 +732,7 @@ def dataset_input_fn():
     parsed = tf.parse_single_example(record, keys_to_features)
 
     # Perform additional preprocessing on the parsed data.
-    image = tf.decode_jpeg(parsed["image_data"])
+    image = tf.image.decode_jpeg(parsed["image_data"])
     image = tf.reshape(image, [299, 299, 1])
     label = tf.cast(parsed["label"], tf.int32)
 

@@ -865,5 +865,22 @@ TEST_F(NaryGradTest, Minimum) {
   RunTest(x, x_init_value, y, shape);
 }
 
+TEST_F(NaryGradTest, Prod) {
+  TensorShape x_shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Prod(scope_, x, {1});
+  // y's shape is the result of reducing x along axes 1
+  TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({3, 4});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Where3(scope_, Greater(scope_, x1, x2), x1, x2);
+  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
+}
+
 }  // namespace
 }  // namespace tensorflow

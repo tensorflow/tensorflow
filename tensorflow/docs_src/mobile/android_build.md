@@ -66,7 +66,7 @@ them.
 
 ## Adding TensorFlow to your apps using Android Studio
 
-To add TensorFlow to your own apps on Android, the simplest way is to add the 
+To add TensorFlow to your own apps on Android, the simplest way is to add the
 following lines to your Gradle build file:
 
     allprojects {
@@ -74,7 +74,7 @@ following lines to your Gradle build file:
             jcenter()
         }
 	}
-											
+
     dependencies {
         compile 'org.tensorflow:tensorflow-android:+'
     }

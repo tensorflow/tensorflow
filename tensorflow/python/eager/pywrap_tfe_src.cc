@@ -469,11 +469,22 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyObject> {
  public:
-  GradientTape() {}
+  explicit GradientTape(bool persistent)
+      : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
+
+  virtual ~GradientTape() {
+    for (PyObject* v : watched_variables_) {
+      Py_DECREF(v);
+    }
+  }
 
   void WatchVariable(PyObject* v) {
-    watched_variables_.insert(v);
-    Py_INCREF(v);
+    auto insert_result = watched_variables_.insert(v);
+    if (insert_result.second) {
+      // Only increment the reference count if we aren't already watching this
+      // variable.
+      Py_INCREF(v);
+    }
     PyObject* handle = PyObject_GetAttrString(v, "handle");
     if (handle == nullptr) {
       return;
@@ -530,12 +541,9 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
-thread_local std::vector<TFE_Py_Tape*>* tape_stack = nullptr;
 std::vector<TFE_Py_Tape*>* GetTapeStack() {
-  if (tape_stack == nullptr) {
-    tape_stack = new std::vector<TFE_Py_Tape*>;
-  }
-  return tape_stack;
+  thread_local std::vector<TFE_Py_Tape*> tape_stack;
+  return &tape_stack;
 }
 #else
 static tensorflow::mutex stack_mu(tensorflow::LINKER_INITIALIZED);
@@ -557,11 +565,11 @@ std::vector<TFE_Py_Tape*>* GetTapeStack() {
 }
 #endif
 
-void TFE_Py_TapeStackPushNew() {
+void TFE_Py_TapeStackPushNew(PyObject* persistent) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
   if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
-  tape->tape = new GradientTape();
+  tape->tape = new GradientTape(persistent == Py_True);
   GetTapeStack()->push_back(tape);
 }
 
@@ -704,6 +712,7 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
     PyObject* tensor = PySequence_Fast_GET_ITEM(seq, i);
     list.push_back(FastTensorId(tensor));
     if (PyErr_Occurred()) {
+      Py_DECREF(seq);
       return list;
     }
   }
@@ -723,7 +732,6 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   PyObject* result = PySet_New(nullptr);
   for (PyObject* variable : watched_variables) {
     PySet_Add(result, variable);
-    Py_DECREF(variable);
   }
   return result;
 }
@@ -889,7 +897,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     PyObject* py_result = PyEval_CallObject(
         reinterpret_cast<PyObject*>(backward_function), grads);
     Py_DECREF(grads);
-    Py_DECREF(backward_function);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
@@ -915,6 +922,10 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyObject> {
     Py_DECREF(seq);
     Py_DECREF(py_result);
     return tensorflow::Status::OK();
+  }
+
+  void ReleaseBackwardFunction(PyObject* backward_function) const final {
+    Py_DECREF(backward_function);
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }

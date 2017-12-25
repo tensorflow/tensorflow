@@ -150,6 +150,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model",
         "@six_archive//:six",
     ],
 )
@@ -552,7 +553,7 @@ py_test(
 
 py_test(
     name = "data_utils_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [

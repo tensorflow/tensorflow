@@ -18,15 +18,19 @@ limitations under the License.
 #include <array>
 
 #include "numpy/arrayobject.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/py_util.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 #include <Python.h>
 
 namespace tensorflow {
@@ -48,6 +52,9 @@ struct PyCall {
   // with this "token".
   string token;
 
+  // True if the call is associated with an EagerPyFunc.
+  bool eager;
+
   // Inputs and outputs of this function invocation.
   std::vector<Tensor> ins;
   std::vector<Tensor> out;
@@ -55,19 +62,26 @@ struct PyCall {
 
 // Givens the 'call', prepares the token and inputs as a python tuple
 // that is appropriate for calling the trampoline.
-Status MakeArgTuple(PyCall* call, PyObject** tuple) {
+Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
   int64 n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
   for (int64 i = 0; i < n; ++i) {
+    PyObject* arg = nullptr;
     const Tensor& t = call->ins[i];
-    PyObject* a = nullptr;
-    Status s = ConvertTensorToNdarray(t, &a);
-    if (!s.ok()) {
-      Py_DECREF(lst);
-      return s;
+    if (call->eager) {
+      arg = EagerTensorFromHandle(TFE_NewTensorHandle(t));
+      if (arg == nullptr) {
+        return errors::Internal("Unable to procure EagerTensor from Tensor.");
+      }
+    } else {
+      Status s = ConvertTensorToNdarray(t, &arg);
+      if (!s.ok()) {
+        Py_DECREF(lst);
+        return s;
+      }
     }
-    PyList_SetItem(lst, i, a);
+    PyList_SetItem(lst, i, arg);
   }
   *tuple = Py_BuildValue("(sN)", call->token.c_str(), lst);
   CHECK(*tuple);
@@ -133,46 +147,16 @@ bool IsSingleNone(PyObject* obj) {
   return item == Py_None;
 }
 
-// py.__class__.__name__
-const char* ClassName(PyObject* py) {
-/* PyPy doesn't have a separate C API for old-style classes. */
-#if PY_MAJOR_VERSION < 3 && !defined(PYPY_VERSION)
-  if (PyClass_Check(py))
-    return PyString_AS_STRING(
-        CHECK_NOTNULL(reinterpret_cast<PyClassObject*>(py)->cl_name));
-  if (PyInstance_Check(py))
-    return PyString_AS_STRING(CHECK_NOTNULL(
-        reinterpret_cast<PyInstanceObject*>(py)->in_class->cl_name));
-#endif
-  if (Py_TYPE(py) == &PyType_Type) {
-    return reinterpret_cast<PyTypeObject*>(py)->tp_name;
-  }
-  return Py_TYPE(py)->tp_name;
-}
-
-string PyExcFetch() {
-  CHECK(PyErr_Occurred()) << "Must only call PyExcFetch after an exception.";
-  PyObject* ptype;
-  PyObject* pvalue;
-  PyObject* ptraceback;
-  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-  PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
-  string err = ClassName(ptype);
-  if (pvalue) {
-    PyObject* str = PyObject_Str(pvalue);
-    if (str) {
-#if PY_MAJOR_VERSION < 3
-      strings::StrAppend(&err, ": ", PyString_AS_STRING(str));
-#else
-      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str));
-#endif
-      Py_DECREF(str);
-    }
-    Py_DECREF(pvalue);
-  }
-  Py_DECREF(ptype);
-  Py_XDECREF(ptraceback);
-  return err;
+// Retrieves a Tensor from `eager_tensor` and stores it in `output_tensor`.
+Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
+                                    Tensor* output_tensor,
+                                    TF_Status* tf_status) {
+  // TODO(akshayka): Lift the restriction requiring output tensors to
+  // lie in host memory; EagerPyFunc should be able to dispatch ops on GPU
+  // tensors, so we should eventually implement a GPU kernel for EagerPyFunc.
+  *output_tensor = *TFE_TensorHandleUnderlyingTensorInHostMemory(
+      EagerTensor_Handle(eager_tensor), tf_status);
+  return StatusFromTF_Status(tf_status);
 }
 
 // Calls the registered py function through the trampoline.
@@ -195,18 +179,18 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
           PyErr_ExceptionMatches(PyExc_TypeError)) {
-        return errors::InvalidArgument(PyExcFetch());
+        return errors::InvalidArgument(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
         *out_log_on_error = false;
-        return errors::OutOfRange(PyExcFetch());
+        return errors::OutOfRange(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
-        return errors::ResourceExhausted(PyExcFetch());
+        return errors::ResourceExhausted(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
-        return errors::Unimplemented(PyExcFetch());
+        return errors::Unimplemented(PyExceptionFetch());
       } else {
         // TODO(ebrevdo): Check if exception is an OpError and use the
         // OpError.error_code property to map it back in the Status.
-        return errors::Unknown(PyExcFetch());
+        return errors::Unknown(PyExceptionFetch());
       }
     } else {
       return errors::Internal("Failed to run py callback ", call->token,
@@ -214,21 +198,37 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     }
   }
 
-  // Process the return values and converts them to tf Tensors.
+  // Process the return values and convert them to TF Tensors.
   Status s;
   if (PyList_Check(result)) {
-    // 'result' is a list.
     call->out.clear();
     for (int i = 0; i < PyList_Size(result); ++i) {
       Tensor t;
-      s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
+      if (call->eager) {
+        auto tf_status = tensorflow::make_safe(TF_NewStatus());
+        s = ExtractTensorFromEagerTensor(PyList_GetItem(result, i), &t,
+                                         tf_status.get());
+      } else {
+        s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
+      }
+
       if (!s.ok()) {
         break;
       }
       call->out.push_back(t);
     }
+  } else if (EagerTensor_CheckExact(result) || result == Py_None) {
+    DCHECK(call->eager);
+    Tensor t;
+    if (result != Py_None) {
+      auto tf_status = tensorflow::make_safe(TF_NewStatus());
+      s = ExtractTensorFromEagerTensor(result, &t, tf_status.get());
+      if (s.ok()) {
+        call->out.push_back(t);
+      }
+    }
   } else if (PyArray_Check(result)) {
-    // 'result' is a single ndarray.
+    DCHECK(!call->eager);
     if (!IsSingleNone(result)) {
       Tensor t;
       s = ConvertNdarrayToTensor(result, &t);
@@ -417,11 +417,13 @@ class PyFuncOp : public OpKernel {
  public:
   explicit PyFuncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("token", &token_));
+    eager_ = type_string() == "EagerPyFunc";
   }
 
   void Compute(OpKernelContext* ctx) override {
     PyCall call;
     call.token = token_;
+    call.eager = eager_;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       call.ins.push_back(ctx->input(i));
     }
@@ -430,6 +432,9 @@ class PyFuncOp : public OpKernel {
     py_threadstate = PyGILState_Ensure();
     bool log_on_error;
     Status s = DoCallPyFunc(&call, &log_on_error);
+    // Sometimes py_funcs can be called without a session and leak memory. This
+    // ensures we clear the decref cache so this doesn't happen.
+    ClearDecrefCache();
     PyGILState_Release(py_threadstate);
 
     // Ensures that GIL is released even when !s.ok().
@@ -460,9 +465,15 @@ class PyFuncOp : public OpKernel {
  private:
   string token_;
 
+  // True if and only if this op should execute the python function eagerly,
+  // i.e., if and only if the eager attribute is set.
+  bool eager_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PyFuncOp);
 };
+
 REGISTER_KERNEL_BUILDER(Name("PyFunc").Device(DEVICE_CPU), PyFuncOp);
 REGISTER_KERNEL_BUILDER(Name("PyFuncStateless").Device(DEVICE_CPU), PyFuncOp);
+REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_CPU), PyFuncOp);
 
 }  // end namespace tensorflow

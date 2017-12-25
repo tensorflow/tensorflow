@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/lib/math/math_util.h"
 
+#include <cmath>
+#include <limits>
 #include <vector>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace {
 
 // Number of arguments for each test of the CeilOrRatio method
 const int kNumTestArguments = 4;
@@ -195,4 +200,141 @@ TEST(MathUtil, CeilOfRatio) {
 #endif
 }
 
+struct GCDTestCase {
+  unsigned int x;
+  unsigned int y;
+  unsigned int gcd;
+};
+
+TEST(MathUtil, GCD) {
+  std::vector<GCDTestCase> testcases({
+      {10, 20, 10},  //
+      {27, 8, 1},    //
+      {4, 3, 1},     //
+      {6, 8, 2},     //
+      {5, 0, 5},     //
+      {5, 5, 5},     //
+      {0, 0, 0}      //
+  });
+
+  for (const auto& tc : testcases) {
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint32>(tc.y, tc.x));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.x, tc.y));
+    EXPECT_EQ(tc.gcd, MathUtil::GCD<uint64>(tc.y, tc.x));
+  }
+
+  const uint64 biggish_prime = 1666666667;
+  EXPECT_EQ(biggish_prime,
+            MathUtil::GCD<uint64>(biggish_prime * 3, biggish_prime * 4));
+}
+
+template <typename T>
+void TestOneIPowN() {
+  const T one{1};
+  for (int i = 0; i < 1024; ++i) {
+    // Computations are exact.
+    EXPECT_EQ(MathUtil::IPow(one, i), one);
+  }
+}
+
+template <typename T>
+void TestTwoIPowN() {
+  int limit = std::is_integral<T>::value ? std::numeric_limits<T>::digits : 63;
+  for (int i = 0; i < limit; ++i) {
+    // Computations are exact.
+    EXPECT_EQ(MathUtil::IPow(T{2}, i), static_cast<T>(1ull << i));
+  }
+}
+
+template <typename T>
+void TestFloatIPow(const int max_exponent, const T start, const T end,
+                   const T step) {
+  for (T f = start; f < end; f += step) {
+    for (int i = 0; i < max_exponent; ++i) {
+      EXPECT_FLOAT_EQ(MathUtil::IPow(f, i), pow(f, i));
+    }
+  }
+}
+
+TEST(MathUtil, IPow) {
+  TestOneIPowN<double>();
+  TestOneIPowN<float>();
+  TestOneIPowN<int>();
+  TestOneIPowN<int64>();
+  TestTwoIPowN<double>();
+  TestTwoIPowN<float>();
+  TestTwoIPowN<int>();
+  TestTwoIPowN<int64>();
+
+  EXPECT_EQ(MathUtil::IPow(3, 0), 1);
+  EXPECT_EQ(MathUtil::IPow(3, 1), 3);
+  EXPECT_EQ(MathUtil::IPow(3, 2), 9);
+  EXPECT_EQ(MathUtil::IPow(3, 3), 27);
+  EXPECT_EQ(MathUtil::IPow(3, 4), 81);
+  EXPECT_EQ(MathUtil::IPow(3, 5), 243);
+
+  TestFloatIPow<float>(13, -16.0f, 16.0f, 1.0f / 8);
+  TestFloatIPow<double>(13, -16.0, 16.0, 1.0 / 8);
+
+  TestFloatIPow<float>(13, -1.0f / (1 << 12), -1.0f / (1 << 12),
+                       1.0f / (1 << 16));
+  TestFloatIPow<double>(13, -1.0 / (1 << 12), -1.0 / (1 << 12),
+                        1.0 / (1 << 16));
+}
+
+TEST(MathUtil, IPowEdgeCases) {
+  constexpr const double kInf = std::numeric_limits<double>::infinity();
+
+  EXPECT_EQ(MathUtil::IPow(-12345.0, 79), -kInf);
+  EXPECT_EQ(MathUtil::IPow(-12345.0, 80), +kInf);
+
+  // The semantics of the edge cases that follow  are defined in the standard:
+  // http://en.cppreference.com/w/cpp/numeric/math/pow for a summary.
+
+  // 1 - These edge cases apply.
+  // pow(+0, exp), where exp is a positive odd integer, returns +0
+  EXPECT_EQ(MathUtil::IPow(+0.0, 3), +0.0);
+  // pow(-0, exp), where exp is a positive odd integer, returns -0
+  EXPECT_EQ(MathUtil::IPow(-0.0, 3), -0.0);
+  // pow(±0, exp), where exp is positive non-integer or a positive even integer,
+  // returns +0
+  EXPECT_EQ(MathUtil::IPow(+0.0, 42), +0.0);
+  EXPECT_EQ(MathUtil::IPow(-0.0, 42), +0.0);
+  // pow(base, ±0) returns 1 for any base, even when base is NaN
+  EXPECT_EQ(MathUtil::IPow(-kInf, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(-2.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(-1.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(-0.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(+0.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(+1.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(+2.0, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(+kInf, 0.0), 1.0);
+  EXPECT_EQ(MathUtil::IPow(std::numeric_limits<double>::quiet_NaN(), 0.0), 1.0);
+  // pow(-∞, exp) returns -∞ if exp is a positive odd integer
+  EXPECT_EQ(MathUtil::IPow(-kInf, 43), -kInf);
+  // pow(-∞, exp) returns +∞ if exp is a positive non-integer or even integer
+  EXPECT_EQ(MathUtil::IPow(-kInf, 42), +kInf);
+  // pow(+∞, exp) returns +∞ for any positive exp
+  EXPECT_EQ(MathUtil::IPow(+kInf, 42), +kInf);
+  EXPECT_EQ(MathUtil::IPow(+kInf, 43), +kInf);
+
+  // 2 - These do not apply due to the restricted exp range.
+  // pow(+0, exp), where exp is a negative odd integer, returns +∞ and raises
+  // FE_DIVBYZERO pow(-0, exp), where exp is a negative odd integer, returns -∞
+  // and raises FE_DIVBYZERO pow(±0, exp), where exp is negative, finite, and is
+  // an even integer or a non-integer, returns +∞ and raises FE_DIVBYZERO
+  // pow(-1, ±∞) returns 1
+  // pow(+1, exp) returns 1 for any exp, even when exp is NaN
+  // pow(±0, -∞) returns +∞ and may raise FE_DIVBYZERO
+  // pow(base, exp) returns NaN and raises FE_INVALID if base is finite and
+  // negative and exp is finite and non-integer. pow(base, -∞) returns +∞ for
+  // any |base|<1 pow(base, -∞) returns +0 for any |base|>1 pow(base, +∞)
+  // returns +0 for any |base|<1 pow(base, +∞) returns +∞ for any |base|>1
+  // pow(-∞, exp) returns -0 if exp is a negative odd integer
+  // pow(-∞, exp) returns +0 if exp is a negative non-integer or even integer
+  // pow(+∞, exp) returns +0 for any negative exp
+}
+
+}  // namespace
 }  // namespace tensorflow

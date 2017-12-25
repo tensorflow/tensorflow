@@ -65,9 +65,11 @@ class HloProfilePrinter {
 
   HloProfilePrinter(
       HloComputationInfo* computation_infos, int64 computation_infos_size,
+      int64 profile_counters_size,
       std::function<void(HloComputationInfo*, int64)> deleter = nullptr)
       : computation_infos_(computation_infos),
         computation_infos_size_(computation_infos_size),
+        profile_counters_size_(profile_counters_size),
         deleter_(std::move(deleter)) {}
 
   HloProfilePrinter(HloProfilePrinter&& other) {
@@ -79,9 +81,12 @@ class HloProfilePrinter {
   HloProfilePrinter(const HloProfilePrinter&) = delete;
   HloProfilePrinter& operator=(const HloProfilePrinter&) = delete;
 
-  // Convert the profile counter sequence `counters` to a human readable string
+  // Converts the profile counter sequence `counters` to a human readable string
   // representation.
   string ToString(const int64* counters, double clock_rate_ghz) const;
+
+  // Returns the size of the profile buffer expected by this printer.
+  int64 profile_counters_size() const { return profile_counters_size_; }
 
   ~HloProfilePrinter();
 
@@ -90,6 +95,7 @@ class HloProfilePrinter {
   // is manifested as the deleter_ function.
   HloComputationInfo* computation_infos_ = nullptr;
   int64 computation_infos_size_ = 0;
+  int64 profile_counters_size_ = 0;
   std::function<void(HloComputationInfo*, int64)> deleter_;
 };
 }  // namespace xla

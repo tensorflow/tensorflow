@@ -51,16 +51,20 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  Status MaterializeShapes(const GrapplerItem& item,
-                           const GraphProperties& properties);
+  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
+  string OptimizedNodeName(const NodeDef& node) const;
+  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+
+  bool IsReallyConstant(const NodeDef& node) const;
+
+  Status MaterializeShapes(const GraphProperties& properties);
 
   Status MaterializeBroadcastGradientArgs(const NodeDef& node,
                                           const GraphProperties& properties);
   Status MaterializeReductionIndices(NodeDef* node,
                                      const GraphProperties& properties);
 
-  Status MaterializeConstants(const GrapplerItem& item,
-                              const GraphProperties& properties);
+  Status MaterializeConstants(const GraphProperties& properties);
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
@@ -72,12 +76,20 @@ class ConstantFolding : public GraphOptimizer {
 
   Status FoldNode(NodeDef* node, GraphDef* output_graph);
 
+  bool IsOnes(const NodeDef& node) const;
+  bool IsZeros(const NodeDef& node) const;
+  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node);
+  Status ReplaceOperationWithConstant(double value,
+                                      const TensorShapeProto& shape,
+                                      NodeDef* node);
+  void ReplaceDivisionOfOnesByReciprocal(NodeDef* node);
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
+  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties,
+                       bool use_shape_info);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
@@ -88,11 +100,13 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<DeviceBase> owned_device_;
 
   std::unique_ptr<ResourceMgr> resource_mgr_;
-  GraphDef graph_;
+  GraphDef* graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unordered_set<string> nodes_whitelist_;
+  std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
+  bool graph_modified_;
 };
 
 }  // end namespace grappler

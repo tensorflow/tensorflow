@@ -39,6 +39,8 @@ bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);
 bool HasDilation(const Window& window);
 
+bool HasWindowReversal(const Window& window);
+
 // Returns the new bound after dilation.
 //
 // If a window with the given bound in some dimension is dilated with the given

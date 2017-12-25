@@ -488,6 +488,20 @@ class IndexTableFromFile(test.TestCase):
       self.assertRaises(ValueError, table.lookup,
                         constant_op.constant(["salad", "surgery", "tarkus"]))
 
+  def test_index_table_from_file_table_ref_with_oov_buckets(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab9.txt")
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, num_oov_buckets=1)
+      self.assertIsNotNone(table.table_ref)
+
+  def test_index_table_from_file_table_ref_without_oov_buckets(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab10.txt")
+    with self.test_session():
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, num_oov_buckets=0)
+      self.assertIsNotNone(table.table_ref)
+
 
 class KeyValueTensorInitializerTest(test.TestCase):
 
@@ -604,15 +618,20 @@ class IndexToStringTableFromFileTest(test.TestCase):
     return vocabulary_file
 
   def test_index_to_string_table(self):
-    vocabulary_file = self._createVocabFile("i2f_vocab1.txt")
-    with self.test_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file)
-      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
-      self.assertRaises(errors_impl.OpError, features.eval)
-      lookup_ops.tables_initializer().run()
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          features.eval())
+    vocabulary_path = self._createVocabFile("i2f_vocab1.txt")
+    # vocabulary_file supports string and tensor
+    type_funcs = [str, constant_op.constant]
+    for type_func in type_funcs:
+      vocabulary_file = type_func(vocabulary_path)
+      with self.test_session():
+        table = lookup_ops.index_to_string_table_from_file(
+            vocabulary_file=vocabulary_file)
+        features = table.lookup(
+            constant_op.constant([0, 1, 2, 3], dtypes.int64))
+        self.assertRaises(errors_impl.OpError, features.eval)
+        lookup_ops.tables_initializer().run()
+        self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                            features.eval())
 
   def test_index_to_string_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(
@@ -1431,6 +1450,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
             oov_buckets,
             hasher_spec=lookup_ops.StrongHashSpec([None, 2]))
 
+  def testIdTableWithHashBucketsNoInnerTable(self):
+    with self.test_session():
+      table = lookup_ops.IdTableWithHashBuckets(None, num_oov_buckets=1)
+      self.assertIsNone(table.table_ref)
 
 if __name__ == "__main__":
   test.main()

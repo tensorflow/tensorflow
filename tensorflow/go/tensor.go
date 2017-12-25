@@ -270,7 +270,7 @@ func typeOf(dt DataType, shape []int64) reflect.Type {
 		}
 	}
 	if ret == nil {
-		panic(bug("DataType %v is not supported", dt))
+		panic(bug("DataType %v is not supported (see https://www.tensorflow.org/code/tensorflow/core/framework/types.proto)", dt))
 	}
 	for range shape {
 		ret = reflect.SliceOf(ret)
@@ -328,6 +328,14 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 			}
 		}
 
+		// Optimisation: if only one dimension is left we can use binary.Write() directly for this slice
+		if len(shape) == 1 && v.Len() > 0 {
+			switch v.Index(0).Kind() {
+			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+				return binary.Write(w, nativeEndian, v.Interface())
+			}
+		}
+
 		subShape := shape[1:]
 		for i := 0; i < v.Len(); i++ {
 			err := encodeTensor(w, v.Index(i), subShape)
@@ -360,6 +368,15 @@ func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.
 	case reflect.Slice:
 		val := reflect.Indirect(ptr)
 		val.Set(reflect.MakeSlice(typ, int(shape[0]), int(shape[0])))
+
+		// Optimization: if only one dimension is left we can use binary.Read() directly for this slice
+		if len(shape) == 1 && val.Len() > 0 {
+			switch val.Index(0).Kind() {
+			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+				return binary.Read(r, nativeEndian, val.Interface())
+			}
+		}
+
 		for i := 0; i < val.Len(); i++ {
 			if err := decodeTensor(r, shape[1:], typ.Elem(), val.Index(i).Addr()); err != nil {
 				return err

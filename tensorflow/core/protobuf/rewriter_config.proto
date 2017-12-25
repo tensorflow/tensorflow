@@ -35,7 +35,7 @@ message RewriterConfig {
   Toggle constant_folding = 3;
   // Arithmetic optimizations (default is ON)
   Toggle arithmetic_optimization = 7;
-  // Control dependency optimizations (default is OFF).
+  // Control dependency optimizations (default is ON).
   Toggle dependency_optimization = 8;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;

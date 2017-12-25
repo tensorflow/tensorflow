@@ -29,12 +29,12 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+using se::dnn::AlgorithmDesc;
 using se::dnn::BatchDescriptor;
 using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
-using se::dnn::AlgorithmDesc;
 
 ConvolveScratchAllocator::ConvolveScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
@@ -131,8 +131,9 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
   CHECK_EQ(F32, output_shape_.element_type());
-  CHECK_EQ(num_dimensions, dim_nums_.spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dim_nums_.kernel_spatial_dimensions_size());
+  CHECK_EQ(num_dimensions, dim_nums_.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window_.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
   }
@@ -148,7 +149,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
     // Note that the dimensions are reversed. The same holds below.
     input_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        input_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        input_shape_.dimensions(dim_nums_.input_spatial_dimensions(dim)));
   }
 
   FilterDescriptor filter_descriptor(effective_num_dimensions);
@@ -182,7 +183,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   for (int dim = 0; dim < num_dimensions; ++dim) {
     output_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
-        output_shape_.dimensions(dim_nums_.spatial_dimensions(dim)));
+        output_shape_.dimensions(dim_nums_.output_spatial_dimensions(dim)));
   }
 
   // Add a singleton dimension in the 1D convolution case.
@@ -313,7 +314,9 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  if (best_algorithm_.algorithm().is_default()) {
+  if (!best_algorithm_.has_value()) {
+    best_algorithm_.emplace();
+
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "
@@ -362,35 +365,35 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     }
 
     if (best_result.is_valid()) {
-      best_algorithm_.set_algorithm(best_result.algorithm());
+      best_algorithm_->set_algorithm(best_result.algorithm());
     } else {
       LOG(ERROR) << "No convolution algorithm works with profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm(AlgorithmDesc());
+      best_algorithm_->set_algorithm(AlgorithmDesc());
     }
 
     if (best_result_without_scratch.is_valid()) {
-      best_algorithm_.set_algorithm_no_scratch(
+      best_algorithm_->set_algorithm_no_scratch(
           best_result_without_scratch.algorithm());
     } else {
       LOG(ERROR) << "No convolution algorithm without scratch works with "
                     "profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm_no_scratch(AlgorithmDesc());
+      best_algorithm_->set_algorithm_no_scratch(AlgorithmDesc());
     }
   }
 
   {
     VLOG(2) << "Using convolution algorithm ("
-            << AlgorithmToString(best_algorithm_.algorithm()) << ", "
-            << AlgorithmToString(best_algorithm_.algorithm_no_scratch())
+            << AlgorithmToString(best_algorithm_->algorithm()) << ", "
+            << AlgorithmToString(best_algorithm_->algorithm_no_scratch())
             << ") for ConvolutionThunk: " << this;
     ConvolveScratchAllocator scratch_allocator(
         buffer_allocations.device_ordinal(),
         buffer_allocations.memory_allocator());
     return Convolve(input_descriptor, input_data, filter_descriptor,
                     filter_data, output_descriptor, output_data,
-                    convolution_descriptor, best_algorithm_, stream,
+                    convolution_descriptor, *best_algorithm_, stream,
                     &scratch_allocator, nullptr);
   }
 }

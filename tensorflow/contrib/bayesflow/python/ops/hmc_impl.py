@@ -27,6 +27,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -174,9 +175,11 @@ def chain(n_iterations, step_size, n_leapfrog_steps, initial_x,
 
     potential_and_grad = _make_potential_and_grad(target_log_prob_fn)
     potential, grad = potential_and_grad(initial_x)
-    return functional_ops.scan(body, array_ops.zeros(n_iterations),
-                               (initial_x, array_ops.zeros(non_event_shape),
-                                -potential, -grad))[:2]
+    return functional_ops.scan(
+        body, array_ops.zeros(n_iterations, dtype=initial_x.dtype),
+        (initial_x,
+         array_ops.zeros(non_event_shape, dtype=initial_x.dtype),
+         -potential, -grad))[:2]
 
 
 def ais_chain(n_iterations, step_size, n_leapfrog_steps, initial_x,
@@ -298,8 +301,9 @@ def ais_chain(n_iterations, step_size, n_leapfrog_steps, initial_x,
       return updated_x, acceptance_probs, w
 
     x, acceptance_probs, w = functional_ops.scan(
-        _body, beta_series, (initial_x, array_ops.zeros(non_event_shape),
-                             array_ops.zeros(non_event_shape)))
+        _body, beta_series,
+        (initial_x, array_ops.zeros(non_event_shape, dtype=initial_x.dtype),
+         array_ops.zeros(non_event_shape, dtype=initial_x.dtype)))
   return w[-1], x[-1], acceptance_probs[-1]
 
 
@@ -446,9 +450,10 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
   """
   with ops.name_scope(name, 'hmc_kernel', [step_size, n_leapfrog_steps, x]):
     potential_and_grad = _make_potential_and_grad(target_log_prob_fn)
+    x = ops.convert_to_tensor(x, name='x')
 
     x_shape = array_ops.shape(x)
-    m = random_ops.random_normal(x_shape)
+    m = random_ops.random_normal(x_shape, dtype=x.dtype)
 
     kinetic_0 = 0.5 * math_ops.reduce_sum(math_ops.square(m), event_dims)
 
@@ -468,26 +473,33 @@ def kernel(step_size, n_leapfrog_steps, x, target_log_prob_fn, event_dims=(),
 
     kinetic_1 = 0.5 * math_ops.reduce_sum(math_ops.square(new_m), event_dims)
 
-    # TODO(mhoffman): It seems like there may be an opportunity for nans here.
-    # I'm delaying addressing this because we're going to refactor this part
-    # to use the more general Metropolis abstraction anyway.
-    acceptance_probs = math_ops.exp(math_ops.minimum(0., log_potential_0 -
-                                                     log_potential_1 +
-                                                     kinetic_0 - kinetic_1))
-    accepted = math_ops.cast(
-        random_ops.random_uniform(array_ops.shape(acceptance_probs)) <
-        acceptance_probs, np.float32)
-    new_log_prob = (-log_potential_0 * (1. - accepted) -
-                    log_potential_1 * accepted)
+    energy_change = log_potential_1 - log_potential_0 + kinetic_1 - kinetic_0
+    # Treat NaN as infinite energy (and therefore guaranteed rejection).
+    energy_change = array_ops.where(
+        math_ops.is_nan(energy_change),
+        array_ops.fill(array_ops.shape(energy_change),
+                       energy_change.dtype.as_numpy_dtype(np.inf)),
+        energy_change)
+    acceptance_probs = math_ops.exp(math_ops.minimum(-energy_change, 0.))
+    accepted = (
+        random_ops.random_uniform(
+            array_ops.shape(acceptance_probs), dtype=x.dtype)
+        < acceptance_probs)
+    new_log_prob = -array_ops.where(accepted, log_potential_1, log_potential_0)
 
     # TODO(b/65738010): This should work, but it doesn't for now.
     # reduced_shape = math_ops.reduced_shape(x_shape, event_dims)
     reduced_shape = array_ops.shape(math_ops.reduce_sum(x, event_dims,
                                                         keep_dims=True))
     accepted = array_ops.reshape(accepted, reduced_shape)
-    new_x = x * (1. - accepted) + new_x * accepted
-    new_grad = -grad_0 * (1. - accepted) - grad_1 * accepted
+    accepted = math_ops.logical_or(
+        accepted, math_ops.cast(array_ops.zeros_like(x), dtypes.bool))
+    new_x = array_ops.where(accepted, new_x, x)
+    new_grad = -array_ops.where(accepted, grad_1, grad_0)
 
+  # TODO(langmore) Gradients of acceptance_probs and new_log_prob with respect
+  # to initial_x will propagate NaNs (see testNanFromGradsDontPropagate).  This
+  # should be fixed.
   return new_x, acceptance_probs, new_log_prob, new_grad
 
 
@@ -525,6 +537,7 @@ def leapfrog_integrator(step_size, n_steps, initial_position, initial_momentum,
       Has shape matching `initial_position`.
 
   Example: Simple quadratic potential.
+
   ```python
   def potential_and_grad(position):
     return tf.reduce_sum(0.5 * tf.square(position)), position
@@ -600,6 +613,7 @@ def leapfrog_step(step_size, position, momentum, potential_and_grad, grad,
       Has shape matching `position`.
 
   Example: Simple quadratic potential.
+
   ```python
   def potential_and_grad(position):
     # Simple quadratic potential

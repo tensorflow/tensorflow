@@ -88,6 +88,11 @@ class BaseLayerTest(test.TestCase):
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
+  def testNoEagerActivityRegularizer(self):
+    with context.eager_mode():
+      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
+        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
+
   def testGetVariable(self):
     with self.test_session():
 
@@ -468,6 +473,63 @@ class BaseLayerTest(test.TestCase):
     x = array_ops.placeholder('int32')
     layer.apply(x)
     self.assertEqual(len(layer.get_losses_for(x)), 1)
+
+  def testNameScopeIsConsistentWithVariableScope(self):
+    # Github issue 13429.
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.my_var = self.add_variable('my_var', (), dtypes.float32)
+        self.built = True
+
+      def call(self, inputs):
+        return math_ops.multiply(inputs, self.my_var, name='my_op')
+
+    def _gen_layer(x, name=None):
+      layer = MyLayer(name=name)
+      out = layer.apply(x)
+      return layer, out
+
+    # unnamed layer
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, (), 'x')
+      layer, op = _gen_layer(x)
+      layer1, op1 = _gen_layer(op)
+      layer2, op2 = _gen_layer(op1)
+
+      self.assertEqual(layer.my_var.name, 'my_layer/my_var:0')
+      self.assertEqual(op.name, 'my_layer/my_op:0')
+      self.assertEqual(layer1.my_var.name, 'my_layer_1/my_var:0')
+      self.assertEqual(op1.name, 'my_layer_1/my_op:0')
+      self.assertEqual(layer2.my_var.name, 'my_layer_2/my_var:0')
+      self.assertEqual(op2.name, 'my_layer_2/my_op:0')
+    # name starts from zero
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, (), 'x')
+      layer, op = _gen_layer(x, name='name')
+      layer1, op1 = _gen_layer(op, name='name_1')
+      layer2, op2 = _gen_layer(op1, name='name_2')
+
+      self.assertEqual(layer.my_var.name, 'name/my_var:0')
+      self.assertEqual(op.name, 'name/my_op:0')
+      self.assertEqual(layer1.my_var.name, 'name_1/my_var:0')
+      self.assertEqual(op1.name, 'name_1/my_op:0')
+      self.assertEqual(layer2.my_var.name, 'name_2/my_var:0')
+      self.assertEqual(op2.name, 'name_2/my_op:0')
+    # name starts from one
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, (), 'x')
+      layer, op = _gen_layer(x, name='name_1')
+      layer1, op1 = _gen_layer(op, name='name_2')
+      layer2, op2 = _gen_layer(op1, name='name_3')
+
+      self.assertEqual(layer.my_var.name, 'name_1/my_var:0')
+      self.assertEqual(op.name, 'name_1/my_op:0')
+      self.assertEqual(layer1.my_var.name, 'name_2/my_var:0')
+      self.assertEqual(op1.name, 'name_2/my_op:0')
+      self.assertEqual(layer2.my_var.name, 'name_3/my_var:0')
+      self.assertEqual(op2.name, 'name_3/my_op:0')
 
 
 if __name__ == '__main__':

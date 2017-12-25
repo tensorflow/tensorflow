@@ -261,8 +261,8 @@ class KMeans(object):
             inp, clusters, 1)
         if self._distance_metric == COSINE_DISTANCE:
           distances *= 0.5
-        output.append((score, array_ops.squeeze(distances),
-                       array_ops.squeeze(indices)))
+        output.append((score, array_ops.squeeze(distances, [-1]),
+                       array_ops.squeeze(indices, [-1])))
     return zip(*output)
 
   def _clusters_l2_normalized(self):

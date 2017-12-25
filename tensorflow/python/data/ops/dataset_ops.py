@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.util import deprecation
 
 
 class Dataset(object):
@@ -218,6 +219,7 @@ class Dataset(object):
     return TensorSliceDataset(tensors)
 
   @staticmethod
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
     """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
 
@@ -283,6 +285,23 @@ class Dataset(object):
     sess.run(value)  # (1, array([1]))
     sess.run(value)  # (2, array([1, 1]))
     ```
+
+    NOTE: The current implementation of `Dataset.from_generator()` uses
+    @{tf.py_func} and inherits the same constraints. In particular, it
+    requires the `Dataset`- and `Iterator`-related operations to be placed
+    on a device in the same process as the Python program that called
+    `Dataset.from_generator()`. The body of `generator` will not be
+    serialized in a `GraphDef`, and you should not use this method if you
+    need to serialize your model and restore it in a different environment.
+
+    NOTE: If `generator` depends on mutable global variables or other external
+    state, be aware that the runtime may invoke `generator` multiple times
+    (in order to support repeating the `Dataset`) and at any time
+    between the call to `Dataset.from_generator()` and the production of the
+    first element from the generator. Mutating global variables or external
+    state can cause undefined behavior, and we recommend that you explicitly
+    cache any external state in `generator` before calling
+    `Dataset.from_generator()`.
 
     Args:
       generator: A callable object that takes no arguments and returns an
@@ -892,10 +911,19 @@ class TensorDataset(Dataset):
     """See `Dataset.from_tensors()` for details."""
     super(TensorDataset, self).__init__()
     with ops.name_scope("tensors"):
-      self._tensors = nest.pack_sequence_as(tensors, [
-          ops.convert_to_tensor(t, name="component_%d" % i)
+      tensors = nest.pack_sequence_as(tensors, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
           for i, t in enumerate(nest.flatten(tensors))
       ])
+
+    self._tensors = sparse.serialize_sparse_tensors(tensors)
+    self._output_classes = sparse.get_classes(tensors)
+    self._output_shapes = nest.pack_sequence_as(
+        tensors, [t.get_shape() for t in nest.flatten(tensors)])
+    self._output_types = nest.pack_sequence_as(
+        tensors, [t.dtype for t in nest.flatten(tensors)])
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_dataset(
@@ -905,18 +933,15 @@ class TensorDataset(Dataset):
 
   @property
   def output_classes(self):
-    return nest.pack_sequence_as(
-        self._tensors, [ops.Tensor for _ in nest.flatten(self._tensors)])
+    return self._output_classes
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.shape for t in nest.flatten(self._tensors)])
+    return self._output_shapes
 
   @property
   def output_types(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.dtype for t in nest.flatten(self._tensors)])
+    return self._output_types
 
 
 class TensorSliceDataset(Dataset):
@@ -926,15 +951,23 @@ class TensorSliceDataset(Dataset):
     """See `Dataset.from_tensor_slices()` for details."""
     super(TensorSliceDataset, self).__init__()
     with ops.name_scope("tensors"):
-      flat_tensors = [
-          ops.convert_to_tensor(t, name="component_%d" % i)
+      tensors = nest.pack_sequence_as(tensors, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
           for i, t in enumerate(nest.flatten(tensors))
-      ]
+      ])
+      flat_tensors = nest.flatten(tensors)
 
-    self._tensors = nest.pack_sequence_as(tensors, flat_tensors)
     batch_dim = flat_tensors[0].get_shape()[0]
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
+    self._tensors = sparse.serialize_many_sparse_tensors(tensors)
+    self._output_classes = sparse.get_classes(tensors)
+    self._output_shapes = nest.pack_sequence_as(
+        tensors, [t.get_shape()[1:] for t in nest.flatten(tensors)])
+    self._output_types = nest.pack_sequence_as(
+        tensors, [t.dtype for t in nest.flatten(tensors)])
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_slice_dataset(
@@ -944,20 +977,15 @@ class TensorSliceDataset(Dataset):
 
   @property
   def output_classes(self):
-    return nest.pack_sequence_as(
-        self._tensors, [ops.Tensor for _ in nest.flatten(self._tensors)])
+    return self._output_classes
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._tensors, [
-        tensor_shape.TensorShape(t.shape[1:])
-        for t in nest.flatten(self._tensors)
-    ])
+    return self._output_shapes
 
   @property
   def output_types(self):
-    return nest.pack_sequence_as(self._tensors,
-                                 [t.dtype for t in nest.flatten(self._tensors)])
+    return self._output_types
 
 
 class SparseTensorSliceDataset(Dataset):
@@ -1219,7 +1247,26 @@ class ShuffleDataset(Dataset):
                buffer_size,
                seed=None,
                reshuffle_each_iteration=None):
-    """See `Dataset.shuffle()` for details."""
+    """Randomly shuffles the elements of this dataset.
+
+    Args:
+      input_dataset: The input dataset.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new
+        dataset will sample.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
+
+    Returns:
+      A `Dataset`.
+
+    Raises:
+      ValueError: if invalid arguments are provided.
+    """
     super(ShuffleDataset, self).__init__()
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
@@ -1512,6 +1559,12 @@ class MapDataset(Dataset):
       # `tf.stack()` before returning.
       if isinstance(ret, list):
         ret = tuple(ret)
+
+      # Convert any `SparseTensorValue`s to `SparseTensor`s.
+      ret = nest.pack_sequence_as(ret, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else t for t in nest.flatten(ret)
+      ])
 
       self._output_classes = sparse.get_classes(ret)
       self._output_shapes = nest.pack_sequence_as(

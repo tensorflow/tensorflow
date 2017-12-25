@@ -33,11 +33,28 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T>
+template <typename T, bool useSharedMem>
 __global__ void BucketizeCustomKernel(
     const int32 size_in, const T* in, const int32 size_boundaries,
     CudaDeviceArrayStruct<float> boundaries_array, int32* out) {
   const float* boundaries = GetCudaDeviceArrayOnDevice(&boundaries_array);
+
+  extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
+  float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
+
+  if (useSharedMem) {
+    int32 lidx = threadIdx.y * blockDim.x + threadIdx.x;
+    int32 blockSize = blockDim.x * blockDim.y;
+
+    for (int32 i = lidx; i < size_boundaries; i += blockSize) {
+      shared_mem_boundaries[i] = boundaries[i];
+    }
+
+    __syncthreads();
+
+    boundaries = shared_mem_boundaries;
+  }
+
   CUDA_1D_KERNEL_LOOP(i, size_in) {
     T value = in[i];
     int32 bucket = 0;
@@ -77,11 +94,20 @@ struct BucketizeFunctor<GPUDevice, T> {
     TF_RETURN_IF_ERROR(boundaries_array.Finalize());
 
     CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
-    BucketizeCustomKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            input.size(), input.data(), boundaries_vector.size(),
-            boundaries_array.data(), output.data());
-
+    int32 shared_mem_size = sizeof(float) * boundaries_vector.size();
+    const int32 kMaxSharedMemBytes = 16384;
+    if (shared_mem_size < d.sharedMemPerBlock() &&
+        shared_mem_size < kMaxSharedMemBytes) {
+      BucketizeCustomKernel<T, true>
+          <<<config.block_count, config.thread_per_block, shared_mem_size,
+             d.stream()>>>(input.size(), input.data(), boundaries_vector.size(),
+                           boundaries_array.data(), output.data());
+    } else {
+      BucketizeCustomKernel<T, false>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              input.size(), input.data(), boundaries_vector.size(),
+              boundaries_array.data(), output.data());
+    }
     return Status::OK();
   }
 };

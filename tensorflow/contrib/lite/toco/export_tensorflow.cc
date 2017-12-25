@@ -780,13 +780,12 @@ void ConvertConcatenationOperator(const Model& model,
   auto* dc_op = tensorflow_graph->add_node();
   dc_op->set_op("ConcatV2");
   dc_op->set_name(src_op.outputs[0]);
-  const string dummy_concat_dim = src_op.outputs[0] + "/concat_dim";
-  CreateDummyConcatDimTensorConst(dummy_concat_dim, src_op.concat_dim,
-                                  tensorflow_graph);
+  const string dummy_axis = src_op.outputs[0] + "/axis";
+  CreateDummyConcatDimTensorConst(dummy_axis, src_op.axis, tensorflow_graph);
   for (const auto& input : src_op.inputs) {
     *dc_op->add_input() = input;
   }
-  *dc_op->add_input() = dummy_concat_dim;
+  *dc_op->add_input() = dummy_axis;
   (*dc_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*dc_op->mutable_attr())["Tidx"].set_type(DT_INT32);
   (*dc_op->mutable_attr())["N"].set_i(src_op.inputs.size());
@@ -900,13 +899,15 @@ tensorflow::DataType GetTensorFlowDataType(const Model& model,
                                            const string& array_name) {
   auto& dtype = model.GetArray(array_name).data_type;
   CHECK(dtype == ArrayDataType::kFloat || dtype == ArrayDataType::kInt32 ||
-        dtype == ArrayDataType::kUint8);
+        dtype == ArrayDataType::kUint8 || dtype == ArrayDataType::kInt64);
   if (dtype == ArrayDataType::kFloat) {
     return tensorflow::DT_FLOAT;
   } else if (dtype == ArrayDataType::kInt32) {
     return tensorflow::DT_INT32;
   } else if (dtype == ArrayDataType::kUint8) {
     return tensorflow::DT_UINT8;
+  } else if (dtype == ArrayDataType::kInt64) {
+    return tensorflow::DT_INT64;
   } else {
     LOG(FATAL) << "Wrong data type";
   }
@@ -948,6 +949,22 @@ void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
   (*gather_op->mutable_attr())["Tindices"].set_type(DT_INT32);
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*gather_op->mutable_attr())["Tparams"].set_type(params_type);
+}
+
+void ConvertArgMaxOperator(const Model& model, const ArgMaxOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* argmax_op = tensorflow_graph->add_node();
+  argmax_op->set_op("ArgMax");
+  argmax_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *argmax_op->add_input() = src_op.inputs[0];
+  *argmax_op->add_input() = src_op.inputs[1];
+  (*argmax_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*argmax_op->mutable_attr())["Tidx"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+  (*argmax_op->mutable_attr())["output_type"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
 void ConvertResizeBilinearOperator(const Model& model,
@@ -993,22 +1010,21 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   const string concat_output = base + "basic_lstm_cell/concat";
   // Op names have been chosen to match the tf.slim LSTM naming
   // as closely as possible.
-  const int concat_dim =
+  const int axis =
       model.arrays.at(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
           ->shape()
           .dimensions_count() -
       1;
   // Note that DATA_INPUT may have extra size 1 dimensions, but TF concat
   // works the same since the tensor has the same underlying data layout.
-  const string concat_dim_output = concat_output + "/concat_dim";
-  CreateDummyConcatDimTensorConst(concat_dim_output, concat_dim,
-                                  tensorflow_graph);
+  const string axis_output = concat_output + "/axis";
+  CreateDummyConcatDimTensorConst(axis_output, axis, tensorflow_graph);
   auto* concat_op = tensorflow_graph->add_node();
   concat_op->set_op("ConcatV2");
   concat_op->set_name(concat_output);
   *concat_op->add_input() = src_op.inputs[LstmCellOperator::DATA_INPUT];
   *concat_op->add_input() = src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT];
-  *concat_op->add_input() = concat_dim_output;
+  *concat_op->add_input() = axis_output;
   (*concat_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*concat_op->mutable_attr())["Tidx"].set_type(DT_INT32);
   (*concat_op->mutable_attr())["N"].set_i(2);  // Number of inputs
@@ -1069,8 +1085,7 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Split
   string split_dim_output = base + "split/split_dim";
   // The dimension is the same as the concatenation dimension
-  CreateDummyConcatDimTensorConst(split_dim_output, concat_dim,
-                                  tensorflow_graph);
+  CreateDummyConcatDimTensorConst(split_dim_output, axis, tensorflow_graph);
   string split_output = base + "split";
   auto* split_op = tensorflow_graph->add_node();
   split_op->set_op("Split");
@@ -1298,11 +1313,11 @@ void ConvertMeanOperator(const Model& model, const MeanOperator& src_op,
   auto* tensor = (*params_op->mutable_attr())["value"].mutable_tensor();
   tensor->set_dtype(DT_INT32);
 
-  for (int i = 0; i < src_op.reduction_indices.size(); ++i) {
-    tensor->add_int_val(src_op.reduction_indices[i]);
+  for (int i = 0; i < src_op.axis.size(); ++i) {
+    tensor->add_int_val(src_op.axis[i]);
   }
   auto* shape = tensor->mutable_tensor_shape();
-  shape->add_dim()->set_size(src_op.reduction_indices.size());
+  shape->add_dim()->set_size(src_op.axis.size());
 }
 
 void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
@@ -1498,6 +1513,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kSlice) {
     ConvertSliceOperator(model, static_cast<const SliceOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kArgMax) {
+    ConvertArgMaxOperator(model, static_cast<const ArgMaxOperator&>(src_op),
+                          tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
+#ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
@@ -212,11 +216,9 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
-  TF_RETURN_IF_ERROR(
-      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
+  request->SetUri(oauth_server_uri.ToString());
+  request->SetPostFromBuffer(request_body.c_str(), request_body.size());
+  request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
   StringPiece response =
@@ -246,11 +248,9 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
-  TF_RETURN_IF_ERROR(
-      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
+  request->SetUri(oauth_server_uri.ToString());
+  request->SetPostFromBuffer(request_body.c_str(), request_body.size());
+  request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
   StringPiece response =

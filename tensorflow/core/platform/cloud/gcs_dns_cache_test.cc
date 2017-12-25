@@ -21,14 +21,11 @@ namespace tensorflow {
 
 class TestHttpRequest : public HttpRequest {
  public:
-  Status Init() override { return Status::OK(); }
-  Status SetUri(const string& uri) override { return Status::OK(); }
-  Status SetRange(uint64 start, uint64 end) override { return Status::OK(); }
-  Status AddHeader(const string& name, const string& value) override {
-    return Status::OK();
-  }
-  Status AddResolveOverride(const string& hostname, int64 port,
-                            const string& ip_addr) override {
+  void SetUri(const string& uri) override {}
+  void SetRange(uint64 start, uint64 end) override {}
+  void AddHeader(const string& name, const string& value) override {}
+  void AddResolveOverride(const string& hostname, int64 port,
+                          const string& ip_addr) override {
     EXPECT_EQ(port, 443) << "Unexpected port set for hostname: " << hostname;
     auto itr = resolve_overrides_.find(hostname);
     EXPECT_EQ(itr, resolve_overrides_.end())
@@ -36,33 +33,29 @@ class TestHttpRequest : public HttpRequest {
 
     resolve_overrides_.insert(
         std::map<string, string>::value_type(hostname, ip_addr));
-    return Status::OK();
   }
 
-  Status AddAuthBearerHeader(const string& auth_token) override {
-    return Status::OK();
-  }
+  void AddAuthBearerHeader(const string& auth_token) override {}
 
-  Status SetDeleteRequest() override { return Status::OK(); }
+  void SetDeleteRequest() override {}
 
   Status SetPutFromFile(const string& body_filepath, size_t offset) override {
     return Status::OK();
   }
-  Status SetPutEmptyBody() override { return Status::OK(); }
-
-  Status SetPostFromBuffer(const char* buffer, size_t size) override {
-    return Status::OK();
-  }
-  Status SetPostEmptyBody() override { return Status::OK(); }
-
-  Status SetResultBuffer(std::vector<char>* out_buffer) override {
-    return Status::OK();
-  }
+  void SetPutEmptyBody() override {}
+  void SetPostFromBuffer(const char* buffer, size_t size) override {}
+  void SetPostEmptyBody() override {}
+  void SetResultBuffer(std::vector<char>* out_buffer) override {}
+  void SetResultBufferDirect(char* buffer, size_t size) override {}
+  size_t GetResultBufferDirectBytesTransferred() override { return 0; }
 
   string GetResponseHeader(const string& name) const override { return ""; }
   uint64 GetResponseCode() const override { return 0; }
   Status Send() override { return Status::OK(); }
   string EscapeString(const string& str) override { return ""; }
+
+  void SetTimeouts(uint32 connection, uint32 inactivity,
+                   uint32 total) override {}
 
   std::map<string, string> resolve_overrides_;
 };
@@ -83,13 +76,11 @@ class GcsDnsCacheTest : public ::testing::Test {
     {
       mutex_lock l(d.mu_);
       d.started_ = true;  // Avoid creating a thread.
-      d.www_addresses_ = {"192.168.1.1"};
-      d.storage_addresses_ = {"172.134.1.1"};
+      d.addresses_ = {{"192.168.1.1"}, {"172.134.1.1"}};
     }
 
     TestHttpRequest req;
-    Status s = d.AnnotateRequest(&req);
-    EXPECT_TRUE(s.ok()) << s;
+    d.AnnotateRequest(&req);
     EXPECT_EQ("192.168.1.1", req.resolve_overrides_["www.googleapis.com"]);
     EXPECT_EQ("172.134.1.1", req.resolve_overrides_["storage.googleapis.com"]);
   }
@@ -99,8 +90,7 @@ class GcsDnsCacheTest : public ::testing::Test {
     // a timely manner.
     GcsDnsCache d;
     TestHttpRequest req;
-    Status s = d.AnnotateRequest(&req);
-    EXPECT_TRUE(s.ok()) << s;
+    d.AnnotateRequest(&req);
   }
 };
 

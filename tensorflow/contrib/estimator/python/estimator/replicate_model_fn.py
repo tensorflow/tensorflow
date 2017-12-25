@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from contextlib import contextmanager
 import copy
 
 import six
@@ -41,20 +42,24 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import training_util
+from tensorflow.python.training import device_setter as device_setter_lib
+from tensorflow.python.training import optimizer as optimizer_lib
 
 
-def replicate_model_fn(model_fn, optimizer_fn, devices=None):
+def replicate_model_fn(model_fn,
+                       loss_reduction=losses.Reduction.SUM,
+                       devices=None):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
   such a model over GPUs, each GPU gets its own instance of the forward pass
   (a.k.a. a tower).  The input features and labels get sharded into the chunks
-  that correspond to the number of GPUs.  Each tower computes its own loss based
+  that correspond to the number of GPUs.  Each tower computes a loss based
   on its input.  For each such loss, gradients are computed.  After that, the
-  available losses are summed to form aggregated loss.  The available
-  gradients are summed too.  Then, they update weights using the specified
+  available losses are aggregated to form aggregated loss.  Available
+  gradients are summed.  Then, they update weights using the specified
   optimizer.
 
   If `devices` are `None`, then all available GPUs are going to be used for
@@ -69,30 +74,29 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
 
   Here is an example of how one might use their `model_fn` to run over GPUs:
     ```python
-       def optimizer_fn():
-         return tf.train.GradientDescentOptimizer(learning_rate=0.001)
        ...
        def model_fn(...):  # See `model_fn` in `Estimator`.
          loss = ...
+         optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+         optimizer = tf.contrib.estimator.GatheringOptimizer(optimizer)
          if mode == tf.estimator.ModeKeys.TRAIN:
            #  See the section below on `EstimatorSpec.train_op`.
-           return EstimatorSpec(mode=mode, loss=loss, train_op=tf.noop())
+           return EstimatorSpec(mode=mode, loss=loss,
+                                train_op=optimizer.minimize(loss))
 
          #  No change for `ModeKeys.EVAL` or `ModeKeys.PREDICT`.
          return EstimatorSpec(...)
        ...
        classifier = tf.estimator.Estimator(
-         model_fn=replicate_model_fn.replicate_model_fn(model_fn, optimizer_fn))
+         model_fn=tf.contrib.estimator.replicate_model_fn(model_fn))
     ```
 
   On `EstimatorSpec.train_op`:
   `model_fn` returns `EstimatorSpec.train_op` for
   `tf.estimator.GraphKeys.TRAIN`. It is typically derived using an optimizer.
-  `replicate_model_fn` ignores the returned `EstimatorSpec.train_op`, so there
-  is no need to use an optimizer inside the user's `model_fn`.  The
-  `EstimatorSpec.loss` subgraph is going to be executed, while
-  `EstimatorSpec.train_op` isn't going to be executed. One could pass
-  `train_op=tf.noop()` to `EstimatorSpec`.
+  Towers are expected to populate it in the same way.  Gradients from all towers
+  are reduced and applied in the last tower.  To achieve that,
+  `GatheringOptimizer` needs to be used. See `GatheringOptimizer`.
 
   On sharding input features and labels:
   Input features and labels are split for consumption by each tower. They are
@@ -101,7 +105,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   On reduction algorithms:
   Certain algorithms were chosen for aggregating results of computations on
   multiple towers:
-    - Losses from all towers are reduced using sum.
+    - Losses from all towers are reduced according to `loss_reduction`.
     - Gradients are reduced using sum for each trainable variable.
     - `eval_metrics_ops` are reduced per metric using `reduce_mean`.
     - `EstimatorSpec.predictions` and `EstimatorSpec.export_outputs` are
@@ -109,7 +113,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
     - For all other fields of `EstimatorSpec` the values of the first tower
       are taken.
 
-  On replication of variables:
+  On distribution of variables:
   Variables are not duplicated between towers.  Instead, they are placed on a
   single device as defined above and shared across towers.
 
@@ -120,9 +124,7 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
   Args:
     model_fn: `model_fn` as defined in `Estimator`.  See the section above about
       the train_op argument of `EstimatorSpec`.
-    optimizer_fn: a function that returns an optimizer instance.  The function
-      may accept one `params` argument.  This is the `params` argument as
-      defined by `Estimator`.  See  the `Estimator` documentation for details.
+    loss_reduction: controls whether losses are summed or averaged.
     devices: Optional list of devices to replicate the model across.  This
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
@@ -133,41 +135,272 @@ def replicate_model_fn(model_fn, optimizer_fn, devices=None):
       conforms to the requirements of `Estimator`'s `model_fn` and can be used
       instead of the supplied `model_fn`.
   """
+  return _replicate_model_fn_with_mode(
+      model_fn,
+      loss_reduction,
+      devices,
+      # TODO(isaprykin): Query the system configuration to choose modes other
+      # than `SHARED_LOCAL_PARAMETER_SERVER`, even though it is often
+      # appropriate.
+      mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER)
+
+
+class _VariableDistributionMode(object):
+  """Modes for variable distribution used for forcing a particular one.
+
+  Forcing a mode is meant for performance experimentation purposes rather than
+  for general use cases.
+  """
+
+  SHARED_LOCAL_PARAMETER_SERVER = 1
+  """Variables are placed on a single device and shared across all devices.
+
+  Two ways to achieve this distribution over available GPUs are supported:
+    1)  If exactly 1 GPU is detected, then variables and operations are placed
+        onto GPU.
+    2)  If more than 1 GPU is detected, then variables are going to be placed on
+        the CPU.  Replicas of operations are placed on each individual GPU.
+  """
+
+  SHARED_ROUND_ROBIN = 2
+  """Variables are placed on all devices in a round-robin fashion.
+
+  Every subsequent variable is placed on the next device.  There is only one
+  copy of each variable that is shared across all devices.
+  """
+
+
+def _replicate_model_fn_with_mode(
+    model_fn,
+    loss_reduction=losses.Reduction.SUM,
+    devices=None,
+    mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
+  """A version of `replicate_model_fn` that allows to specify a `mode`."""
+  if loss_reduction == losses.Reduction.NONE:
+    raise ValueError('Tower losses need to be reduced in some way, yet {} '
+                     'reduction is specified.'.format(loss_reduction))
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
   is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
-  local_ps_device = '/{}:0'.format('GPU' if is_a_single_gpu_case else 'CPU')
+  consolidation_device = '/{}:0'.format('GPU'
+                                        if is_a_single_gpu_case else 'CPU')
 
-  tf_logging.info('Replicating the `model_fn` across {}.  Local parameter '
-                  'server device is going to be {}.'.format(
-                      devices, local_ps_device))
+  ps_devices = [consolidation_device]
+  if mode == _VariableDistributionMode.SHARED_ROUND_ROBIN:
+    ps_devices = devices
+
+  tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '
+                  'to be placed on {}.  Consolidation device is going to be {}.'
+                  .format(devices, ps_devices, consolidation_device))
 
   def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
     feature_shards, label_shards = _split_batch(
-        features, labels, len(devices), device=local_ps_device)
+        features, labels, len(devices), device=consolidation_device)
     tower_specs = _get_loss_towers(
         model_fn=model_fn,
         mode=mode,
         features=feature_shards,
         labels=label_shards,
         params=params,
+        loss_reduction=loss_reduction,
         config=config,
         devices=devices,
-        local_ps_device=local_ps_device)
+        local_ps_devices=ps_devices)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
-      train_op = _minimize_towers(tower_specs,
-                                  _call_optimizer_fn(optimizer_fn, params))
+      train_op = _minimize_towers(tower_specs)
       return _train_spec(
-          tower_specs, train_op, aggregation_device=local_ps_device)
+          tower_specs, train_op, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.EVAL:
-      return _eval_spec(tower_specs, aggregation_device=local_ps_device)
+      return _eval_spec(tower_specs, aggregation_device=consolidation_device)
     elif mode == model_fn_lib.ModeKeys.PREDICT:
-      return _predict_spec(tower_specs, aggregation_device=local_ps_device)
+      return _predict_spec(tower_specs, aggregation_device=consolidation_device)
 
   return replicated_model_fn
+
+
+class GatheringOptimizer(optimizer_lib.Optimizer):
+  """Gathers gradients from all towers and reduces them in the last one."""
+
+  COLLECTION_FOR_GRAPH_STATES = 'replicate_model_fn_graph_states'
+
+  def __init__(self, optimizer_or_optimizer_fn):
+    """Wrap an existing optimizer for gathering gradients across towers.
+
+    Each invocation of model_fn has to call optimizers in the same order.
+
+    Multiple optimizers that use the same or different losses are supported.
+    Optimizers, however, need to be of different type as per `__class__`
+    in order to increment the global_step correctly.
+
+    Args:
+      optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
+        instance is going to be used for optimizer-specific logic.  This can
+        also be a no-argument function that returns such an optimizer instance.
+    """
+    self._optimizer_or_optimizer_fn = optimizer_or_optimizer_fn
+
+  @staticmethod
+  def has_been_used():
+    return GatheringOptimizer._graph_state().has_gathering_optimizer_been_used
+
+  def get_slot(self, *args, **kwargs):
+    return self._get_optimizer().get_slot(*args, **kwargs)
+
+  def get_slot_names(self, *args, **kwargs):
+    return self._get_optimizer().get_slot_names(*args, **kwargs)
+
+  def get_name(self, *args, **kwargs):
+    return self._get_optimizer().get_name(*args, **kwargs)
+
+  def variables(self, *args, **kwargs):
+    return self._get_optimizer().variables(*args, **kwargs)
+
+  def compute_gradients(self, loss, *args, **kwargs):
+    """Compute gradients, but first, if needed, scale the loss."""
+    loss = _scale_loss(loss,
+                       self._graph_state().loss_reduction,
+                       self._graph_state().number_of_towers)
+    return self._get_optimizer().compute_gradients(loss, *args, **kwargs)
+
+  def apply_gradients(self, grads_and_vars, global_step=None, **kwargs):
+    """Collect gradients updates to apply them with the last tower."""
+    self._graph_state().collect_gradients(grads_and_vars,
+                                          self._get_optimizer())
+
+    if not self._graph_state().is_the_last_tower:
+      return self._construct_no_op_train_op()
+    else:
+      # Gradients need to be gathered and applied in the scope of the first
+      # tower, so that the tensors are accessible via names without prefixes.
+      var_scope, name_scope = self._graph_state().scopes_of_the_first_tower
+      with variable_scope.variable_scope(var_scope):
+        with ops_lib.name_scope(name_scope):
+          return self._apply_gathered_gradients(global_step, **kwargs)
+
+  def _apply_gathered_gradients(self, global_step, **kwargs):
+    graph_state = self._graph_state()
+    optimizer = self._get_optimizer()
+    train_ops = []
+
+    grad_lists = {}
+    # Only aggregate gradients for `optimizer.__class__` type of Optimizer.
+    for grad, var in graph_state.get_grad_and_vars_for_optimizer(optimizer):
+      if grad is not None:
+        grad_lists.setdefault(var, []).append(grad)
+
+    aggregated_grads = []
+    with ops_lib.name_scope('gradient_aggregating'):
+      for var, grads in six.iteritems(grad_lists):
+        grad = _compute_sum_on_device(grads, var.device)
+        aggregated_grads.append((grad, var))
+    train_ops.append(optimizer.apply_gradients(aggregated_grads))
+
+    # A model might use multiple optimizers.  We only want to increment global
+    # step after apply_gradients of the last optimizer inside the tower.
+    if global_step and graph_state.is_the_last_optimizer_within_a_tower(
+        optimizer):
+      with ops_lib.control_dependencies(train_ops):
+        with ops_lib.colocate_with(global_step):
+          return state_ops.assign_add(global_step, 1)
+    else:
+      return control_flow_ops.group(train_ops)
+
+  def _get_optimizer(self):
+    if not isinstance(self._optimizer_or_optimizer_fn, optimizer_lib.Optimizer):
+      # If optimizer is given as a function then we need to wait till we are
+      # under the right graph context before constructing it.
+      self._optimizer_or_optimizer_fn = self._optimizer_or_optimizer_fn()
+    self._graph_state().has_gathering_optimizer_been_used = True
+    return self._optimizer_or_optimizer_fn
+
+  def _construct_no_op_train_op(self):
+    return control_flow_ops.no_op(name='train_op_placeholder')
+
+  @staticmethod
+  def _graph_state():
+    graph_states = ops_lib.get_default_graph().get_collection_ref(
+        GatheringOptimizer.COLLECTION_FOR_GRAPH_STATES)
+    if not graph_states:
+      graph_states.append(GatheringOptimizer._PerGraphState())
+    return graph_states[-1]
+
+  @staticmethod
+  def _clear_graph_state():
+    # Clearing a collection in Graph will prevent _PerGraphState from being
+    # serialized.
+    ops_lib.get_default_graph().clear_collection(
+        GatheringOptimizer.COLLECTION_FOR_GRAPH_STATES)
+
+  class _PerGraphState(object):
+    """Gradient reduction related state of a Tensorflow graph."""
+
+    def __init__(self):
+      # For every type of optimizer, collect all gradients and variables.
+      self._optimizer_grads_and_vars = {}
+      # In what order were optimizers invoked within each tower?
+      self._ordered_optimizer_types = []
+      self._number_of_towers = 0
+      self._is_the_last_tower = False
+      self._loss_reduction = None
+      # Scopes of the first tower that don't have a prefix:
+      self._variable_scope = None
+      self._name_scope = None
+      # If needed, alert that GatheringOptimizer needs to be used with model_fn.
+      self._has_gathering_optimizer_been_used = False
+
+    def collect_gradients(self, grads_and_vars, optimizer):
+      if optimizer.__class__ not in self._ordered_optimizer_types:
+        self._ordered_optimizer_types.append(optimizer.__class__)
+
+      self._optimizer_grads_and_vars.setdefault(optimizer.__class__,
+                                                []).extend(grads_and_vars)
+
+    def get_grad_and_vars_for_optimizer(self, optimizer):
+      return self._optimizer_grads_and_vars[optimizer.__class__]
+
+    def set_reduction_across_towers(self, loss_reduction, number_of_towers):
+      self._loss_reduction = loss_reduction
+      self._number_of_towers = number_of_towers
+
+    @contextmanager
+    def tower(self, tower_id, var_scope, name_scope):
+      if tower_id == 0:
+        self._variable_scope = var_scope
+        self._name_scope = name_scope
+      if tower_id == (self._number_of_towers - 1):
+        self._is_the_last_tower = True
+      yield
+      self._is_the_last_tower = False
+
+    @property
+    def scopes_of_the_first_tower(self):
+      return self._variable_scope, self._name_scope
+
+    @property
+    def is_the_last_tower(self):
+      return self._is_the_last_tower
+
+    def is_the_last_optimizer_within_a_tower(self, optimizer):
+      return optimizer.__class__ == self._ordered_optimizer_types[-1]
+
+    @property
+    def number_of_towers(self):
+      return self._number_of_towers
+
+    @property
+    def loss_reduction(self):
+      return self._loss_reduction
+
+    @property
+    def has_gathering_optimizer_been_used(self):
+      return self._has_gathering_optimizer_been_used
+
+    @has_gathering_optimizer_been_used.setter
+    def has_gathering_optimizer_been_used(self, value):
+      self._has_gathering_optimizer_been_used = value
 
 
 def _get_local_devices(device_type):
@@ -222,7 +455,8 @@ def _get_loss_towers(model_fn,
                      params,
                      config,
                      devices,
-                     local_ps_device,
+                     local_ps_devices,
+                     loss_reduction=losses.Reduction.SUM,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -234,36 +468,60 @@ def _get_loss_towers(model_fn,
   if 'config' in model_fn_args:
     optional_params['config'] = copy.deepcopy(config)
 
+  # pylint: disable=protected-access
+  round_robin_strategy = device_setter_lib._RoundRobinStrategy(
+      num_tasks=len(local_ps_devices))
+  GatheringOptimizer._graph_state().set_reduction_across_towers(
+      loss_reduction, len(devices))
+
   for i, device in enumerate(devices):
     is_the_first_tower = (i == 0)
 
     device_setter = _local_device_setter(
-        worker_device=device, ps_device=local_ps_device)
+        worker_device=device,
+        ps_devices=local_ps_devices,
+        ps_strategy=round_robin_strategy)
 
-    # We would like to preserve the names of the variables and ops that a user
-    # might be relying on. Names with prefix are going to resolve to variables
-    # and ops of the first tower.
+    # We would like to preserve the names of the variables and ops that the user
+    # might be relying on. Names without a prefix are going to resolve to
+    # variables and ops of the first tower.
     name_scope = name_scope_pattern
     if is_the_first_tower:
       name_scope = ''
 
-    with variable_scope.variable_scope('', reuse=not is_the_first_tower):
-      with ops_lib.name_scope(name_scope.format(i)):
-        with ops_lib.device(device_setter):
-          labels_shard = None
-          if labels:
-            labels_shard = labels[i]
+    with variable_scope.variable_scope(
+        '', reuse=not is_the_first_tower) as var_scope:
+      with ops_lib.name_scope(name_scope.format(i)) as name_scope:
+        with GatheringOptimizer._graph_state().tower(
+            tower_id=i, var_scope=var_scope, name_scope=name_scope):
+          with ops_lib.device(device_setter):
+            labels_shard = None
+            if labels:
+              labels_shard = labels[i]
 
-          tower_specs.append(
-              model_fn(
-                  mode=mode,
-                  features=features[i],
-                  labels=labels_shard,
-                  **optional_params))
+            tower_spec = model_fn(
+                mode=mode,
+                features=features[i],
+                labels=labels_shard,
+                **optional_params)
+
+            if (tower_spec.train_op is not None and
+                not GatheringOptimizer.has_been_used()):
+              raise ValueError('Please wrap optimizers with GatheringOptimizer'
+                               ' in order to use replicate_model_fn.')
+
+            # Scaling the loss here doesn't actually affect gradients.  Another
+            # instance of scaling happens inside the GatheringOptimizer.
+            tower_spec = _scale_tower_loss(
+                tower_spec, loss_reduction, number_of_towers=len(devices))
+            tower_specs.append(tower_spec)
+
+  GatheringOptimizer._clear_graph_state()
+  # pylint: enable=protected-access
   return tower_specs
 
 
-def _local_device_setter(ps_device, worker_device):
+def _local_device_setter(worker_device, ps_devices, ps_strategy):
   """A device setter that puts distributes Var/Ops to PS/workers."""
   ps_ops = ['Variable', 'VariableV2', 'VarHandleOp']
 
@@ -273,7 +531,7 @@ def _local_device_setter(ps_device, worker_device):
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
     if node_def.op in ps_ops:
       ps_device_spec = framework_device.DeviceSpec.from_string(
-          '{}'.format(ps_device))
+          '{}'.format(ps_devices[ps_strategy(op)]))
 
       ps_device_spec.merge_from(current_device)
       return ps_device_spec.to_string()
@@ -286,33 +544,31 @@ def _local_device_setter(ps_device, worker_device):
   return local_device_chooser
 
 
-def _minimize_towers(tower_specs, optimizer):
-  """Aggregate and apply gradients for computed losses."""
-  grad_lists = {}
-  for tower_spec in tower_specs:
-    with ops_lib.device(tower_spec.loss.device):
-      for grad, var in optimizer.compute_gradients(tower_spec.loss):
-        if grad is not None:
-          grad_lists.setdefault(var, []).append(grad)
+def _scale_tower_loss(tower_spec, loss_reduction, number_of_towers):
+  """Produce an EstimatorSpec with approproriately scaled loss."""
+  if tower_spec.loss is None:
+    return tower_spec
 
-  aggregated_grads = []
-  with ops_lib.name_scope('gradient_aggregating'):
-    for var, grads in six.iteritems(grad_lists):
-      grad = _compute_sum_on_device(grads, var.device)
-      aggregated_grads.append((grad, var))
-
-  train_op = optimizer.apply_gradients(
-      aggregated_grads, global_step=training_util.get_global_step())
-
-  return train_op
+  estimator_spec = _asdict(tower_spec)
+  estimator_spec['loss'] = _scale_loss(tower_spec.loss, loss_reduction,
+                                       number_of_towers)
+  return model_fn_lib.EstimatorSpec(**estimator_spec)
 
 
-def _call_optimizer_fn(optimizer_fn, params):
-  arguments = {}
-  optimizer_fn_arguments = util.fn_args(optimizer_fn)
-  if 'params' in optimizer_fn_arguments:
-    arguments['params'] = params
-  return optimizer_fn(**arguments)
+def _scale_loss(loss, loss_reduction, number_of_towers):
+  """If needed, scale down the loss for averaging loss by summing."""
+  if loss is None:
+    return None
+
+  if loss_reduction != losses.Reduction.SUM:
+    return math_ops.div(loss, 1.0 * number_of_towers, name='averaged_loss')
+  else:
+    return loss
+
+
+def _minimize_towers(tower_specs):
+  """`train_op` of the last tower applies aggregated gradients."""
+  return tower_specs[-1].train_op
 
 
 def _compute_sum_on_device(values, device, name=None):
@@ -335,7 +591,7 @@ def _train_spec(tower_specs,
                 aggregation_device,
                 aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.TRAIN`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.TRAIN
   estimator_spec['train_op'] = train_op
   estimator_spec['loss'] = _compute_sum_on_device(
@@ -346,7 +602,7 @@ def _train_spec(tower_specs,
 
 def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.EVAL`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.EVAL
   estimator_spec['loss'] = _compute_sum_on_device(
       [spec.loss for spec in tower_specs], aggregation_device,
@@ -370,7 +626,7 @@ def _eval_spec(tower_specs, aggregation_device, aggregated_loss_name='loss'):
 def _reduce_metric_variables(number_of_towers):
   """Aggregate local variables used in metrics into the first tower."""
   if number_of_towers == 1:
-    return control_flow_ops.no_op()
+    return control_flow_ops.no_op(name='no_eval_metric_reduction')
 
   metric_variables = ops_lib.get_collection(ops_lib.GraphKeys.METRIC_VARIABLES)
   variables_per_tower = len(metric_variables) // number_of_towers
@@ -414,7 +670,7 @@ def _reduce_metric_variables(number_of_towers):
 
 def _predict_spec(tower_specs, aggregation_device):
   """Populate replicated EstimatorSpec for `GraphKeys.PREDICT`."""
-  estimator_spec = tower_specs[0]._asdict()
+  estimator_spec = _asdict(tower_specs[0])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.PREDICT
 
   with ops_lib.device(aggregation_device):
@@ -474,3 +730,19 @@ def _dict_concat(*dicts):
     for k, v in six.iteritems(d):
       list_dict.setdefault(k, []).append(v)
   return list_dict
+
+
+def _asdict(namedtuple):
+  """Returns a namedtuple as a dictionary.
+
+  This is required because `_asdict()` in Python 3.x.x is broken in classes
+  that inherit from `collections.namedtuple`. See
+  https://bugs.python.org/issue24931 for more details.
+
+  Args:
+    namedtuple: An object that inherits from `collections.namedtuple`.
+
+  Returns:
+    A dictionary version of the tuple.
+  """
+  return {k: getattr(namedtuple, k) for k in namedtuple._fields}
