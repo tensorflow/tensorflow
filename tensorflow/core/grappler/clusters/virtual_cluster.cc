@@ -25,14 +25,16 @@ namespace grappler {
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices)
-    : Cluster(0), node_estimator_(new OpLevelCostEstimator()) {
+    : Cluster(0),
+      node_estimator_(new OpLevelCostEstimator()),
+      node_manager_(new FirstReadyManager()) {
   devices_ = devices;
 }
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator)
-    : Cluster(0), node_estimator_(node_estimator) {
+    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
+    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
   devices_ = devices;
 }
 VirtualCluster::~VirtualCluster() {}
@@ -54,7 +56,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this);
+  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
   TF_RETURN_IF_ERROR(scheduler.Init());
 
   if (metadata) {
