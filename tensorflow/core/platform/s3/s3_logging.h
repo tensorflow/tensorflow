@@ -27,7 +27,6 @@ namespace tensorflow {
 
 class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
  public:
-  // Initializes log system
   explicit S3LogSystem(Aws::Utils::Logging::LogLevel log_level);
   virtual ~S3LogSystem() = default;
 
@@ -36,7 +35,7 @@ class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
     return log_level_;
   }
 
-  // Set a new log level. This has the immediate effect of changing the log
+  // Set a new log level. This has the immediate effect of changing the log.
   void SetLogLevel(Aws::Utils::Logging::LogLevel log_level) {
     log_level_.store(log_level);
   }
