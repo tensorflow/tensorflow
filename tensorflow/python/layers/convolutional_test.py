@@ -609,9 +609,9 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testCreateConv2DTransposeUndefinedInputShape(self):
-	layer = conv_layers.Conv2DTranspose(4,3,activation=nn_ops.relu)
-	inputPlaceholder = placeholder(float32,shape=[1,None,None,1],name='input')
-	output = layer.apply(inputPlaceholder)
+    layer = conv_layers.Conv2DTranspose(4,3,activation=nn_ops.relu)
+    inputPlaceholder = placeholder(float32,shape=[1,None,None,1],name='input')
+    output = layer.apply(inputPlaceholder)
 
   def testConv2DTransposeFloat16(self):
     height, width = 7, 9
@@ -799,9 +799,9 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [4])
 
   def testCreateConv3DTransposeUndefinedInputShape(self):
-	layer = conv_layers.Conv3DTranspose(4,3,activation=nn_ops.relu)
-	inputPlaceholder = placeholder(float32,shape=[1,None,None,None,1],name='input')
-	output = layer.apply(inputPlaceholder)
+    layer = conv_layers.Conv3DTranspose(4,3,activation=nn_ops.relu)
+    inputPlaceholder = placeholder(float32,shape=[1,None,None,None,1],name='input')
+    output = layer.apply(inputPlaceholder)
 
   def testCreateConv3DTransposeIntegerKernelSize(self):
     depth, height, width = 5, 7, 9
