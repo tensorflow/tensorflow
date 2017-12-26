@@ -938,7 +938,8 @@ def _get_replica_device_setter(config):
         worker_device=worker_device,
         merge_devices=True,
         ps_ops=ps_ops,
-        cluster=config.cluster_spec)
+        cluster=config.cluster_spec,
+        ps_strategy=config.ps_strategy)
   else:
     return None
 
