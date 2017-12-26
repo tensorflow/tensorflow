@@ -27,9 +27,11 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.estimator import util
 
 
 _USE_DEFAULT = object()
+_VALID_PS_STRATEGY_ARGS = set(['op'])
 
 # A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
@@ -41,7 +43,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
-    'log_step_count_steps'
+    'log_step_count_steps',
+    'ps_strategy'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -248,6 +251,10 @@ def _validate_properties(run_config):
   _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
             message='tf_random_seed must be integer.')
 
+  _validate('ps_strategy', lambda ps_strategy: six.callable(ps_strategy) and
+                                               set(util.fn_args(ps_strategy)) == set(['op']),
+            message='ps_strategy must be callable with exactly one argument "op".')
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -269,7 +276,8 @@ class RunConfig(object):
                session_config=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               log_step_count_steps=100):
+               log_step_count_steps=100,
+               ps_strategy=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -392,6 +400,10 @@ class RunConfig(object):
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
         global step/sec will be logged during training.
+      ps_strategy: A callable invoked for every ps `Operation` (i.e. matched by
+        `ps_ops`), that takes the `Operation` and returns the ps task index to
+        use.  If `None`, defaults to a round-robin strategy across all `ps`
+        devices.
 
 
     Raises:
@@ -427,7 +439,8 @@ class RunConfig(object):
         session_config=session_config,
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        log_step_count_steps=log_step_count_steps)
+        log_step_count_steps=log_step_count_steps,
+        ps_strategy=ps_strategy)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
@@ -535,6 +548,10 @@ class RunConfig(object):
   @property
   def num_worker_replicas(self):
     return self._num_worker_replicas
+
+  @property
+  def ps_strategy(self):
+    return self._ps_strategy
 
   @property
   def task_id(self):
