@@ -259,7 +259,8 @@ DirectSession::DirectSession(const SessionOptions& options,
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
-  int thread_pool_size = options_.config.session_inter_op_thread_pool_size();
+  const int thread_pool_size = 
+    options_.config.session_inter_op_thread_pool_size();
   if (thread_pool_size > 0) {
     for (int i = 0; i < thread_pool_size; ++i) {
       thread::ThreadPool* pool = nullptr;
