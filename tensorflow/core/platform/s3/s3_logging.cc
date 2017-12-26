@@ -32,7 +32,7 @@ void S3LogSystem::Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
   std::va_list args;
   va_start(args, format);
 
-  std::string s = strings::Printf(format, args);
+  const string s = strings::Printf(format, args);
 
   va_end(args);
 
