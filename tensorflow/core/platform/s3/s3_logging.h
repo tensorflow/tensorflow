@@ -16,56 +16,48 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_S3_S3_LOGGING_H_
 #define TENSORFLOW_CONTRIB_S3_S3_LOGGING_H_
 
+#include <atomic>
+#include <string>
+
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
-
-#include <atomic>
+#include "tensorflow/core/platform/default/logging.h"
 
 namespace tensorflow {
 
 class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
  public:
-  using Base = LogSystemInterface;
-
-  /**
-   * Initializes log system
-   */
-  S3LogSystem(Aws::Utils::Logging::LogLevel logLevel);
+  // Initializes log system
+  explicit S3LogSystem(Aws::Utils::Logging::LogLevel log_level);
   virtual ~S3LogSystem() = default;
 
-  /**
-   * Gets the currently configured log level.
-   */
+  // Gets the currently configured log level.
   virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
-    return m_logLevel;
-  }
-  /**
-   * Set a new log level. This has the immediate effect of changing the log
-   * output to the new level.
-   */
-  void SetLogLevel(Aws::Utils::Logging::LogLevel logLevel) {
-    m_logLevel.store(logLevel);
+    return log_level_;
   }
 
-  /**
-   * Does a printf style output to ProcessFormattedStatement. Don't use this,
-   * it's unsafe. See LogStream
-   */
-  virtual void Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag,
-                   const char* formatStr, ...) override;
+  // Set a new log level. This has the immediate effect of changing the log
+  void SetLogLevel(Aws::Utils::Logging::LogLevel log_level) {
+    log_level_.store(log_level);
+  }
 
-  /**
-   * Writes the stream to ProcessFormattedStatement.
-   */
-  virtual void LogStream(Aws::Utils::Logging::LogLevel logLevel,
+  // Does a printf style output to ProcessFormattedStatement. Don't use this,
+  // it's unsafe. See LogStream.
+  // Since non-static C++ methods have an implicit this argument,
+  // TF_PRINTF_ATTRIBUTE should be counted from two (vs. one).
+  virtual void Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
+                   const char* format, ...) override TF_PRINTF_ATTRIBUTE(4, 5);
+
+  // Writes the stream to ProcessFormattedStatement.
+  virtual void LogStream(Aws::Utils::Logging::LogLevel log_level,
                          const char* tag,
                          const Aws::OStringStream& messageStream) override;
 
  private:
-  std::atomic<Aws::Utils::Logging::LogLevel> m_logLevel;
+  std::atomic<Aws::Utils::Logging::LogLevel> log_level_;
 
-  void LogMessage(Aws::Utils::Logging::LogLevel logLevel,
-                  const std::string& message);
+  void LogMessage(Aws::Utils::Logging::LogLevel log_level,
+                  const string& message);
 };
 
 }  // namespace tensorflow

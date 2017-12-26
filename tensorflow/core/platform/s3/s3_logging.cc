@@ -24,29 +24,30 @@ limitations under the License.
 
 namespace tensorflow {
 
-S3LogSystem::S3LogSystem(Aws::Utils::Logging::LogLevel logLevel)
-    : m_logLevel(logLevel) {}
+S3LogSystem::S3LogSystem(Aws::Utils::Logging::LogLevel log_level)
+    : log_level_(log_level) {}
 
-void S3LogSystem::Log(Aws::Utils::Logging::LogLevel logLevel, const char* tag,
-                      const char* formatStr, ...) {
+void S3LogSystem::Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
+                      const char* format, ...) {
   std::va_list args;
-  va_start(args, formatStr);
+  va_start(args, format);
 
-  std::string s = strings::Printf(formatStr, args);
-  LOG(ERROR) << s;
+  std::string s = strings::Printf(format, args);
 
   va_end(args);
+
+  LogMessage(log_level, s);
 }
 
-void S3LogSystem::LogStream(Aws::Utils::Logging::LogLevel logLevel,
+void S3LogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
                             const char* tag,
                             const Aws::OStringStream& message_stream) {
-  LOG(ERROR) << message_stream.rdbuf()->str();
+  LogMessage(log_level, message_stream.rdbuf()->str().c_str());
 }
 
-void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel logLevel,
+void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
                              const std::string& message) {
-  switch (logLevel) {
+  switch (log_level) {
     case Aws::Utils::Logging::LogLevel::Info:
       LOG(INFO) << message;
       break;
@@ -60,6 +61,7 @@ void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel logLevel,
       LOG(FATAL) << message;
       break;
     default:
+      LOG(ERROR) << message;
       break;
   }
 }

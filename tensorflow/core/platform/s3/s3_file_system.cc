@@ -36,6 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
 static const char* kS3FileSystemLoggingTag = "S3FileSystemLogging";
 
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
@@ -88,40 +89,29 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
 };
 
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
-  Aws::Utils::Logging::LogLevel logLevel = Aws::Utils::Logging::LogLevel::Info;
+  Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
 
-  const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
-  if (tf_env_var_val == nullptr) {
-    return logLevel;
-  }
-
-  std::string min_log_level(tf_env_var_val);
-  std::istringstream ss(min_log_level);
-  int64_t level;
-  if (!(ss >> level)) {
-    // Invalid vlog level setting, set level to default (0)
-    level = 0;
-  }
+  int64_t level = tensorflow::internal::MinLogLevelFromEnv();
 
   switch (level) {
     case INFO:
-      logLevel = Aws::Utils::Logging::LogLevel::Info;
+      log_level = Aws::Utils::Logging::LogLevel::Info;
       break;
     case WARNING:
-      logLevel = Aws::Utils::Logging::LogLevel::Warn;
+      log_level = Aws::Utils::Logging::LogLevel::Warn;
       break;
     case ERROR:
-      logLevel = Aws::Utils::Logging::LogLevel::Error;
+      log_level = Aws::Utils::Logging::LogLevel::Error;
       break;
     case FATAL:
-      logLevel = Aws::Utils::Logging::LogLevel::Fatal;
+      log_level = Aws::Utils::Logging::LogLevel::Fatal;
       break;
     default:
-      logLevel = Aws::Utils::Logging::LogLevel::Info;
+      log_level = Aws::Utils::Logging::LogLevel::Info;
       break;
   }
 
-  return logLevel;
+  return log_level;
 }
 
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
@@ -267,6 +257,8 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   std::unique_ptr<char[]> data_;
   uint64 length_;
 };
+
+}  // namespace
 
 S3FileSystem::S3FileSystem() {
   Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<S3LogSystem>(
