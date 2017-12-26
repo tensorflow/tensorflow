@@ -52,6 +52,10 @@ class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
                          const char* tag,
                          const Aws::OStringStream& messageStream) override;
 
+  static void InitializeAWSLogging();
+
+  static void ShutdownAWSLogging();
+
  private:
   std::atomic<Aws::Utils::Logging::LogLevel> log_level_;
 

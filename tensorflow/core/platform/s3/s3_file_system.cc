@@ -37,8 +37,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-static const char* kS3FileSystemLoggingTag = "S3FileSystemLogging";
-
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
@@ -87,32 +85,6 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
 
   return cfg;
 };
-
-Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
-  Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
-
-  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
-
-  switch (level) {
-    case INFO:
-      log_level = Aws::Utils::Logging::LogLevel::Info;
-      break;
-    case WARNING:
-      log_level = Aws::Utils::Logging::LogLevel::Warn;
-      break;
-    case ERROR:
-      log_level = Aws::Utils::Logging::LogLevel::Error;
-      break;
-    case FATAL:
-      log_level = Aws::Utils::Logging::LogLevel::Fatal;
-      break;
-    default:
-      log_level = Aws::Utils::Logging::LogLevel::Info;
-      break;
-  }
-
-  return log_level;
-}
 
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
                    string* object) {
@@ -261,8 +233,7 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 S3FileSystem::S3FileSystem() {
-  Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<S3LogSystem>(
-      kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
+  S3LogSystem::InitializeAWSLogging();
 
   Aws::SDKOptions options;
   options.cryptoOptions.sha256Factory_create_fn = []() {
@@ -278,7 +249,7 @@ S3FileSystem::~S3FileSystem() {
   Aws::SDKOptions options;
   Aws::ShutdownAPI(options);
 
-  Aws::Utils::Logging::ShutdownAWSLogging();
+  S3LogSystem::ShutdownAWSLogging();
 }
 
 Status S3FileSystem::NewRandomAccessFile(

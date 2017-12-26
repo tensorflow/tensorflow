@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_logging.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/AWSLogging.h>
@@ -65,4 +66,56 @@ void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
       break;
   }
 }
+
+namespace {
+static const char* kS3FileSystemLoggingTag = "S3FileSystemLogging";
+
+Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
+  Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
+
+  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
+
+  switch (level) {
+    case INFO:
+      log_level = Aws::Utils::Logging::LogLevel::Info;
+      break;
+    case WARNING:
+      log_level = Aws::Utils::Logging::LogLevel::Warn;
+      break;
+    case ERROR:
+      log_level = Aws::Utils::Logging::LogLevel::Error;
+      break;
+    case FATAL:
+      log_level = Aws::Utils::Logging::LogLevel::Fatal;
+      break;
+    default:
+      log_level = Aws::Utils::Logging::LogLevel::Info;
+      break;
+  }
+
+  return log_level;
+}
+}
+
+static bool initialized = false;
+static mutex s3_logging_mutex(LINKER_INITIALIZED);
+void S3LogSystem::InitializeAWSLogging() {
+  std::lock_guard<mutex> s3_logging_lock(s3_logging_mutex);
+  if (!initialized) {
+    Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<S3LogSystem>(
+        kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
+    initialized = true;
+    return;
+  }
+}
+
+void S3LogSystem::ShutdownAWSLogging() {
+  std::lock_guard<mutex> s3_logging_lock(s3_logging_mutex);
+  if (initialized) {
+    Aws::Utils::Logging::ShutdownAWSLogging();
+    initialized = false;
+    return;
+  }
+}
+
 }  // namespace tensorflow
