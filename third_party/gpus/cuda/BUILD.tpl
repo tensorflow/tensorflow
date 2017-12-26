@@ -46,6 +46,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     visibility = ["//visibility:public"],
 )
@@ -56,6 +57,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkopts = select({
         ":freebsd": [],
@@ -73,6 +75,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     visibility = ["//visibility:public"],
 )
@@ -84,6 +87,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -96,6 +100,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -108,6 +113,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkopts = ["-lgomp"],
     linkstatic = 1,
@@ -121,6 +127,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -133,6 +140,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -145,6 +153,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -182,6 +191,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     visibility = ["//visibility:public"],
 )
