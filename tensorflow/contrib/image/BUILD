@@ -233,6 +233,23 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "single_image_random_dot_stereograms_ops_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/single_image_random_dot_stereograms_ops_test.py"],
+    additional_deps = [
+        ":distort_image_py",
+        ":image_py",
+        ":single_image_random_dot_stereograms_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
