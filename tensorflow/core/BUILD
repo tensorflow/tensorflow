@@ -274,7 +274,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
+    ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
 )
