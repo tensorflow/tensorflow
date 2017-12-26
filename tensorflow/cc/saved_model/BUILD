@@ -15,25 +15,26 @@ load(
     "if_ios",
     "if_mobile",
     "if_not_mobile",
+    "tf_cc_library",
     "tf_cc_test",
 )
 
-cc_library(
+tf_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "signature_constants",
     hdrs = ["signature_constants.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "tag_constants",
     hdrs = ["tag_constants.h"],
 )
 
-cc_library(
+tf_cc_library(
     name = "loader",
     hdrs = ["loader.h"],
     deps = [
@@ -48,7 +49,7 @@ cc_library(
     ]),
 )
 
-cc_library(
+tf_cc_library(
     name = "loader_lite",
     srcs = ["loader.cc"],
     hdrs = ["loader.h"],

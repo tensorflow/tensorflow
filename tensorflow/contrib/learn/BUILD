@@ -10,7 +10,7 @@ package(default_visibility = [
     "//tensorflow:internal",
 ])
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test", "tf_cc_library")
 
 py_library(
     name = "learn",

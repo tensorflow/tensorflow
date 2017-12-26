@@ -5,6 +5,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
@@ -45,7 +47,7 @@ tf_proto_library_cc(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mpi_utils",
     srcs = ["mpi_utils.cc"],
     hdrs = ["mpi_utils.h"],
@@ -57,7 +59,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mpi_rendezvous_mgr",
     srcs = ["mpi_rendezvous_mgr.cc"],
     hdrs = ["mpi_rendezvous_mgr.h"],
@@ -78,7 +80,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "mpi_server_lib",
     srcs = ["mpi_server_lib.cc"],
     hdrs = ["mpi_server_lib.h"],

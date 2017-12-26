@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
@@ -28,10 +29,11 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "dump_tpu_profile",
     srcs = ["dump_tpu_profile.cc"],
     hdrs = ["dump_tpu_profile.h"],
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":op_profile_proto_cc",
@@ -66,10 +68,11 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "trace_events_to_json",
     srcs = ["trace_events_to_json.cc"],
     hdrs = ["trace_events_to_json.h"],
+    is_external = True,
     deps = [
         ":trace_events_proto_cc",
         "//tensorflow/core:lib",

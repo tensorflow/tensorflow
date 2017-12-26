@@ -29,6 +29,10 @@ load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
 )
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_library",
+)
 
 tf_proto_library(
     name = "op_performance_data",
@@ -38,7 +42,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_properties",
     srcs = ["graph_properties.cc"],
     hdrs = ["graph_properties.h"],
@@ -78,7 +82,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_memory",
     srcs = ["graph_memory.cc"],
     hdrs = ["graph_memory.h"],
@@ -109,7 +113,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "robust_stats",
     srcs = ["robust_stats.cc"],
     hdrs = ["robust_stats.h"],
@@ -162,7 +166,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "cost_estimator",
     hdrs = ["cost_estimator.h"],
     visibility = ["//visibility:public"],
@@ -171,7 +175,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "virtual_placer",
     srcs = ["virtual_placer.cc"],
     hdrs = ["virtual_placer.h"],
@@ -199,7 +203,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "op_context",
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
@@ -209,7 +213,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "virtual_scheduler",
     srcs = ["virtual_scheduler.cc"],
     hdrs = ["virtual_scheduler.h"],
@@ -245,7 +249,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "measuring_cost_estimator",
     srcs = ["measuring_cost_estimator.cc"],
     hdrs = ["measuring_cost_estimator.h"],
@@ -265,7 +269,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "op_level_cost_estimator",
     srcs = ["op_level_cost_estimator.cc"],
     hdrs = ["op_level_cost_estimator.h"],
@@ -293,7 +297,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "analytical_cost_estimator",
     srcs = ["analytical_cost_estimator.cc"],
     hdrs = ["analytical_cost_estimator.h"],

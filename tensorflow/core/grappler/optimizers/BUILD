@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -14,7 +15,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "static_schedule",
     srcs = ["static_schedule.cc"],
     hdrs = [
@@ -51,7 +52,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "auto_parallel",
     srcs = ["auto_parallel.cc"],
     hdrs = [
@@ -85,7 +86,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "constant_folding",
     srcs = ["constant_folding.cc"],
     hdrs = [
@@ -128,7 +129,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_rewriter",
     srcs = ["graph_rewriter.cc"],
     hdrs = [
@@ -143,7 +144,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_optimizer",
     hdrs = [
         "graph_optimizer.h",
@@ -155,7 +156,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "arithmetic_optimizer",
     srcs = ["arithmetic_optimizer.cc"],
     hdrs = [
@@ -195,7 +196,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "dependency_optimizer",
     srcs = ["dependency_optimizer.cc"],
     hdrs = [
@@ -236,7 +237,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "model_pruner",
     srcs = ["model_pruner.cc"],
     hdrs = [
@@ -268,7 +269,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "memory_optimizer",
     srcs = ["memory_optimizer.cc"],
     hdrs = [
@@ -306,7 +307,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "layout_optimizer",
     srcs = ["layout_optimizer.cc"],
     hdrs = [
@@ -350,7 +351,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "meta_optimizer",
     srcs = ["meta_optimizer.cc"],
     hdrs = [

@@ -15,6 +15,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
+    "tf_cc_library",
     "tf_py_test",
 )
 
@@ -55,6 +56,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "nearest_neighbor_ops_kernels",
     srcs = ["kernels/hyperplane_lsh_probes.cc"],
+    is_external = True,
     deps = [
         ":hyperplane_lsh_probes",
         ":nearest_neighbor_ops_op_lib",
@@ -64,9 +66,10 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "heap",
     hdrs = ["kernels/heap.h"],
+    is_external = True,
 )
 
 tf_cc_test(
@@ -80,9 +83,10 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "hyperplane_lsh_probes",
     hdrs = ["kernels/hyperplane_lsh_probes.h"],
+    is_external = True,
     deps = [
         ":heap",
         "//third_party/eigen3",

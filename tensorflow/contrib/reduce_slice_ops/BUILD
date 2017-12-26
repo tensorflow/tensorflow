@@ -36,6 +36,7 @@ tf_kernel_library(
         "kernels/reduce_slice_ops.h",
         "kernels/reduce_slice_ops_gpu.cu.cc",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

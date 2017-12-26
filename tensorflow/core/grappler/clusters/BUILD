@@ -2,6 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -41,7 +42,7 @@ tf_cuda_library(
     }),
 )
 
-cc_library(
+tf_cc_library(
     name = "cluster",
     srcs = ["cluster.cc"],
     hdrs = [
@@ -57,7 +58,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "virtual_cluster",
     srcs = ["virtual_cluster.cc"],
     hdrs = [
@@ -88,7 +89,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "single_machine",
     srcs = ["single_machine.cc"],
     hdrs = [

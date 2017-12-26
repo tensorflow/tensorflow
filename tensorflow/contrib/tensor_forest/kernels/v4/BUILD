@@ -1,6 +1,7 @@
 # TensorFlow code for training random forests.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
 package(
@@ -32,23 +33,26 @@ DECISION_TREE_RESOURCE_DEPS = [
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "decision-tree-resource",
     hdrs = ["decision-tree-resource.h"],
+    is_external = True,
     deps = DECISION_TREE_RESOURCE_DEPS + if_static([":decision-tree-resource_impl"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "decision-tree-resource_impl",
     srcs = ["decision-tree-resource.cc"],
     hdrs = ["decision-tree-resource.h"],
+    is_external = True,
     deps = DECISION_TREE_RESOURCE_DEPS,
 )
 
-cc_library(
+tf_cc_library(
     name = "fertile-stats-resource",
     srcs = ["fertile-stats-resource.cc"],
     hdrs = ["fertile-stats-resource.h"],
+    is_external = True,
     deps = [
         ":decision_node_evaluator",
         ":input_data",
@@ -70,10 +74,11 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "input_data",
     srcs = ["input_data.cc"],
     hdrs = ["input_data.h"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/core:framework_headers_lib",
@@ -89,19 +94,21 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "input_target",
     hdrs = ["input_target.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "leaf_model_operators",
     srcs = ["leaf_model_operators.cc"],
     hdrs = ["leaf_model_operators.h"],
+    is_external = True,
     deps = [
         ":input_target",
         ":params",
@@ -136,10 +143,11 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "grow_stats",
     srcs = ["grow_stats.cc"],
     hdrs = ["grow_stats.h"],
+    is_external = True,
     deps = [
         ":decision_node_evaluator",
         ":input_data",
@@ -179,10 +187,11 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "candidate_graph_runner",
     srcs = ["candidate_graph_runner.cc"],
     hdrs = ["candidate_graph_runner.h"],
+    is_external = True,
     deps = [
         ":input_data",
         ":input_target",
@@ -202,10 +211,11 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "decision_node_evaluator",
     srcs = ["decision_node_evaluator.cc"],
     hdrs = ["decision_node_evaluator.h"],
+    is_external = True,
     deps = [
         ":input_data",
         "//tensorflow/core:framework_headers_lib",
@@ -235,10 +245,11 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "split_collection_operators",
     srcs = ["split_collection_operators.cc"],
     hdrs = ["split_collection_operators.h"],
+    is_external = True,
     deps = [
         ":grow_stats",
         ":input_data",
@@ -263,10 +274,11 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "graph_collection_operator",
     srcs = ["graph_collection_operator.cc"],
     hdrs = ["graph_collection_operator.h"],
+    is_external = True,
     deps = [
         ":candidate_graph_runner",
         ":grow_stats",
@@ -290,10 +302,11 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "stat_utils",
     srcs = ["stat_utils.cc"],
     hdrs = ["stat_utils.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ] + if_static(
@@ -308,19 +321,21 @@ cc_library(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "test_utils",
     hdrs = ["test_utils.h"],
+    is_external = True,
     deps = [
         ":input_data",
         ":input_target",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "params",
     srcs = ["params.cc"],
     hdrs = ["params.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ] + if_static(

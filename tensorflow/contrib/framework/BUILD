@@ -16,6 +16,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 tf_custom_op_py_library(
     name = "framework_py",
@@ -85,6 +86,7 @@ tf_kernel_library(
         "kernels/zero_initializer_op_gpu.cu.cc",
         "kernels/zero_initializer_op.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -111,8 +113,9 @@ tf_gen_op_libs(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
+    is_external = True,
     deps = [
         ":variable_ops_op_lib",
     ],

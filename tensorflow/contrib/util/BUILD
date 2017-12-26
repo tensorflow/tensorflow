@@ -8,13 +8,15 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Convertor of a frozen graph definition into the memmapped format.
-cc_library(
+tf_cc_library(
     name = "convert_graphdef_memmapped_format_lib",
     srcs = ["convert_graphdef_memmapped_format_lib.cc"],
     hdrs = ["convert_graphdef_memmapped_format_lib.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

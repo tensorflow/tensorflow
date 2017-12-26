@@ -62,6 +62,7 @@ tf_kernel_library(
         "kernels/fused_conv2d_bias_activation_op.h",
         "kernels/fused_conv_ops_gpu.h",
     ],
+    is_external = True,
     prefix = "fused_conv2d_bias_activation_op",
     visibility = ["//visibility:public"],
     deps = [

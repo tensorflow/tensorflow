@@ -10,6 +10,7 @@ package(default_visibility = ["//visibility:public"])
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_library",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
@@ -43,6 +44,7 @@ tf_kernel_library(
         "kernels/image_ops_gpu.cu.cc",
         "kernels/image_ops.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -208,9 +210,10 @@ tf_gen_op_wrapper_py(
     deps = [":single_image_random_dot_stereograms_ops_op_lib"],
 )
 
-cc_library(
+tf_cc_library(
     name = "image_ops_cc",
     srcs = ["ops/image_ops.cc"],
+    is_external = True,
     deps = [
         ":image_ops_kernels",
         "//tensorflow/core:framework",

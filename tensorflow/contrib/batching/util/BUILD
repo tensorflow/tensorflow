@@ -7,6 +7,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "all_files",
@@ -20,10 +21,11 @@ filegroup(
     ),
 )
 
-cc_library(
+tf_cc_library(
     name = "periodic_function_dynamic",
     srcs = ["periodic_function.cc"],
     hdrs = ["periodic_function.h"],
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -31,8 +33,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "periodic_function",
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         ":periodic_function_dynamic",

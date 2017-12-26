@@ -9,6 +9,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
 filegroup(
     name = "mobile_srcs",
@@ -38,7 +39,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "ctc",
     deps = [
         ":ctc_beam_search_lib",
@@ -46,7 +47,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ctc_beam_search_lib",
     srcs = [
         "ctc_beam_entry.h",
@@ -82,7 +83,7 @@ tf_cc_tests(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ctc_loss_calculator_lib",
     srcs = [
         "ctc_loss_calculator.cc",
@@ -98,7 +99,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "ctc_loss_util_lib",
     hdrs = [
         "ctc_loss_util.h",

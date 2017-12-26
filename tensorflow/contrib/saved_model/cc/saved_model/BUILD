@@ -23,11 +23,13 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.cc"],
     hdrs = ["signature_def_utils.h"],
+    is_external = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",

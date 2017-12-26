@@ -7,18 +7,21 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 
-cc_library(
+tf_cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "batch_scheduler",
     hdrs = ["batch_scheduler.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:lib",
     ],
@@ -35,9 +38,10 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shared_batch_scheduler_hdrs",
     hdrs = ["shared_batch_scheduler.h"],
+    is_external = True,
     deps = [
         ":batch_scheduler_hdrs",
         "//tensorflow/contrib/batching/util:periodic_function_dynamic",
@@ -45,9 +49,10 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "shared_batch_scheduler",
     hdrs = ["shared_batch_scheduler.h"],
+    is_external = True,
     deps = [
         ":batch_scheduler",
         "//tensorflow/contrib/batching/util:periodic_function_dynamic",
@@ -69,9 +74,10 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "adaptive_shared_batch_scheduler",
     hdrs = ["adaptive_shared_batch_scheduler.h"],
+    is_external = True,
     deps = [
         ":batch_scheduler",
         "//tensorflow/contrib/batching/util:periodic_function_dynamic",
@@ -95,9 +101,10 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
+    is_external = True,
     deps = [
         ":shared_batch_scheduler",
     ],
@@ -159,6 +166,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "batch_ops_kernels",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/batching/kernels:batch_kernels",
         "//tensorflow/contrib/batching/util:periodic_function",

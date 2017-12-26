@@ -5,11 +5,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-cc_library(
+tf_cc_library(
     name = "input_pipeline_kernels",
     srcs = ["input_pipeline_kernels.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

@@ -10,13 +10,14 @@ load(
     "if_not_windows",
     "tf_copts",
     "tf_cc_binary",
+    "tf_cc_library",
     "tf_cc_test",
     "tf_py_test",
 )
 
 exports_files(["LICENSE"])
 
-cc_library(
+tf_cc_library(
     name = "transform_utils",
     srcs = [
         "transform_utils.cc",
@@ -54,7 +55,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "file_utils",
     srcs = [
         "file_utils.cc",
@@ -86,7 +87,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "transforms_lib",
     srcs = [
         "add_default_attributes.cc",
@@ -187,7 +188,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
     hdrs = ["transform_graph.h"],
@@ -206,7 +207,7 @@ cc_library(
 
 # This library includes a main function, to make it easy to create other
 # versions of the tool linked against different operator libs.
-cc_library(
+tf_cc_library(
     name = "transform_graph_main_lib",
     srcs = ["transform_graph_main.cc"],
     copts = tf_copts(),
@@ -250,7 +251,7 @@ tf_cc_test(
 
 # This library includes a main function, to make it easy to create other
 # versions of the tool linked against different operator libs.
-cc_library(
+tf_cc_library(
     name = "summarize_graph_main_lib",
     srcs = ["summarize_graph_main.cc"],
     copts = tf_copts(),

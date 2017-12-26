@@ -13,6 +13,7 @@ load(
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
+    "tf_cc_library",
 )
 
 # To be exported to tensorflow/core:mobile_srcs.
@@ -31,7 +32,7 @@ alias(
     actual = ":mobile_srcs",
 )
 
-cc_library(
+tf_cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
@@ -54,7 +55,7 @@ cc_header_only_library(
     deps = [":tensor_bundle"],
 )
 
-cc_library(
+tf_cc_library(
     name = "naming",
     srcs = ["naming.cc"],
     hdrs = ["naming.h"],

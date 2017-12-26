@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -46,12 +47,13 @@ filegroup(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "v2_ops",
     srcs = [
         ":v2_op_defs",
         ":v2_op_sources",
     ],
+    is_external = True,
     deps = [
         ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
@@ -124,6 +126,7 @@ py_library(
 tf_kernel_library(
     name = "tensor_forest_kernels",
     srcs = [":v2_op_sources"],
+    is_external = True,
     deps = [
         ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
@@ -172,16 +175,18 @@ tf_cc_test(
 )
 
 # -------------------------------------- V4 ops ------------------------------- #
-cc_library(
+tf_cc_library(
     name = "tensor_forest_v4_kernels",
+    is_external = True,
     deps = [
         ":model_ops_kernels",
         ":stats_ops_kernels",
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "tensor_forest_v4_ops_op_lib",
+    is_external = True,
     deps = [
         ":model_ops_op_lib",
         ":stats_ops_op_lib",
@@ -198,9 +203,10 @@ py_library(
 )
 
 # Model Ops.
-cc_library(
+tf_cc_library(
     name = "model_ops_lib",
     srcs = ["kernels/model_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource",
@@ -233,6 +239,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "model_ops_kernels",
+    is_external = True,
     deps = [
         ":model_ops_lib",
         "//tensorflow/core:framework",
@@ -294,9 +301,10 @@ tf_cc_test(
 )
 
 # Stats Ops.
-cc_library(
+tf_cc_library(
     name = "stats_ops_lib",
     srcs = ["kernels/stats_ops.cc"],
+    is_external = True,
     deps = [
         "//third_party/eigen3",
         "//tensorflow/contrib/tensor_forest:tree_utils",
@@ -329,6 +337,7 @@ tf_gen_op_wrapper_py(
 
 tf_kernel_library(
     name = "stats_ops_kernels",
+    is_external = True,
     deps = [
         ":stats_ops_lib",
         "//tensorflow/core:framework",
@@ -393,13 +402,14 @@ tf_cc_test(
 )
 
 # ---------------------------------- Common libs ------------------------ #
-cc_library(
+tf_cc_library(
     name = "tree_utils",
     srcs = ["kernels/tree_utils.cc"],
     hdrs = [
         "kernels/data_spec.h",
         "kernels/tree_utils.h",
     ],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -407,8 +417,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "forest_proto_impl",
+    is_external = True,
     deps = [
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",

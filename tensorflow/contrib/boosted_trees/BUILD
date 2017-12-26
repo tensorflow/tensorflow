@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 filegroup(
@@ -25,8 +26,9 @@ filegroup(
 
 package_group(name = "friends")
 
-cc_library(
+tf_cc_library(
     name = "boosted_trees_kernels",
+    is_external = True,
     deps = [
         ":model_ops_kernels",
         ":prediction_ops_kernels",
@@ -38,8 +40,9 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+tf_cc_library(
     name = "boosted_trees_ops_op_lib",
+    is_external = True,
     deps = [
         ":model_ops_op_lib",
         ":prediction_ops_op_lib",
@@ -332,6 +335,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "model_ops_kernels",
     srcs = ["kernels/model_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
@@ -403,6 +407,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "split_handler_ops_kernels",
     srcs = ["kernels/split_handler_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
@@ -447,6 +452,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "training_ops_kernels",
     srcs = ["kernels/training_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
@@ -493,6 +499,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "prediction_ops_kernels",
     srcs = ["kernels/prediction_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
         "//tensorflow/contrib/boosted_trees/lib:models",
@@ -541,6 +548,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "quantile_ops_kernels",
     srcs = ["kernels/quantile_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
@@ -585,6 +593,7 @@ tf_custom_op_py_library(
 tf_kernel_library(
     name = "stats_accumulator_ops_kernels",
     srcs = ["kernels/stats_accumulator_ops.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/resources:stamped_resource",

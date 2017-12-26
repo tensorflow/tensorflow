@@ -10,6 +10,7 @@ package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -24,7 +25,7 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
     deps = [
         ":gru_ops_op_lib",
@@ -32,7 +33,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "all_kernels",
     deps = [
         ":gru_ops_kernels",

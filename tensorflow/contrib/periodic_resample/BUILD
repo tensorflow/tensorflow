@@ -8,14 +8,16 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_gen_op_libs",
     "tf_custom_op_library",
+    "tf_cc_library",
     "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
 
-cc_library(
+tf_cc_library(
     name = "all_ops",
     srcs = [":custom_op_sources"],
     hdrs = [":custom_op_headers"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

@@ -6,9 +6,12 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-cc_library(
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
+tf_cc_library(
     name = "prefetching_kernels",
     srcs = ["prefetching_kernels.cc"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

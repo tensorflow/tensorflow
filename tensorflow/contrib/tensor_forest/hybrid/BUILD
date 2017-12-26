@@ -3,6 +3,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -36,7 +37,7 @@ filegroup(
     srcs = glob(["core/ops/*.h"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "all_kernels",
     srcs = [
         "core/ops/hard_routing_function_op.cc",
@@ -48,6 +49,7 @@ cc_library(
         "core/ops/stochastic_hard_routing_gradient_op.cc",
         "core/ops/unpack_path_op.cc",
     ],
+    is_external = True,
     deps = [
         ":utils",
         "//tensorflow/contrib/tensor_forest:tree_utils",
@@ -81,10 +83,11 @@ tf_custom_op_library(
     ],
 )
 
-cc_library(
+tf_cc_library(
     name = "utils",
     srcs = ["core/ops/utils.cc"],
     hdrs = ["core/ops/utils.h"],
+    is_external = True,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

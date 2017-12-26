@@ -5,6 +5,8 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_library")
+
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -24,7 +26,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
+tf_cc_library(
     name = "hadoop_file_system",
     srcs = ["hadoop_file_system.cc"],
     hdrs = ["hadoop_file_system.h"],

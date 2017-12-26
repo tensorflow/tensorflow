@@ -20,8 +20,10 @@ exports_files([
 load(
     "//tensorflow:tensorflow.bzl",
     "if_ios",
+    "tf_copts",
     "tf_generate_proto_text_sources",
     "tf_cc_test",
+    "tf_cc_library",
 )
 
 # For platform specific build config
@@ -33,7 +35,7 @@ load(
 cc_binary(
     name = "gen_proto_text_functions",
     srcs = ["gen_proto_text_functions.cc"],
-    copts = if_ios(["-DGOOGLE_LOGGING"]),
+    copts = if_ios(["-DGOOGLE_LOGGING"]) + tf_copts(),
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
@@ -42,7 +44,7 @@ cc_binary(
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
-cc_library(
+tf_cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
