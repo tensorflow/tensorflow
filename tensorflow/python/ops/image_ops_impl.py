@@ -219,7 +219,7 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_up_down', [image]):
+  with ops.name_scope(None, 'random_flip_up_down', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
@@ -227,7 +227,8 @@ def random_flip_up_down(image, seed=None):
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(mirror_cond,
                                    lambda: array_ops.reverse(image, [0]),
-                                   lambda: image)
+                                   lambda: image,
+                                   name=scope)
     return fix_image_flip_shape(image, result)
 
 
@@ -249,7 +250,7 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'random_flip_left_right', [image]):
+  with ops.name_scope(None, 'random_flip_left_right', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
@@ -257,7 +258,10 @@ def random_flip_left_right(image, seed=None):
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(mirror_cond,
                                    lambda: array_ops.reverse(image, [1]),
-                                   lambda: image)
+                                   lambda: image,
+                                   name=scope)
+    print('scope: ' + scope)
+    print('result name: ' + result.name)
     return fix_image_flip_shape(image, result)
 
 
@@ -278,11 +282,12 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_left_right', [image]):
+  with ops.name_scope(None, 'flip_left_right', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
-    return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
+    return fix_image_flip_shape(image,
+                                array_ops.reverse(image, [1], name=scope))
 
 
 def flip_up_down(image):
@@ -302,11 +307,12 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'flip_up_down', [image]):
+  with ops.name_scope(None, 'flip_up_down', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
-    return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
+    return fix_image_flip_shape(image,
+                                array_ops.reverse(image, [0], name=scope))
 
 
 def rot90(image, k=1, name=None):
@@ -360,11 +366,11 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'transpose_image', [image]):
+  with ops.name_scope(None, 'transpose_image', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
-    return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+    return array_ops.transpose(image, [1, 0, 2], name=scope)
 
 
 def central_crop(image, central_fraction):
@@ -469,6 +475,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     batch, height, width, depth = _ImageDimensions(image, rank=4)
 
     after_padding_width = target_width - offset_width - width
+
     after_padding_height = target_height - offset_height - height
 
     assert_ops += _assert(offset_height >= 0, ValueError,
@@ -545,6 +552,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
     assert_ops = _CheckAtLeast3DImage(image, require_static=False)
+
     batch, height, width, depth = _ImageDimensions(image, rank=4)
 
     assert_ops += _assert(offset_width >= 0, ValueError,
@@ -631,7 +639,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
       target_height = control_flow_ops.with_dependencies(
           assert_ops, target_height)
     if _is_tensor(target_width):
-      target_width = control_flow_ops.with_dependencies(assert_ops, target_width)
+      target_width = control_flow_ops.with_dependencies(
+          assert_ops, target_width)
 
     def max_(x, y):
       if _is_tensor(x) or _is_tensor(y):
@@ -784,7 +793,8 @@ def resize_images(images,
     elif method == ResizeMethod.NEAREST_NEIGHBOR:
       images = gen_image_ops.resize_nearest_neighbor(images,
                                                      size,
-                                                     align_corners=align_corners)
+                                                     align_corners=
+                                                     align_corners)
     elif method == ResizeMethod.BICUBIC:
       images = gen_image_ops.resize_bicubic(images,
                                             size,
@@ -824,7 +834,7 @@ def per_image_standardization(image):
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
   """
-  with ops.name_scope(None, 'per_image_standardization', [image]):
+  with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
         _Check3DImage(image, require_static=False), image)
@@ -844,7 +854,7 @@ def per_image_standardization(image):
     pixel_value_offset = image_mean
 
     image = math_ops.subtract(image, pixel_value_offset)
-    image = math_ops.div(image, pixel_value_scale)
+    image = math_ops.div(image, pixel_value_scale, name=scope)
     return image
 
 
