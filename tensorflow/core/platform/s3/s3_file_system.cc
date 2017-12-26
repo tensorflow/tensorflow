@@ -91,7 +91,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
   Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
 
-  int64_t level = tensorflow::internal::MinLogLevelFromEnv();
+  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
 
   switch (level) {
     case INFO:
