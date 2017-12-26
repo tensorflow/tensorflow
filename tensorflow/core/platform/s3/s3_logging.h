@@ -27,6 +27,9 @@ namespace tensorflow {
 
 class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
  public:
+  static void InitializeAWSLogging();
+  static void ShutdownAWSLogging();
+
   explicit S3LogSystem(Aws::Utils::Logging::LogLevel log_level);
   virtual ~S3LogSystem() = default;
 
@@ -52,15 +55,12 @@ class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
                          const char* tag,
                          const Aws::OStringStream& messageStream) override;
 
-  static void InitializeAWSLogging();
-
-  static void ShutdownAWSLogging();
-
  private:
-  std::atomic<Aws::Utils::Logging::LogLevel> log_level_;
-
   void LogMessage(Aws::Utils::Logging::LogLevel log_level,
                   const string& message);
+  std::atomic<Aws::Utils::Logging::LogLevel> log_level_;
+   
+  DISALLOW_COPY_AND_ASSIGN(S3LogSystem);
 };
 
 }  // namespace tensorflow
