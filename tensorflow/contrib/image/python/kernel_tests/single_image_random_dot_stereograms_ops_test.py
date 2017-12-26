@@ -34,9 +34,9 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
   def test_shape_function_default(self):
     """
     NOTE: The output_image_shape is [X, Y, C]
-    while the output data is [Y, X, C] (or [H, W, C])
-    so by default the output_image_shape has the value
-    of [1024, 768, 1], but the output data will be [768, 1024, 1]
+    while the output data is [Y, X, C] (or [H, W, C]).
+    As a result, by default the output_image_shape has the value
+    of [1024, 768, 1], but the output data will be [768, 1024, 1].
     """
     x_np = [[1, 2, 3, 3, 2, 1],
             [1, 2, 3, 4, 5, 2],
@@ -44,7 +44,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
             [1, 2, 3, 4, 5, 4],
             [6, 5, 4, 4, 5, 5]]
     x_tf = constant_op.constant(x_np)
-    # By default [1024, 768, 1] => [768, 1024, 1]
+    # By default [1024, 768, 1] => [768, 1024, 1].
     sirds_1 = single_image_random_dot_stereograms(
         x_tf,
         convergence_dots_size=8,
@@ -56,7 +56,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
       r_tf_1 = sirds_1.eval()
       self.assertAllEqual(shape_1, r_tf_1.shape)
 
-    # If color > 256 then [1024, 768, 3] => [768, 1024, 3]
+    # If color > 256 then [1024, 768, 3] => [768, 1024, 3].
     sirds_2 = single_image_random_dot_stereograms(
         x_tf,
         convergence_dots_size=8,
@@ -69,7 +69,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(shape_2, r_tf_2.shape)
 
     # If explicitly set output_image_shape to [1200, 800, 1],
-    # then the output data should be [800, 1200, 1]
+    # then the output data should be [800, 1200, 1].
     sirds_3 = single_image_random_dot_stereograms(
         x_tf,
         convergence_dots_size=8,

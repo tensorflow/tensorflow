@@ -44,9 +44,9 @@ REGISTER_OP("SingleImageRandomDotStereograms")
     .SetShapeFn([](InferenceContext* c) {
       // Validate that the output_image_shape attr is correct.
       // NOTE: The output_image_shape is [X, Y, C]
-      // while the output data is [Y, X, C] (or [H, W, C])
-      // so by default the output_image_shape has the value
-      // of [1024, 768, 1] but the output data will be [768, 1024, 1]
+      // while the output data is [Y, X, C] (or [H, W, C]).
+      // As a result, by default the output_image_shape has the value
+      // of [1024, 768, 1] but the output data will be [768, 1024, 1].
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("output_image_shape", &shape));
       ShapeHandle output_image_shape;
@@ -59,11 +59,7 @@ REGISTER_OP("SingleImageRandomDotStereograms")
       int colors;
       TF_RETURN_IF_ERROR(c->GetAttr("number_colors", &colors));
 
-      std::vector<DimensionHandle> dims(3);
-      dims[0] = y_dim;
-      dims[1] = x_dim;
-      dims[2] = colors > 256 ? c->MakeDim(3) : c->MakeDim(1);
-      c->set_output(0, c->MakeShape(dims));
+      c->set_output(0, c->MakeShape({y_dim, x_dim, colors > 256? c->MakeDim(3) : c->MakeDim(1)}));
       return Status::OK();
     })
     .Doc(R"doc(
