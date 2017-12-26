@@ -500,22 +500,73 @@ class MklReluGradOpBase : public OpKernel {
       // Set DNN primitives for src & diff_dst
       memory::desc src_md({}, memory::data_undef, memory::format_undef);
       memory::desc diff_dst_md({}, memory::data_undef, memory::format_undef);
-      if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
-        if (dnn_shape_diff_dst.IsMklTensor()) {
-          diff_dst_md = dnn_shape_diff_dst.GetMklLayout();
-          src_md = diff_dst_md;
-        } else {
-          src_md = dnn_shape_src.GetMklLayout();
-          diff_dst_md = src_md;
-        }
-      } else {
+
+      // For creating Sum primitive, we need to ensure that all inputs are in
+      // same format. What that means is if we have a mixed input case - where
+      // one input is in Tensorflow format and one input is in MKL format -,
+      // then we need to ensure that all inputs are in same format for
+      // primitive construction. For performance reason, we say that all inputs
+      // are in MKL format in such case, and insert reorder for input that is
+      // in Tensorflow format into MKL format. On the other hand, if both the
+      // inputs are in MKL format or both are in Tensorflow format, then we
+      // dont need reorder.
+      if (!dnn_shape_src.IsMklTensor() && !dnn_shape_diff_dst.IsMklTensor()) {
+        // If both the inputs are in Tensorflow format, we create blocked memory
+        // descriptor.
         auto src_dims = TFShapeToMklDnnDims(src_tensor.shape());
         auto src_strides = CalculateTFStrides(src_dims);
         src_md = MklDnnData<T>::CreateBlockedMemDesc(src_dims, src_strides);
         diff_dst_md = src_md;
+      } else if (dnn_shape_src.IsMklTensor() &&
+                 !dnn_shape_diff_dst.IsMklTensor()) {
+        // If one input is in MKL format and other is in Tensorflow, then
+        // create respective descriptors describing the actual case. For input
+        // in Mkl format, we just get Mkl layout from MklDnnShape. For input in
+        // Tensorflow format, we create memory descriptor using data format.
+        src_md = dnn_shape_src.GetMklLayout();
+
+        memory::format src_mkl_data_format = dnn_shape_src.GetTfDataFormat();
+        auto src_tf_data_format = MklDnnDataFormatToTFDataFormat(
+                                    src_mkl_data_format);
+        auto diff_dst_dims = TFShapeToMklDnnDimsInNCHW(diff_dst_tensor.shape(),
+                                                       src_tf_data_format);
+        diff_dst_md = memory::desc(diff_dst_dims, MklDnnType<T>(),
+                                   src_mkl_data_format);
+      } else if (!dnn_shape_src.IsMklTensor() &&
+                  dnn_shape_diff_dst.IsMklTensor()) {
+        // Same comment as above.
+        diff_dst_md = dnn_shape_diff_dst.GetMklLayout();
+
+        memory::format diff_dst_mkl_data_format =
+          dnn_shape_diff_dst.GetTfDataFormat();
+        auto diff_dst_tf_data_format = MklDnnDataFormatToTFDataFormat(
+                                          diff_dst_mkl_data_format);
+        auto src_dims = TFShapeToMklDnnDimsInNCHW(src_tensor.shape(),
+                                                  diff_dst_tf_data_format);
+        src_md = memory::desc(src_dims, MklDnnType<T>(),
+                              diff_dst_mkl_data_format);
+      } else {
+        // If both the inputs are in MKL format, we use Mkl layout of the input
+        // tensors.
+        src_md = dnn_shape_src.GetMklLayout();
+        diff_dst_md = dnn_shape_diff_dst.GetMklLayout();
       }
+
       src.SetUsrMem(src_md, &src_tensor);
       diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
+
+      // As per comment above, we tell MKLDNN that both the inputs are in same
+      // format. So we set common memory descriptor in MKL format, if any of the
+      // inputs are in MKL format. Let's get memory descriptor that we will use
+      // for both the inputs.
+      memory::desc common_md({}, memory::data_undef, memory::format_undef);
+      if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
+        common_md = dnn_shape_src.IsMklTensor() ? src_md : diff_dst_md;
+      } else {
+        // Since both the inputs are in Tensorflow format, and have
+        // same shape, we can get memory descriptor from any input.
+        common_md = src_md;
+      }
 
       T alpha = 0, beta = 0;
       std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
@@ -523,7 +574,7 @@ class MklReluGradOpBase : public OpKernel {
                                               alg_kind, src_md, alpha, beta);
       relu_fwd_pd.reset(new relu_forward::primitive_desc(relu_fwd_desc,
                                                          cpu_engine));
-      auto relu_bwd_desc = relu_backward::desc(alg_kind, diff_dst_md, src_md,
+      auto relu_bwd_desc = relu_backward::desc(alg_kind, common_md, common_md,
                                                 alpha, beta);
       auto relu_bwd_pd  = relu_backward::primitive_desc(relu_bwd_desc,
                                                 cpu_engine, *relu_fwd_pd);
@@ -547,9 +598,9 @@ class MklReluGradOpBase : public OpKernel {
       AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
                                  tf_shape_diff_src, dnn_shape_diff_src);
 
-      // diff_src memory descriptor is same as diff_dst memory descriptor.
-      auto diff_src_md = diff_dst_md;
-      diff_src.SetUsrMem(diff_src_md, diff_src_tensor);
+      // diff_src memory descriptor is same as memory descriptor for both
+      // inputs.
+      diff_src.SetUsrMem(common_md, diff_src_tensor);
 
       PrepareAndExecuteNet(relu_bwd_pd, &src, &diff_src, &diff_dst);
      } catch (mkldnn::error &e) {
@@ -567,6 +618,14 @@ class MklReluGradOpBase : public OpKernel {
                   MklDnnData<T>* src, MklDnnData<T>* diff_src, MklDnnData<T>*
                   diff_dst) {
     std::vector<primitive> net;
+
+    // Check if we need to reorder original input tensors into common_md layout
+    // that we set for primitive creation. diff_src_primitive_desc is same as
+    // common_md.
+    src->CheckReorderToOpMem(relu_prim_desc.diff_src_primitive_desc(), &net);
+    diff_dst->CheckReorderToOpMem(relu_prim_desc.diff_src_primitive_desc(),
+                                  &net);
+
     net.push_back(relu_backward(relu_prim_desc, src->GetOpMem(),
                                 diff_dst->GetOpMem(), diff_src->GetOpMem()));
     stream(stream::kind::eager).submit(net).wait();
@@ -622,7 +681,6 @@ class MklReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
     MklDnnShape dnn_shape_diff_dst;
     GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
 
-    int src_dims_size = src_tensor.dims();
     MklDnnShape dnn_shape_diff_src;
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
@@ -690,7 +748,6 @@ class MklEluGradOp : public MklReluGradOpBase<Device, T, eltwise_elu> {
     MklDnnShape dnn_shape_diff_dst;
     GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
 
-    int src_dims_size = src_tensor.dims();
     MklDnnShape dnn_shape_diff_src;
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
@@ -762,7 +819,6 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
     MklDnnShape dnn_shape_diff_dst;
     GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
 
-    int src_dims_size = src_tensor.dims();
     MklDnnShape dnn_shape_diff_src;
     dnn_shape_diff_src.SetMklTensor(false);
     AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
