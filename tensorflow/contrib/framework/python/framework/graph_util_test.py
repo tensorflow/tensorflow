@@ -87,9 +87,32 @@ class GraphUtilTest(test.TestCase):
 class GetPlaceholdersTest(test.TestCase):
 
   def test_get_placeholders(self):
+    """get_placeholders() should be in `tensorflow.contrib.framework`
+    and its outputs should have the same names and ids as placeholders
+    of current graph"""
+    test_import = True
+    try:
+      from tensorflow.contrib.framework import get_placeholders
+    except ImportError:
+      test_import = False
+    self.assertTrue(test_import)
+
+    with ops.Graph().as_default() as g:
+      a = array_ops.placeholder(dtypes.int32, name='a')
+      b = array_ops.placeholder(dtypes.int32, name='b')
+      c = array_ops.placeholder(dtypes.int32, name='c')
+      d = array_ops.placeholder(dtypes.int32, name='d')
+      results = get_placeholders(g)
+      self.assertEqual(len(results), 4)
+      names = {i.name for i in results}
+      self.assertIn(a.name, names)
+      self.assertIn(b.name, names)
+      self.assertIn(c.name, names)
+      self.assertIn(d.name, names)
+
     with ops.Graph().as_default() as g:
       placeholders = [array_ops.placeholder(dtypes.float32) for _ in range(5)]
-      results = graph_util.get_placeholders(g)
+      results = get_placeholders(g)
       self.assertEqual(
           sorted(placeholders, key=lambda x: x._id),  # pylint: disable=protected-access
           sorted(results, key=lambda x: x._id))  # pylint: disable=protected-access
