@@ -61,10 +61,11 @@ tf_cc_test(
 
 # This binary may be built for either desktop or Android.
 # A typical Android build command will look like the following:
-# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# bazel build tensorflow/core:android_tensorflow_lib \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+# --config monolithic
 tf_cc_binary(
     name = "benchmark_model",
     testonly = 1,
