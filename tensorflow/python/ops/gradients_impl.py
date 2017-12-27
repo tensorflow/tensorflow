@@ -1009,7 +1009,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   _gradients = gradients(ys, xs, **kwargs)
   for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
     # tricky change shape to one-dimension without graph branching
-    _gradient = tf.reshape(_gradient, [-1])
+    _gradient = array_ops.reshape(_gradient, [-1])
     
     # Declare an iterator and tensor array loop variables for the gradients.
     n = array_ops.size(x)

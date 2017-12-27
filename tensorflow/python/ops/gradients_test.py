@@ -623,6 +623,23 @@ class HessianTest(test_util.TensorFlowTestCase):
         with self.assertRaises(ValueError):
           gradients.hessians(x, x)
 
+  def testHessian2D(self):
+    # Manually compute the Hessian explicitly for a low-dimensional problem
+    # and check that `hessian` matches. Specifically, the Hessian of
+    # f(x) = 1/2 * x^T * x is H = constant (block identity matrix)
+    m = 3
+    rng = np.random.RandomState([1, 2, 3])
+    x_value = rng.randn(m, m).astype("float32")
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_value)
+      x_square = math_ops.reduce_sum(math_ops.matmul(array_ops.transpose(x), x) * 0.5)
+      hess = gradients.hessians(x_square, x)[0]
+      hess_actual = array_ops.reshape(hess, (m*m, m*m)).eval()
+    hess_value = np.bmat([
+      [elem*np.ones((m, m)) for elem in vec]
+      for vec in np.eye(m)
+    ]).astype("float32")
+    self.assertAllClose(hess_value, hess_actual)
 
 @test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
