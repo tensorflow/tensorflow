@@ -155,10 +155,15 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
 
         # Compare shape inference with result
         self.assertAllEqual(and_tensor.get_shape().as_list(), and_result.shape)
+        self.assertAllEqual(and_tensor.get_shape().as_list(), [3, 3])
         self.assertAllEqual(or_tensor.get_shape().as_list(), or_result.shape)
+        self.assertAllEqual(or_tensor.get_shape().as_list(), [3, 3])
         self.assertAllEqual(xor_tensor.get_shape().as_list(), xor_result.shape)
+        self.assertAllEqual(xor_tensor.get_shape().as_list(), [3, 3])
         self.assertAllEqual(ls_tensor.get_shape().as_list(), ls_result.shape)
+        self.assertAllEqual(ls_tensor.get_shape().as_list(), [3, 3])
         self.assertAllEqual(rs_tensor.get_shape().as_list(), rs_result.shape)
+        self.assertAllEqual(rs_tensor.get_shape().as_list(), [3, 3])
 
 
 if __name__ == "__main__":
