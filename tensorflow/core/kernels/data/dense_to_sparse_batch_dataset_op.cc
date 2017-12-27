@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
@@ -85,11 +86,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           input_(input) {
       input_->Ref();
 
-      output_shapes_.reserve(3);
-      // Outputs represent a SparseTensor as (indices, values, dense_shape).
-      output_shapes_.push_back({-1, row_shape_.dims() + 1});
-      output_shapes_.push_back({-1});
-      output_shapes_.push_back({row_shape_.dims() + 1});
+      output_shapes_.reserve(1);
+      PartialTensorShape output_shape({-1});
+      output_shape.AppendShape(row_shape_);
+      output_shapes_.push_back(output_shape);
     }
 
     ~Dataset() override { input_->Unref(); }
@@ -101,8 +101,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* output_dtypes_ =
-          new DataTypeVector({DT_INT64, DataTypeToEnum<T>::value, DT_INT64});
+      static DataTypeVector* output_dtypes_ = new DataTypeVector({DT_VARIANT});
       return *output_dtypes_;
     }
 
@@ -220,7 +219,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                        {total_elements, row_ndims + 1});
         Tensor values(
             cpu_allocator(),
-            DatasetIterator<Dataset<T>>::dataset()->output_dtypes()[1],
+            DatasetIterator<Dataset<T>>::dataset()->input_->output_dtypes()[0],
             {total_elements});
         auto indices_matrix = indices.matrix<int64>();
         auto values_flat = values.flat<T>();
@@ -256,9 +255,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         dense_shape_vec(0) = batch_elements.size();
 
-        out_tensors->push_back(std::move(indices));
-        out_tensors->push_back(std::move(values));
-        out_tensors->push_back(std::move(dense_shape));
+        Tensor serialized_sparse(DT_VARIANT, TensorShape({3}));
+        auto serialized_sparse_t = serialized_sparse.vec<Variant>();
+        serialized_sparse_t(0) = std::move(indices);
+        serialized_sparse_t(1) = std::move(values);
+        serialized_sparse_t(2) = std::move(dense_shape);
+        out_tensors->push_back(std::move(serialized_sparse));
 
         *end_of_sequence = false;
         return Status::OK();

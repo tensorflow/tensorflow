@@ -476,6 +476,7 @@ class BaseLayerTest(test.TestCase):
 
   def testNameScopeIsConsistentWithVariableScope(self):
     # Github issue 13429.
+
     class MyLayer(base_layers.Layer):
 
       def build(self, input_shape):

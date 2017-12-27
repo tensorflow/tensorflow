@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -419,6 +420,20 @@ TF_Function* TF_GraphToFunction_wrapper(
                             opers_array, inputs.size(), inputs.data(),
                             outputs.size(), outputs.data(), output_names_ptr,
                             opts, description, out_status);
+}
+
+void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+    TF_Graph* graph, TF_Output output,
+    const std::vector<std::vector<int64_t>>& shapes,
+    const std::vector<int>& ranks, const std::vector<TF_DataType>& types,
+    TF_Status* status) {
+  std::vector<const int64_t*> shapes_pointers(shapes.size());
+  for (int i = 0; i < shapes.size(); ++i) {
+    shapes_pointers[i] = ranks[i] <= 0 ? nullptr : &shapes[i][0];
+  }
+  TF_GraphSetOutputHandleShapesAndTypes(graph, output, shapes.size(),
+                                        shapes_pointers.data(), ranks.data(),
+                                        types.data(), status);
 }
 
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,

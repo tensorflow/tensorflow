@@ -537,7 +537,7 @@ import cv2
 # Use a custom OpenCV function to read the image, instead of the standard
 # TensorFlow `tf.read_file()` operation.
 def _read_py_function(filename, label):
-  image_decoded = cv2.imread(image_string, cv2.IMREAD_GRAYSCALE)
+  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
   return image_decoded, label
 
 # Use standard TensorFlow operations to resize the image to a fixed shape.

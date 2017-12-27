@@ -66,6 +66,17 @@ class Item(object):
       properties[key] = prop
     return properties
 
+  def GetColocationGroups(self):
+    """Return a list of hard colocation constraints.
+
+    All the nodes in a colocation tuple must be placed on the same device for
+    the model to work.
+
+    Returns:
+      A list of colocation tuples.
+    """
+    return tf_item.TF_GetColocationGroups(self.tf_item)
+
   @property
   def metagraph(self):
     return self._metagraph

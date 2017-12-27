@@ -274,7 +274,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
+    ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
 )
@@ -1846,13 +1846,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
     ],
-)
-
-tf_cuda_library(
-    name = "cuda_device_functions",
-    hdrs = ["util/cuda_device_functions.h"],
-    visibility = ["//visibility:public"],
-    deps = [":framework_lite"],
 )
 
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?

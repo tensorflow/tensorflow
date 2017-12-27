@@ -2254,10 +2254,10 @@ def nth_element(input, n, reverse=False, name=None):
 
 
 @deprecation.deprecated_arg_values(
-    None, '`NCHW` for data_format is deprecated, use `NCW` instead',
+    None, "`NCHW` for data_format is deprecated, use `NCW` instead",
     warn_once=True, data_format="NCHW")
 @deprecation.deprecated_arg_values(
-    None, '`NHWC` for data_format is deprecated, use `NWC` instead',
+    None, "`NHWC` for data_format is deprecated, use `NWC` instead",
     warn_once=True, data_format="NHWC")
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,

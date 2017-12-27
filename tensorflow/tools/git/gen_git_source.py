@@ -16,10 +16,7 @@
 """Help include git hash in tensorflow bazel build.
 
 This creates symlinks from the internal git repository directory so
-that the build system can see changes in the version state. We also
-remember what branch git was on so when the branch changes we can
-detect that the ref file is no longer correct (so we can suggest users
-run ./configure again).
+that the build system can see changes in the version state.
 
 NOTE: this script is only used in opensource.
 
@@ -62,7 +59,7 @@ def parse_branch_ref(filename):
     raise RuntimeError("Git directory has unparseable HEAD")
 
 
-def configure(src_base_path, debug=False):
+def configure(src_base_path, gen_path, debug=False):
   """Configure `src_base_path` to embed git hashes if available."""
 
   # TODO(aselle): No files generated or symlinked here are deleted by
@@ -71,7 +68,6 @@ def configure(src_base_path, debug=False):
   # without running ./configure again.
 
   git_path = os.path.join(src_base_path, ".git")
-  gen_path = os.path.join(src_base_path, "tensorflow", "tools", "git", "gen")
 
   # Remove and recreate the path
   if os.path.exists(gen_path):
@@ -222,13 +218,14 @@ def generate(arglist):
   if not data["git"]:
     git_version = b"unknown"
   else:
-    old_branch = data["branch"]
+    old_branch = data["branch"]		
     new_branch = parse_branch_ref(head_symlink)
     if new_branch != old_branch:
-      raise RuntimeError(
-          "Run ./configure again, branch was '%s' but is now '%s'" %
-          (old_branch, new_branch))
-    git_version = get_git_version(data["path"])
+      print("Warning, run ./configure again, to get __git_version__ to record "
+            "correct version")
+      git_version = get_git_version(data["path"])+'-inconsistent-git-version'
+    else:
+      git_version = get_git_version(data["path"])
   write_version_info(dest_file, git_version)
 
 
@@ -261,6 +258,10 @@ parser.add_argument(
     help="Path to configure as a git repo dependency tracking sentinel")
 
 parser.add_argument(
+    "--gen_root_path", type=str,
+    help="Root path to place generated git files (created by --configure).")
+
+parser.add_argument(
     "--generate",
     type=str,
     help="Generate given spec-file, HEAD-symlink-file, ref-symlink-file",
@@ -274,7 +275,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.configure is not None:
-  configure(args.configure, debug=args.debug)
+  if args.gen_root_path is None:
+    raise RuntimeError("Must pass --gen_root_path arg when running --configure")
+  configure(args.configure, args.gen_root_path, debug=args.debug)
 elif args.generate is not None:
   generate(args.generate)
 elif args.raw_generate is not None:

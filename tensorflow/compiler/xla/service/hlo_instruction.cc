@@ -1684,9 +1684,11 @@ bool HloInstruction::IdenticalSlowPath(
       return custom_call_target_ == other.custom_call_target_;
     case HloOpcode::kReverse:
       return dimensions() == other.dimensions();
+    case HloOpcode::kConditional:
+      return eq_computations(true_computation(), other.true_computation()) &&
+             eq_computations(false_computation(), other.false_computation());
 
     // These opcodes are not yet supported.
-    case HloOpcode::kConditional:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
@@ -2054,30 +2056,34 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(DotDimensionNumbersToString());
   }
 
-  if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(
-        StrCat("condition=", PrintName(while_condition()->name(), options)));
-    extra.push_back(StrCat("body=", PrintName(while_body()->name(), options)));
-  } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=", PrintName(select()->name(), options)));
-    extra.push_back(StrCat("scatter=", PrintName(scatter()->name(), options)));
-  } else if (opcode() == HloOpcode::kConditional) {
-    extra.push_back(StrCat("true_computation=",
-                           PrintName(true_computation()->name(), options)));
-    extra.push_back(StrCat("false_computation=",
-                           PrintName(false_computation()->name(), options)));
-  } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
-             opcode() == HloOpcode::kReduceWindow ||
-             opcode() == HloOpcode::kReduce) {
-    extra.push_back(
-        StrCat("to_apply=", PrintName(to_apply()->name(), options)));
-  } else if (!called_computations().empty()) {
-    extra.push_back(StrCat(
-        "calls=", Join(called_computations(), ", ",
-                       [&](string* out, const HloComputation* computation) {
-                         StrAppend(out,
-                                   PrintName(computation->name(), options));
-                       })));
+  if (options.print_subcomputation_references()) {
+    if (opcode() == HloOpcode::kWhile) {
+      extra.push_back(
+          StrCat("condition=", PrintName(while_condition()->name(), options)));
+      extra.push_back(
+          StrCat("body=", PrintName(while_body()->name(), options)));
+    } else if (opcode() == HloOpcode::kSelectAndScatter) {
+      extra.push_back(StrCat("select=", PrintName(select()->name(), options)));
+      extra.push_back(
+          StrCat("scatter=", PrintName(scatter()->name(), options)));
+    } else if (opcode() == HloOpcode::kConditional) {
+      extra.push_back(StrCat("true_computation=",
+                             PrintName(true_computation()->name(), options)));
+      extra.push_back(StrCat("false_computation=",
+                             PrintName(false_computation()->name(), options)));
+    } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
+               opcode() == HloOpcode::kReduceWindow ||
+               opcode() == HloOpcode::kReduce) {
+      extra.push_back(
+          StrCat("to_apply=", PrintName(to_apply()->name(), options)));
+    } else if (!called_computations().empty()) {
+      extra.push_back(StrCat(
+          "calls=", Join(called_computations(), ", ",
+                         [&](string* out, const HloComputation* computation) {
+                           StrAppend(out,
+                                     PrintName(computation->name(), options));
+                         })));
+    }
   }
 
   if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv ||
@@ -2115,6 +2121,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
+
+  // By contract, we print the custom call target even if
+  // !options.print_subcomputation_references(), because the call target is not
+  // an HloComputation.
   if (opcode() == HloOpcode::kCustomCall) {
     extra.push_back(
         StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
@@ -3160,27 +3170,26 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
 }
 
 string HloInstruction::DotDimensionNumbersToString() const {
-  string result;
+  std::vector<string> result;
   if (dot_dimension_numbers_ == nullptr) {
-    return result;
+    return "";
   }
   const DotDimensionNumbers& dnums = *dot_dimension_numbers_;
   if (!dnums.lhs_batch_dimensions().empty()) {
-    result += "lhs_batch_dims=";
-    StrAppend(&result, Join(dnums.lhs_batch_dimensions(), ","));
+    result.push_back(StrCat("lhs_batch_dims={",
+                            Join(dnums.lhs_batch_dimensions(), ","), "}"));
   }
-  result += "lhs_contracting_dims=";
-  StrAppend(&result, Join(dnums.lhs_contracting_dimensions(), ","));
+  result.push_back(StrCat("lhs_contracting_dims={",
+                          Join(dnums.lhs_contracting_dimensions(), ","), "}"));
 
-  result += ",";
   if (!dnums.rhs_batch_dimensions().empty()) {
-    result += "rhs_batch_dims=";
-    StrAppend(&result, Join(dnums.rhs_batch_dimensions(), ","));
+    result.push_back(StrCat("rhs_batch_dims={",
+                            Join(dnums.rhs_batch_dimensions(), ","), "}"));
   }
-  result += "rhs_contracting_dims=";
-  StrAppend(&result, Join(dnums.rhs_contracting_dimensions(), ","));
+  result.push_back(StrCat("rhs_contracting_dims={",
+                          Join(dnums.rhs_contracting_dimensions(), ","), "}"));
 
-  return result;
+  return Join(result, ", ");
 }
 
 bool HloInstruction::CouldBeBitcast() const {

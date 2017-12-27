@@ -192,7 +192,8 @@ class TensorArrayOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArrayV3"), TensorArrayOp);
+REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstInput("size"),
+                TensorArrayOp);
 
 class TensorArrayWriteOp : public XlaOpKernel {
  public:
@@ -414,8 +415,8 @@ class TensorArrayScatterOp : public XlaOpKernel {
         // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
         auto index = b->Slice(indices, {i}, {i + 1}, {1});
         auto start_indices =
-                b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-                       xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+            b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+                   xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
         ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
       }
     }
@@ -537,7 +538,8 @@ class TensorArraySplitOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArraySplitOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArraySplitV3"), TensorArraySplitOp);
+REGISTER_XLA_OP(Name("TensorArraySplitV3").CompileTimeConstInput("lengths"),
+                TensorArraySplitOp);
 
 class TensorArraySizeOp : public XlaOpKernel {
  public:

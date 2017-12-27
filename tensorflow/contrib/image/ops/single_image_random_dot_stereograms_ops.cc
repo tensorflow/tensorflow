@@ -19,6 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
 REGISTER_OP("SingleImageRandomDotStereograms")
     .Attr("T: {double,float,int64,int32}")
     .Input("depth_values: T")
@@ -37,6 +41,27 @@ REGISTER_OP("SingleImageRandomDotStereograms")
         "output_image_shape: shape = { dim {size:1024} dim {size: 768} dim "
         "{size: 1}}")
     .Attr("output_data_window: shape = { dim {size:1022} dim {size: 757}}")
+    .SetShapeFn([](InferenceContext* c) {
+      // Validate that the output_image_shape attr is correct.
+      // NOTE: The output_image_shape is [X, Y, C]
+      // while the output data is [Y, X, C] (or [H, W, C]).
+      // As a result, by default the output_image_shape has the value
+      // of [1024, 768, 1] but the output data will be [768, 1024, 1].
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_image_shape", &shape));
+      ShapeHandle output_image_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromPartialTensorShape(shape, &output_image_shape));
+      DimensionHandle x_dim = c->Dim(output_image_shape, 0);
+      DimensionHandle y_dim = c->Dim(output_image_shape, 1);
+      DimensionHandle c_dim = c->Dim(output_image_shape, 2);
+
+      int colors;
+      TF_RETURN_IF_ERROR(c->GetAttr("number_colors", &colors));
+
+      c->set_output(0, c->MakeShape({y_dim, x_dim, colors > 256? c->MakeDim(3) : c->MakeDim(1)}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Outputs a single image random dot stereogram for export via encode_PNG/JPG OP.
 
