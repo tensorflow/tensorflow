@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace contrib {
-namespace mpi {
+namespace mpi_collectives {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
@@ -317,7 +317,7 @@ Status RingAllgather(OpKernelContext* context, const Tensor* input,
   return Status::OK();
 }
 
-}  // namespace mpi
+}  // namespace mpi_collectives
 }  // namespace contrib
 }  // namespace tensorflow
 
