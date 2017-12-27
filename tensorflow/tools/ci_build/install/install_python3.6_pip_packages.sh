@@ -24,7 +24,7 @@
 add-apt-repository -y ppa:fkrull/deadsnakes
 
 # Install bz2 dep
-apt-get install libbz2-dev
+apt-get install libbz2-dev bzip2-devel
 # Install curses dep
 apt-get install libncurses5 libncurses5-dev libncursesw5
 # Install readline dep
@@ -75,9 +75,7 @@ pip3 install pandas==0.19.2
 
 pip3 install gnureadline
 
-pip3 install bzip2
-
-
+pip3 install bz2file
 
 # Install recent-enough version of wheel for Python 3.6 wheel builds
 pip3 install wheel==0.29.0
