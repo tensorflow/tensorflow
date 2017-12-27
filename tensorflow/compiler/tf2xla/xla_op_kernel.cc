@@ -268,12 +268,12 @@ Status XlaOpKernelContext::ReadVariableInput(
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (variable->value.handle() == 0) {
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+  if (!variable->initialized()) {
     return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name);
+                                   variable->name());
   }
-  *value = variable->value;
+  *value = variable->value();
   return Status::OK();
 }
 
@@ -283,13 +283,13 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (variable->value.handle() == 0) {
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+  if (!variable->initialized()) {
     return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name);
+                                   variable->name());
   }
-  *type = variable->type;
-  auto shape_or_status = builder()->GetShape(variable->value);
+  *type = variable->type();
+  auto shape_or_status = builder()->GetShape(variable->value());
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
@@ -381,16 +381,8 @@ Status XlaOpKernelContext::AssignVariable(
       CastExpressionFromTensor(context_->input(input_index));
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (!((variable->type == DT_INVALID && type != DT_INVALID) ||
-        (variable->type == type))) {
-    return errors::InvalidArgument(
-        "Types of variables cannot change after initialization: old type was ",
-        DataTypeString(variable->type), ", new type is ", DataTypeString(type));
-  }
-  variable->type = type;
-  variable->value = handle;
-  return Status::OK();
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+  return variable->SetValue(type, handle);
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {
@@ -415,6 +407,11 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateMin(
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateAdd(type);
+}
+
+const xla::Computation* XlaOpKernelContext::GetOrCreateMul(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMul(type);
 }
 
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}

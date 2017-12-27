@@ -31,6 +31,7 @@ py_library(
         ":debug_graphs",
         ":debug_utils",
         ":grpc_debug_server",
+        ":grpc_debug_test_server",
         ":hooks",
         ":local_cli_wrapper",
         "//tensorflow/python:util",
@@ -45,9 +46,16 @@ py_library(
         ":grpc_debug_test_server",
         ":offline_analyzer",
         ":session_debug_testlib",
+        ":source_remote",
     ] + if_not_windows([
         ":debug_examples",
     ]),
+)
+
+py_library(
+    name = "common",
+    srcs = ["lib/common.py"],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -107,6 +115,18 @@ py_library(
     deps = [
         ":profiling",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "source_remote",
+    srcs = ["lib/source_remote.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common",
+        ":debug_service_pb2_grpc",
+        "//tensorflow/core/debug:debug_service_proto_py",
+        "//tensorflow/python/profiler:tfprof_logger",
     ],
 )
 
@@ -180,9 +200,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":command_parser",
+        ":common",
         ":debugger_cli_common",
         ":tensor_format",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -321,7 +343,11 @@ py_library(
     name = "grpc_wrapper",
     srcs = ["wrappers/grpc_wrapper.py"],
     srcs_version = "PY2AND3",
-    deps = [":framework"],
+    deps = [
+        ":common",
+        ":framework",
+        ":source_remote",
+    ],
 )
 
 py_library(
@@ -332,6 +358,7 @@ py_library(
         ":analyzer_cli",
         ":cli_shared",
         ":command_parser",
+        ":common",
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
@@ -427,6 +454,20 @@ py_binary(
 )
 
 py_test(
+    name = "common_test",
+    size = "small",
+    srcs = ["lib/common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "debug_graphs_test",
     size = "small",
     srcs = ["lib/debug_graphs_test.py"],
@@ -512,6 +553,32 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "source_remote_test",
+    size = "small",
+    srcs = ["lib/source_remote_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+        "nomac",
+        "oss_serial",
+    ],
+    deps = [
+        ":grpc_debug_test_server",
+        ":source_remote",
+        ":source_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -924,6 +991,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",

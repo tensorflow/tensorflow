@@ -773,6 +773,7 @@ def export_scoped_meta_graph(filename=None,
     if graph_def:
       new_graph_def = graph_pb2.GraphDef()
       new_graph_def.versions.CopyFrom(graph_def.versions)
+      new_graph_def.library.CopyFrom(graph_def.library)
 
       if clear_extraneous_savers:
         exclude_nodes = _find_extraneous_saver_nodes(graph_def, saver_def)
@@ -810,6 +811,9 @@ def export_scoped_meta_graph(filename=None,
           bytesize += value.node_def.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
             raise ValueError("GraphDef cannot be larger than 2GB.")
+
+      graph._copy_functions_to_graph_def(graph_def, bytesize)  # pylint: disable=protected-access
+
     # It's possible that not all the inputs are in the export_scope.
     # If we would like such information included in the exported meta_graph,
     # add them to a special unbound_inputs collection.

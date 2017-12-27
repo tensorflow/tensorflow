@@ -155,7 +155,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src = "/images/tflite-architecture.jpg">
+![tensorflow lite architecture](https://www.tensorflow.org/images/tflite-architecture.jpg)
 
 Starting with a trained TensorFlow model on disk, you'll convert that model to
 the TensorFlow Lite file format (`.tflite`) using the TensorFlow Lite

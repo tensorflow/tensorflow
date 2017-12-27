@@ -3,6 +3,7 @@
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -358,7 +359,9 @@ def tf_additional_proto_hdrs():
       "platform/default/integral_types.h",
       "platform/default/logging.h",
       "platform/default/protobuf.h"
-  ]
+  ] + if_windows([
+      "platform/windows/integral_types.h",
+  ])
 
 def tf_additional_proto_srcs():
   return [
@@ -458,7 +461,6 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
   return select({
-      "//tensorflow:with_gcp_support_windows_override": [],
       "//tensorflow:with_gcp_support_android_override": [],
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [

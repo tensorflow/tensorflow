@@ -43,7 +43,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 
 
-
 # pylint: enable=protected-access
 Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 
@@ -140,6 +139,20 @@ class RNNCellTest(test.TestCase):
              m.name: np.array([[0.1, 0.1]])})
         # Smoke test
         self.assertAllClose(res[0], [[0.156736, 0.156736]])
+
+  def testSRUCell(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g], {x.name: np.array([[1., 1.]]),
+                  m.name: np.array([[0.1, 0.1]])})
+        # Smoke test
+        self.assertAllClose(res[0], [[0.509682,  0.509682]])
 
   def testBasicLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:

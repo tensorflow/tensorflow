@@ -998,6 +998,13 @@ TEST_F(OpTest, Atanh) {
   });
 }
 
+TEST_F(OpTest, Atan) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Atan").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Atan2) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
@@ -1382,7 +1389,7 @@ TEST_F(OpTest, Conv2D) {
 
     std::vector<int64> kernel_dims = {d.kernel_dims[0], d.kernel_dims[1],
                                       features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2D")
             .RandomInput(type, data_dims)
@@ -1407,7 +1414,7 @@ TEST_F(OpTest, Conv2DBackpropFilter) {
         ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims);
     Tensor kernel_shape = test::AsTensor<int32>(AsInt32s(
         {d.kernel_dims[0], d.kernel_dims[1], features_in, features_out}));
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2DBackpropFilter")
             .RandomInput(type, activations)
@@ -1433,7 +1440,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
         ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims);
     std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
                                  features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2DBackpropInput")
             .Input(in_shape)
@@ -1457,7 +1464,7 @@ TEST_F(OpTest, Conv3D) {
 
     std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
                                  d.kernel_dims[2], features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3D")
             .RandomInput(type, data)
@@ -1482,7 +1489,7 @@ TEST_F(OpTest, Conv3DBackpropFilter) {
     Tensor kernel_shape = test::AsTensor<int32>(
         AsInt32s({d.kernel_dims[0], d.kernel_dims[1], d.kernel_dims[2],
                   features_in, features_out}));
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3DBackpropFilterV2")
             .RandomInput(type, activations)
@@ -2457,6 +2464,36 @@ TEST_F(OpTest, Reshape) {
             .Input(test::AsTensor<int32>(
                 std::vector<int32>(dims_after.begin(), dims_after.end())))
             .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, ResizeBilinear) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinear")
+            .RandomInput(DT_FLOAT, in_dims)
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(out_dims.begin(), out_dims.end())))
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
+  });
+}
+
+TEST_F(OpTest, ResizeBilinearGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> in_dims = RandomDims(4, 4);
+    std::vector<int64> out_dims = RandomDims(2, 2);
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ResizeBilinearGrad")
+            .RandomInput(DT_FLOAT, in_dims)
+            .RandomInput(DT_FLOAT,
+                         {in_dims[0], out_dims[0], out_dims[1], in_dims[3]})
+            .Attr("T", DT_FLOAT)
+            .Attr("align_corners", true));
   });
 }
 

@@ -108,7 +108,7 @@ enum {
  * The type of operations that can be added to a model.
  */
 enum {
-  /** Adds two tensors, elment-wise.
+  /** Adds two tensors, element-wise.
    *
    * Takes two input tensors of identical type and compatible dimensions. The
    * output is the sum of both input tensors, optionally modified by an
@@ -743,7 +743,7 @@ enum {
    */
   ANEURALNETWORKS_MAX_POOL_2D = 17,
 
-  /** Multiplies two tensors, elment-wise.
+  /** Multiplies two tensors, element-wise.
    *
    * Takes two input tensors of identical type and compatible dimensions. The
    * output is the product of both input tensors, optionally modified by an
@@ -1454,9 +1454,9 @@ inline int ANeuralNetworksModel_finish(ANeuralNetworksModel* model) {
  * {@link ANeuralNetworksExecution_setOutputFromMemory} and
  * {@link ANeuralNetworksExecution_setOperandValue}.
  *
- * To build a model that can accommodate inputs of various sizes, as you may want
- * to do for a CNN, set the size of the dimensions that will vary at run time to
- * 0. If you do so, provide the full dimensions when calling
+ * To build a model that can accommodate inputs of various sizes, as you may
+ * want to do for a CNN, set the size of the dimensions that will vary at run
+ * time to 0. If you do so, provide the full dimensions when calling
  * {@link ANeuralNetworksExecution_setInput} or {@link
  * ANeuralNetworksExecution_setInputFromMemory}.
  *

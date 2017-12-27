@@ -57,7 +57,8 @@ namespace xla {
     }
     for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
       ::testing::AssertionResult result =
-          EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+          EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i))
+          << "mismatch in tuple index " << i;
       if (!result) {
         return result;
       }
@@ -101,32 +102,52 @@ namespace xla {
 }
 
 /* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertBF16ToF32(
-    const Literal& bf16_literal) {
-  CHECK_EQ(bf16_literal.shape().element_type(), BF16);
-  Shape converted_shape = bf16_literal.shape();
+    const Literal& literal) {
+  if (ShapeUtil::IsTuple(literal.shape())) {
+    std::vector<std::unique_ptr<Literal>> converted_elements;
+    for (const auto& element : literal.tuple_literals()) {
+      converted_elements.push_back(ConvertBF16ToF32(element));
+    }
+    return Literal::MakeTupleOwned(std::move(converted_elements));
+  }
+
+  if (literal.shape().element_type() != BF16) {
+    return MakeUnique<Literal>(literal);
+  }
+  Shape converted_shape = literal.shape();
   converted_shape.set_element_type(F32);
   auto converted = Literal::CreateFromShape(converted_shape);
   if (!ShapeUtil::HasZeroElements(converted_shape)) {
     std::vector<int64> index(converted_shape.dimensions_size(), 0);
     do {
-      converted->Set<float>(
-          index, static_cast<float>(bf16_literal.Get<bfloat16>(index)));
+      converted->Set<float>(index,
+                            static_cast<float>(literal.Get<bfloat16>(index)));
     } while (IndexUtil::BumpIndices(converted_shape, &index));
   }
   return converted;
 }
 
 /* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertF32ToBF16(
-    const Literal& f32_literal) {
-  CHECK_EQ(f32_literal.shape().element_type(), F32);
-  Shape converted_shape = f32_literal.shape();
+    const Literal& literal) {
+  if (ShapeUtil::IsTuple(literal.shape())) {
+    std::vector<std::unique_ptr<Literal>> converted_elements;
+    for (const auto& element : literal.tuple_literals()) {
+      converted_elements.push_back(ConvertF32ToBF16(element));
+    }
+    return Literal::MakeTupleOwned(std::move(converted_elements));
+  }
+
+  if (literal.shape().element_type() != F32) {
+    return MakeUnique<Literal>(literal);
+  }
+  Shape converted_shape = literal.shape();
   converted_shape.set_element_type(BF16);
   auto converted = Literal::CreateFromShape(converted_shape);
   if (!ShapeUtil::HasZeroElements(converted_shape)) {
     std::vector<int64> index(converted_shape.dimensions_size(), 0);
     do {
       converted->Set<bfloat16>(
-          index, static_cast<bfloat16>(f32_literal.Get<float>(index)));
+          index, static_cast<bfloat16>(literal.Get<float>(index)));
     } while (IndexUtil::BumpIndices(converted_shape, &index));
   }
   return converted;
@@ -313,23 +334,45 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
   return result;
 }
 
-/* static */ void LiteralTestUtil::ExpectEqualTuple(const Literal& expected,
-                                                    const Literal& actual) {
+/* static */ ::testing::AssertionResult LiteralTestUtil::EqualTuple(
+    const Literal& expected, const Literal& actual) {
   VLOG(1) << "expected: " << expected.ToString();
   VLOG(1) << "actual:   " << actual.ToString();
 
-  ASSERT_TRUE(ShapeUtil::IsTuple(expected.shape()));
-  ASSERT_TRUE(ShapeUtil::IsTuple(actual.shape()));
+  if (!ShapeUtil::IsTuple(expected.shape()) ||
+      !ShapeUtil::IsTuple(actual.shape())) {
+    return ::testing::AssertionFailure()
+           << "tuples expected shape = " << expected.shape().ShortDebugString()
+           << " actual shape = " << actual.shape().ShortDebugString();
+  }
   AssertEqualShapes(expected.shape(), actual.shape());
+
+  ::testing::AssertionResult err = ::testing::AssertionSuccess();
   for (uint64 i = 0; i < expected.tuple_literals_size(); ++i) {
+    SCOPED_TRACE(tensorflow::strings::StrCat(
+        "Tuple index ", i, " in ", ShapeUtil::HumanString(expected.shape())));
     const auto& expected_element = expected.tuple_literals(i);
     const auto& actual_element = actual.tuple_literals(i);
-    if (ShapeUtil::IsTuple(expected_element.shape())) {
-      ExpectEqualTuple(expected_element, actual_element);
-    } else {
-      ExpectEqual(expected_element, actual_element);
+
+    ::testing::AssertionResult res = [&] {
+      if (ShapeUtil::IsTuple(expected_element.shape())) {
+        return EqualTuple(expected_element, actual_element);
+      } else {
+        return Equal(expected_element, actual_element);
+      }
+    }();
+
+    if (!res && err) {
+      err = res;
     }
   }
+
+  return err;
+}
+
+/* static */ void LiteralTestUtil::ExpectEqualTuple(const Literal& expected,
+                                                    const Literal& actual) {
+  EXPECT_TRUE(EqualTuple(expected, actual));
 }
 
 namespace {
@@ -595,39 +638,65 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
   if (!ShapeUtil::IsTuple(expected.shape()) ||
       !ShapeUtil::IsTuple(actual.shape())) {
     return ::testing::AssertionFailure()
-           << "tuples expected expected shape = "
-           << expected.shape().ShortDebugString()
+           << "tuples expected shape = " << expected.shape().ShortDebugString()
            << " actual shape = " << actual.shape().ShortDebugString();
   }
   AssertEqualShapes(expected.shape(), actual.shape());
+
+  ::testing::AssertionResult err = ::testing::AssertionSuccess();
   for (uint64 i = 0; i < expected.tuple_literals_size(); ++i) {
+    SCOPED_TRACE(tensorflow::strings::StrCat(
+        "Tuple index ", i, " in ", ShapeUtil::HumanString(expected.shape())));
     const auto& expected_element = expected.tuple_literals(i);
     const auto& actual_element = actual.tuple_literals(i);
-    if (ShapeUtil::IsTuple(expected_element.shape())) {
-      auto ret = NearTuple(expected_element, actual_element, error);
-      if (!ret) {
-        return ret;
+
+    ::testing::AssertionResult res = [&] {
+      if (ShapeUtil::IsTuple(expected_element.shape())) {
+        return NearTuple(expected_element, actual_element, error);
+      } else if (ShapeUtil::ElementIsFloating(expected_element.shape())) {
+        return Near(expected_element, actual_element, error);
+      } else {
+        return Equal(expected_element, actual_element);
       }
-    } else if (ShapeUtil::ElementIsFloating(expected_element.shape())) {
-      auto ret = Near(expected_element, actual_element, error);
-      if (!ret) {
-        return ret;
-      }
-    } else {
-      auto ret = Equal(expected_element, actual_element);
-      if (!ret) {
-        return ret;
-      }
+    }();
+
+    if (err && !res) {
+      err = res;
     }
   }
-
-  return ::testing::AssertionSuccess();
+  return err;
 }
 
 /* static */ void LiteralTestUtil::ExpectNearTuple(const Literal& expected,
                                                    const Literal& actual,
                                                    const ErrorSpec& error) {
   EXPECT_TRUE(NearTuple(expected, actual, error));
+}
+
+/*static*/ ::testing::AssertionResult LiteralTestUtil::NearOrEqual(
+    const Literal& expected, const Literal& actual,
+    const tensorflow::gtl::optional<ErrorSpec>& error) {
+  bool is_tuple = ShapeUtil::IsTuple(expected.shape());
+  if (error.has_value()) {
+    if (is_tuple) {
+      VLOG(1) << "Expects near tuple";
+      return NearTuple(expected, actual, *error);
+    }
+    VLOG(1) << "Expects near";
+    return Near(expected, actual, *error);
+  }
+  if (is_tuple) {
+    VLOG(1) << "Expects equal tuple";
+    return EqualTuple(expected, actual);
+  }
+  VLOG(1) << "Expects equal";
+  return Equal(expected, actual);
+}
+
+/*static*/ void LiteralTestUtil::ExpectNearOrEqual(
+    const Literal& expected, const Literal& actual,
+    const tensorflow::gtl::optional<ErrorSpec>& error) {
+  EXPECT_TRUE(NearOrEqual(expected, actual, error));
 }
 
 /* static */ string LiteralTestUtil::MultiIndexAsString(

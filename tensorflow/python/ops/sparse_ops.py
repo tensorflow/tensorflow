@@ -557,6 +557,7 @@ def sparse_reshape(sp_input, shape, name=None):
     TypeError: If `sp_input` is not a `SparseTensor`.
     ValueError:  If argument `shape` requests a `SparseTensor` with a different
       number of elements than `sp_input`.
+    ValueError:  If `shape` has more than one inferred (== -1) dimension.
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
   shape = math_ops.cast(shape, dtype=dtypes.int64)
@@ -568,16 +569,26 @@ def sparse_reshape(sp_input, shape, name=None):
     reshaped_shape_const = tensor_util.constant_value(shape)
     if (reshaped_shape_const is not None
         and sp_input.get_shape().is_fully_defined()):
-      # Don't deal with inferred dimensions. That would add significant code.
-      if all(n >= 0 for n in reshaped_shape_const):
-        reshaped_size = np.prod(reshaped_shape_const)
-        in_shape_size = np.prod(sp_input.get_shape().as_list())
-        if reshaped_size != in_shape_size:
-          raise ValueError(
-              "Cannot reshape a tensor with %d elements to shape %s "
-              "(%d elements)."
-              % (in_shape_size, reshaped_shape_const, reshaped_size))
-        reshaped_shape = reshaped_shape_const
+      num_implied = sum((dim == -1) for dim in reshaped_shape_const)
+      if num_implied > 1:
+        raise ValueError("At most one dimension can be inferred (-1). Found: %s"
+                         % reshaped_shape_const)
+      original_reshaped_shape = list(reshaped_shape_const)  # Copy.
+      in_shape_size = np.prod(sp_input.get_shape().as_list())
+      if num_implied:
+        implied_idx = original_reshaped_shape.index(-1)
+        non_implied_idx = (
+            original_reshaped_shape[:implied_idx] +
+            original_reshaped_shape[implied_idx + 1:])
+        reshaped_shape_const[implied_idx] = (
+            in_shape_size // np.prod(non_implied_idx))
+      reshaped_size = np.prod(reshaped_shape_const)
+      if reshaped_size != in_shape_size:
+        raise ValueError(
+            "Cannot reshape a tensor with %d elements to shape %s "
+            "(%d elements)."
+            % (in_shape_size, original_reshaped_shape, reshaped_size))
+      reshaped_shape = reshaped_shape_const
 
     return sparse_tensor.SparseTensor(
         reshaped_ind, array_ops.identity(sp_input.values),
@@ -1385,16 +1396,17 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
             empty_row_indicator)
 
 
-def serialize_sparse(sp_input, name=None):
-  """Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
+def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
+  """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
 
   Args:
     sp_input: The input `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
+    out_type: The `dtype` to use for serialization.
 
   Returns:
-    A string 3-vector (1D `Tensor`), with each column representing the
-    serialized `SparseTensor`'s indices, values, and shape (respectively).
+    A 3-vector (1-D `Tensor`), with each column representing the serialized
+    `SparseTensor`'s indices, values, and shape (respectively).
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -1402,11 +1414,15 @@ def serialize_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_sparse(
-      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      name=name,
+      out_type=out_type)
 
 
-def serialize_many_sparse(sp_input, name=None):
-  """Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
+def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
+  """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
 
   The `SparseTensor` must have rank `R` greater than 1, and the first dimension
   is treated as the minibatch dimension.  Elements of the `SparseTensor`
@@ -1419,11 +1435,12 @@ def serialize_many_sparse(sp_input, name=None):
   Args:
     sp_input: The input rank `R` `SparseTensor`.
     name: A name prefix for the returned tensors (optional).
+    out_type: The `dtype` to use for serialization.
 
   Returns:
-    A string matrix (2-D `Tensor`) with `N` rows and `3` columns.
-    Each column represents serialized `SparseTensor`'s indices, values, and
-    shape (respectively).
+    A matrix (2-D `Tensor`) with `N` rows and `3` columns. Each column
+    represents serialized `SparseTensor`'s indices, values, and shape
+    (respectively).
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -1431,16 +1448,57 @@ def serialize_many_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_many_sparse(
-      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      name=name,
+      out_type=out_type)
 
 
 def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize `SparseTensor` objects.
 
-  The input is expected to have shape [d_1, ..., d_m, 3], where the last
-  dimension stores a serialized `SparseTensor`. The method deserializes
-  all input `SparseTensor`s, concatenates them into a single tensor, and
-  reshapes the sparse tensor to preserve the structure of the input.
+  The input `serialized_sparse` must have the shape `[?, ?, ..., ?, 3]` where
+  the last dimension stores serialized `SparseTensor` objects and the other N
+  dimensions (N >= 0) correspond to a batch. The ranks of the original
+  `SparseTensor` objects must all match. When the final `SparseTensor` is
+  created, its rank is the rank of the incoming `SparseTensor` objects plus N;
+  the sparse tensors have been concatenated along new dimensions, one for each
+  batch.
+
+  The output `SparseTensor` object's shape values for the original dimensions
+  are the max across the input `SparseTensor` objects' shape values for the
+  corresponding dimensions. The new dimensions match the size of the batch.
+
+  The input `SparseTensor` objects' indices are assumed ordered in
+  standard lexicographic order.  If this is not the case, after this
+  step run `SparseReorder` to restore index ordering.
+
+  For example, if the serialized input is a `[2 x 3]` matrix representing two
+  original `SparseTensor` objects:
+
+      index = [ 0]
+              [10]
+              [20]
+      values = [1, 2, 3]
+      shape = [50]
+
+  and
+
+      index = [ 2]
+              [10]
+      values = [4, 5]
+      shape = [30]
+
+  then the final deserialized `SparseTensor` will be:
+
+      index = [0  0]
+              [0 10]
+              [0 20]
+              [1  2]
+              [1 10]
+      values = [1, 2, 3, 4, 5]
+      shape = [2 50]
 
   Args:
     serialized_sparse: The serialized `SparseTensor` objects.
@@ -1914,8 +1972,16 @@ def sparse_transpose(sp_input, perm=None, name=None):
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))
-    dense_shape = sp_input.dense_shape
-    transposed_dense_shape = array_ops.gather(dense_shape, perm)
+
+    perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
+    if perm_ is not None and sp_input.get_shape().is_fully_defined():
+      old_shape_ = sp_input.get_shape().as_list()
+      transposed_dense_shape = list(old_shape_)  # Copy.
+      for i, p in enumerate(perm_):
+        transposed_dense_shape[i] = old_shape_[p]
+    else:
+      dense_shape = sp_input.dense_shape
+      transposed_dense_shape = array_ops.gather(dense_shape, perm)
     transposed_st = sparse_tensor.SparseTensor(
         transposed_indices, sp_input.values,
         transposed_dense_shape)

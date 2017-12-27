@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -27,9 +29,12 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
 # Method used for inverting matrices.
 POSDEF_INV_METHOD = "cholesky"
+POSDEF_EIG_METHOD = "self_adjoint"
 
 
 def set_global_constants(posdef_inv_method=None):
@@ -161,33 +166,11 @@ def mat2d_to_layer_params(vector_template, mat2d):
     return array_ops.reshape(mat2d, vector_template.shape)
 
 
-def compute_pi(left_factor, right_factor):
-  """Computes the scalar constant pi for Tikhonov regularization/damping.
-
-  pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
-  See section 6.3 of https://arxiv.org/pdf/1503.05671.pdf for details.
-
-  Args:
-    left_factor: The left Kronecker factor Tensor.
-    right_factor: The right Kronecker factor Tensor.
-
-  Returns:
-    The computed scalar constant pi for these Kronecker Factors (as a Tensor).
-  """
-  # Instead of dividing by the dim of the norm, we multiply by the dim of the
-  # other norm. This works out the same in the ratio.
-  left_norm = math_ops.trace(left_factor) * right_factor.get_shape().as_list()[
-      0]
-  right_norm = math_ops.trace(right_factor) * left_factor.get_shape().as_list()[
-      0]
-  return math_ops.sqrt(left_norm / right_norm)
-
-
 def posdef_inv(tensor, damping):
   """Computes the inverse of tensor + damping * identity."""
   identity = linalg_ops.eye(tensor.shape.as_list()[0], dtype=tensor.dtype)
   damping = math_ops.cast(damping, dtype=tensor.dtype)
-  return posdef_inv_funcs[POSDEF_INV_METHOD](tensor, identity, damping)
+  return posdef_inv_functions[POSDEF_INV_METHOD](tensor, identity, damping)
 
 
 def posdef_inv_matrix_inverse(tensor, identity, damping):
@@ -209,10 +192,36 @@ def posdef_inv_eig(tensor, identity, damping):
       eigenvectors / eigenvalues, eigenvectors, transpose_b=True)
 
 
-posdef_inv_funcs = {
+posdef_inv_functions = {
     "matrix_inverse": posdef_inv_matrix_inverse,
     "cholesky": posdef_inv_cholesky,
     "eig": posdef_inv_eig,
+}
+
+
+def posdef_eig(mat):
+  """Computes the eigendecomposition of a positive semidefinite matrix."""
+  return posdef_eig_functions[POSDEF_EIG_METHOD](mat)
+
+
+def posdef_eig_svd(mat):
+  """Computes the singular values and left singular vectors of a matrix."""
+  evals, evecs, _ = linalg_ops.svd(mat)
+
+  return evals, evecs
+
+
+def posdef_eig_self_adjoint(mat):
+  """Computes eigendecomposition using self_adjoint_eig."""
+  evals, evecs = linalg_ops.self_adjoint_eig(mat)
+  evals = math_ops.abs(evals)  # Should be equivalent to svd approach.
+
+  return evals, evecs
+
+
+posdef_eig_functions = {
+    "self_adjoint": posdef_eig_self_adjoint,
+    "svd": posdef_eig_svd,
 }
 
 
@@ -221,11 +230,13 @@ class SubGraph(object):
   """
 
   def __init__(self, outputs):
+    # Set of all ancestor Tensors, Ops to 'outputs'.
     self._members = set()
 
     self._recurse_add(outputs)
 
   def _recurse_add(self, nodes):
+    """Recursively adds all of nodes' ancestors."""
     for node in nodes:
       if node in self._members:
         continue
@@ -241,8 +252,25 @@ class SubGraph(object):
     return node in self._members
 
   def variable_uses(self, var):
-    """Computes number of times a variable is used."""
-    return len(self._members.intersection(set(var.value().consumers())))
+    """Computes number of times a variable is used.
+
+    Args:
+      var: Variable or ResourceVariable instance.
+
+    Returns:
+      Number of times a variable is used within this subgraph.
+
+    Raises:
+      ValueError: If 'var' is not a variable type.
+    """
+    if isinstance(var, resource_variable_ops.ResourceVariable):
+      var = var.handle
+    elif isinstance(var, variables.Variable):
+      var = var.value()
+    else:
+      raise ValueError("%s does not appear to be a variable." % str(var))
+
+    return len(self._members.intersection(set(var.consumers())))
 
   def filter_list(self, node_list):
     """Filters 'node_list' to nodes in this subgraph."""
@@ -286,6 +314,35 @@ def fwd_gradients(ys, xs, grad_xs=None, stop_gradients=None):
   dysdx = gradients_impl.gradients(dydxs, us, grad_ys=grad_xs)
 
   return dysdx
+
+
+def on_tpu():
+  """Returns True when building a TPU computation."""
+  return tpu_function.get_tpu_context().number_of_shards is not None
+
+
+def cross_replica_mean(tensor, name=None):
+  """Takes mean value of a Tensor across all TPU cores.
+
+  Args:
+    tensor: Tensor to be synchronized.
+    name: None or string. Name of Op.
+
+  Returns:
+    Average of Tensor across all TPU cores.
+
+  Raises:
+    ValueError: If called outside of TPU context.
+  """
+  with ops.name_scope(name, "cross_replica_mean", [tensor]):
+    num_shards = tpu_function.get_tpu_context().number_of_shards
+    if num_shards is None:
+      raise ValueError(
+          "Cannot take cross_replica_mean() outside of TPU Context.")
+    if num_shards == 1:
+      return tensor
+    return tpu_ops.cross_replica_sum(tensor / num_shards)
+
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.

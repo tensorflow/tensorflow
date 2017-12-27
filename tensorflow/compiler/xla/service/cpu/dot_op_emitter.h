@@ -32,19 +32,11 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo);
 
-enum class DotInLlvmIrProfitable { kYes, kNo, kWithColumnMajorRhs };
-
-// Returns a value to indicate if (and under what conditions) will lowering
-// |dot| as a untiled LLVM IR dot operation be profitable over calling into
-// Eigen or emitting a tiled LLVM IR implementation.  Possible return values
-// are:
-//
-//  * DotInLlvmIrProfitable::kYes - always profitable.
-//  * DotInLlvmIrProfitable::kNo - never profitable.
-//  * DotInLlvmIrProfitable::kWithColumnMajorRhs - only if we can manage to make
-//    the Rhs layout column major.
-DotInLlvmIrProfitable ProfitableToImplementDotInUntiledLlvmIr(
-    const HloInstruction& dot);
+// Returns the index for an operand to `hlo` that should ideally be column
+// major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
+// or a fusion containing a dot.
+tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+    const HloInstruction& hlo);
 
 // Returns true to indicate that we can generate a tiled LLVM IR implementation
 // for |dot|.
@@ -57,10 +49,15 @@ class DotOpEmitter {
   // place the result in target_array. IR is emitted at current insert point of
   // the builder. Upon completion of the method, the insert point is set to the
   // end of all instructions emitted for this operation.
+  //
+  // If `addend_array` is not nullptr then it must be an array of the same
+  // dimensions as the result, and the result is computed as `addend_array` +
+  // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
+  // for Matrix-vector products.
   static tensorflow::Status EmitDotOperation(
       const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
       const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-      const llvm_ir::IrArray& rhs_array,
+      const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
       llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
       const HloModuleConfig& hlo_module_config);
 
@@ -69,6 +66,7 @@ class DotOpEmitter {
                bool transpose_rhs, const llvm_ir::IrArray& target_array,
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
+               const llvm_ir::IrArray* addend_array,
                llvm::Value* executable_run_options_value,
                llvm::IRBuilder<>* ir_builder,
                const HloModuleConfig& hlo_module_config);
@@ -140,6 +138,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& target_array_;
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;
+  const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilder<>* ir_builder_;
   const HloModuleConfig& hlo_module_config_;

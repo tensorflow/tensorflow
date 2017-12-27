@@ -73,7 +73,7 @@ REGISTER_OP("AvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 Performs average pooling on the input.
@@ -101,7 +101,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -300,7 +300,7 @@ REGISTER_OP("FusedBatchNormV2")
     .Output("batch_variance: U")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
@@ -393,7 +393,7 @@ REGISTER_OP("FusedBatchNormGradV2")
     .Output("offset_backprop: U")
     .Output("reserve_space_3: U")
     .Output("reserve_space_4: U")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
@@ -508,11 +508,12 @@ REGISTER_OP("Conv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
@@ -546,7 +547,7 @@ filter: A 4-D tensor of shape
 output: A 4-D tensor. The dimension order is determined by the value of
     `data_format`, see below for details.
 strides: 1-D tensor of length 4.  The stride of the sliding window for each
-  dimension of `input`. The dimension order is determined by the value of
+    dimension of `input`. The dimension order is determined by the value of
     `data_format`, see below for details.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
@@ -554,6 +555,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("Conv2DBackpropInput")
@@ -561,11 +567,12 @@ REGISTER_OP("Conv2DBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -589,10 +596,15 @@ padding: The type of padding algorithm to use.
 output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
   w.r.t. the input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
+  default format "NHWC", the data is stored in the order of:
+      [batch, in_height, in_width, in_channels].
+  Alternatively, the format could be "NCHW", the data storage order of:
+      [batch, in_channels, in_height, in_width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
@@ -603,11 +615,12 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, float}")
+    .Attr("T: {half, bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -632,10 +645,15 @@ output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
-        [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
-        [batch, in_channels, in_height, in_width].
+  default format "NHWC", the data is stored in the order of:
+      [batch, in_height, in_width, in_channels].
+  Alternatively, the format could be "NCHW", the data storage order of:
+      [batch, in_channels, in_height, in_width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 namespace {
@@ -733,6 +751,41 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
 
 }  // namespace
 
+REGISTER_OP("DataFormatDimMap")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("src_format: string = 'NHWC'")
+    .Attr("dst_format: string = 'NCHW'")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the dimension index in the destination data format given the one in
+the source data format.
+
+x: A Tensor with each element as a dimension index in source data format.
+  Must be in the range [-4, 4).
+y: A Tensor with each element as a dimension index in destination data format.
+src_format: source data format.
+dst_format: destination data format.
+)doc");
+
+REGISTER_OP("DataFormatVecPermute")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("src_format: string = 'NHWC'")
+    .Attr("dst_format: string = 'NCHW'")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the permuted vector/tensor in the destination data format given the
+one in the source data format.
+
+x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
+y: Vector of size 4 or Tensor of shape (4, 2) in destination data format.
+src_format: source data format.
+dst_format: destination data format.
+)doc");
+
 REGISTER_OP("FusedResizeAndPadConv2D")
     .Input("input: T")
     .Input("size: int32")
@@ -819,10 +872,11 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape)
     .Doc(R"doc(
 Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
@@ -845,7 +899,6 @@ for k in 0..in_channels-1
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
-
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
   of `input`.
 padding: The type of padding algorithm to use.
@@ -854,6 +907,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 )doc");
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
@@ -861,10 +919,11 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -892,6 +951,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 output: 4-D with shape according to `data_format`.  For example, if
   `data_format` is 'NHWC', output shape is `[batch, in_height,
   in_width, in_channels]`.  Gradient w.r.t. the input of the
@@ -903,10 +967,11 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -935,6 +1000,11 @@ data_format: Specify the data format of the input and output data. With the
         [batch, height, width, channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, channels, height, width].
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+  `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+  element on that dimension. The dimension order is determined by the value of
+  `data_format`, see above for details. Dilations in the batch and depth
+  dimensions must be 1.
 output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
@@ -945,10 +1015,11 @@ REGISTER_OP("Conv3D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
@@ -970,6 +1041,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("Conv3DBackpropInput")
@@ -1032,10 +1108,11 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1061,6 +1138,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 
 )doc");
 
@@ -1069,10 +1151,11 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -1098,6 +1181,11 @@ data_format: The data format of the input and output data. With the
         [batch, in_depth, in_height, in_width, in_channels].
     Alternatively, the format could be "NCDHW", the data storage order is:
         [batch, in_channels, in_depth, in_height, in_width].
+dilations: 1-D tensor of length 5.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 
 )doc");
 
@@ -1110,7 +1198,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D average pooling on the input.
@@ -1137,7 +1225,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, double}")
+    .Attr("T: {bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1172,7 +1260,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float}")
+    .Attr("T: {bfloat16, float}")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D max pooling on the input.
@@ -1200,8 +1288,8 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float} = DT_FLOAT")
-    .Attr("TInput: {float} = DT_FLOAT")
+    .Attr("T: {bfloat16, float} = DT_FLOAT")
+    .Attr("TInput: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     })
@@ -1266,7 +1354,7 @@ data_format: The data format of the input and output data. With the
 REGISTER_OP("L2Loss")
     .Input("t: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 L2 Loss.
@@ -1288,7 +1376,7 @@ REGISTER_OP("LRN")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
@@ -1323,7 +1411,7 @@ REGISTER_OP("LRNGrad")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
@@ -1349,8 +1437,8 @@ output: The gradients for LRN.
 
 REGISTER_OP("MaxPool")
     .Attr(
-        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
-        "half, qint8} = DT_FLOAT")
+        "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
+        "uint16, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -1376,8 +1464,8 @@ output: The max pooled output tensor.
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
-        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
-        "half, qint8} = DT_FLOAT")
+        "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
+        "uint16, qint8} = DT_FLOAT")
     .Attr(GetPaddingAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
@@ -1860,7 +1948,7 @@ backprops: The gradients:
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
@@ -1873,7 +1961,7 @@ REGISTER_OP("EluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes gradients for the exponential linear (Elu) operation.
@@ -1887,7 +1975,7 @@ backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
 REGISTER_OP("Selu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
@@ -1900,7 +1988,7 @@ REGISTER_OP("SeluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes gradients for the scaled exponential linear (Selu) operation.
@@ -1962,7 +2050,7 @@ backprops: The gradients: `gradients / (1 + abs(features)) ** 2`.
 REGISTER_OP("Softmax")
     .Input("logits: T")
     .Output("softmax: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
@@ -1982,7 +2070,7 @@ softmax: Same shape as `logits`.
 REGISTER_OP("LogSoftmax")
     .Input("logits: T")
     .Output("logsoftmax: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
@@ -2004,7 +2092,7 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Input("labels: T")
     .Output("loss: T")
     .Output("backprop: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
@@ -2033,7 +2121,7 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Input("labels: Tlabels")
     .Output("loss: T")
     .Output("backprop: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr("Tlabels: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle features;
@@ -2613,6 +2701,7 @@ REGISTER_OP("QuantizedConv2D")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -2641,7 +2730,11 @@ min_filter: The float value that the lowest quantized filter value represents.
 max_filter: The float value that the highest quantized filter value represents.
 min_output: The float value that the lowest quantized output value represents.
 max_output: The float value that the highest quantized output value represents.
-
+dilations: 1-D tensor of length 4.  The dilation factor for each dimension of
+    `input`. If set to k > 1, there will be k-1 skipped cells between each
+    filter element on that dimension. The dimension order is determined by the
+    value of `data_format`, see above for details. Dilations in the batch and
+    depth dimensions must be 1.
 )doc");
 
 REGISTER_OP("QuantizedMaxPool")
@@ -2866,6 +2959,25 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("__MklDummyConv2DWithBias")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("bias: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
+does not perform anything. It is just created as an intermediate output of
+merging Conv2D and BiasAdd.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklConv2DWithBias")
     .Input("input: T")
     .Input("filter: T")
@@ -2913,6 +3025,88 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
+gradients of convolution with respect to the filter.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Output("bias_grad: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape;
+      // Fetch the data_format attribute, which may not exist.
+      string data_format;
+      Status s = c->GetAttr("data_format", &data_format);
+
+      if (s.ok() && data_format == "NCHW") {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
+      } else {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
+      }
+      ShapeHandle sh;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
+      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
+      c->set_output(0, sh);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Dummy node that enables fusing Conv2DBackpropFilter and BiasAddGrad operator
+for MKL. This node does not perform anything. It is just created as an
+intermediate output of merging Conv2DBackpropFilter and BiasAddGrad.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklConv2DBackpropFilterWithBias")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter_size: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("bias_grad: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_bias_grad: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape;
+      // Fetch the data_format attribute, which may not exist.
+      string data_format;
+      Status s = c->GetAttr("data_format", &data_format);
+
+      if (s.ok() && data_format == "NCHW") {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
+      } else {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
+      }
+      ShapeHandle sh;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
+      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
+      c->set_output(0, sh);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of Conv2DBackpropFilterWithBias. Uses MKL DNN APIs to compute the
 gradients of convolution with respect to the filter.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
@@ -2991,6 +3185,78 @@ REGISTER_OP("_MklReluGrad")
 MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
 linear gradients for Relu operation.
 
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklElu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Elu operator. Uses MKL DNN APIs to implement Elu operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklEluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
+gradients for Elu operation.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklSoftmax")
+    .Input("logits: T")
+    .Input("mkl_logits: uint8")
+    .Output("softmax: T")
+    .Output("mkl_softmax: uint8")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    })
+    .Doc(R"doc(
+MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for Relu operation.
+)doc");
+
+REGISTER_OP("_MklTanh")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Tanh operator. Uses MKL DNN APIs to implement Tanh operator.
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklTanhGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of TanhGrad operator. Uses MKL DNN APIs to compute tanh
+gradients for Tanh operation.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
@@ -3095,7 +3361,11 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
+#ifndef INTEL_MKL_DNN
     .Output("workspace: T")
+#else
+    .Output("workspace: uint8")
+#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .Attr("depth_radius: int = 5")
@@ -3119,7 +3389,11 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
+#ifndef INTEL_MKL_DNN
     .Input("workspace: T")
+#else
+    .Input("workspace: uint8")
+#endif
     .Input("mkl_input_grads: uint8")
     .Input("mkl_input_image: uint8")
     .Input("mkl_output_image: uint8")

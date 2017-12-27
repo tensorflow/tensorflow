@@ -27,9 +27,6 @@ from tensorflow.python.debug.wrappers import grpc_wrapper
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.training import session_run_hook
 
-# The prefix for GRPC endpoint URLs.
-_GRPC_ENDPOINT_PREFIX = "grpc://"
-
 
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
@@ -249,8 +246,8 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
 
     Args:
       grpc_debug_server_addresses: (`list` of `str`) A list of the gRPC debug
-        server addresses, in the format of <host:port>, without the "grpc://"
-        prefix. For example: ["localhost:7000", "192.168.0.2:8000"]
+        server addresses, in the format of <host:port>, with or without the
+        "grpc://" prefix. For example: ["localhost:7000", "192.168.0.2:8000"]
       watch_fn: A function that allows for customizing which ops to watch at
         which specific steps. See doc of
         `dumping_wrapper.DumpingDebugWrapperSession.__init__` for details.
@@ -258,23 +255,14 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
       log_usage: (bool) Whether usage is to be logged.
-
-    Raises:
-      ValueError: if any debugger server addresses start with grpc://.
     """
-
-    for address in grpc_debug_server_addresses:
-      if address.startswith(_GRPC_ENDPOINT_PREFIX):
-        raise ValueError(
-            ("Debug server address %r starts with %r. It should not because "
-             "the hook already automatically adds the prefix.") % (
-                 address, _GRPC_ENDPOINT_PREFIX))
-
-    # A wrapper session responsible for GRPC communication.
     self._grpc_debug_wrapper_session = None
     self._thread_name_filter = thread_name_filter
+    self._grpc_debug_server_addresses = (
+        grpc_debug_server_addresses
+        if isinstance(grpc_debug_server_addresses, list)
+        else [grpc_debug_server_addresses])
 
-    self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._watch_fn = watch_fn
     self._log_usage = log_usage
 
@@ -315,3 +303,41 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
 
     return session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)
+
+
+class TensorBoardDebugHook(GrpcDebugHook):
+  """A tfdbg hook that can be used with TensorBoard Debugger Plugin.
+
+  This hook is the same as `GrpcDebugHook`, except that it uses a predefined
+    `watch_fn` that
+    1) uses `DebugIdentity` debug ops with the `gated_grpc` attribute set to
+        `True`, to allow the interactive enabling and disabling of tensor
+       breakpoints.
+    2) watches all tensors in the graph.
+  This saves the need for the user to define a `watch_fn`.
+  """
+
+  def __init__(self,
+               grpc_debug_server_addresses,
+               thread_name_filter=None,
+               log_usage=True):
+    def _gated_grpc_watch_fn(fetches, feeds):
+      del fetches, feeds  # Unused.
+      return framework.WatchOptions(
+          debug_ops=["DebugIdentity(gated_grpc=true)"])
+
+    super(TensorBoardDebugHook, self).__init__(
+        grpc_debug_server_addresses,
+        watch_fn=_gated_grpc_watch_fn,
+        thread_name_filter=thread_name_filter,
+        log_usage=log_usage)
+
+    self._grpc_debug_server_addresses = grpc_debug_server_addresses
+    self._sent_graph_version = -1
+
+  def before_run(self, run_context):
+    self._sent_graph_version = grpc_wrapper.publish_traceback(
+        self._grpc_debug_server_addresses, run_context.session.graph,
+        run_context.original_args.feed_dict, run_context.original_args.fetches,
+        self._sent_graph_version)
+    return super(TensorBoardDebugHook, self).before_run(run_context)

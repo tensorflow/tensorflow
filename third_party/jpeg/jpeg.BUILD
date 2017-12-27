@@ -5,7 +5,7 @@ licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
 exports_files(["LICENSE.md"])
 
-load("@%ws%//third_party:common.bzl", "template_rule")
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
 
 libjpegturbo_nocopts = "-[W]error"
 
@@ -323,13 +323,17 @@ JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
     "#undef RIGHT_SHIFT_IS_UNSIGNED": "",
 }
 
-JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
+JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = {
     "#undef WITH_SIMD": "#define WITH_SIMD 1",
 }
 
-JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = JCONFIG_NOWIN_COMMON_SUBSTITUTIONS + {
+JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = {
     "#undef WITH_SIMD": "",
 }
+
+JCONFIG_NOWIN_SIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)
+
+JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)
 
 template_rule(
     name = "jconfig_nowin_nosimd",

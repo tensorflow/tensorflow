@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
@@ -52,7 +53,8 @@ def _SwitchGrad(op, *grad):
       # TODO(yuanbyu): Perform shape inference with this new input.
       if grad[1] is not None:
         # pylint: disable=protected-access
-        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1],
+                                             enforce_shape_invariant=False)
         # pylint: enable=protected-access
       return None, None
     elif grad[0] is not None:
@@ -91,7 +93,7 @@ def _MergeGrad(op, grad, _):
   input_op = op.inputs[0].op
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
-  op_ctxt = control_flow_ops._GetOutputContext(input_op)
+  op_ctxt = control_flow_util.GetOutputContext(input_op)
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(op_ctxt, WhileContext):

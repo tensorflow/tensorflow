@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
 import random
@@ -60,6 +61,41 @@ class _EagerContext(threading.local):
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
+
+
+ContextStackEntry = collections.namedtuple(
+    "ContextStackEntry", ["is_building_function", "enter_context_fn"])
+
+
+class ContextStack(threading.local):
+  """A thread-local stack of context switches."""
+
+  def __init__(self):
+    super(ContextStack, self).__init__()
+    self.stack = []
+
+  def push(self, is_building_function, enter_context_fn):
+    """Push metadata about a context switch onto the stack.
+
+    A context switch can take one of two forms: installing a graph as the
+    default graph, or entering the eager context.
+
+    Args:
+      is_building_function: (bool.) Whether the context is building a function.
+      enter_context_fn: (function.) A callable that executes the context switch.
+        For example, `graph.as_default` or `eager_mode`.
+    """
+
+    self.stack.append(
+        ContextStackEntry(is_building_function, enter_context_fn))
+
+  def pop(self):
+    """Pop the stack."""
+
+    self.stack.pop()
+
+
+context_stack = ContextStack()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -183,10 +219,14 @@ class Context(object):
     ctx = self._eager_context
     old_mode = ctx.mode
     ctx.mode = mode
+    if mode == EAGER_MODE:
+      context_stack.push(False, eager_mode)
     try:
       yield
     finally:
       ctx.mode = old_mode
+      if mode == EAGER_MODE:
+        context_stack.pop()
 
   def in_graph_mode(self):
     """Returns True if current thread is in GRAPH mode."""
@@ -287,6 +327,21 @@ class Context(object):
     """The number of GPUs available to execute operations."""
     self._initialize_handle_and_devices()
     return self._num_gpus
+
+  def add_function(self, fn):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunction(
+          self._handle,  # pylint: disable=protected-access
+          fn,
+          status)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.

@@ -26,6 +26,7 @@ from tensorflow.contrib.estimator.python.estimator.head import *
 from tensorflow.contrib.estimator.python.estimator.linear import *
 from tensorflow.contrib.estimator.python.estimator.logit_fns import *
 from tensorflow.contrib.estimator.python.estimator.multi_head import *
+from tensorflow.contrib.estimator.python.estimator.replicate_model_fn import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
@@ -45,6 +46,8 @@ _allowed_symbols = [
     'call_logit_fn',
     'dnn_logit_fn_builder',
     'linear_logit_fn_builder',
+    'replicate_model_fn',
+    'GatheringOptimizer',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

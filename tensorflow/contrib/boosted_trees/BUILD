@@ -601,6 +601,7 @@ py_library(
         ":init_py",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/boosted_trees/estimator_batch:custom_export_strategy",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:dnn_tree_combined_estimator",
         "//tensorflow/contrib/boosted_trees/estimator_batch:init_py",
         "//tensorflow/contrib/boosted_trees/estimator_batch:trainer_hooks",
         "//tensorflow/contrib/boosted_trees/lib:categorical_split_handler",

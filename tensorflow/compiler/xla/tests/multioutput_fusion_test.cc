@@ -76,8 +76,11 @@ class MultiOutputFusionTest : public HloTestBase {
         elem_shape2, HloOpcode::kAdd, broadcast, param1));
     HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
         elem_shape2, HloOpcode::kSubtract, param1, broadcast));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(
-        HloInstruction::CreateBinary(elem_shape2, HloOpcode::kDot, sub, add2));
+        HloInstruction::CreateDot(elem_shape2, sub, add2, dot_dnums));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -96,14 +99,13 @@ class MultiOutputFusionTest : public HloTestBase {
           nullptr);
     }
 
-    Literal input;
-    input.PopulateWithValue<float>(2.5f, {size, size});
-    auto p1 = TransferToDevice(input);
-    auto p0 = TransferToDevice(*Literal::CreateR0<float>(-9.0f));
+    Literal arg1;
+    arg1.PopulateWithValue<float>(2.5f, {size, size});
 
     Literal expect;
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f, {size, size});
-    auto actual = ExecuteAndTransfer(std::move(hlo_module), {p0, p1});
+    auto actual = ExecuteAndTransfer(
+        std::move(hlo_module), {Literal::CreateR0<float>(-9.0f).get(), &arg1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }
 
@@ -133,8 +135,11 @@ class MultiOutputFusionTest : public HloTestBase {
     HloInstruction* reshape =
         builder.AddInstruction(HloInstruction::CreateReshape(
             ShapeUtil::MakeShape(F32, {size, 1}), add));
-    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(F32, {1}), HloOpcode::kDot, sub, reshape));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(0);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+        ShapeUtil::MakeShape(F32, {1}), sub, reshape, dot_dnums));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -157,11 +162,9 @@ class MultiOutputFusionTest : public HloTestBase {
     Literal input0, input1;
     input0.PopulateWithValue<float>(2.5f, {size});
     input1.PopulateWithValue<double>(1, {size});
-    auto p0 = TransferToDevice(input0);
-    auto p1 = TransferToDevice(input1);
 
     Literal expect = *Literal::CreateR1<float>({size * 1.5f * 3.5f});
-    auto actual = ExecuteAndTransfer(std::move(hlo_module), {p0, p1});
+    auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }
 };

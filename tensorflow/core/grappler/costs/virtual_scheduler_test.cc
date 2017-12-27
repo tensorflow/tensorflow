@@ -29,7 +29,8 @@ class TestVirtualScheduler : public VirtualScheduler {
  public:
   TestVirtualScheduler(const GrapplerItem* grappler_item,
                        const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(grappler_item, use_static_shapes, cluster) {}
+      : VirtualScheduler(grappler_item, use_static_shapes, cluster,
+                         &ready_node_manager_) {}
 
   FRIEND_TEST(VirtualSchedulerTest, CalculateOutputSize);
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
@@ -37,6 +38,9 @@ class TestVirtualScheduler : public VirtualScheduler {
   FRIEND_TEST(VirtualSchedulerTest, ComplexDependency);
   FRIEND_TEST(VirtualSchedulerTest, Variable);
   FRIEND_TEST(VirtualSchedulerTest, InterDeviceTransfer);
+
+ protected:
+  FirstReadyManager ready_node_manager_;
 };
 
 class VirtualSchedulerTest : public ::testing::Test {
@@ -44,8 +48,15 @@ class VirtualSchedulerTest : public ::testing::Test {
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
   std::unordered_map<const NodeDef*, NodeState> node_states_;
 
+  // Device names:
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
   const string kCPU1 = "/job:localhost/replica:0/task:0/cpu:1";
+  const string kChannelFrom0To1 = "Channel from CPU0 to CPU1";
+  const string kChannelFrom1To0 = "Channel from CPU1 to CPU0";
+  // Op names:
+  const string kSend = "_Send";
+  const string kRecv = "_Recv";
+  const string kConv2D = "Conv2D";
 
   DeviceProperties GetDummyCPUDevice() {
     // Create CPU with 2 cores, 4 Ghz freq, 2 GB/s mem bandwidth.
@@ -59,29 +70,26 @@ class VirtualSchedulerTest : public ::testing::Test {
     return cpu_device;
   }
 
+  void NodeSetUp(const string& name, const string& op_name,
+                 const string& device_name, const uint64 time_ready,
+                 NodeDef* node) {
+    node->set_name(name);
+    node->set_op(op_name);
+    node->set_device(device_name);
+
+    node_states_[node] = NodeState();
+    node_states_[node].time_ready = time_ready;
+    node_states_[node].device_name = device_name;
+  }
+
   void SetUp() override {
-    // Initializes nodes for manager
-    node1_.set_name("Node1");
-    node2_.set_name("Node2");
-    node3_.set_name("Node3");
-    node4_.set_name("Node4");
-    node5_.set_name("Node5");
-    node6_.set_name("Node6");
-
-    // Initialize node_states, with time_ready in reverse order.
-    node_states_[&node1_] = NodeState();
-    node_states_[&node2_] = NodeState();
-    node_states_[&node3_] = NodeState();
-    node_states_[&node4_] = NodeState();
-    node_states_[&node5_] = NodeState();
-    node_states_[&node6_] = NodeState();
-
-    node_states_[&node6_].time_ready = 1000;
-    node_states_[&node5_].time_ready = 2000;
-    node_states_[&node4_].time_ready = 3000;
-    node_states_[&node3_].time_ready = 4000;
-    node_states_[&node2_].time_ready = 5000;
-    node_states_[&node1_].time_ready = 6000;
+    // node1_ to node6_ on kCPU0, with time_ready in reverse_order.
+    NodeSetUp("Node1", kConv2D, kCPU0, 6000, &node1_);
+    NodeSetUp("Node2", kConv2D, kCPU0, 5000, &node2_);
+    NodeSetUp("Node3", kConv2D, kCPU0, 4000, &node3_);
+    NodeSetUp("Node4", kConv2D, kCPU0, 3000, &node4_);
+    NodeSetUp("Node5", kConv2D, kCPU0, 2000, &node5_);
+    NodeSetUp("Node6", kConv2D, kCPU0, 1000, &node6_);
 
     // Initializes cluster_ and placer_.
     std::unordered_map<string, DeviceProperties> devices;
@@ -1144,23 +1152,24 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
 
   manager.AddNode(&node1_);
   EXPECT_EQ("Node1", manager.GetCurrNode()->name());
 }
 
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
 }
 
 TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1187,8 +1196,8 @@ TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1207,15 +1216,9 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   NodeDef node7;
   NodeDef node8;
   NodeDef node9;
-  node7.set_name("Node7");
-  node8.set_name("Node8");
-  node9.set_name("Node9");
-  node_states_[&node7] = NodeState();
-  node_states_[&node8] = NodeState();
-  node_states_[&node9] = NodeState();
-  node_states_[&node7].time_ready = 5;
-  node_states_[&node8].time_ready = 4;
-  node_states_[&node9].time_ready = 3;
+  NodeSetUp("Node7", kConv2D, kCPU0, 5, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU0, 4, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU0, 3, &node9);
 
   manager.AddNode(&node7);
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
@@ -1240,6 +1243,200 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   manager.RemoveCurrNode();
   EXPECT_EQ("Node4", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, DeterminismInFirstReadyManager) {
+  FirstReadyManager manager1;
+  manager1.Init(&node_states_);
+  FirstReadyManager manager2;
+  manager2.Init(&node_states_);
+
+  // 6 nodes with same time_ready.
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeDef node10;
+  NodeDef node11;
+  NodeDef node12;
+  NodeSetUp("Node7", kConv2D, kCPU0, 1000, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU0, 1000, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU0, 1000, &node9);
+  NodeSetUp("Node10", kConv2D, kCPU0, 1000, &node10);
+  NodeSetUp("Node11", kConv2D, kCPU0, 1000, &node11);
+  NodeSetUp("Node12", kConv2D, kCPU0, 1000, &node12);
+
+  // Add the above 6 nodes to manager1.
+  manager1.AddNode(&node7);
+  manager1.AddNode(&node8);
+  manager1.AddNode(&node9);
+  manager1.AddNode(&node10);
+  manager1.AddNode(&node11);
+  manager1.AddNode(&node12);
+
+  // Add the above 6 nodes to manager2, but in a different order.
+  manager2.AddNode(&node8);
+  manager2.AddNode(&node11);
+  manager2.AddNode(&node9);
+  manager2.AddNode(&node10);
+  manager2.AddNode(&node7);
+  manager2.AddNode(&node12);
+
+  // Expect both managers return the same nodes for deterministic node
+  // scheduling.
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_TRUE(manager1.Empty());
+  EXPECT_TRUE(manager2.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeCompositeNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  manager.AddNode(&node1_);
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+
+  manager.AddNode(&node1_);
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  // GetCurrNode()  should return the same node even if some nodes are added,
+  // until RemoveCurrNode() is called.
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, MultiDeviceSendRecvComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  // Additional nodes on kCPU1
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeSetUp("Node7", kConv2D, kCPU1, 1001, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU1, 2001, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU1, 3001, &node9);
+
+  // Send and Recv nodes.
+  NodeDef send1;
+  NodeDef send2;
+  NodeDef recv1;
+  NodeDef recv2;
+  NodeSetUp("Send1", kSend, kChannelFrom0To1, 2002, &send1);
+  NodeSetUp("Send2", kSend, kChannelFrom1To0, 2005, &send2);
+  NodeSetUp("Recv1", kRecv, kCPU0, 2003, &recv1);
+  NodeSetUp("Recv2", kRecv, kCPU1, 2004, &recv2);
+
+  // Insert nodes.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+  manager.AddNode(&node5_);
+  manager.AddNode(&node6_);
+  manager.AddNode(&node7);
+  manager.AddNode(&node8);
+  manager.AddNode(&node9);
+  manager.AddNode(&send1);
+  manager.AddNode(&send2);
+  manager.AddNode(&recv1);
+  manager.AddNode(&recv2);
+
+  // on kCPU0; last one is node6_, on kCPU1: last one is node9;
+  // so choose one that has earliest time_ready among node6_, node9,
+  // Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Then, the next one on kCPU0 is node5_; choose the earliest time_ready node
+  // among node5_, node9, Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Send1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Sen2, Recv1, and Recv2.
+  EXPECT_EQ("Recv1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Send2, and Recv2.
+  EXPECT_EQ("Recv2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, and Send2.
+  EXPECT_EQ("Send2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node4_, node9.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node9.
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node8.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node7.
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Then, just the nodes on kCPU1 -- LIFO.
   EXPECT_EQ("Node3", manager.GetCurrNode()->name());
   manager.RemoveCurrNode();
   EXPECT_EQ("Node2", manager.GetCurrNode()->name());
@@ -1580,7 +1777,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   EXPECT_NE(exit_start_micro, exit_1_start_micro);
 
   // Check dependency among the nodes; no matter what scheduling mechanism we
-  // use, the scheduled ops should follow these depedency chains.
+  // use, the scheduled ops should follow these dependency chains.
   // Note that currently, VirtualScheduler executes while/Merge twice; hence,
   // we're not testing dependency chains related to while/Merge.
   // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
@@ -1634,20 +1831,20 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
     const auto& name = x.first;
     const auto& node_info = x.second;
     const auto& op = node_info.op_info.op();
-    if (op == "_Recv") {
+    if (op == kRecv) {
       recv_op_names[get_port_num(name)] = name;
-    } else if (op == "_Send") {
+    } else if (op == kSend) {
       send_op_names[get_port_num(name)] = name;
     }
     op_count[op]++;
   }
 
   // Same number of _Send and _Recv.
-  EXPECT_EQ(op_count.at("_Send"), op_count.at("_Recv"));
+  EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
   // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at("_Recv"), 4);
-  EXPECT_EQ(op_count.at("_Send"), 4);
+  EXPECT_EQ(op_count.at(kRecv), 4);
+  EXPECT_EQ(op_count.at(kSend), 4);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {

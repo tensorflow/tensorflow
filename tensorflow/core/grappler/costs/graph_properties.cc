@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -264,6 +265,87 @@ bool IsEnterWithQueue(const Node& node) {
   return false;
 }
 
+bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
+  if (proto.unknown_rank()) {
+    return true;
+  }
+  for (const auto& dim : proto.dim()) {
+    if (dim.size() < 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void VerboseLogUnknownDimensionSources(
+    const Graph& graph,
+    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+        input_properties_map,
+    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+        output_properties_map) {
+  if (!VLOG_IS_ON(2)) {
+    return;
+  }
+
+  VLOG(2) << "Nodes with known inputs, but with unknown output dimensions:";
+
+  // Find all nodes in the graph for which we
+  // do not have any unknown dimensions in their inputs, but
+  // we have some unknown dimensions in their outputs.
+  std::map<string, int> op_to_count;
+  for (const Node* const node : graph.nodes()) {
+    if (node->num_outputs() == 0) {
+      continue;
+    }
+
+    const auto& input_properties = input_properties_map.at(node->name());
+    const auto& output_properties = output_properties_map.at(node->name());
+
+    bool has_unknown_inputs = false;
+    for (int i = 0; i < node->num_inputs(); ++i) {
+      if (HasAnyUnknownDimensions(input_properties[i].shape())) {
+        has_unknown_inputs = true;
+        break;
+      }
+    }
+
+    if (has_unknown_inputs) {
+      continue;
+    }
+
+    for (int i = 0; i < node->num_outputs(); ++i) {
+      if (HasAnyUnknownDimensions(output_properties[i].shape())) {
+        string inputs = "input_shapes=[";
+        for (int i = 0; i < node->num_inputs(); ++i) {
+          inputs +=
+              PartialTensorShape::DebugString(input_properties[i].shape());
+        }
+        inputs += "]";
+
+        string outputs = "output_shapes=[";
+        for (int i = 0; i < node->num_outputs(); ++i) {
+          outputs +=
+              PartialTensorShape::DebugString(output_properties[i].shape());
+        }
+        outputs += "]";
+
+        VLOG(2) << "Node: " << node->name() << ", Op: " << node->def().op()
+                << ", " << inputs << ", " << outputs;
+
+        op_to_count[node->def().op()]++;
+
+        // don't log again for this node
+        break;
+      }
+    }
+  }
+  VLOG(2) << "Op types with known inputs, but with unknown output dimensions "
+          << "(format: <op_type> (<count>)):";
+  for (const auto& p : op_to_count) {
+    VLOG(2) << p.first << " (" << p.second << ")";
+  }
+}
+
 }  // namespace
 
 // Queue of nodes to process. Nodes can be enqueued in any order, but will be
@@ -312,9 +394,15 @@ class SymbolicShapeRefiner {
   Status UpdateNode(const Node* node, bool relax, bool* refined) {
     return shape_refiner_->UpdateNode(node, relax, refined);
   }
-  Status SetShape(const Node* node, int output_port,
-                  shape_inference::ShapeHandle shape) {
-    return shape_refiner_->SetShape(node, output_port, shape);
+  Status SetUnknownShape(const Node* node, int output_port) {
+    shape_inference::ShapeHandle shape =
+        GetUnknownOutputShape(node, output_port);
+    InferenceContext* ctx = GetContext(node);
+    if (ctx == nullptr) {
+      return errors::InvalidArgument("Missing context");
+    }
+    ctx->set_output(output_port, shape);
+    return Status::OK();
   }
 
   struct ShapeId {
@@ -646,6 +734,23 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
+Status GraphProperties::OverwriteFedPorts(
+    SymbolicShapeRefiner* shape_refiner,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+    const Node* node, TopoQueue* new_shapes) const {
+  auto it = fed_ports.find(node->name());
+  Status status;
+  if (it != fed_ports.end()) {
+    // It is possible to feed node output ports with tensors of any shape: as a
+    // result, the shape of a fed port is completely unknown.
+    for (const int output_port : it->second) {
+      status.Update(shape_refiner->SetUnknownShape(node, output_port));
+    }
+    new_shapes->push(node);
+  }
+  return status;
+}
+
 // Manually propagate the input shape for Enter nodes and update any Merge node
 // outputs.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
@@ -673,9 +778,10 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
   return Status::OK();
 }
 
-Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
-                                     bool relax, const Node* n,
-                                     TopoQueue* new_shapes) {
+Status GraphProperties::UpdateShapes(
+    SymbolicShapeRefiner* shape_refiner, bool relax,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+    const Node* n, TopoQueue* new_shapes) const {
   if (n->IsEnter()) {
     // The Enter shape function always forwards an UnknownShape, so do the right
     // thing here.
@@ -695,7 +801,9 @@ Status GraphProperties::UpdateShapes(SymbolicShapeRefiner* shape_refiner,
       }
     }
   }
-  return Status::OK();
+  // Nodes can be fed with any shape. The TensorFlow shape inference code can't
+  // handle this properly, so overwrite its behavior here.
+  return OverwriteFedPorts(shape_refiner, fed_ports, n, new_shapes);
 }
 
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
@@ -703,6 +811,7 @@ Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
     const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
         resources,
+    const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algoritm should converge in at most
@@ -728,8 +837,8 @@ Status GraphProperties::PropagateShapes(
       for (const Edge* e : n->out_edges()) {
         if (!e->IsControlEdge()) {
           const Node* fanout = e->dst();
-          TF_RETURN_IF_ERROR(
-              UpdateShapes(shape_refiner, relax, fanout, new_shapes));
+          TF_RETURN_IF_ERROR(UpdateShapes(shape_refiner, relax, fed_ports,
+                                          fanout, new_shapes));
         }
       }
     }
@@ -743,6 +852,10 @@ Status GraphProperties::PropagateShapes(
     }
   } while (!new_shapes->empty() &&
            num_resource_iterations++ < max_resource_iterations);
+
+  if (!new_shapes->empty()) {
+    return errors::Internal("Shape inference failed to converge");
+  }
 
   return Status::OK();
 }
@@ -803,7 +916,7 @@ Status GraphProperties::UpdateResource(
   return Status::OK();
 }
 
-Status GraphProperties::InferStatically() {
+Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   Graph graph(OpRegistry::Global());
   FunctionLibraryDefinition function_library(graph.op_registry(),
                                              item_.graph.library());
@@ -820,11 +933,21 @@ Status GraphProperties::InferStatically() {
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
 
+  std::unordered_map<string, std::unordered_set<int>> fed_ports;
+  if (!assume_valid_feeds) {
+    for (const auto& feed : item_.feed) {
+      int port_index = 0;
+      string node_name = ParseNodeName(feed.first, &port_index);
+      fed_ports[node_name].insert(port_index);
+    }
+  }
+
   // List the resources and the nodes using them. Also collect the Enter and
   // Merge nodes.
   std::unordered_map<const Node*, std::unordered_set<const Node*>> resources;
   std::unordered_set<const Node*> enter_nodes;
   std::unordered_set<const Node*> merge_nodes;
+  std::unordered_set<const Node*> fed_nodes;
   int num_loops = 0;
   for (const Node* const node : graph.nodes()) {
     for (int i = 0; i < node->num_inputs(); ++i) {
@@ -841,6 +964,9 @@ Status GraphProperties::InferStatically() {
     } else if (node->IsNextIteration()) {
       ++num_loops;
     }
+    if (fed_ports.find(node->name()) != fed_ports.end()) {
+      fed_nodes.insert(node);
+    }
   }
 
   SymbolicShapeRefiner refiner(&shape_refiner);
@@ -855,15 +981,22 @@ Status GraphProperties::InferStatically() {
     // Force the propagation of shapes of Enter nodes manually (the Enter shape
     // function always forwards an UnknownShape).
     for (const Node* node : enter_nodes) {
-      TF_RETURN_IF_ERROR(UpdateShapes(&refiner, relax, node, &new_shapes));
+      TF_RETURN_IF_ERROR(
+          UpdateShapes(&refiner, relax, fed_ports, node, &new_shapes));
     }
     // Seed the propagation of shapes through merge nodes.
     for (const Node* node : merge_nodes) {
-      TF_RETURN_IF_ERROR(UpdateShapes(&refiner, relax, node, &new_shapes));
+      TF_RETURN_IF_ERROR(
+          UpdateShapes(&refiner, relax, fed_ports, node, &new_shapes));
+    }
+    // Also seed the propagation of shapes in the fanout of fed nodes.
+    for (const Node* node : fed_nodes) {
+      TF_RETURN_IF_ERROR(
+          OverwriteFedPorts(&refiner, fed_ports, node, &new_shapes));
     }
     // Propagate shapes normally.
-    TF_RETURN_IF_ERROR(
-        PropagateShapes(&refiner, relax, &new_shapes, resources, num_loops));
+    TF_RETURN_IF_ERROR(PropagateShapes(&refiner, relax, &new_shapes, resources,
+                                       fed_ports, num_loops));
   }
 
   // Track shapes globally across the graph.
@@ -872,6 +1005,10 @@ Status GraphProperties::InferStatically() {
   for (const Node* const node : graph.nodes()) {
     auto node_ctx = shape_refiner.GetContext(node);
     if (!node_ctx) {
+      continue;
+    }
+    // Skip any information that comes from fed nodes.
+    if (fed_ports.find(node->name()) != fed_ports.end()) {
       continue;
     }
     for (const auto& merged_shapes : node_ctx->MergedShapes()) {
@@ -896,7 +1033,7 @@ Status GraphProperties::InferStatically() {
   }
 
   for (const Node* const node : graph.nodes()) {
-    VLOG(1) << "<Node> " << node->name();
+    VLOG(3) << "Filling in graph properties for node: " << node->name();
     auto ctx = shape_refiner.GetContext(node);
     if (!ctx) {
       continue;
@@ -947,6 +1084,10 @@ Status GraphProperties::InferStatically() {
       }
     }
   }
+
+  // Help trace the unknown dimensions to their origins.
+  VerboseLogUnknownDimensionSources(graph, input_properties_,
+                                    output_properties_);
 
   return Status::OK();
 }

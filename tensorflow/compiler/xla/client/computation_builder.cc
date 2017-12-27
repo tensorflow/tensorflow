@@ -625,7 +625,41 @@ ComputationDataHandle ComputationBuilder::Lt(
 
 ComputationDataHandle ComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
-  return BinaryOp(BINOP_DOT, lhs, rhs, /*broadcast_dimensions=*/{});
+  StatusOr<std::unique_ptr<Shape>> lhs_shape_or_status = GetShape(lhs);
+  if (!lhs_shape_or_status.ok()) {
+    NoteError(lhs_shape_or_status.status());
+    return ComputationDataHandle();
+  }
+  std::unique_ptr<Shape> lhs_shape = lhs_shape_or_status.ConsumeValueOrDie();
+
+  DotDimensionNumbers dimension_numbers;
+  dimension_numbers.add_lhs_contracting_dimensions(
+      lhs_shape->dimensions_size() == 1 ? 0 : 1);
+  dimension_numbers.add_rhs_contracting_dimensions(0);
+  return DotGeneral(lhs, rhs, dimension_numbers);
+}
+
+ComputationDataHandle ComputationBuilder::DotGeneral(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  DotRequest request;
+  *request.mutable_lhs() = lhs;
+  *request.mutable_rhs() = rhs;
+  *request.mutable_dimension_numbers() = dimension_numbers;
+
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_dot_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making Dot request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::Conv(
@@ -1467,6 +1501,34 @@ ComputationDataHandle ComputationBuilder::While(
 
   VLOG(2) << "making while request";
   Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
+ComputationDataHandle ComputationBuilder::Conditional(
+    const ComputationDataHandle& predicate,
+    const ComputationDataHandle& true_operand,
+    const Computation& true_computation,
+    const ComputationDataHandle& false_operand,
+    const Computation& false_computation) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  ConditionalRequest request;
+  *request.mutable_predicate() = predicate;
+  *request.mutable_true_operand() = true_operand;
+  *request.mutable_true_computation() = true_computation.handle();
+  *request.mutable_false_operand() = false_operand;
+  *request.mutable_false_computation() = false_computation.handle();
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_conditional_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making conditional op request";
+  Status s = client_->stub()->Op(&op_request, &response);
+
   return ParseOpResponse(s, &response);
 }
 

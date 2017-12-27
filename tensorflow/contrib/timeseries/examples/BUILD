@@ -103,6 +103,7 @@ py_test(
     deps = [
         ":lstm",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 

@@ -114,6 +114,26 @@ message HloExtraInfoMapResult {
   map<string, HloExtraInfoResult> hlo_extrainfo_map = 1;
 }
 
+// Result proto for host-independent job information.
+message HostIndependentJobInfoResult {
+  // The change-list number of this build.
+  optional int64 change_list = 1;
+  // The time of this build.
+  optional int64 build_time = 2;
+  // The target of this build.
+  optional string build_target = 3;
+}
+
+// Result proto for host-dependent job information.
+message HostDependentJobInfoResult {
+  // This ID of the host where the job was run on.
+  optional string host_id = 1;
+  // The command line used to run the job.
+  optional string command_line = 2;
+  // The start time of the job on this host.
+  optional int64 start_time = 3;
+}
+
 // Result proto for RunEnvironment (the run environment of a profiling session).
 message RunEnvironmentResult {
   // Number of hosts used.
@@ -124,8 +144,10 @@ message RunEnvironmentResult {
   optional int32 tpu_core_count = 3;
   // The per-TPU-core batch size.
   optional int32 per_core_batch_size = 4;
-  // Job information including build target and command line.
-  optional string job_info = 5;
+  // Host-independent job information.
+  optional HostIndependentJobInfoResult host_independent_job_info = 5;
+  // Host-dependent job information.
+  repeated HostDependentJobInfoResult host_dependent_job_info = 6;
 }
 
 // Result proto for TfStatsHelper.

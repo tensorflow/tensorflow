@@ -21,7 +21,6 @@ failing_cpu_cc_tests="\
     //tensorflow/core:lib_core_status_test + \
     //tensorflow/core:lib_monitoring_collection_registry_test + \
     //tensorflow/core:lib_strings_numbers_test + \
-    //tensorflow/core:lib_strings_str_util_test + \
     //tensorflow/core/platform/hadoop:hadoop_file_system_test + \
     //tensorflow/core:platform_file_system_test + \
     //tensorflow/core:platform_logging_test + \
@@ -43,7 +42,6 @@ broken_cpu_cc_tests="\
     //tensorflow/core/platform/cloud:gcs_file_system_test + \
     //tensorflow/core/kernels/cloud:bigquery_table_accessor_test + \
     //tensorflow/core/kernels/hexagon:graph_transferer_test + \
-    //tensorflow/core/kernels/hexagon:quantized_matmul_op_for_hexagon_test + \
     //tensorflow/core/kernels:remote_fused_graph_execute_utils_test + \
     //tensorflow/core/kernels:requantize_op_test + \
     //tensorflow/core/kernels:requantization_range_op_test + \
@@ -96,10 +94,6 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
-function clean_output_base() {
-  bazel clean --expunge
-}
-
 function run_configure_for_cpu_build {
   # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
   # yes "" | ./configure doesn't work on Windows, so we set all the
@@ -115,7 +109,7 @@ function run_configure_for_cpu_build {
     export TF_NEED_MKL=0
   fi
   export TF_NEED_VERBS=0
-  export TF_NEED_GCP=0
+  export TF_NEED_GCP=1
   export TF_NEED_HDFS=0
   export TF_NEED_OPENCL_SYCL=0
   echo "" | ./configure

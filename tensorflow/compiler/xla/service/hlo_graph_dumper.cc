@@ -784,7 +784,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
+    if (tensorflow::StringPiece(constant->name()).starts_with("constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
@@ -1000,7 +1000,7 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
   if (tensorflow::StringPiece(instr->name())
-          .starts_with(StrCat("%", HloOpcodeString(instr->opcode())))) {
+          .starts_with(HloOpcodeString(instr->opcode()))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
@@ -1036,50 +1036,15 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
-  string opcode_specific_info = [&]() -> string {
-    switch (instr->opcode()) {
-      case HloOpcode::kRng:
-        return RandomDistribution_Name(instr->random_distribution());
-      case HloOpcode::kConvolution:
-        return StrCat(
-            HtmlLikeStringSanitize(
-                instr->ConvolutionDimensionNumbersToString()),
-            "<br/>",
-            HtmlLikeStringSanitize(window_util::ToString(instr->window())));
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kTranspose:
-      case HloOpcode::kReduce:
-        return Printf("dims={%s}", Join(instr->dimensions(), ","));
-      case HloOpcode::kGetTupleElement:
-        return Printf("index=%lld", instr->tuple_index());
-      case HloOpcode::kBatchNormTraining:
-      case HloOpcode::kBatchNormGrad:
-        return Printf("feature_index=%lld", instr->feature_index());
-      case HloOpcode::kCustomCall:
-        return Printf("custom_call_target=%s", instr->custom_call_target());
-      case HloOpcode::kSlice:
-        return std::all_of(instr->slice_strides().begin(),
-                           instr->slice_strides().end(),
-                           [](int64 stride) { return stride == 1; })
-                   ? ""
-                   : StrCat("stride=", VectorString(instr->slice_strides()));
-      case HloOpcode::kSend:
-      case HloOpcode::kSendDone:
-      case HloOpcode::kRecv:
-      case HloOpcode::kRecvDone:
-        return StrCat("channel_id=", instr->channel_id());
-      default:
-        return "";
-    }
-  }();
-
   std::vector<string> lines;
-  if (!opcode_specific_info.empty()) {
-    lines.push_back(opcode_specific_info);
+
+  // Get the instruction's extra attributes excluding the names of its
+  // subcomputations, since those are drawn explicitly in the graph.
+  for (const auto& line : instr->ExtraAttributesToString(
+           HloPrintOptions().set_print_subcomputation_references(false))) {
+    lines.push_back(HtmlLikeStringSanitize(line));
   }
-  if (instr->has_sharding()) {
-    lines.push_back(StrCat("sharding=", instr->sharding().ToString()));
-  }
+
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
@@ -1091,7 +1056,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         instr->shape().dimensions_size() > 1 &&
         !ShapeUtil::IsTuple(instr->shape())) {
       StrAppend(&instr_shape, "{",
-                Join(instr->shape().layout().minor_to_major(), ","), "}");
+                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
@@ -1353,19 +1318,16 @@ string SaveGraph(const string& graph,
       file_extension = ".pbtxt";
       break;
   }
-  string path = JoinPath(
-      dest_path, StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+  string path = JoinPath(dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
-  int fd = mkstemps(&path[0], file_extension.length());
-  if (fd < 0) {
+  auto env = tensorflow::Env::Default();
+  if (!env->CreateUniqueFileName(&path, file_extension)) {
     status =
         Status(tensorflow::error::Code::UNKNOWN,
                StrCat("Failed to create temporary file to dump HLO graph: ",
                       strerror(errno)));
   } else {
-    status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
-    close(fd);
+    status = tensorflow::WriteStringToFile(env, path, graph);
   }
   if (!status.ok()) {
     LOG(WARNING) << "Saving HLO graph failed: " << status;
@@ -1438,7 +1400,8 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+      env, path,
+      module.ToString(HloPrintOptions().set_print_large_constants(true))));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

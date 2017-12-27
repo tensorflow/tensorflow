@@ -42,7 +42,7 @@ class StringPiece {
   typedef size_t size_type;
 
   // Create an empty slice.
-  StringPiece() : data_(""), size_(0) {}
+  StringPiece() : data_(nullptr), size_(0) {}
 
   // Create a slice that refers to d[0,n-1].
   StringPiece(const char* d, size_t n) : data_(d), size_(n) {}

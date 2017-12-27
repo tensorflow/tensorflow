@@ -43,7 +43,10 @@ class GraphPropertiesTest : public ::testing::Test {
     TF_CHECK_OK(cluster_->Provision());
   }
 
-  void TearDown() override { cluster_.reset(); }
+  void TearDown() override {
+    TF_CHECK_OK(cluster_->Shutdown());
+    cluster_.reset();
+  }
 
  protected:
   // Returns a string form of <p>, suitable for comparing type and shape.
@@ -73,7 +76,7 @@ TEST_F(GraphPropertiesTest, StaticProperties) {
   CHECK(fake_input.NextItem(&item));
 
   GraphProperties properties(item);
-  Status s = properties.InferStatically();
+  Status s = properties.InferStatically(true);
   TF_CHECK_OK(s);
 
   for (const auto& node : item.graph.node()) {
@@ -179,7 +182,7 @@ TEST_F(GraphPropertiesTest, Variables) {
 
   {
     GraphProperties static_properties(item);
-    TF_CHECK_OK(static_properties.InferStatically());
+    TF_CHECK_OK(static_properties.InferStatically(false));
 
     const auto props = static_properties.GetOutputProperties("Var");
     EXPECT_EQ(1, props.size());
@@ -219,7 +222,7 @@ TEST_F(GraphPropertiesTest, VarHandles) {
                   .Finalize(item.graph.add_node()));
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   const auto props = properties.GetOutputProperties("VarRead");
   EXPECT_EQ(1, props.size());
@@ -286,7 +289,7 @@ TEST_F(GraphPropertiesTest, Queues) {
   TF_CHECK_OK(root.ToGraphDef(&item.graph));
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   const auto props1 = properties.GetOutputProperties("Dequeue1");
   ASSERT_EQ(1, props1.size());
@@ -335,7 +338,7 @@ TEST_F(GraphPropertiesTest, MergeWithoutLoops) {
                                  "merge_without_loops.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> nodes{"cond/Merge", "cond/concat", "cond/concat_1"};
   std::vector<string> expected_outputs{"float: [-1,-1,1]", "float: [2,1,1]",
@@ -377,7 +380,7 @@ TEST_F(GraphPropertiesTest, WhileLoop) {
                                  "while_loop.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
                             "while/Exit_1"};
@@ -435,7 +438,7 @@ TEST_F(GraphPropertiesTest, NestedLoop) {
                                  "nested_loop.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
                                   "while/Exit_1"};
@@ -498,7 +501,7 @@ TEST_F(GraphPropertiesTest, LoopsAndQueues) {
                                  "loops_and_queues.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
                                   "while/Exit_1"};
@@ -556,7 +559,7 @@ TEST_F(GraphPropertiesTest, LoopsAndResourceVars) {
                                  "loops_and_resource_vars.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
                                   "while/Exit_1"};
@@ -608,7 +611,7 @@ TEST_F(GraphPropertiesTest, QueuesAndLoops) {
                                  "queues_and_loops.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
                             "while/Exit_1"};
@@ -657,7 +660,7 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
   item.fetch.push_back("init_restore");
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   const auto restore_props = properties.GetOutputProperties("restore");
   const OpInfo::TensorProperties& restore_prop = restore_props[0];
@@ -704,7 +707,7 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   item.fetch.push_back("init2");
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
 
   const auto props = properties.GetOutputProperties("restore");
   const OpInfo::TensorProperties& prop = props[0];
@@ -732,7 +735,7 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
                                  "simple_function.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
   const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
   const OpInfo::TensorProperties& prop = props[0];
   EXPECT_EQ(DT_FLOAT, prop.dtype());
@@ -740,6 +743,10 @@ TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ(1, prop.shape().dim(0).size());
   EXPECT_EQ(2, prop.shape().dim(1).size());
+
+  PartialTensorShape shape(prop.shape());
+  EXPECT_TRUE(shape.IsFullyDefined());
+  EXPECT_FALSE(shape.unknown_rank());
 }
 
 TEST_F(GraphPropertiesTest, SymbolicShapes) {
@@ -766,7 +773,7 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
   const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
   const auto shape_c = properties.GetOutputProperties("c").at(0).shape();
   EXPECT_EQ(2, shape_a.dim_size());
@@ -775,6 +782,10 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   EXPECT_EQ(shape_a.dim(0).size(), shape_c.dim(0).size());
   EXPECT_GE(-2, shape_a.dim(1).size());
   EXPECT_EQ(shape_a.dim(1).size(), shape_c.dim(1).size());
+
+  PartialTensorShape shape(shape_a);
+  EXPECT_FALSE(shape.IsFullyDefined());
+  EXPECT_FALSE(shape.unknown_rank());
 
   const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
   const auto shape_d = properties.GetOutputProperties("d").at(0).shape();
@@ -822,7 +833,7 @@ TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
   GraphProperties properties(item);
   // This function should return OK, since it doesn't validate the colocation
   // constraints internally.
-  TF_EXPECT_OK(properties.InferStatically());
+  TF_EXPECT_OK(properties.InferStatically(false));
 }
 
 TEST_F(GraphPropertiesTest, ShapeTracking) {
@@ -842,13 +853,72 @@ TEST_F(GraphPropertiesTest, ShapeTracking) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically());
+  TF_CHECK_OK(properties.InferStatically(false));
   const auto shape_a = properties.GetOutputProperties("a").at(0).shape();
   const auto shape_b = properties.GetOutputProperties("b").at(0).shape();
   const auto shape_o1 = properties.GetOutputProperties("o1").at(0).shape();
   const auto shape_o2 = properties.GetOutputProperties("o2").at(0).shape();
   EXPECT_EQ(shape_a.DebugString(), shape_o1.DebugString());
   EXPECT_EQ(shape_b.DebugString(), shape_o2.DebugString());
+}
+
+TEST_F(GraphPropertiesTest, FedNodes) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
+                                          cluster_->GetDeviceNames());
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  {
+    // Conservative shape analysis: the shape of fed ports should be unknown
+    GraphProperties properties(item);
+    Status s = properties.InferStatically(false);
+    TF_CHECK_OK(s);
+    for (const auto& node : item.graph.node()) {
+      if (node.op() == "Const") {
+        continue;
+      }
+      const auto in_props = properties.GetInputProperties(node.name());
+      EXPECT_EQ(1, in_props.size());
+      const OpInfo::TensorProperties& in_prop = in_props[0];
+      const auto out_props = properties.GetOutputProperties(node.name());
+      EXPECT_EQ(1, out_props.size());
+      const OpInfo::TensorProperties& out_prop = out_props[0];
+
+      if (node.name() == "x") {
+        // x is fed: its input should have a known shape, while its output
+        // doesn't
+        EXPECT_FALSE(in_prop.shape().unknown_rank());
+        EXPECT_EQ(1, in_prop.shape().dim_size());
+        EXPECT_EQ(2, in_prop.shape().dim(0).size());
+        EXPECT_TRUE(out_prop.shape().unknown_rank());
+      } else if (node.op() == "Square" || node.op() == "AddN") {
+        // These nodes are in the fanout of x: their shapes should be unknown.
+        EXPECT_TRUE(in_prop.shape().unknown_rank());
+        EXPECT_TRUE(out_prop.shape().unknown_rank());
+      }
+    }
+  }
+  {
+    // Optimistic shape analysis: the shape of fed ports should be derived from
+    // the shape of the fanin.
+    GraphProperties properties(item);
+    Status s = properties.InferStatically(true);
+    TF_CHECK_OK(s);
+    for (const auto& node : item.graph.node()) {
+      if (node.op() == "Square" || node.op() == "AddN") {
+        const auto in_props = properties.GetInputProperties(node.name());
+        EXPECT_EQ(1, in_props.size());
+        const OpInfo::TensorProperties& in_prop = in_props[0];
+        EXPECT_EQ(DT_FLOAT, in_prop.dtype());
+        EXPECT_FALSE(in_prop.shape().unknown_rank());
+        EXPECT_EQ(2, in_prop.shape().dim_size());
+        const auto out_props = properties.GetOutputProperties(node.name());
+        EXPECT_EQ(1, out_props.size());
+        const OpInfo::TensorProperties& out_prop = out_props[0];
+        EXPECT_EQ(in_prop.DebugString(), out_prop.DebugString());
+      }
+    }
+  }
 }
 
 }  // namespace

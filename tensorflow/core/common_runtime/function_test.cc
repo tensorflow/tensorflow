@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -207,7 +208,83 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       return status;
     }
     FunctionLibraryRuntime::Options opts;
-    return Run(flr, handle, opts, args, std::move(rets));
+    status = Run(flr, handle, opts, args, rets);
+    if (!status.ok()) return status;
+
+    // Release the handle and try running again. It should not succeed.
+    status = flr->ReleaseHandle(handle);
+    if (!status.ok()) return status;
+
+    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    EXPECT_TRUE(errors::IsInvalidArgument(status2));
+    EXPECT_TRUE(
+        StringPiece(status2.error_message()).contains("remote execution."));
+
+    return status;
+  }
+
+  Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
+             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame) {
+    std::atomic<int32> call_count(0);
+    std::function<void(std::function<void()>)> runner =
+        [&call_count](std::function<void()> fn) {
+          ++call_count;
+          test::function::FunctionTestSchedClosure(fn);
+        };
+
+    Notification done;
+    opts.runner = &runner;
+    std::vector<Tensor> out;
+    Status status;
+    flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
+      status = s;
+      done.Notify();
+    });
+    done.WaitForNotification();
+    if (!status.ok()) {
+      return status;
+    }
+
+    EXPECT_GE(call_count, 1);  // Test runner is used.
+
+    return Status::OK();
+  }
+
+  Status InstantiateAndRunViaCallFrameInterface(FunctionLibraryRuntime* flr,
+                                                const string& name,
+                                                test::function::Attrs attrs,
+                                                const std::vector<Tensor>& args,
+                                                std::vector<Tensor*> rets) {
+    FunctionLibraryRuntime::Handle handle;
+    Status status = flr->Instantiate(name, attrs, &handle);
+    if (!status.ok()) {
+      return status;
+    }
+    const FunctionBody* fbody = flr->GetFunctionBody(handle);
+    FunctionCallFrame frame(fbody->arg_types, fbody->ret_types);
+    TF_RETURN_IF_ERROR(frame.SetArgs(args));
+
+    FunctionLibraryRuntime::Options opts;
+    status = Run(flr, handle, opts, &frame);
+    if (!status.ok()) return status;
+
+    std::vector<Tensor> retvals;
+    TF_RETURN_IF_ERROR(frame.GetRetvals(&retvals));
+    CHECK_EQ(rets.size(), retvals.size());
+    for (size_t i = 0; i < rets.size(); ++i) {
+      *rets[i] = retvals[i];
+    }
+
+    // Release the handle and try running again. It should not succeed.
+    status = flr->ReleaseHandle(handle);
+    if (!status.ok()) return status;
+
+    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    EXPECT_TRUE(errors::IsInvalidArgument(status2));
+    EXPECT_TRUE(
+        StringPiece(status2.error_message()).contains("remote execution."));
+
+    return status;
   }
 
   std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,
@@ -267,6 +344,9 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   Tensor y;
   TF_CHECK_OK(
       InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  TF_CHECK_OK(InstantiateAndRunViaCallFrameInterface(
+      flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 
@@ -487,6 +567,65 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
   }
 }
 
+TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
+  auto T = DT_INT32;
+  FunctionDef stateful_func = FDH::Define(
+      // Name
+      "SquareAndAddOneWithStatefulNodes",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Square<T>(x)
+       {{"a"}, "Square", {"x"}, {{"T", T}}},
+       // 1
+       FDH::Const("o", 1),
+       // A bunch of extra arithmetic that y doesn't depend on
+       {{"x1"}, "Add", {"o", "o"}, {{"T", T}}},
+       {{"x2"}, "Mul", {"a", "x1"}, {{"T", T}}},
+       {{"x3"}, "Mul", {"x1", "x2"}, {{"T", T}}},
+       FDH::Const<int32>("shape", {1, 2}),
+       // A stateful node.
+       {{"keep_me"},
+        "RandomUniform",
+        {"shape"},
+        {{"T", T}, {"dtype", DT_FLOAT}}},
+       // y = Add<T>(a, o)
+       {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
+  Init({stateful_func});
+
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  Tensor y;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(
+      Instantiate(flr0_, "SquareAndAddOneWithStatefulNodes", {}, &handle));
+
+  StepStats stats;
+  StepStatsCollector stats_collector(&stats);
+  FunctionLibraryRuntime::Options opts;
+  opts.stats_collector = &stats_collector;
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
+                                {x}, {&y}));
+  test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({2, 5, 10, 17}));
+
+  stats_collector.FinalizeAndSwap(&stats);
+
+  // Note that we do not expect the nodes named "x1", "x2", or "x3" to execute.
+  std::set<string> expected_node_names(
+      {"_SOURCE", "shape", "x", "o", "a", "keep_me", "y", "y_RetVal"});
+  std::set<string> executed_node_names;
+  for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
+    executed_node_names.insert(node_stats.node_name());
+  }
+  EXPECT_EQ(expected_node_names, executed_node_names);
+}
+
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -498,7 +637,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__2")
+        s.WithOpName("x4/x2/scale/_12__cf__4")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -694,13 +833,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_5__cf__6")
+        s.WithOpName("scale/_5__cf__8")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_6__cf__7")
+        s.WithOpName("Func/_1/sy/_6__cf__9")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(

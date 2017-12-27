@@ -253,6 +253,30 @@ bool IsNumberType(DataType dtype) {
 
 const char kOutputShapesAttr[] = "_output_shapes";
 
+PartialTensorShape GetInputShape(const string& input, const NodeMap& node_map) {
+  int output_pos;
+  string node_name = ParseNodeName(input, &output_pos);
+  const NodeDef* input_node = node_map.GetNode(node_name);
+  return input_node->attr().at(kOutputShapesAttr).list().shape(output_pos);
+}
+
+bool ShapesEqual(const string& input_x, const string& input_y,
+                 const NodeMap& node_map) {
+  PartialTensorShape x_shape = GetInputShape(input_x, node_map);
+  PartialTensorShape y_shape = GetInputShape(input_y, node_map);
+  if (x_shape.unknown_rank() || y_shape.unknown_rank() ||
+      x_shape.dims() != y_shape.dims()) {
+    return false;
+  }
+  for (int i = 0; i < x_shape.dims(); ++i) {
+    if (x_shape.dim_size(i) == -1 || y_shape.dim_size(i) == -1 ||
+        x_shape.dim_size(i) != y_shape.dim_size(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Returns whether `reshape` is an identity op. The tensor that `reshape`
 // reshapes is the `output_pos`-th output of node `input`.
 bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
@@ -423,7 +447,7 @@ NodeDef* ArithmeticOptimizer::AddNode(const string& name,
       AddPrefixToNodeName(name, kArithmeticOptimizer);
   node_map_->AddNode(NodeName(name_with_prefix), new_node);
   if (node_to_copy != nullptr) {
-    new_node->CopyFrom(*node_to_copy);
+    *new_node = *node_to_copy;
   }
   new_node->set_name(name_with_prefix);
   return new_node;
@@ -494,7 +518,7 @@ void ArithmeticOptimizer::DedupComputations() {
   } while (!stop);
 
   // Delete duplicates
-  if (!duplicates.empty()) {
+  if (fetch_nodes_known_ && !duplicates.empty()) {
     int last = optimized_graph_->node_size() - 1;
     for (auto it = duplicates.rbegin(); it != duplicates.rend(); ++it) {
       int index = *it;
@@ -868,8 +892,12 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   // multiplication over addition to hoist common factors out of aggregate nodes
   // where all the inputs are Mul nodes. This pattern occurs frequently in
   // regularization terms for the gradients during training.
-  // TODO(rmlarsen): Check shapes and enable for AddN.
-  if (IsAdd(*node) && NumNonControlInputs(*node) > 1 &&
+  // For example, we can rewrite an expression of the form:
+  //   AddN(Mul(x, y1), Mul(y2, x), Mul(x, y3), ... Mul(x, yn))
+  // to the following:
+  //   Mul(x, AddN(y1, y2, y3, ... yn))
+  if (opt_level_ == RewriterConfig::AGGRESSIVE && IsAggregate(*node) &&
+      NumNonControlInputs(*node) > 1 &&
       !OptimizedNodeExists(StrCat(node->name(), "_hoist_add"))) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
@@ -899,24 +927,15 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
     if (common_factors.size() == 1) {
       const string& common_factor = *common_factors.begin();
-      // In this case we have an expression of the form
-      //   AddN(Mul(x, y1), Mul(y2, x), Mul(x, y3), ... Mul(x, yn))
-      // that can be rewritten as
-      //   Mul(x, AddN(y1, y2, y3, ... yn))
 
-      // 1. Use a copy of the first Mul node for the outer multiplication.
-      NodeDef* new_mul_node = AddNode(StrCat(node->name(), "_hoist_mul"),
-                                      node_map_->GetNode(node->input(0)));
-      NodeDef* new_add_node = AddNode(StrCat(node->name(), "_hoist_add"), node);
-      new_mul_node->set_device(node->device());
-      new_mul_node->set_input(0, common_factor);
-      node_map_->AddOutput(common_factor, new_mul_node->name());
-      new_mul_node->set_input(1, new_add_node->name());
-      node_map_->AddOutput(new_add_node->name(), new_mul_node->name());
-
-      // 2. Hoist non-shared factors up into the new AddN node.
-      nodes_to_simplify->PushBack(new_add_node);
-      for (int i = 0; i < node->input_size(); ++i) {
+      // Gather up the non-shared factors (the y's in the example).
+      // Unless the aggregation is Add, we have to make sure that all the y's
+      // have the same shape since the other aggregation ops do not support
+      // broadcasting.
+      std::vector<string> unique_factors;
+      unique_factors.reserve(node->input_size());
+      bool shapes_match = true;
+      for (int i = 0; i < node->input_size() && shapes_match; ++i) {
         const string& input = node->input(i);
         if (IsControlInput(input)) {
           break;
@@ -924,15 +943,41 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
         const NodeDef* mul_node = node_map_->GetNode(input);
         const int unique_factor_index =
             mul_node->input(0) == common_factor ? 1 : 0;
-        const string unique_factor = mul_node->input(unique_factor_index);
-        new_add_node->set_input(i, unique_factor);
+        unique_factors.push_back(mul_node->input(unique_factor_index));
+        if (i > 0 && !IsAdd(*node)) {
+          shapes_match = ShapesEqual(unique_factors.front(),
+                                     unique_factors.back(), *node_map_);
+        }
       }
 
-      // 4. Add frame dependencies that the original node might have had.
-      AddFrameControlDeps(node, {new_add_node, new_mul_node}, common_factor,
-                          {new_add_node});
+      if (shapes_match) {
+        // 1. Use a copy of the first Mul node for the outer multiplication.
+        NodeDef* new_mul_node = AddNode(StrCat(node->name(), "_hoist_mul"),
+                                        node_map_->GetNode(node->input(0)));
+        NodeDef* new_add_node =
+            AddNode(StrCat(node->name(), "_hoist_add"), node);
+        new_mul_node->set_device(node->device());
+        new_mul_node->set_input(0, common_factor);
+        node_map_->AddOutput(common_factor, new_mul_node->name());
+        new_mul_node->set_input(1, new_add_node->name());
+        node_map_->AddOutput(new_add_node->name(), new_mul_node->name());
 
-      return new_mul_node->name();
+        // 2. Hoist non-shared factors up into the new AddN node.
+        nodes_to_simplify->PushBack(new_add_node);
+        for (int i = 0; i < node->input_size(); ++i) {
+          const string& input = node->input(i);
+          if (IsControlInput(input)) {
+            break;
+          }
+          new_add_node->set_input(i, unique_factors[i]);
+        }
+
+        // 3. Add frame dependencies that the original node might have had.
+        AddFrameControlDeps(node, {new_add_node, new_mul_node}, common_factor,
+                            {new_add_node});
+
+        return new_mul_node->name();
+      }
     }
   }
 
@@ -1064,10 +1109,10 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   int num_frames;
   TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
                                                &frame_map_, &num_frames));
+  // Shapes are only needed in aggressive mode.
   if (opt_level_ == RewriterConfig::AGGRESSIVE) {
     graph_properties_.reset(new GraphProperties(item));
-    // Shapes are only needed in aggressive mode.
-    TF_RETURN_IF_ERROR(graph_properties_->InferStatically());
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
     TF_RETURN_IF_ERROR(
         graph_properties_->AnnotateOutputShapes(optimized_graph_));
   }

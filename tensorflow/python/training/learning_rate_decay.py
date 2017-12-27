@@ -362,7 +362,13 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
   The function returns the decayed learning rate.  It is computed as:
 
   ```python
-  decayed_learning_rate = learning_rate / (1 + decay_rate * t)
+  decayed_learning_rate = learning_rate / (1 + decay_rate * global_step / decay_step)
+  ```
+
+  or, if `staircase` is `True`, as:
+
+  ```python
+  decayed_learning_rate = learning_rate / (1 + decay_rate * floor(global_step / decay_step))
   ```
 
   Example: decay 1/t with a rate of 0.5:
@@ -371,8 +377,9 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
   ...
   global_step = tf.Variable(0, trainable=False)
   learning_rate = 0.1
-  k = 0.5
-  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, k)
+  decay_steps = 1.0
+  decay_rate = 0.5
+  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate)
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (

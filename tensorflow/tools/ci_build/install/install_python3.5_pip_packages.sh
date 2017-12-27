@@ -39,6 +39,8 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
+pip3.5 install --upgrade virtualenv
+
 # Install six.
 pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0

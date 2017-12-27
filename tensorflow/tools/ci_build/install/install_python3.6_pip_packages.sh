@@ -26,25 +26,25 @@ apt-get update
 
 set -e
 # Install Python 3.6 and dev library
-apt-get install -y --no-install-recommends python3.6 libpython3.6-dev
+wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
+tar xvf Python-3.6.1.tar.xz
+cd Python-3.6.1
 
-# Install pip3.6
-set +e
-pip35_version=$(pip3.6 --version | grep "python 3.6")
-if [[ -z $pip35_version ]]; then
-  set -e
-  wget -q https://bootstrap.pypa.io/get-pip.py
-  python3.6 get-pip.py
-  rm -f get-pip.py
-fi
+./configure
+make altinstall
+pip3.6 -V
+which pip3.6
+ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
+
+pip3 install --upgrade virtualenv
 
 set -e
 # Install six.
-pip3.6 install --upgrade absl-py
-pip3.6 install --upgrade six==1.10.0
+pip3 install --upgrade absl-py
+pip3 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.6 install --upgrade protobuf==3.3.0
+pip3 install --upgrade protobuf==3.3.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -54,22 +54,22 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip3.6 install --no-binary=:all: --upgrade numpy==1.12.0
+pip3 install --no-binary=:all: --upgrade numpy==1.12.0
 
-pip3.6 install scipy==0.18.1
+pip3 install scipy==0.18.1
 
-pip3.6 install scikit-learn==0.18.1
+pip3 install scikit-learn==0.18.1
 
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
 
 # Install recent-enough version of wheel for Python 3.6 wheel builds
-pip3.6 install wheel==0.29.0
+pip3 install wheel==0.29.0
 
-pip3.6 install portpicker
+pip3 install portpicker
 
-pip3.6 install werkzeug
+pip3 install werkzeug
 
-pip3.6 install grpcio
+pip3 install grpcio
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)

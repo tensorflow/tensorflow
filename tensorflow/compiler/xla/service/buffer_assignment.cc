@@ -581,6 +581,7 @@ Status GatherComputationsByAllocationType(
            instruction->called_computations()) {
         switch (instruction->opcode()) {
           case HloOpcode::kCall:
+          case HloOpcode::kConditional:
           case HloOpcode::kWhile:
             // Call and while must be called from a computation with global
             // allocations as they may return references to buffers inside the
@@ -976,8 +977,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   const HloOrdering& hlo_ordering = assignment->liveness().hlo_ordering();
   if (run_whole_module_heap_simulation) {
     // Run the heap simulation over the whole module. This reduces memory usage,
-    // since buffers for kCall and kWhile sub-computations are only live for the
-    // duration of their calling instructions.
+    // since buffers for kCall, kWhile, and kConditional sub-computations are
+    // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
     SequentialHloOrdering::HloModuleSequence module_sequence;
     FlatSet<const LogicalBuffer*> all_buffers_to_assign;
@@ -1272,7 +1273,8 @@ const LogicalBuffer* AddBufferToColocatedSet(
 }  // namespace
 
 // Builds sets of buffers in 'colocated_buffer_sets' which should be colocated
-// in the same allocation (currently just supports kWhile and kCall).
+// in the same allocation (currently just supports kWhile, kCall, and
+// kConditional).
 void BufferAssigner::BuildColocatedBufferSets(
     const HloModule* module, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
@@ -1334,6 +1336,26 @@ void BufferAssigner::BuildColocatedBufferSets(
               // Add call.subcomputation.root.
               AddBufferToColocatedSet(root_hlo, index, points_to_analysis,
                                       &colocated_set);
+              AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
+            });
+      } else if (opcode == HloOpcode::kConditional) {
+        const HloInstruction* conditional_hlo = instruction;
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> colocated_set;
+              // Add conditional.result.
+              AddBufferToColocatedSet(conditional_hlo, index,
+                                      points_to_analysis, &colocated_set);
+              // Add conditional.true_computation.root.
+              AddBufferToColocatedSet(
+                  conditional_hlo->true_computation()->root_instruction(),
+                  index, points_to_analysis, &colocated_set);
+              // Add conditional.false_computation.root.
+              AddBufferToColocatedSet(
+                  conditional_hlo->false_computation()->root_instruction(),
+                  index, points_to_analysis, &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
       }

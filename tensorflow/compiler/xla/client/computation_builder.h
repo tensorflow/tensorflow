@@ -43,59 +43,6 @@ limitations under the License.
 
 namespace xla {
 
-class ShardingBuilder {
- public:
-  // A shaped array used to describe the assignment of tiles to devices.
-  using TileAssignment = Array<int64>;
-
-  // Creates a replicated sharding - replicate a tensor on every device.
-  static OpSharding Replicate() {
-    OpSharding result;
-    result.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
-    return result;
-  }
-  // Creates a sharding that assigns a tensor to just one device.
-  static OpSharding AssignDevice(int device) {
-    OpSharding result;
-    result.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
-    result.add_tile_assignment_dimensions(1);
-    result.add_tile_assignment_devices(device);
-    return result;
-  }
-  // Creates a tiled sharding with the given tile shape and assignment of tiles
-  // to devices.
-  static OpSharding Tile(Shape tile_shape,
-                         const TileAssignment& tile_assignment) {
-    OpSharding result;
-    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
-    *result.mutable_tile_shape() = tile_shape;
-    for (int64 dim : tile_assignment.dimensions()) {
-      result.add_tile_assignment_dimensions(dim);
-    }
-    for (uint32 device : tile_assignment) {
-      result.add_tile_assignment_devices(device);
-    }
-    return result;
-  }
-  // Creates a sharding in one dimension, with the given tile shape which must
-  // be rank 1 and using devices 0..num_tiles.
-  static OpSharding Tile1D(Shape tile_shape, int64 num_tiles) {
-    OpSharding result;
-    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
-
-    CHECK_EQ(ShapeUtil::Rank(tile_shape), 1);
-    std::vector<int64> dimensions(1, num_tiles);
-    auto& tile_dimension = (*tile_shape.mutable_dimensions())[0];
-    tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);
-    *result.mutable_tile_shape() = tile_shape;
-    result.add_tile_assignment_dimensions(num_tiles);
-    for (int64 i = 0; i < num_tiles; ++i) {
-      result.add_tile_assignment_devices(i);
-    }
-    return result;
-  }
-};
-
 // Wraps an XLA client with a convenient interface for building up
 // computations. Any errors encountered in building up the computation are
 // deferred from being handled until Build() is called.
@@ -392,6 +339,11 @@ class ComputationBuilder {
   // Enqueues a dot instruction onto the computation.
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
+
+  // Enqueues a general dot instruction onto the computation.
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
   // Default dimension numbers used for a 2D convolution.
   static constexpr int64 kConvBatchDimension = 0;
@@ -736,6 +688,13 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a conditional node onto the computation.
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const Computation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const Computation& false_computation);
+
   // Enqueues a ReducePrecision node onto the computation.
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,
@@ -811,7 +770,7 @@ class ComputationBuilder {
   // The operand must represent a constant value, which in this case
   // means that it must not statically depend on any parameter of the
   // computation that is being built other then the ones specified on the
-  // paramtere list. The parameters in the list will be indexed by their
+  // parameter list. The parameters in the list will be indexed by their
   // parameter id property so the number of parameters specified should be at
   // least as many as the largest used parameter index.
   //

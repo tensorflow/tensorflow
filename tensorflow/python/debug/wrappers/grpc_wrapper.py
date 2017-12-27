@@ -17,14 +17,53 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import traceback
+
 # Google-internal import(s).
+from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.wrappers import framework
+
+
+def publish_traceback(debug_server_urls,
+                      graph,
+                      feed_dict,
+                      fetches,
+                      old_graph_version):
+  """Publish traceback and source code if graph version is new.
+
+  `graph.version` is compared with `old_graph_version`. If the former is higher
+  (i.e., newer), the graph traceback and the associated source code is sent to
+  the debug server at the specified gRPC URLs.
+
+  Args:
+    debug_server_urls: A single gRPC debug server URL as a `str` or a `list` of
+      debug server URLs.
+    graph: A Python `tf.Graph` object.
+    feed_dict: Feed dictionary given to the `Session.run()` call.
+    fetches: Fetches from the `Session.run()` call.
+    old_graph_version: Old graph version to compare to.
+
+  Returns:
+    If `graph.version > old_graph_version`, the new graph version as an `int`.
+    Else, the `old_graph_version` is returned.
+  """
+  # TODO(cais): Consider moving this back to the top, after grpc becomes a
+  # pip dependency of tensorflow or tf_debug.
+  # pylint:disable=g-import-not-at-top
+  from tensorflow.python.debug.lib import source_remote
+  # pylint:enable=g-import-not-at-top
+  if graph.version > old_graph_version:
+    run_key = common.get_run_key(feed_dict, fetches)
+    source_remote.send_graph_tracebacks(
+        debug_server_urls, run_key, traceback.extract_stack(), graph,
+        send_source=True)
+    return graph.version
+  else:
+    return old_graph_version
 
 
 class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
   """Debug Session wrapper that send debug data to gRPC stream(s)."""
-
-  _GRPC_URL_PREFIX = "grpc://"
 
   def __init__(self,
                sess,
@@ -38,7 +77,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       sess: The TensorFlow `Session` object being wrapped.
       grpc_debug_server_addresses: (`str` or `list` of `str`) Single or a list
         of the gRPC debug server addresses, in the format of
-        <host:port>, without the "grpc://" prefix. For example:
+        <host:port>, with or without the "grpc://" prefix. For example:
           "localhost:7000",
           ["localhost:7000", "192.168.0.2:8000"]
       watch_fn: (`Callable`) A Callable that can be used to define per-run
@@ -62,8 +101,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
 
     if isinstance(grpc_debug_server_addresses, str):
       self._grpc_debug_server_urls = [
-          self._GRPC_URL_PREFIX + grpc_debug_server_addresses
-      ]
+          self._normalize_grpc_url(grpc_debug_server_addresses)]
     elif isinstance(grpc_debug_server_addresses, list):
       self._grpc_debug_server_urls = []
       for address in grpc_debug_server_addresses:
@@ -71,7 +109,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
           raise TypeError(
               "Expected type str in list grpc_debug_server_addresses, "
               "received type %s" % type(address))
-        self._grpc_debug_server_urls.append(self._GRPC_URL_PREFIX + address)
+        self._grpc_debug_server_urls.append(self._normalize_grpc_url(address))
     else:
       raise TypeError(
           "Expected type str or list in grpc_debug_server_addresses, "
@@ -93,3 +131,59 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """
 
     return self._grpc_debug_server_urls
+
+  def _normalize_grpc_url(self, address):
+    return (common.GRPC_URL_PREFIX + address
+            if not address.startswith(common.GRPC_URL_PREFIX) else address)
+
+
+class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
+  """A tfdbg Session wrapper that can be used with TensorBoard Debugger Plugin.
+
+  This wrapper is the same as `GrpcDebugWrapperSession`, except that it uses a
+    predefined `watch_fn` that
+    1) uses `DebugIdentity` debug ops with the `gated_grpc` attribute set to
+        `True` to allow the interactive enabling and disabling of tensor
+       breakpoints.
+    2) watches all tensors in the graph.
+  This saves the need for the user to define a `watch_fn`.
+  """
+
+  def __init__(self,
+               sess,
+               grpc_debug_server_addresses,
+               thread_name_filter=None,
+               log_usage=True):
+    def _gated_grpc_watch_fn(fetches, feeds):
+      del fetches, feeds  # Unused.
+      return framework.WatchOptions(
+          debug_ops=["DebugIdentity(gated_grpc=true)"])
+
+    super(TensorBoardDebugWrapperSession, self).__init__(
+        sess,
+        grpc_debug_server_addresses,
+        watch_fn=_gated_grpc_watch_fn,
+        thread_name_filter=thread_name_filter,
+        log_usage=log_usage)
+
+    # Keeps track of the latest version of Python graph object that has been
+    # sent to the debug servers.
+    self._sent_graph_version = -1
+
+  def run(self,
+          fetches,
+          feed_dict=None,
+          options=None,
+          run_metadata=None,
+          callable_runner=None,
+          callable_runner_args=None):
+    self._sent_graph_version = publish_traceback(
+        self._grpc_debug_server_urls, self.graph, feed_dict, fetches,
+        self._sent_graph_version)
+    return super(TensorBoardDebugWrapperSession, self).run(
+        fetches,
+        feed_dict=feed_dict,
+        options=options,
+        run_metadata=run_metadata,
+        callable_runner=callable_runner,
+        callable_runner_args=callable_runner_args)

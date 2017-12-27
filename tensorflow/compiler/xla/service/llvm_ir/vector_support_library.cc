@@ -34,6 +34,12 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
 }
 
 llvm::Value* VectorSupportLibrary::Mul(llvm::Value* lhs, llvm::Value* rhs) {
+  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  return MulInternal(lhs, rhs);
+}
+
+llvm::Value* VectorSupportLibrary::MulInternal(llvm::Value* lhs,
+                                               llvm::Value* rhs) {
   if (scalar_type_->isFloatingPointTy()) {
     return ir_builder()->CreateFMul(lhs, rhs, name());
   } else {
@@ -42,6 +48,12 @@ llvm::Value* VectorSupportLibrary::Mul(llvm::Value* lhs, llvm::Value* rhs) {
 }
 
 llvm::Value* VectorSupportLibrary::Add(llvm::Value* lhs, llvm::Value* rhs) {
+  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  return AddInternal(lhs, rhs);
+}
+
+llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
+                                               llvm::Value* rhs) {
   if (scalar_type_->isFloatingPointTy()) {
     return ir_builder()->CreateFAdd(lhs, rhs, name());
   } else {
@@ -129,6 +141,122 @@ llvm::Value* VectorSupportLibrary::AddReduce(llvm::Value* vector) {
                                             name());
 }
 
+llvm::Value* VectorSupportLibrary::AvxStyleHorizontalAdd(llvm::Value* lhs,
+                                                         llvm::Value* rhs) {
+  CHECK_EQ(lhs->getType(), vector_type());
+  CHECK_EQ(rhs->getType(), vector_type());
+  CHECK_EQ(vector_size() % 2, 0);
+
+  llvm::SmallVector<llvm::Constant*, 32> mask_a, mask_b;
+
+  // Adding the values shuffled using mask_a and mask_b gives us the
+  // AVX-style horizontal add we want.  The masks work as documented
+  // in https://llvm.org/docs/LangRef.html#shufflevector-instruction
+  //
+  // Here are the masks for vector_width() == 8:
+  //
+  //    index: |0 |1 |2 | 3 |4 |5 | 6 | 7
+  //   --------+--+--+--+---+--+--+---+---
+  //   mask_a: |0 |2 |8 |10 |4 |6 |12 |14
+  //   mask_b: |1 |3 |9 |11 |5 |7 |13 |16
+  //
+  // So, as an example, the value at lane 3 of the result vector is
+  // the result of adding lane 10 and lane 11 in the combined lhs++rhs
+  // vector, which are the lanes 2 and 3 in the rhs vector.
+  for (int i = 0; i < vector_size(); i += 2) {
+    int increment = i < vector_size() / 2 ? 0 : (vector_size() / 2);
+    mask_a.push_back(ir_builder()->getInt32(increment + i));
+    mask_b.push_back(ir_builder()->getInt32(increment + i + 1));
+  }
+  for (int i = 0; i < vector_size(); i += 2) {
+    int increment = i < vector_size() / 2 ? (vector_size() / 2) : vector_size();
+    mask_a.push_back(ir_builder()->getInt32(increment + i));
+    mask_b.push_back(ir_builder()->getInt32(increment + i + 1));
+  }
+
+  llvm::Value* shuffle_0 = ir_builder()->CreateShuffleVector(
+      lhs, rhs, llvm::ConstantVector::get(mask_a));
+  llvm::Value* shuffle_1 = ir_builder()->CreateShuffleVector(
+      lhs, rhs, llvm::ConstantVector::get(mask_b));
+
+  return Add(shuffle_0, shuffle_1);
+}
+
+llvm::Value* VectorSupportLibrary::ExtractLowHalf(llvm::Value* vector) {
+  llvm::SmallVector<llvm::Constant*, 32> mask;
+  for (int i = 0; i < vector_size() / 2; i++) {
+    mask.push_back(ir_builder()->getInt32(i));
+  }
+
+  return ir_builder()->CreateShuffleVector(vector,
+                                           llvm::UndefValue::get(vector_type()),
+                                           llvm::ConstantVector::get(mask));
+}
+
+llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
+  llvm::SmallVector<llvm::Constant*, 32> mask;
+  for (int i = 0; i < vector_size() / 2; i++) {
+    mask.push_back(ir_builder()->getInt32(i + vector_size() / 2));
+  }
+
+  return ir_builder()->CreateShuffleVector(vector,
+                                           llvm::UndefValue::get(vector_type()),
+                                           llvm::ConstantVector::get(mask));
+}
+
+std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
+    std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
+  // TODO(sanjoy): Move this magic constant to TargetMachineFeatures.
+  const int kAvxVectorWidth = 8;
+  if (vector_size() == kAvxVectorWidth && vectors.size() == kAvxVectorWidth) {
+    return ComputeAvxOptimizedHorizontalSums(std::move(vectors), init_values);
+  }
+
+  std::vector<llvm::Value*> result;
+  std::transform(vectors.begin(), vectors.end(), std::back_inserter(result),
+                 [this](llvm::Value* vector) { return AddReduce(vector); });
+  if (init_values) {
+    for (int64 i = 0, e = result.size(); i < e; i++) {
+      result[i] = Add(result[i], ir_builder()->CreateExtractElement(
+                                     init_values, ir_builder()->getInt32(i)));
+    }
+  }
+  return result;
+}
+
+std::vector<llvm::Value*>
+VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
+    std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
+  while (vectors.size() != 2) {
+    std::vector<llvm::Value*> new_vectors;
+    for (int i = 0; i < vectors.size(); i += 2) {
+      new_vectors.push_back(AvxStyleHorizontalAdd(vectors[i], vectors[i + 1]));
+    }
+
+    vectors = std::move(new_vectors);
+  }
+
+  llvm::Value* low =
+      AddInternal(ExtractLowHalf(vectors[0]), ExtractHighHalf(vectors[0]));
+  if (init_values) {
+    low = AddInternal(ExtractLowHalf(init_values), low);
+  }
+  llvm::Value* high =
+      AddInternal(ExtractLowHalf(vectors[1]), ExtractHighHalf(vectors[1]));
+  if (init_values) {
+    high = AddInternal(ExtractHighHalf(init_values), high);
+  }
+
+  std::vector<llvm::Value*> results;
+  for (int i = 0; i < 8; i++) {
+    llvm::Value* scalar_result = ir_builder()->CreateExtractElement(
+        i < 4 ? low : high, ir_builder()->getInt32(i % 4), name());
+    results.push_back(scalar_result);
+  }
+
+  return results;
+}
+
 llvm::Value* VectorSupportLibrary::GetZeroVector() {
   return llvm::Constant::getNullValue(vector_type());
 }
@@ -142,7 +270,9 @@ LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilder<>* ir_builder)
   alloca_ = llvm_ir::EmitAllocaAtFunctionEntry(type, "", ir_builder_);
 }
 
-llvm::Value* LlvmVariable::Get() { return ir_builder_->CreateLoad(alloca_); }
+llvm::Value* LlvmVariable::Get() const {
+  return ir_builder_->CreateLoad(alloca_);
+}
 
 void LlvmVariable::Set(llvm::Value* new_value) {
   ir_builder_->CreateStore(new_value, alloca_);
