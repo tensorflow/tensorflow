@@ -130,7 +130,7 @@ class BoundedOutputIterator
     // Constructor
     __host__ __device__ __forceinline__
     BoundedReference(int32* ptr, int32* base, IdentityOp op, int32 limit)
-        : Reference(ptr, op), base(base), limit(limit) {}
+        : Reference(ptr, op), limit(limit), base(base) {}
 
     // Assignment
     __host__ __device__ __forceinline__ int32 operator=(int32 val) {
@@ -146,11 +146,11 @@ class BoundedOutputIterator
   __host__ __device__ __forceinline__ BoundedOutputIterator(int32* ptr,
                                                             IdentityOp op,
                                                             int32 size)
-      : TransformOutputIterator(ptr, op), base(ptr), limit(size) {}
+      : TransformOutputIterator(ptr, op), limit(size), base(ptr) {}
 
   __host__ __device__ __forceinline__
   BoundedOutputIterator(int32* ptr, int32* base, IdentityOp op, int32 size)
-      : TransformOutputIterator(ptr, op), base(base), limit(size) {}
+      : TransformOutputIterator(ptr, op), limit(size), base(base) {}
 
   // Indirection
   __host__ __device__ __forceinline__ reference operator*() const {

@@ -51,6 +51,7 @@ void CheckUnsupportedOperations(const Model& model) {
 void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
+  transformations->Add(new ConvertExpandDimsToReshape);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
@@ -66,6 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new FuseBinaryIntoFollowingAffine);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
+  transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveTensorFlowSqueeze);
@@ -77,6 +79,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
@@ -99,7 +102,7 @@ bool SupportsLstmCell(FileFormat format) {
 }
 
 bool SupportsPreallocatedWorkspace(FileFormat format) {
-  return (format == GRAPHVIZ_DOT || format == TFLITE);
+  return (format == TFLITE);
 }
 
 bool IsRealValued(toco::ArrayDataType type) {
@@ -202,11 +205,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     // See the doc for --reorder_across_fake_quant: that flag is needed to
     // support some existing models, e.g. WordLens, that have FakeQuant
     // nodes in the wrong places.
-    // We currently unconditionally enable that behavior when the output
-    // format is DarwiNN because the DarwiNN test code does not make it
-    // easy to pass a new toco flag. Once that is resolved on the DarwiNN
-    // tests side, the special-casing of DarwiNN here can go away.
-    // TODO(benoitjacob): so drop it when we can.
+    // TODO(benoitjacob): drop special casing when we can.
     if ((quantize_output && toco_flags.reorder_across_fake_quant())) {
       transformations.Add(new DropFakeQuant);
     }
@@ -229,6 +228,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         toco_flags.has_default_ranges_max()) {
       UseDefaultMinMaxRangeValues(model, toco_flags.default_ranges_min(),
                                   toco_flags.default_ranges_max());
+      // The new MinMax info may need to be propagated a bit.
+      RunGraphTransformations(
+          model, "default min-max range propagation graph transformations",
+          {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
     RunGraphTransformations(

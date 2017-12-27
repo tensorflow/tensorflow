@@ -21,6 +21,48 @@ class SqliteSchema {
  public:
   explicit SqliteSchema(std::shared_ptr<Sqlite> db) : db_(std::move(db)) {}
 
+  /// \brief Creates Ids table.
+  ///
+  /// This table must be used to randomly allocate Permanent IDs for
+  /// all top-level tables, in order to maintain an invariant where
+  /// foo_id != bar_id for all IDs of any two tables.
+  ///
+  /// A row should only be deleted from this table if it can be
+  /// guaranteed that it exists absolutely nowhere else in the entire
+  /// system.
+  ///
+  /// Fields:
+  ///   id: An ID that was allocated globally. This must be in the
+  ///     range [1,2**47). 0 is assigned the same meaning as NULL and
+  ///     shouldn't be stored; 2**63-1 is reserved for statically
+  ///     allocating space in a page to UPDATE later; and all other
+  ///     int64 values are reserved for future use.
+  Status CreateIdsTable() {
+    return Run(R"sql(
+      CREATE TABLE IF NOT EXISTS Ids (
+        id INTEGER PRIMARY KEY
+      )
+    )sql");
+  }
+
+  /// \brief Creates Descriptions table.
+  ///
+  /// This table allows TensorBoard to associate Markdown text with any
+  /// object in the database that has a Permanent ID.
+  ///
+  /// Fields:
+  ///   id: The Permanent ID of the associated object. This is also the
+  ///     SQLite rowid.
+  ///   description: Arbitrary Markdown text.
+  Status CreateDescriptionsTable() {
+    return Run(R"sql(
+      CREATE TABLE IF NOT EXISTS Descriptions (
+        id INTEGER PRIMARY KEY,
+        description TEXT
+      )
+    )sql");
+  }
+
   /// \brief Creates Tensors table.
   ///
   /// Fields:
@@ -83,15 +125,15 @@ class SqliteSchema {
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   tag_id: Permanent >0 unique ID.
+  ///   tag_id: The Permanent ID of the Tag.
   ///   run_id: Optional ID of associated Run.
   ///   tag_name: The tag field in summary.proto, unique across Run.
   ///   inserted_time: Float UNIX timestamp with µs precision. This is
   ///     always the wall time of when the row was inserted into the
   ///     DB. It may be used as a hint for an archival job.
-  ///   metadata: Optional BLOB of SummaryMetadata proto.
   ///   display_name: Optional for GUI and defaults to tag_name.
-  ///   summary_description: Optional markdown information.
+  ///   plugin_name: Arbitrary TensorBoard plugin name for dispatch.
+  ///   plugin_data: Arbitrary data that plugin wants.
   Status CreateTagsTable() {
     return Run(R"sql(
       CREATE TABLE IF NOT EXISTS Tags (
@@ -100,28 +142,31 @@ class SqliteSchema {
         tag_id INTEGER NOT NULL,
         tag_name TEXT,
         inserted_time DOUBLE,
-        metadata BLOB,
         display_name TEXT,
-        description TEXT
+        plugin_name TEXT,
+        plugin_data BLOB
       )
     )sql");
   }
 
   /// \brief Creates Runs table.
   ///
-  /// This table stores information about runs. Each row usually
+  /// This table stores information about Runs. Each row usually
   /// represents a single attempt at training or testing a TensorFlow
   /// model, with a given set of hyper-parameters, whose summaries are
   /// written out to a single event logs directory with a monotonic step
   /// counter.
   ///
-  /// When a run is deleted from this table, TensorBoard should treat all
-  /// information associated with it as deleted, even if those rows in
-  /// different tables still exist.
-  ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   run_id: Permanent >0 unique ID.
+  ///   run_id: The Permanent ID of the Run. This has a 1:1 mapping
+  ///     with a SummaryWriter instance. If two writers spawn for a
+  ///     given (user_name, run_name, run_name) then each should
+  ///     allocate its own run_id and whichever writer puts it in the
+  ///     database last wins. The Tags / Tensors associated with the
+  ///     previous invocations will then enter limbo, where they may be
+  ///     accessible for certain operations, but should be garbage
+  ///     collected eventually.
   ///   experiment_id: Optional ID of associated Experiment.
   ///   run_name: User-supplied string, unique across Experiment.
   ///   inserted_time: Float UNIX timestamp with µs precision. This is
@@ -134,7 +179,10 @@ class SqliteSchema {
   ///     started, from the perspective of whichever machine talks to
   ///     the database. This field will be mutated if the run is
   ///     restarted.
-  ///   description: Optional markdown information.
+  ///   finished_time: Float UNIX timestamp with µs precision of when
+  ///     SummaryWriter resource that created this run was destroyed.
+  ///     Once this value becomes non-NULL a Run and its Tags and
+  ///     Tensors should be regarded as immutable.
   ///   graph_id: ID of associated Graphs row.
   Status CreateRunsTable() {
     return Run(R"sql(
@@ -145,7 +193,7 @@ class SqliteSchema {
         run_name TEXT,
         inserted_time REAL,
         started_time REAL,
-        description TEXT,
+        finished_time REAL,
         graph_id INTEGER
       )
     )sql");
@@ -159,15 +207,15 @@ class SqliteSchema {
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
   ///   user_id: Optional ID of associated User.
-  ///   experiment_id: Permanent >0 unique ID.
+  ///   experiment_id: The Permanent ID of the Experiment.
   ///   experiment_name: User-supplied string, unique across User.
   ///   inserted_time: Float UNIX timestamp with µs precision. This is
   ///     always the time the row was inserted into the database. It
   ///     does not change.
   ///   started_time: Float UNIX timestamp with µs precision. This is
   ///     the MIN(experiment.started_time, run.started_time) of each
-  ///     Run added to the database.
-  ///   description: Optional markdown information.
+  ///     Run added to the database, including Runs which have since
+  ///     been overwritten.
   Status CreateExperimentsTable() {
     return Run(R"sql(
       CREATE TABLE IF NOT EXISTS Experiments (
@@ -176,8 +224,7 @@ class SqliteSchema {
         experiment_id INTEGER NOT NULL,
         experiment_name TEXT,
         inserted_time REAL,
-        started_time REAL,
-        description TEXT
+        started_time REAL
       )
     )sql");
   }
@@ -186,7 +233,7 @@ class SqliteSchema {
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   user_id: Permanent >0 unique ID.
+  ///   user_id: The Permanent ID of the User.
   ///   user_name: Unique user name.
   ///   email: Optional unique email address.
   ///   inserted_time: Float UNIX timestamp with µs precision. This is
@@ -208,7 +255,7 @@ class SqliteSchema {
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   graph_id: Permanent >0 unique ID.
+  ///   graph_id: The Permanent ID of the Graph.
   ///   inserted_time: Float UNIX timestamp with µs precision. This is
   ///     always the wall time of when the row was inserted into the
   ///     DB. It may be used as a hint for an archival job.
@@ -229,7 +276,7 @@ class SqliteSchema {
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   graph_id: Permanent >0 unique ID.
+  ///   graph_id: The Permanent ID of the associated Graph.
   ///   node_id: ID for this node. This is more like a 0-index within
   ///     the Graph. Please note indexes are allowed to be removed.
   ///   node_name: Unique name for this Node within Graph. This is
@@ -258,7 +305,7 @@ class SqliteSchema {
   ///
   /// Fields:
   ///   rowid: Ephemeral b-tree ID dictating locality.
-  ///   graph_id: Permanent >0 unique ID.
+  ///   graph_id: The Permanent ID of the associated Graph.
   ///   node_id: Index of Node in question. This can be considered the
   ///     'to' vertex.
   ///   idx: Used for ordering inputs on a given Node.
@@ -420,6 +467,8 @@ class SqliteSchema {
 
 Status SetupTensorboardSqliteDb(std::shared_ptr<Sqlite> db) {
   SqliteSchema s(std::move(db));
+  TF_RETURN_IF_ERROR(s.CreateIdsTable());
+  TF_RETURN_IF_ERROR(s.CreateDescriptionsTable());
   TF_RETURN_IF_ERROR(s.CreateTensorsTable());
   TF_RETURN_IF_ERROR(s.CreateTensorChunksTable());
   TF_RETURN_IF_ERROR(s.CreateTagsTable());

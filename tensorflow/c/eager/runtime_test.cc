@@ -96,7 +96,7 @@ TEST(KernelAndDevice, Run) {
       KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel);
   ASSERT_TRUE(s.ok()) << s;
   std::vector<Tensor> outputs;
-  s = kernel.Run(&inputs, &outputs);
+  s = kernel.Run(&inputs, &outputs, nullptr);
   ASSERT_TRUE(s.ok()) << s;
   ASSERT_EQ(1, outputs.size());
   const Tensor& out = outputs[0];
@@ -183,7 +183,7 @@ void BM_KernelAndDeviceRun(int iters) {
       KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs));
+    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

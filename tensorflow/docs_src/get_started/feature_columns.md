@@ -419,7 +419,7 @@ still adds significant value to the learning capability of your models.
 Somewhat counterintuitively, when creating feature crosses, you typically still
 should include the original (uncrossed) features in your model (as in the
 preceding code snippet). The independent latitude and longitude features help the
-model distinguish between examples where a hash collision has occured in the
+model distinguish between examples where a hash collision has occurred in the
 crossed feature.
 
 ## Indicator and embedding columns
@@ -559,9 +559,11 @@ As the following list indicates, not all Estimators permit all types of
 
 For more examples on feature columns, view the following:
 
-* The @{$wide_and_deep$Wide & Deep Tutorial}
-* [Examples](https://github.com/tensorflow/models/tree/master/samples/cookbook/regression)
-  of DNNs and linear models that use feature columns.
+* The @{$low_level_intro#feature_columns$Low Level Introduction} demonstrates how
+  experiment directly with `feature_columns` using TensorFlow's low level APIs.
+* The @{$wide$wide} and @{$wide_and_deep$Wide & Deep} Tutorials solve a
+  binary classification problem using `feature_columns` on a variety of input
+  data types.
 
 To learn more about embeddings, see the following:
 

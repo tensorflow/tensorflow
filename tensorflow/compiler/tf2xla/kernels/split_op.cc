@@ -103,7 +103,7 @@ class SplitOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Split"), SplitOp);
+REGISTER_XLA_OP(Name("Split").CompileTimeConstInput("split_dim"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -142,8 +142,9 @@ class SplitVOp : public XlaOpKernel {
     int neg_one_dim = -1;
     std::vector<int64> split_sizes_vec(num_split, -1);
     const TensorShape split_size_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, split_size_shape.dims() == 1 &&
-                         split_size_shape.num_elements() == num_split,
+    OP_REQUIRES(ctx,
+                split_size_shape.dims() == 1 &&
+                    split_size_shape.num_elements() == num_split,
                 errors::InvalidArgument(
                     "shape of tensor describing "
                     " the output must have dimension 1 and the same "
@@ -171,10 +172,11 @@ class SplitVOp : public XlaOpKernel {
     }
 
     OP_REQUIRES(
-        ctx, (neg_one_dim == -1 &&
-              total_split_size == input_shape.dim_size(split_dim)) ||
-                 (neg_one_dim >= 0 &&
-                  total_split_size <= input_shape.dim_size(split_dim)),
+        ctx,
+        (neg_one_dim == -1 &&
+         total_split_size == input_shape.dim_size(split_dim)) ||
+            (neg_one_dim >= 0 &&
+             total_split_size <= input_shape.dim_size(split_dim)),
         errors::InvalidArgument("Determined shape must either match "
                                 "input shape along split_dim exactly if "
                                 "fully specified, or be less than the size of "
@@ -206,7 +208,10 @@ class SplitVOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("SplitV"), SplitVOp);
+REGISTER_XLA_OP(Name("SplitV")
+                    .CompileTimeConstInput("split_dim")
+                    .CompileTimeConstInput("size_splits"),
+                SplitVOp);
 
 }  // namespace
 }  // namespace tensorflow

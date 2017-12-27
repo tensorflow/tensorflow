@@ -67,8 +67,11 @@ def _tf_http_archive(ctx):
   if ("mirror.bazel.build" not in ctx.attr.urls[0] or
       (len(ctx.attr.urls) < 2 and
        ctx.attr.name not in _SINGLE_URL_WHITELIST)):
-    fail("tf_http_archive(urls) must have redundant URLs. The Bazel Mirror " +
-         "URL must come first. Please note mirroring happens after merge")
+    fail("tf_http_archive(urls) must have redundant URLs. The " +
+         "mirror.bazel.build URL must be present and it must come first. " +
+         "Even if you don't have permission to mirror the file, please " +
+         "put the correctly formatted mirror URL there anyway, because " +
+         "someone will come along shortly thereafter and mirror the file.")
   ctx.download_and_extract(
       ctx.attr.urls,
       "",

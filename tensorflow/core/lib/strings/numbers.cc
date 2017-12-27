@@ -23,9 +23,6 @@ limitations under the License.
 #include <locale>
 #include <unordered_map>
 
-#include "double-conversion/double-conversion.h"
-
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -35,15 +32,74 @@ namespace tensorflow {
 
 namespace {
 
-static inline const double_conversion::StringToDoubleConverter& StringToFloatConverter() {
-    const static double_conversion::StringToDoubleConverter converter(
-        double_conversion::StringToDoubleConverter::ALLOW_LEADING_SPACES
-        | double_conversion::StringToDoubleConverter::ALLOW_HEX
-        | double_conversion::StringToDoubleConverter::ALLOW_TRAILING_SPACES
-        | double_conversion::StringToDoubleConverter::ALLOW_CASE_INSENSIBILITY,
-        0., 0., "inf", "nan"
-    );
-    return converter;
+template <typename T>
+T locale_independent_strtonum(const char* str, const char** endptr) {
+  static const std::unordered_map<string, T> special_nums = {
+      {"inf", std::numeric_limits<T>::infinity()},
+      {"+inf", std::numeric_limits<T>::infinity()},
+      {"-inf", -std::numeric_limits<T>::infinity()},
+      {"infinity", std::numeric_limits<T>::infinity()},
+      {"+infinity", std::numeric_limits<T>::infinity()},
+      {"-infinity", -std::numeric_limits<T>::infinity()},
+      {"nan", std::numeric_limits<T>::quiet_NaN()},
+      {"+nan", std::numeric_limits<T>::quiet_NaN()},
+      {"-nan", -std::numeric_limits<T>::quiet_NaN()},
+  };
+  std::stringstream s(str);
+
+  // Check if str is one of the special numbers.
+  string special_num_str;
+  s >> special_num_str;
+
+  for (int i = 0; i < special_num_str.length(); ++i) {
+    special_num_str[i] =
+        std::tolower(special_num_str[i], std::locale::classic());
+  }
+
+  auto entry = special_nums.find(special_num_str);
+  if (entry != special_nums.end()) {
+    *endptr = str + (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg());
+    return entry->second;
+  } else {
+    // Perhaps it's a hex number
+    if (special_num_str.compare(0, 2, "0x") == 0 ||
+        special_num_str.compare(0, 3, "-0x") == 0) {
+      return strtol(str, const_cast<char**>(endptr), 16);
+    }
+  }
+  // Reset the stream
+  s.str(str);
+  s.clear();
+  // Use the "C" locale
+  s.imbue(std::locale::classic());
+
+  T result;
+  s >> result;
+
+  // Set to result to what strto{f,d} functions would have returned. If the
+  // number was outside the range, the stringstream sets the fail flag, but
+  // returns the +/-max() value, whereas strto{f,d} functions return +/-INF.
+  if (s.fail()) {
+    if (result == std::numeric_limits<T>::max() ||
+        result == std::numeric_limits<T>::infinity()) {
+      result = std::numeric_limits<T>::infinity();
+      s.clear(s.rdstate() & ~std::ios::failbit);
+    } else if (result == -std::numeric_limits<T>::max() ||
+               result == -std::numeric_limits<T>::infinity()) {
+      result = -std::numeric_limits<T>::infinity();
+      s.clear(s.rdstate() & ~std::ios::failbit);
+    }
+  }
+
+  if (endptr) {
+    *endptr =
+        str +
+        (s.fail() ? static_cast<std::iostream::pos_type>(0)
+                  : (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg()));
+  }
+  return result;
 }
 
 }  // namespace
@@ -111,8 +167,8 @@ char* DoubleToBuffer(double value, char* buffer) {
     // larger than the precision we asked for.
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
-    auto parsed_value = double{};
-    full_precision_needed = !safe_strtod(buffer, &parsed_value) || parsed_value != value;
+    full_precision_needed =
+        locale_independent_strtonum<double>(buffer, nullptr) != value;
   }
 
   if (full_precision_needed) {
@@ -248,23 +304,25 @@ bool safe_strtou32(StringPiece str, uint32* value) {
 }
 
 bool safe_strtof(const char* str, float* value) {
-  int processed_characters_count = -1;
-  auto len = str_util::Strnlen(str, kFastToBufferSize);
-  *value = StringToFloatConverter().StringToFloat(
-      str,
-      len,
-      &processed_characters_count);
-  return processed_characters_count > 0;
+  const char* endptr;
+  *value = locale_independent_strtonum<float>(str, &endptr);
+  while (isspace(*endptr)) ++endptr;
+  // Ignore range errors from strtod/strtof.
+  // The values it returns on underflow and
+  // overflow are the right fallback in a
+  // robust setting.
+  return *str != '\0' && *endptr == '\0';
 }
 
 bool safe_strtod(const char* str, double* value) {
-  int processed_characters_count = -1;
-  auto len = str_util::Strnlen(str, kFastToBufferSize);
-  *value = StringToFloatConverter().StringToDouble(
-      str,
-      len,
-      &processed_characters_count);
-  return processed_characters_count > 0;
+  const char* endptr;
+  *value = locale_independent_strtonum<double>(str, &endptr);
+  while (isspace(*endptr)) ++endptr;
+  // Ignore range errors from strtod/strtof.
+  // The values it returns on underflow and
+  // overflow are the right fallback in a
+  // robust setting.
+  return *str != '\0' && *endptr == '\0';
 }
 
 char* FloatToBuffer(float value, char* buffer) {

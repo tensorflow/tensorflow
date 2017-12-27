@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/core/platform/logging.h"
-
 
 namespace toco {
 
@@ -223,6 +223,10 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
+    HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
+    HANDLE_OPERATORTYPENAME_CASE(Fill)
+    HANDLE_OPERATORTYPENAME_CASE(FloorMod)
+    HANDLE_OPERATORTYPENAME_CASE(FloorDiv)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreater)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreaterEqual)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowIdentity)
@@ -234,8 +238,12 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMerge)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
+    HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
+    HANDLE_OPERATORTYPENAME_CASE(Stack)
+    HANDLE_OPERATORTYPENAME_CASE(Range)
+    HANDLE_OPERATORTYPENAME_CASE(Rank)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowReshape)
     HANDLE_OPERATORTYPENAME_CASE(Squeeze)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowRsqrt)
@@ -248,6 +256,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Sub)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowSum)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowTile)
+    HANDLE_OPERATORTYPENAME_CASE(Transpose)
+    HANDLE_OPERATORTYPENAME_CASE(TransposeConv)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcat)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcatV2)
     HANDLE_OPERATORTYPENAME_CASE(Cast)
@@ -258,6 +268,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMax)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
     default:
       LOG(FATAL) << "Unhandled op type";
@@ -305,6 +316,9 @@ void LogArray(int log_level, const Model& model, const string& name) {
     case ArrayDataType::kUint8:
       VLOG(log_level) << "  Data type: kUint8";
       break;
+    case ArrayDataType::kString:
+      VLOG(log_level) << "  Data type: kString";
+      break;
     default:
       VLOG(log_level) << "  Data type: other (numerical value: "
                       << static_cast<int>(array.data_type) << ")";
@@ -322,6 +336,9 @@ void LogArray(int log_level, const Model& model, const string& name) {
       break;
     case ArrayDataType::kUint8:
       VLOG(log_level) << "  Final type: kUint8";
+      break;
+    case ArrayDataType::kString:
+      VLOG(log_level) << "  Final type: kString";
       break;
     default:
       VLOG(log_level) << "  Final type: other (numerical value: "
@@ -555,14 +572,64 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
   return !!model.arrays.at(name)->buffer;
 }
 
-void CheckNoMissingArray(const Model& model) {
-  for (const auto& op : model.operators) {
-    for (const auto& input : op->inputs) {
-      CHECK(model.arrays.count(input));
+namespace {
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
+  for (const auto& input_array : model_flags.input_arrays()) {
+    for (const string& output_array : model_flags.output_arrays()) {
+      QCHECK_NE(input_array.name(), output_array)
+          << "The array " << output_array
+          << " is listed in both --input_arrays and --output_arrays.";
     }
-    for (const auto& output : op->outputs) {
-      CHECK(model.arrays.count(output));
+  }
+}
+
+bool IsAsciiPrintable(const string& name) {
+  for (char c : name) {
+    if (!absl::ascii_isprint(c)) {
+      return false;
     }
+  }
+  return true;
+}
+
+string DumpAscii(const string& name) {
+  string result;
+  port::AppendF(&result, "ASCII | Hex\n");
+  port::AppendF(&result, "------+----\n");
+  for (char c : name) {
+    if (absl::ascii_isprint(c)) {
+      port::AppendF(&result, "%c     | %x\n", c, c);
+    } else {
+      port::AppendF(&result, "      | %x   Not ASCII printable!\n", c);
+    }
+  }
+  return result;
+}
+
+void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
+  if (model_flags.allow_nonascii_arrays()) {
+    return;
+  }
+  for (const auto& input_array : model_flags.input_arrays()) {
+    QCHECK(IsAsciiPrintable(input_array.name()))
+        << "Non-ASCII-printable character found in --input_arrays: "
+        << input_array.name()
+        << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(input_array.name());
+  }
+  for (const string& output_array : model_flags.output_arrays()) {
+    QCHECK(IsAsciiPrintable(output_array))
+        << "Non-ASCII-printable character found in --output_arrays: "
+        << output_array << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(output_array);
+  }
+}
+
+void CheckNonExistentIOArrays(const Model& model) {
+  if (model.flags.allow_nonexistent_arrays()) {
+    return;
   }
   for (const auto& input_array : model.flags.input_arrays()) {
     CHECK(model.arrays.count(input_array.name()))
@@ -573,9 +640,24 @@ void CheckNoMissingArray(const Model& model) {
         << "Output array not found: " << output_array;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
-    CHECK(model.arrays.count(rnn_state.state_array()));
-    CHECK(model.arrays.count(rnn_state.back_edge_source_array()));
+    if (!rnn_state.discardable()) {
+      CHECK(model.arrays.count(rnn_state.state_array()));
+      CHECK(model.arrays.count(rnn_state.back_edge_source_array()));
+    }
   }
+}
+}  // namespace
+
+void CheckNoMissingArray(const Model& model) {
+  for (const auto& op : model.operators) {
+    for (const auto& input : op->inputs) {
+      CHECK(model.arrays.count(input));
+    }
+    for (const auto& output : op->outputs) {
+      CHECK(model.arrays.count(output));
+    }
+  }
+  CheckNonExistentIOArrays(model);
 }
 
 void FixNoMissingArray(Model* model) {
@@ -591,9 +673,13 @@ void FixNoMissingArray(Model* model) {
       }
     }
   }
-  for (const string& output_array : model->flags.output_arrays()) {
-    if (!model->arrays.count(output_array)) {
+  if (model->flags.allow_nonexistent_arrays()) {
+    for (const string& output_array : model->flags.output_arrays()) {
       model->GetOrCreateArray(output_array);
+    }
+    for (const auto& rnn_state : model->flags.rnn_states()) {
+      model->GetOrCreateArray(rnn_state.state_array());
+      model->GetOrCreateArray(rnn_state.back_edge_source_array());
     }
   }
 }
@@ -601,7 +687,9 @@ void FixNoMissingArray(Model* model) {
 void CheckNoOrphanedArray(const Model& model) {
   std::unordered_set<string> arrays_without_known_use;
   for (const auto& array : model.arrays) {
-    arrays_without_known_use.insert(array.first);
+    if (IsDiscardableArray(model, array.first)) {
+      arrays_without_known_use.insert(array.first);
+    }
   }
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
@@ -610,6 +698,10 @@ void CheckNoOrphanedArray(const Model& model) {
     for (const auto& output : op->outputs) {
       arrays_without_known_use.erase(output);
     }
+  }
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    arrays_without_known_use.erase(rnn_state.state_array());
+    arrays_without_known_use.erase(rnn_state.back_edge_source_array());
   }
   if (!arrays_without_known_use.empty()) {
     for (const auto& array : arrays_without_known_use) {
@@ -632,8 +724,14 @@ void FixNoOrphanedArray(Model* model) {
       arrays_without_known_use.erase(output);
     }
   }
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    arrays_without_known_use.erase(rnn_state.state_array());
+    arrays_without_known_use.erase(rnn_state.back_edge_source_array());
+  }
   for (const auto& array : arrays_without_known_use) {
-    model->arrays.erase(array);
+    if (IsDiscardableArray(*model, array)) {
+      model->arrays.erase(array);
+    }
   }
 }
 
@@ -791,52 +889,13 @@ void FixOperatorOrdering(Model* model) {
       << "the above code should have generated a FATAL error already!";
 }
 
-// Checks that the --input_arrays of the Model are actually used by at least
-// one of the --output_arrays or --rnn_states i.e. that the graph contains a
-// path from each one of the inputs to at least one of the outputs or RNN
-// states. This catches cases where the user passed the wrong --input_arrays or
-// --output_arrays or --rnn_states, which otherwise may result in cryptic error
-// messages.
-void CheckInputsActuallyUsed(const Model& model) {
-  std::set<string> used_arrays;
-  for (const string& output : model.flags.output_arrays()) {
-    used_arrays.insert(output);
-  }
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    used_arrays.insert(rnn_state.back_edge_source_array());
-  }
-  for (int i = model.operators.size() - 1; i >= 0; i--) {
-    bool is_op_used = false;
-    for (const string& op_output : model.operators[i]->outputs) {
-      if (used_arrays.count(op_output)) {
-        is_op_used = true;
-        break;
-      }
-    }
-    if (!is_op_used) {
-      continue;
-    }
-    for (const string& op_input : model.operators[i]->inputs) {
-      used_arrays.insert(op_input);
-    }
-  }
-  for (const auto& input_array : model.flags.input_arrays()) {
-    QCHECK(used_arrays.count(input_array.name()))
-        << "The graph does not connect the input (" << input_array.name()
-        << ") specified by --input_arrays to any of the specified "
-        << "--output_arrays ("
-        << absl::StrJoin(model.flags.output_arrays(), ", ")
-        << "). Did you pass the wrong flags for this model, "
-        << "or is that model's graph actually incomplete?";
-  }
-}
-
 void CheckInvariants(const Model& model) {
+  CheckInputArraysAreNotOutputArrays(model.flags);
+  CheckNonAsciiIOArrays(model.flags);
   CheckNoMissingArray(model);
   CheckNoOrphanedArray(model);
   CheckArrayFieldsConsistent(model);
   CheckOperatorOrdering(model);
-  CheckInputsActuallyUsed(model);
 }
 
 void CheckCountInRange(const ::toco::ModelFlags::ModelCheck& model_check,
@@ -914,9 +973,9 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
     // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
     // a better match by name.
     if (input_array.name() == name || num_dims == -1) {
-      num_dims = input_array.shape_size();
-      if (num_dims != 0) {
-        batch = input_array.shape(0);
+      num_dims = input_array.shape().dims_size();
+      if (num_dims > 0) {
+        batch = input_array.shape().dims(0);
       }
     }
   }
@@ -985,33 +1044,32 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     RESOLVE_MODEL_FLAG(mean_value);
 #undef RESOLVE_MODEL_FLAG
 
-    if (!specified_input_array.shape().empty()) {
-      if (!dst_input_array->shape().empty()) {
-        QCHECK_EQ(specified_input_array.shape().size(),
-                  dst_input_array->shape().size())
+    if (specified_input_array.has_shape()) {
+      if (dst_input_array->has_shape()) {
+        QCHECK_EQ(specified_input_array.shape().dims_size(),
+                  dst_input_array->shape().dims_size())
             << "For input array '" << specified_input_array.name() << "', "
             << "size of specified input shape flag with size: "
-            << specified_input_array.shape().size()
+            << specified_input_array.shape().dims_size()
             << " does not agree with already defined input shape"
                " of this model, with size: "
-            << dst_input_array->shape().size();
+            << dst_input_array->shape().dims_size();
         // We treat the first dimension as a special case, since it is often
         // a batch size and the input_shape flag is effectively overriding
         // the model.
-        for (int i = 1; i < specified_input_array.shape().size(); i++) {
-          QCHECK_EQ(specified_input_array.shape().Get(i),
-                    dst_input_array->shape().Get(i))
+        for (int i = 1; i < specified_input_array.shape().dims_size(); i++) {
+          QCHECK_EQ(specified_input_array.shape().dims(i),
+                    dst_input_array->shape().dims(i))
               << "At dimension number " << i << " of input array "
               << specified_input_array.name() << ", the specified shape's "
               << "dimension flag with dimension: "
-              << specified_input_array.shape().Get(i)
+              << specified_input_array.shape().dims(i)
               << " does not agree with already defined shape"
               << " of this model, with dimension: "
-              << dst_input_array->shape().Get(i);
+              << dst_input_array->shape().dims(i);
         }
       } else {
-        dst_input_array->mutable_shape()->CopyFrom(
-            specified_input_array.shape());
+        *dst_input_array->mutable_shape() = specified_input_array.shape();
       }
     }
 
@@ -1042,25 +1100,14 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
 
 #undef RESOLVE_MODEL_FLAG
 
-  if (model->flags.rnn_states_size() == 0) {
+  if (!model_flags.rnn_states().empty()) {
     model->flags.mutable_rnn_states()->CopyFrom(model_flags.rnn_states());
-  } else {
-    CHECK_EQ(model->flags.rnn_states_size(), model_flags.rnn_states_size());
-    for (int i = 0; i < model->flags.rnn_states_size(); i++) {
-      CHECK_EQ(model->flags.rnn_states(i).state_array(),
-               model_flags.rnn_states(i).state_array());
-      CHECK_EQ(model->flags.rnn_states(i).back_edge_source_array(),
-               model_flags.rnn_states(i).back_edge_source_array());
-    }
   }
 
   if (model->flags.model_checks_size() == 0) {
     model->flags.mutable_model_checks()->CopyFrom(model_flags.model_checks());
   }
 
-  QCHECK_GT(model->flags.input_arrays_size(), 0)
-      << "This model does not define input arrays, so a "
-         "--input_arrays flag must be given on the command-line.";
   QCHECK_GT(model->flags.output_arrays_size(), 0)
       << "This model does not define output arrays, so a "
          "--output_arrays flag must be given on the command-line.";
@@ -1088,24 +1135,27 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       input_array.data_type = ArrayDataType::kFloat;
     }
 
-    if (!input_array.has_shape()) {
-      QCHECK(!input_array_proto.shape().empty())
-          << "This model does not have shape defined for input array "
-          << input_array_proto.name();
-    }
-
     // Compare/merge the model->flags describing the input_shape with
     // the actual input array's shape.
-    auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
-    if (input_array_dims.empty()) {
-      for (auto dim : input_array_proto.shape()) {
-        CHECK_GE(dim, 1);
-        input_array_dims.push_back(dim);
+    if (!input_array.has_shape()) {
+      if (input_array_proto.has_shape()) {
+        auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
+        for (auto dim : input_array_proto.shape().dims()) {
+          CHECK_GE(dim, 1);
+          input_array_dims.push_back(dim);
+        }
       }
     } else {
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape_size());
-      for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape(i));
+      if (input_array_proto.has_shape()) {
+        // If an input shape was specified on the flags ensure that it matches
+        // the actual shape in the model.
+        const auto& input_array_dims =
+            *input_array.mutable_shape()->mutable_dims();
+        CHECK_EQ(input_array_dims.size(),
+                 input_array_proto.shape().dims_size());
+        for (int i = 0; i < input_array_dims.size(); i++) {
+          CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
       }
     }
 
@@ -1134,6 +1184,16 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
                                model);
   }
+
+  for (const auto& input_array : model->flags.input_arrays()) {
+    if (input_array.has_shape()) {
+      CHECK(input_array.shape().dims_size());
+    }
+  }
+
+  model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
+  model->flags.set_allow_nonexistent_arrays(
+      model_flags.allow_nonexistent_arrays());
 }
 
 void CheckIsReadyForQuantization(const Model& model) {
@@ -1197,6 +1257,13 @@ int ElementSize(ArrayDataType data_type) {
       return 4;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt64:
+      return 8;
+    // Usually not critical limitation because strings are only input and/or
+    // output.
+    case ArrayDataType::kString:
+      LOG(FATAL) << "Transient arrays with strings are not supported yet";
+      return 0;
     default:
       LOG(FATAL) << "Should not get here.";
       return 0;
@@ -1571,11 +1638,13 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
     }
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.state_array()) {
-      return false;
-    }
-    if (array_name == rnn_state.back_edge_source_array()) {
-      return false;
+    if (!rnn_state.discardable()) {
+      if (array_name == rnn_state.state_array()) {
+        return false;
+      }
+      if (array_name == rnn_state.back_edge_source_array()) {
+        return false;
+      }
     }
   }
   return true;

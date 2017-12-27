@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -103,7 +102,6 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
   }
   void* data =
       reinterpret_cast<void*>(const_cast<char*>(t.tensor_data().data()));
-  TF_RET_CHECK(data != nullptr);
   tensors_[data] = t;
   return gpu::DeviceMemoryBase(data, size);
 }
@@ -111,7 +109,6 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
 Status XlaAllocator::RegisterArgument(const Tensor* t) {
   void* data =
       reinterpret_cast<void*>(const_cast<char*>(t->tensor_data().data()));
-  TF_RET_CHECK(data != nullptr);
   tensors_[data] = *t;
   return Status::OK();
 }
@@ -267,7 +264,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   // Builds an XLA allocator for the device.
   XlaAllocator xla_allocator(client->platform(), ctx);
-  XlaLocalRuntimeContext local_runtime_context;
 
   std::unique_ptr<xla::ShapedBuffer> output;
   // Build xla::ShapedBuffers that point directly to the Tensor buffers.
@@ -291,25 +287,20 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
         const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
 
-    arg_buffers[i] =
-        xla::ShapedBuffer::MakeArrayShapedBuffer(
-            shape, client->platform(), client->default_device_ordinal(), dmem)
-            .ConsumeValueOrDie();
+    const xla::Shape on_device_shape =
+        client->backend().transfer_manager()->HostShapeToDeviceShape(shape);
+    CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
+        << "On-device shape "
+        << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
+        << " not the same as on-host shape "
+        << xla::ShapeUtil::HumanStringWithLayout(shape);
+    arg_buffers[i] = xla::MakeUnique<xla::ShapedBuffer>(
+        /*on_host_shape=*/shape, /*on_device_shape=*/shape, client->platform(),
+        client->default_device_ordinal());
+    arg_buffers[i]->set_buffer(dmem, /*index=*/{});
     arg_ptrs[i] = arg_buffers[i].get();
 
     OP_REQUIRES_OK(ctx, xla_allocator.RegisterArgument(t));
-  }
-
-  // Make the final parameter point at local_runtime_context.
-  if (kernel->requires_runtime_context) {
-    gpu::DeviceMemoryBase local_runtime_context_dmem(
-        &local_runtime_context, sizeof(local_runtime_context));
-    arg_buffers.push_back(
-        xla::ShapedBuffer::MakeArrayShapedBuffer(
-            xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
-            client->default_device_ordinal(), local_runtime_context_dmem)
-            .ConsumeValueOrDie());
-    arg_ptrs.push_back(arg_buffers.back().get());
   }
 
   // Execute the computation.
@@ -323,19 +314,13 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   auto run_result = executable->Run(arg_ptrs, run_options);
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
-  if (local_runtime_context.error) {
-    ctx->CtxFailure(errors::InvalidArgument("Compiled kernel returned error: ",
-                                            local_runtime_context.error_msg));
-    return;
-  }
-
   output = run_result.ConsumeValueOrDie()->release();
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
   // Computation output should always be a tuple.
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
+    VLOG(2) << "Result tuple shape: " << output->on_host_shape().DebugString();
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 

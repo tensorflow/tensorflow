@@ -1091,48 +1091,6 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
                                root2->operand(1)->operand(0)->shape()));
 }
 
-TEST_F(HloInstructionTest, IsRandomFusable) {
-  auto shape = ShapeUtil::MakeShape(F32, {2, 2});
-  {
-    auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewModule();
-    auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(0.0)));
-    auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(1.0)));
-    auto rng = builder.AddInstruction(HloInstruction::CreateRng(
-        shape, RandomDistribution::RNG_NORMAL, {const0, const1}));
-
-    auto* computation = hlo_module->AddEntryComputation(builder.Build());
-    computation->CreateFusionInstruction({rng, const0, const1},
-      HloInstruction::FusionKind::kLoop);
-
-    auto* root = computation->root_instruction();
-
-    EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-  }
-  {
-    auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewModule();
-    auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(0.0)));
-    auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<float>(1.0)));
-    auto rng = builder.AddInstruction(HloInstruction::CreateRng(
-        shape, RandomDistribution::RNG_NORMAL, {const0, const1}));
-    builder.AddInstruction(HloInstruction::CreateUnary(
-        shape, HloOpcode::kNegate, rng));
-    auto* computation = hlo_module->AddEntryComputation(builder.Build());
-    computation->CreateFusionInstruction({rng, const0, const1},
-      HloInstruction::FusionKind::kLoop);
-
-    auto* root = computation->root_instruction();
-
-    EXPECT_EQ(HloOpcode::kFusion, root->operand(0)->opcode());
-  }
-}
-
-
 TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test that the suffix string added to cloned instructions is not
   // duplicated. Rather a numeric incrementing value should be appended. That
@@ -1172,7 +1130,7 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
 }
 
 TEST_F(HloInstructionTest, Stringification) {
-  // Tests stringification of a simple op, fusion, and while.
+  // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
   const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
@@ -1191,9 +1149,11 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
 
-  EXPECT_EQ(dot->ToString(false, false),
+  auto options = HloPrintOptions().set_print_metadata(false);
+
+  EXPECT_EQ(dot->ToString(options),
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
-            "%transpose), lhs_contracting_dims=1,rhs_contracting_dims=0");
+            "%transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 
   HloModule module(TestName());
   auto* computation = module.AddEntryComputation(builder.Build());
@@ -1201,15 +1161,25 @@ TEST_F(HloInstructionTest, Stringification) {
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
   EXPECT_EQ(
-      fusion->ToString(false, false),
+      fusion->ToString(options),
       "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
       "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
-  EXPECT_EQ(loop->ToString(false, false),
+  EXPECT_EQ(loop->ToString(options),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
             "condition=%TransposeDot, body=%TransposeDot");
+
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+  HloInstruction* conditional =
+      builder.AddInstruction(HloInstruction::CreateConditional(
+          sout, pred, x, computation, x, computation));
+  EXPECT_EQ(conditional->ToString(options),
+            "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
+            "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
+            "true_computation=%TransposeDot, false_computation=%TransposeDot");
 }
 
 }  // namespace

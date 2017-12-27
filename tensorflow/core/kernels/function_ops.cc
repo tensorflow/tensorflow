@@ -53,6 +53,8 @@ class ArgOp : public OpKernel {
     ctx->set_output(0, val);
   }
 
+  bool IsExpensive() override { return false; }
+
  private:
   int index_;
   DataType dtype_;
@@ -77,6 +79,8 @@ class RetvalOp : public OpKernel {
     OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
     OP_REQUIRES_OK(ctx, frame->SetRetval(index_, val));
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   int index_;
@@ -318,7 +322,7 @@ class RemoteCallOp : public AsyncOpKernel {
     if (opts.source_device != target_device) {
       opts.remote_execution = true;
     }
-    opts.rendezvous = ctx->rendezvous();
+    opts.create_rendezvous = true;
     std::vector<Tensor> args;
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {

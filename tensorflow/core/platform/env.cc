@@ -20,6 +20,10 @@ limitations under the License.
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #include "tensorflow/core/platform/windows/windows_file_system.h"
@@ -266,6 +270,14 @@ string Env::GetExecutablePath() {
   char unresolved_path[buffer_size];
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK(realpath(unresolved_path, exe_path));
+#elif defined(__FreeBSD__)
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+  size_t exe_path_size = PATH_MAX;
+
+  if (sysctl(mib, 4, exe_path, &exe_path_size, NULL, 0) != 0) {
+    // Resolution of path failed
+    return "";
+  }
 #elif defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
@@ -288,30 +300,47 @@ bool Env::LocalTempFilename(string* filename) {
   // Try each directory, as they might be full, have inappropriate
   // permissions or have different problems at times.
   for (const string& dir : dirs) {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    int32 tid = static_cast<int32>(tid64);
-    int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-    int32 tid = static_cast<int32>(GetCurrentThreadId());
-    int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-    int32 tid = static_cast<int32>(pthread_self());
-    int32 pid = static_cast<int32>(getpid());
-#endif
-    uint64 now_microsec = NowMicros();
-
-    *filename = io::JoinPath(
-        dir, strings::Printf("tempfile-%s-%x-%d-%llx", port::Hostname().c_str(),
-                             tid, pid, now_microsec));
-    if (FileExists(*filename).ok()) {
-      filename->clear();
-    } else {
+    *filename = io::JoinPath(dir, "tempfile-");
+    if (CreateUniqueFileName(filename, "")) {
       return true;
     }
   }
   return false;
+}
+
+bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
+#ifdef __APPLE__
+  uint64_t tid64;
+  pthread_threadid_np(nullptr, &tid64);
+  int32 tid = static_cast<int32>(tid64);
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(__FreeBSD__)
+  // Has to be casted to long first, else this error appears:
+  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+  // is not allowed
+  int32 tid = static_cast<int32>(static_cast<int64>(pthread_self()));
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(PLATFORM_WINDOWS)
+  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 pid = static_cast<int32>(GetCurrentProcessId());
+#else
+  int32 tid = static_cast<int32>(pthread_self());
+  int32 pid = static_cast<int32>(getpid());
+#endif
+  uint64 now_microsec = NowMicros();
+
+  *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
+                             pid, now_microsec);
+
+  if (!suffix.empty()) {
+    *prefix += suffix;
+  }
+  if (FileExists(*prefix).ok()) {
+    prefix->clear();
+    return false;
+  } else {
+    return true;
+  }
 }
 
 Thread::~Thread() {}

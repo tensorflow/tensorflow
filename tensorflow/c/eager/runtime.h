@@ -175,7 +175,8 @@ class KernelAndDevice {
       : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
 
   // TODO(ashankar): Handle list-valued inputs.
-  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs);
+  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
+             NodeExecStats* stats);
 
   const OpKernel* kernel() const { return kernel_.get(); }
 

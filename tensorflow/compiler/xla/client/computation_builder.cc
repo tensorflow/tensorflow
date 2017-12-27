@@ -1504,6 +1504,34 @@ ComputationDataHandle ComputationBuilder::While(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::Conditional(
+    const ComputationDataHandle& predicate,
+    const ComputationDataHandle& true_operand,
+    const Computation& true_computation,
+    const ComputationDataHandle& false_operand,
+    const Computation& false_computation) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  ConditionalRequest request;
+  *request.mutable_predicate() = predicate;
+  *request.mutable_true_operand() = true_operand;
+  *request.mutable_true_computation() = true_computation.handle();
+  *request.mutable_false_operand() = false_operand;
+  *request.mutable_false_computation() = false_computation.handle();
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_conditional_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making conditional op request";
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::Reduce(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& init_value, const Computation& computation,

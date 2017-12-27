@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -2225,7 +2226,8 @@ class RecordInput(object):
                shift_ratio=0,
                seed=0,
                name=None,
-               batches=None):
+               batches=None,
+               compression_type=None):
     """Constructs a RecordInput Op.
 
     Args:
@@ -2243,6 +2245,8 @@ class RecordInput(object):
         how many batches to create, which are returned as a list when
         `get_yield_op()` is called. An example use case is to split processing
         between devices on one computer.
+      compression_type: The type of compression for the file. Currently ZLIB and
+        GZIP are supported. Defaults to none.
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -2257,12 +2261,17 @@ class RecordInput(object):
     self._shift_ratio = shift_ratio
     self._seed = seed
     self._name = name
+    self._compression_type = python_io.TFRecordCompressionType.NONE
+    if compression_type is not None:
+      self._compression_type = compression_type
 
   def get_yield_op(self):
     """Adds a node that yields a group of records every time it is executed.
     If RecordInput `batches` parameter is not None, it yields a list of
     record batches with the specified `batch_size`.
     """
+    compression_type = python_io.TFRecordOptions.get_compression_type_string(
+        python_io.TFRecordOptions(self._compression_type))
     records = gen_data_flow_ops.record_input(
         file_pattern=self._file_pattern,
         file_buffer_size=self._buffer_size,
@@ -2270,6 +2279,7 @@ class RecordInput(object):
         file_shuffle_shift_ratio=self._shift_ratio,
         batch_size=self._batch_size,
         file_random_seed=self._seed,
+        compression_type=compression_type,
         name=self._name)
     if self._batches is None:
       return records

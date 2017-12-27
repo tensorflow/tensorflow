@@ -794,17 +794,17 @@ class GraphNetwork(base.Layer):
 
         # Store in cache.
         self._output_shape_cache[cache_key] = output_shapes
-      else:
-        # Cache hit.
-        output_shapes = self._output_shape_cache[cache_key]
+    else:
+      # Cache hit.
+      output_shapes = self._output_shape_cache[cache_key]
 
-      if isinstance(output_shapes, list):
-        if len(output_shapes) == 1:
-          return tensor_shape.TensorShape(output_shapes[0])
-        else:
-          return [tensor_shape.TensorShape(shape) for shape in output_shapes]
+    if isinstance(output_shapes, list):
+      if len(output_shapes) == 1:
+        return tensor_shape.TensorShape(output_shapes[0])
       else:
-        return tensor_shape.TensorShape(output_shapes)
+        return [tensor_shape.TensorShape(shape) for shape in output_shapes]
+    else:
+      return tensor_shape.TensorShape(output_shapes)
 
   def _run_internal_graph(self, inputs, masks=None):
     """Computes output tensors for new inputs.

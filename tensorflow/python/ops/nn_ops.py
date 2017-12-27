@@ -452,6 +452,7 @@ class _WithSpaceToBatch(object):
     self.input_shape = input_shape
     self.spatial_dims = spatial_dims
     self.dilation_rate = dilation_rate
+    self.data_format = data_format
     self.op = build_op(num_spatial_dims, "VALID")
     self.call = self._with_space_to_batch_call
 
@@ -496,6 +497,14 @@ class _WithSpaceToBatch(object):
 
     result_converted = array_ops.batch_to_space_nd(
         input=result, block_shape=dilation_rate, crops=crops)
+
+    # Recover channel information for output shape if channels are not last.
+    if self.data_format is not None and self.data_format.startswith("NC"):
+      if not result_converted.shape[1].value:
+        output_shape = result_converted.shape.as_list()
+        output_shape[1] = filter.shape[-1]
+        result_converted.set_shape(output_shape)
+
     return result_converted
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -823,7 +832,8 @@ class Convolution(object):
         padding=padding,
         build_op=self._build_op,
         filter_shape=filter_shape,
-        spatial_dims=spatial_dims)
+        spatial_dims=spatial_dims,
+        data_format=data_format)
 
   def _build_op(self, _, padding):
     return _NonAtrousConvolution(
@@ -2253,6 +2263,12 @@ def nth_element(input, n, reverse=False, name=None):
   return gen_nn_ops.nth_element(input, n, reverse=reverse, name=name)
 
 
+@deprecation.deprecated_arg_values(
+    None, "`NCHW` for data_format is deprecated, use `NCW` instead",
+    warn_once=True, data_format="NCHW")
+@deprecation.deprecated_arg_values(
+    None, "`NHWC` for data_format is deprecated, use `NWC` instead",
+    warn_once=True, data_format="NHWC")
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
            name=None):
@@ -2260,9 +2276,9 @@ def conv1d(value, filters, stride, padding,
 
   Given an input tensor of shape
     [batch, in_width, in_channels]
-  if data_format is "NHWC", or
+  if data_format is "NWC", or
     [batch, in_channels, in_width]
-  if data_format is "NCHW",
+  if data_format is "NCW",
   and a filter / kernel tensor of shape
   [filter_width, in_channels, out_channels], this op reshapes
   the arguments to pass them to conv2d to perform the equivalent
@@ -2287,9 +2303,9 @@ def conv1d(value, filters, stride, padding,
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
     use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
-    data_format: An optional `string` from `"NHWC", "NCHW"`.  Defaults
-      to `"NHWC"`, the data is stored in the order of
-      [batch, in_width, in_channels].  The `"NCHW"` format stores
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
+      to `"NWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCW"` format stores
       data as [batch, in_channels, in_width].
     name: A name for the operation (optional).
 
@@ -2301,15 +2317,16 @@ def conv1d(value, filters, stride, padding,
   """
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format is None or data_format == "NHWC":
+    if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
       spatial_start_dim = 1
       strides = [1, 1, stride, 1]
-    elif data_format == "NCHW":
+    elif data_format == "NCHW" or data_format == "NCW":
+      data_format = "NCHW"
       spatial_start_dim = 2
       strides = [1, 1, 1, stride]
     else:
-      raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
     value = array_ops.expand_dims(value, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
     result = gen_nn_ops.conv2d(value, filters, strides, padding,

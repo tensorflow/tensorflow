@@ -764,7 +764,7 @@ image: 4-D with shape `[num_frames, height, width, 3]`. RGB order
 REGISTER_OP("RGBToHSV")
     .Input("images: T")
     .Output("output: T")
-    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float, double} = DT_FLOAT")
     .SetShapeFn(ColorspaceShapeFn)
     .Doc(R"doc(
 Converts one or more images from RGB to HSV.
@@ -785,7 +785,7 @@ output: `images` converted to HSV.
 REGISTER_OP("HSVToRGB")
     .Input("images: T")
     .Output("output: T")
-    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float, double} = DT_FLOAT")
     .SetShapeFn(ColorspaceShapeFn)
     .Doc(R"doc(
 Convert one or more images from HSV to RGB.
@@ -884,7 +884,7 @@ For example,
     # Draw the bounding box in an image summary.
     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                   bbox_for_draw)
-    tf.image_summary('images_with_box', image_with_box)
+    tf.summary.image('images_with_box', image_with_box)
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
@@ -976,7 +976,7 @@ For example,
     # Draw the bounding box in an image summary.
     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                   bbox_for_draw)
-    tf.image_summary('images_with_box', image_with_box)
+    tf.summary.image('images_with_box', image_with_box)
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)

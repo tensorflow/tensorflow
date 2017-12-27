@@ -281,6 +281,21 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
+  def testBatchAdjustHue(self):
+    x_shape = [2, 1, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    delta = 0.25
+    y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_hue(x, delta)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
   def _adjustHueNp(self, x_np, delta_h):
     self.assertEqual(x_np.shape[-1], 3)
     x_v = x_np.reshape([-1, 3])
@@ -357,6 +372,89 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     delta_h = np.random.rand() * 2.0 - 1.0
     with self.assertRaisesOpError("input must have 3 channels"):
       self._adjustHueTf(x_np, delta_h)
+
+
+class FlipImageBenchmark(test.Benchmark):
+
+  def _benchmarkFlipLeftRight(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = config_pb2.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with session.Session("", graph=ops.Graph(), config=config) as sess:
+      with ops.device(device):
+        inputs = variables.Variable(
+            random_ops.random_uniform(
+                image_shape, dtype=dtypes.float32) * 255,
+            trainable=False,
+            dtype=dtypes.float32)
+        run_op = image_ops.flip_left_right(inputs)
+        sess.run(variables.global_variables_initializer())
+        for i in xrange(warmup_rounds + benchmark_rounds):
+          if i == warmup_rounds:
+            start = time.time()
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkFlipLeftRight_299_299_3_%s step_time: %.2f us" %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name="benchmarkFlipLeftRight_299_299_3_%s" % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def _benchmarkRandomFlipLeftRight(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = config_pb2.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with session.Session("", graph=ops.Graph(), config=config) as sess:
+      with ops.device(device):
+        inputs = variables.Variable(
+            random_ops.random_uniform(
+                image_shape, dtype=dtypes.float32) * 255,
+            trainable=False,
+            dtype=dtypes.float32)
+        run_op = image_ops.random_flip_left_right(inputs)
+        sess.run(variables.global_variables_initializer())
+        for i in xrange(warmup_rounds + benchmark_rounds):
+          if i == warmup_rounds:
+            start = time.time()
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkRandomFlipLeftRight_299_299_3_%s step_time: %.2f us" %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name="benchmarkRandomFlipLeftRight_299_299_3_%s" % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def benchmarkFlipLeftRightCpu1(self):
+    self._benchmarkFlipLeftRight("/cpu:0", 1)
+
+  def benchmarkFlipLeftRightCpuAll(self):
+    self._benchmarkFlipLeftRight("/cpu:0", None)
+
+  def benchmarkFlipLeftRightGpu(self):
+    self._benchmarkFlipLeftRight(test.gpu_device_name(), None)
+
+  def benchmarkRandomFlipLeftRightCpu1(self):
+    self._benchmarkRandomFlipLeftRight("/cpu:0", 1)
+
+  def benchmarkRandomFlipLeftRightCpuAll(self):
+    self._benchmarkRandomFlipLeftRight("/cpu:0", None)
+
+  def benchmarkRandomFlipLeftRightGpu(self):
+    self._benchmarkRandomFlipLeftRight(test.gpu_device_name(), None)
 
 
 class AdjustHueBenchmark(test.Benchmark):
@@ -624,6 +722,21 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
 
     saturation_factor = 2.0
     y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
+    y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
+
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.adjust_saturation(x, saturation_factor)
+      y_tf = y.eval()
+      self.assertAllEqual(y_tf, y_np)
+
+  def testBatchSaturation(self):
+    x_shape = [2, 1, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+
+    saturation_factor = 0.5
+    y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.test_session(use_gpu=True):

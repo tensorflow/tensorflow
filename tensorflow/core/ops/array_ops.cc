@@ -706,6 +706,26 @@ memory_region_name: Name of readonly memory region used by the tensor, see
   NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
 )doc");
 
+REGISTER_OP("GuaranteeConst")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return UnchangedShape(c);
+    })
+    // We don't want this to be optimized away.
+    .SetIsStateful()
+    .Doc(R"(
+Gives a guarantee to the TF runtime that the input tensor is a constant.
+
+The runtime is then free to make optimizations based on this.
+
+Only accepts value typed tensors as inputs and rejects resource variable handles
+as input.
+
+Returns the input tensor without modification.
+)");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
@@ -1308,11 +1328,17 @@ The output will be:
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Fill")
-    .Input("dims: int32")
+    .Input("dims: index_type")
     .Input("value: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("index_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
+      DataType index_type = DT_INT32;
+      Status s = c->GetAttr("index_type", &index_type);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -1320,7 +1346,8 @@ REGISTER_OP("Fill")
       const Tensor* t = c->input_tensor(0);
       if (t != nullptr) {
         for (int i = 0; i < t->NumElements(); ++i) {
-          if (t->vec<int32>()(i) < 0) {
+          if ((index_type == DT_INT32 && t->vec<int32>()(i) < 0) ||
+              (index_type == DT_INT64 && t->vec<int64>()(i) < 0)) {
             return errors::InvalidArgument("Fill dimensions must be >= 0");
           }
         }
@@ -1701,6 +1728,20 @@ REGISTER_OP("Identity")
     .Doc(R"Doc(
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
+
+REGISTER_OP("Snapshot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+      return Status::OK();
+    })
+    .Doc(R"Doc(Returns a copy of the input tensor.)Doc");
 
 #ifdef INTEL_MKL
 REGISTER_OP("_MklIdentity")
@@ -4225,7 +4266,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,
@@ -4369,7 +4410,7 @@ with the following options:
   "NHWC": `[ batch, height, width, channels ]`
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
-      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
 
 It is useful to consider the operation as transforming a 6-D Tensor.
 e.g. for data_format = NHWC,

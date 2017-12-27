@@ -59,6 +59,11 @@ std::map<string, string> kBrokenTests = {
     // more than 1 element.
     {R"(constant.*input_shape=\[(2|2,2,2,2)\])", "68721522"},
 
+    // Pad only supports 4D float32 tensors.
+    {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
+     "70527055"},
+    {R"(padd.*int32)", "70527055"},
+
     // L2Norm only supports 4D tensors.
     {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.\])", "67963684"},
     {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
@@ -96,13 +101,13 @@ class ZipEnvironment : public ::testing::Environment {
   }
 
   // Unzip `zip` file into a new temporary directory  `out_dir`.
-  tensorflow::Status UnZip(const std::string& zip, std::string* out_dir) {
+  tensorflow::Status UnZip(const string& zip, string* out_dir) {
     string dir;
     TF_CHECK_OK(MakeTemporaryDirectory(&dir));
     tensorflow::SubProcess proc;
-    std::string unzip_binary =
+    string unzip_binary =
         "/usr/bin/unzip";
-    proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip.c_str()});
+    proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip});
     proc.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     proc.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     if (!proc.Start())
@@ -144,48 +149,48 @@ ZipEnvironment* zip_environment() {
 // the temporary directory where the zip file has been unarchived and
 // `test_paths` is the list of test prefixes that were in the manifest.
 // Note, it is an error for a manifest to contain no tests.
-tensorflow::Status ReadManifest(const std::string& original_file,
-                                const std::string& dir,
-                                std::vector<std::string>* test_paths) {
+tensorflow::Status ReadManifest(const string& original_file, const string& dir,
+                                std::vector<string>* test_paths) {
   // Read the newline delimited list of entries in the manifest.
   std::ifstream manifest_fp(dir + "/manifest.txt");
-  std::string manifest((std::istreambuf_iterator<char>(manifest_fp)),
-                       std::istreambuf_iterator<char>());
+  string manifest((std::istreambuf_iterator<char>(manifest_fp)),
+                  std::istreambuf_iterator<char>());
   size_t pos = 0;
   int added = 0;
   while (true) {
     size_t end_pos = manifest.find("\n", pos);
-    if (end_pos == std::string::npos) break;
-    std::string filename = manifest.substr(pos, end_pos - pos);
+    if (end_pos == string::npos) break;
+    string filename = manifest.substr(pos, end_pos - pos);
     test_paths->push_back(dir + "/" + filename);
     pos = end_pos + 1;
     added += 1;
   }
   if (!added) {
-    std::string message = "Test had no examples: " + original_file;
+    string message = "Test had no examples: " + original_file;
     return tensorflow::Status(tensorflow::error::UNKNOWN, message.c_str());
   }
   return tensorflow::Status::OK();
 }
 
 // Get a list of tests from a zip file `zip_file_name`.
-std::vector<std::string> UnarchiveZipAndFindTestNames(
-    const std::string& zip_file_name) {
-  std::string zip_file = ::tensorflow::testing::TensorFlowSrcRoot() +
-                         "/contrib/lite/testing/optest/" + zip_file_name;
-  std::string decompress_tmp_dir;
+std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file_name) {
+  string zip_file = ::tensorflow::testing::TensorFlowSrcRoot() +
+                    "/contrib/lite/testing/optest/" + zip_file_name;
+  string decompress_tmp_dir;
   TF_CHECK_OK(zip_environment()->UnZip(zip_file, &decompress_tmp_dir));
-  std::vector<std::string> stuff;
+  std::vector<string> stuff;
   TF_CHECK_OK(ReadManifest(zip_file, decompress_tmp_dir, &stuff));
   return stuff;
 }
 
-class OpsTest : public ::testing::TestWithParam<std::string> {};
+class OpsTest : public ::testing::TestWithParam<string> {};
 
 TEST_P(OpsTest, RunStuff) {
-  std::string test_path = GetParam();
-  std::string tflite_file = test_path + ".bin";
-  std::string tflite_examples = test_path + ".inputs";
+  string test_path = GetParam();
+  string tflite_file = test_path + ".bin";
+  string tflite_examples = test_path + ".inputs";
+  string test_name = test_path.substr(test_path.find_last_of('/'));
+
   auto model = tflite::FlatBufferModel::BuildFromFile(tflite_file.c_str());
   std::unique_ptr<tflite::Interpreter> interpreter;
 
@@ -199,7 +204,7 @@ TEST_P(OpsTest, RunStuff) {
 
   string bug_number;
   for (const auto& p : kBrokenTests) {
-    if (RE2::PartialMatch(test_path, p.first)) {
+    if (RE2::PartialMatch(test_name, p.first)) {
       bug_number = p.second;
     }
   }
@@ -218,7 +223,7 @@ TEST_P(OpsTest, RunStuff) {
     } else {
       if (FLAGS_ignore_known_bugs) {
         ASSERT_EQ(result, kTfLiteError)
-            << "Not failing as expected dut to http://b/" << bug_number;
+            << "Not failing as expected due to http://b/" << bug_number;
       } else {
         ASSERT_EQ(result, kTfLiteOk)
             << "Possibly due to http://b/" << bug_number;
@@ -236,6 +241,7 @@ TEST_P(OpsTest, RunStuff) {
 
 INSTANTIATE_TESTS(add)
 INSTANTIATE_TESTS(avg_pool)
+INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
 INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)
@@ -243,12 +249,14 @@ INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)
 INSTANTIATE_TESTS(fully_connected)
 INSTANTIATE_TESTS(fused_batch_norm)
+INSTANTIATE_TESTS(gather)
 INSTANTIATE_TESTS(global_batch_norm)
 INSTANTIATE_TESTS(l2norm)
 INSTANTIATE_TESTS(l2_pool)
 INSTANTIATE_TESTS(local_response_norm)
 INSTANTIATE_TESTS(max_pool)
 INSTANTIATE_TESTS(mul)
+INSTANTIATE_TESTS(pad)
 INSTANTIATE_TESTS(relu)
 INSTANTIATE_TESTS(relu1)
 INSTANTIATE_TESTS(relu6)
