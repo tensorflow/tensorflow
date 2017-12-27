@@ -511,8 +511,6 @@ void RdmaAdapter::Process_CQ() {
           RdmaTensorBuffer* tb =
               reinterpret_cast<RdmaTensorBuffer*>(rc->FindBuffer(rm.name_));
           tb->AddOrUpdateResponse(rm);
-          tb->SetBufferStatus(local, idle);
-          tb->SetBufferStatus(remote, idle);
           worker_env_->compute_pool->Schedule([tb]() { tb->ReSendNextItem(); });
         }
       } else if (wc_[i].opcode == IBV_WC_RDMA_WRITE) {
@@ -1099,8 +1097,6 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
       const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
     CHECK(status.ok()) << "RecvLocalAsync was not ok, key" << key_with_step_id
                        << " error message: " << status.error_message();
-    size_t buffer_size = 0;
-    size_t tensor_bytes = 0;
     // Figures out which device the tensor is hosted on.
     Device* src_dev = nullptr;
     Status s = channel_->adapter_->worker_env_->device_mgr->LookupDevice(
@@ -1113,13 +1109,6 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         << src_dev->attributes().incarnation()
         << ". Your worker job was probably restarted. Check your "
         << "worker job for the reason why it was restarted.";
-    Device* dst_dev = nullptr;
-    // destination is on CPU.
-    s = channel_->adapter_->worker_env_->device_mgr->LookupDevice("CPU:0",
-                                                                  &dst_dev);
-    CHECK(s.ok()) << "dst device not found";
-    AllocatorAttributes dst_alloc_attr;
-    dst_alloc_attr.set_on_host(true);
 
     uint64_t checksum = 0;
 #ifdef RDMA_DATA_VALIDATION
@@ -1143,23 +1132,17 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         host_alloc_attrs.set_on_host(true);
         Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
         copy = Tensor(alloc, in.dtype(), in.shape());
-        tensor_bytes = in.TotalBytes();
-        buffer_size += tensor_bytes;
 
         CountCopies(key, (void*)DMAHelper::base(&in),
-                    (void*)DMAHelper::base(&copy), tensor_bytes, true);
+                    (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
 
         GPUUtil::CopyGPUTensorToCPU(
             src_dev, send_args.device_context, &in, &copy,
-            [this, copy, tensor_bytes, buffer_size, key, in, step_id,
-             key_with_step_id, is_dead, send_args, recv_args,
-             checksum](const Status& s) {
+            [this, copy, key, in, step_id, key_with_step_id, is_dead, send_args,
+             recv_args, checksum](const Status& s) {
               CHECK(s.ok()) << "copy tensor from gpu sync";
-              StringPiece copy_buf;
-              copy_buf = copy.tensor_data();
-              PostCopyOperations(true, buffer_size, tensor_bytes, key, in,
-                                 step_id, is_dead, key_with_step_id, &copy,
-                                 NULL, &copy_buf, send_args, recv_args,
+              PostCopyOperations(key, in, step_id, is_dead, key_with_step_id,
+                                 &copy, nullptr, send_args, recv_args,
                                  checksum);
             });
       } else {
@@ -1167,31 +1150,22 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         // aync instead
         GPUUtil::SetProtoFromGPU(
             in, src_dev, send_args.device_context, &proto, is_dead,
-            [this, proto, buffer_size, key, in, step_id, key_with_step_id,
-             is_dead, send_args, recv_args, checksum](const Status& s) mutable {
+            [this, proto, key, in, step_id, key_with_step_id, is_dead,
+             send_args, recv_args, checksum](const Status& s) mutable {
               CHECK(s.ok()) << "copy proto from gpu sync";
-              auto tensor_bytes = proto.ByteSize();
-              buffer_size += tensor_bytes;
-              PostCopyOperations(false, buffer_size, tensor_bytes, key, in,
-                                 step_id, is_dead, key_with_step_id, NULL,
-                                 &proto, NULL, send_args, recv_args, checksum);
+              PostCopyOperations(key, in, step_id, is_dead, key_with_step_id,
+                                 nullptr, &proto, send_args, recv_args,
+                                 checksum);
             });
       }
 #endif  // GOOGLE_CUDA
     } else {
       // tensor is in CPU memory.
-      StringPiece copy_buf;
-      if (can_memcpy) {
-        copy_buf = in.tensor_data();
-        tensor_bytes = in.TotalBytes();
-      } else {
+      if (!can_memcpy) {
         in.AsProtoTensorContent(&proto);
-        tensor_bytes = proto.ByteSize();
       }
-      buffer_size += tensor_bytes;
-      PostCopyOperations(can_memcpy, buffer_size, tensor_bytes, key, in,
-                         step_id, is_dead, key_with_step_id, nullptr, &proto,
-                         &copy_buf, send_args, recv_args, checksum);
+      PostCopyOperations(key, in, step_id, is_dead, key_with_step_id, nullptr,
+                         &proto, send_args, recv_args, checksum);
     }
   };
   return cb;
@@ -1261,32 +1235,21 @@ void RdmaTensorBuffer::ReSendNextItem() {
 }
 
 void RdmaTensorBuffer::PostCopyOperations(
-    bool can_memcpy, size_t buffer_size, size_t tensor_bytes, const string& key,
-    const Tensor& in, int64 step_id, bool is_dead,
+    const string& key, const Tensor& in, int64 step_id, bool is_dead,
     const string& key_with_step_id, const Tensor* copy,
-    const TensorProto* proto, const StringPiece* copy_buf,
-    const Rendezvous::Args& send_args, const Rendezvous::Args& recv_args,
-    uint64_t checksum) {
+    const TensorProto* proto, const Rendezvous::Args& send_args,
+    const Rendezvous::Args& recv_args, uint64_t checksum) {
+  bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
+  size_t tensor_bytes = (can_memcpy) ? in.TotalBytes() : proto->ByteSize();
   RdmaTensorResponse response = *GetResponse(step_id);
   uint32_t request_index = response.rm_.request_index_;
   // prepare message
-  RdmaMessage rm;
-  rm.name_size_ = key.size();
-  rm.name_ = key;
-  rm.tensor_shape_ = in.shape();
-  rm.data_type_ = in.dtype();
-  rm.step_id_ = step_id;
-  rm.is_dead_ = is_dead;
-  rm.tensor_bytes_ = tensor_bytes;
-  rm.request_index_ = request_index;
-  mu_.lock();
   bool first_time = response.rm_.data_type_ == DT_INVALID;
   bool meta_data_changed =
       TensorMetaDataChanged(response.rm_, in, is_dead, tensor_bytes);
 #ifdef RDMA_DATA_VALIDATION
   // Always send meta-data
   meta_data_changed = response.rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
-  rm.checksum_ = checksum;
 #endif
   if (first_time || meta_data_changed) {
     if (first_time) {
@@ -1295,15 +1258,22 @@ void RdmaTensorBuffer::PostCopyOperations(
       RDMA_LOG(2) << "Meta data changed: " << key;
     }
     // Need to be received again, put into the re-recv queue and the table
+    mu_.lock();
     requeue.push(key_with_step_id);
     ReItem* item = new ReItem(send_args, recv_args, in, is_dead);
     retable.insert(std::pair<string, ReItem*>(key_with_step_id, item));
     mu_.unlock();
-    // no longer used: put back the key since it is not sent;
-    // ask the remote to create the same buffer
+    RdmaMessage rm;
     rm.type_ = RDMA_MESSAGE_META_DATA_UPDATE;
-    // rm.remote_addr_ = reinterpret_cast<uint64_t>(buffer_);
-    // rm.rkey_ = self_->rkey;
+    rm.name_size_ = key.size();
+    rm.name_ = key;
+    rm.tensor_shape_ = in.shape();
+    rm.data_type_ = in.dtype();
+    rm.step_id_ = step_id;
+    rm.is_dead_ = is_dead;
+    rm.tensor_bytes_ = tensor_bytes;
+    rm.request_index_ = request_index;
+    rm.checksum_ = checksum;
     RDMA_LOG(1) << "Step 0x" << std::hex << step_id << std::dec
                 << ": Sending RDMA_MESSAGE_META_DATA_UPDATE #"
                 << rm.request_index_ << ": " << key << "("
@@ -1314,12 +1284,6 @@ void RdmaTensorBuffer::PostCopyOperations(
     channel_->tx_message_buffer_->EnqueueItem(message);
     channel_->tx_message_buffer_->SendNextItem();
   } else {
-    // both buffers are ready, send the tensor
-    local_status_ = busy;
-    remote_status_ = busy;
-    // local/remote_status_ won't be set back to idle
-    // unitl Write() is successful
-    mu_.unlock();
     uint32_t imm_data = request_index;
     RemoveResponse(step_id);
     RdmaWriteIDType write_type;
@@ -1339,7 +1303,7 @@ void RdmaTensorBuffer::PostCopyOperations(
           mr = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr,
                                                            tensor_bytes);
         } else {
-          buffer_size = 0;
+          tensor_bytes = 0;
           write_type = RDMA_WRITE_ID_EMPTY_TENSOR;
         }
       } else {
@@ -1352,7 +1316,7 @@ void RdmaTensorBuffer::PostCopyOperations(
         wr_context = new RemoteAddressContext(src_addr, mr);
       }
     } else {
-      buffer_size = 0;
+      tensor_bytes = 0;
       write_type = RDMA_WRITE_ID_EMPTY_TENSOR;
     }
 
@@ -1364,7 +1328,7 @@ void RdmaTensorBuffer::PostCopyOperations(
                 << " (0x" << response.rm_.rkey_ << "): " << key
                 << " (size: 0x" << std::hex << tensor_bytes << ")";
 
-    Write(channel_, imm_data, buffer_size, (uint64_t)src_addr, lkey,
+    Write(channel_, imm_data, tensor_bytes, (uint64_t)src_addr, lkey,
           response.rm_.remote_addr_, response.rm_.rkey_, write_type,
           wr_context);
   }
@@ -1651,7 +1615,6 @@ bool RdmaTensorRequest::AllocateTensors() {
 }
 
 void RdmaTensorRequest::Send(RdmaMessageType message_type) {
-  // append key to message queue
   RdmaBuffer* rb = channel_->tx_message_buffer_;
   RdmaMessage rm;
   rm.type_ = message_type;

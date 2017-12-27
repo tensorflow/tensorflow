@@ -441,14 +441,11 @@ class RdmaTensorBuffer : public RdmaBuffer {
   explicit RdmaTensorBuffer(RdmaChannel* channel, string name);
   virtual ~RdmaTensorBuffer() override;
   void SendNextItem() override;
-  void PostCopyOperations(bool can_memcpy, size_t buffer_size,
-                          size_t tensor_bytes, const string& key,
-                          const Tensor& in, int64 step_id, bool is_dead,
-                          const string& key_with_step_id, const Tensor* copy,
-                          const TensorProto* proto, const StringPiece* copy_buf,
+  void PostCopyOperations(const string& key, const Tensor& in, int64 step_id,
+                          bool is_dead, const string& key_with_step_id,
+                          const Tensor* copy, const TensorProto* proto,
                           const Rendezvous::Args& send_args,
-                          const Rendezvous::Args& recv_args,
-                          uint64_t checksum);
+                          const Rendezvous::Args& recv_args, uint64_t checksum);
 
   // Responses:
   void AddOrUpdateResponse(const RdmaMessage& rm);
