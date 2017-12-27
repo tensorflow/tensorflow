@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import base as base_layer
+from tensorflow.python.layers.normalization import BatchNormalization
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -155,7 +156,7 @@ class RNNCell(base_layer.Layer):
   for each `s` in `self.batch_size`.
   """
 
-  def __call__(self, inputs, state, scope=None):
+  def __call__(self, inputs, state, scope=None, **kwargs):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
@@ -176,7 +177,7 @@ class RNNCell(base_layer.Layer):
     if scope is not None:
       with vs.variable_scope(scope,
                              custom_getter=self._rnn_get_variable) as scope:
-        return super(RNNCell, self).__call__(inputs, state, scope=scope)
+        return super(RNNCell, self).__call__(inputs, state, scope=scope, **kwargs)
     else:
       scope_attrname = "rnncell_scope"
       scope = getattr(self, scope_attrname, None)
@@ -185,7 +186,7 @@ class RNNCell(base_layer.Layer):
                                   custom_getter=self._rnn_get_variable)
         setattr(self, scope_attrname, scope)
       with scope:
-        return super(RNNCell, self).__call__(inputs, state)
+        return super(RNNCell, self).__call__(inputs, state, **kwargs)
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
@@ -609,14 +610,31 @@ class LSTMCell(_LayerRNNCell):
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
+  
+  The recurrent batch normalization is based on:
+    
+    https://arxiv.org/pdf/1603.09025.pdf
+  
   """
 
-  def __init__(self, num_units,
-               use_peepholes=False, cell_clip=None,
-               initializer=None, num_proj=None, proj_clip=None,
-               num_unit_shards=None, num_proj_shards=None,
-               forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None, name=None):
+  def __init__(self, 
+               num_units,
+               use_peepholes=False, 
+               cell_clip=None,
+               initializer=None, 
+               num_proj=None, 
+               proj_clip=None,
+               num_unit_shards=None, 
+               num_proj_shards=None,
+               forget_bias=1.0, 
+               state_is_tuple=True,
+               activation=None, 
+               reuse=None,
+               normalize_in_to_hidden=False,
+               normalize_in_together=True,
+               normalize_cell=False,
+               normalize_config=None, 
+               name=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -646,6 +664,17 @@ class LSTMCell(_LayerRNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      normalize_in_to_hidden: If True, inputs and state will be normalized.
+      normalize_in_together: Only has an effect if normalize_in_to_hidden is True. 
+        If True, both inputs and state will be normalized together, with only 
+        one beta and gamma shared between the two. If False, each will receive
+        their own beta and gamma, but this will result in the inputs and state
+        being multiplied with the weights separately, instead of together.
+      normalize_cell: If True, cell will be normalized.
+      norm_config: Dictionary to pass as parameters to layers.batch_normalization. 
+        If None, then the default batch_normalization configuration is used, 
+        except that no beta is used, and the gamma initializer is a constant
+        initializer set to 0.1, as per the referenced paper
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
@@ -677,6 +706,10 @@ class LSTMCell(_LayerRNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation or math_ops.tanh
+    self._normalize_in_to_hidden = normalize_in_to_hidden
+    self._normalize_in_together = normalize_in_to_hidden and normalize_in_together
+    self._normalize_cell = normalize_cell
+    self._normalize_config = normalize_config
 
     if num_proj:
       self._state_size = (
@@ -701,22 +734,59 @@ class LSTMCell(_LayerRNNCell):
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
-
+      
     input_depth = inputs_shape[1].value
     h_depth = self._num_units if self._num_proj is None else self._num_proj
     maybe_partitioner = (
         partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
         if self._num_unit_shards is not None
         else None)
-    self._kernel = self.add_variable(
-        _WEIGHTS_VARIABLE_NAME,
-        shape=[input_depth + h_depth, 4 * self._num_units],
+    
+    if self._normalize_in_to_hidden or self._normalize_cell:
+      if self._normalize_config is None:
+        #Default normalization configuration
+        #See https://arxiv.org/pdf/1603.09025.pdf for reason for gamma_initializer
+        self._normalize_config = {'center': False,
+                                  'scale': True,
+                                  'gamma_initializer': init_ops.constant_initializer(0.1, dtype=self.dtype)}
+      else:
+        self._normalize_config['center'] = False
+    
+    if not self._normalize_in_to_hidden or self._normalize_in_together:
+      self._kernel = self.add_variable(
+          _WEIGHTS_VARIABLE_NAME,
+          shape=[input_depth + h_depth, 4 * self._num_units],
+          initializer=self._initializer,
+          partitioner=maybe_partitioner)
+      if self._normalize_in_to_hidden:
+        self._bn = BatchNormalization(**self._normalize_config)
+    else:
+      self._kernel_m = self.add_variable(
+        "i_scope/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, 4 * self._num_units],
         initializer=self._initializer,
         partitioner=maybe_partitioner)
+      with vs.variable_scope(None, "i_scope"):
+        self._bn_i = BatchNormalization(**self._normalize_config)
+      
+      self._kernel_m = self.add_variable(
+        "m_scope/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[h_depth, 4 * self._num_units],
+        initializer=self._initializer,
+        partitioner=maybe_partitioner)
+      with vs.variable_scope(None, "m_scope"):
+        self._bn_m = BatchNormalization(**self._normalize_config)
+    
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
         initializer=init_ops.zeros_initializer(dtype=self.dtype))
+    
+    if self._normalize_cell:
+      self._normalize_config_cell = self._normalize_config
+      self._normalize_config_cell['center'] = True
+      self._bn_c = BatchNormalization(**self._normalize_config_cell)
+    
     if self._use_peepholes:
       self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
                                          initializer=self._initializer)
@@ -738,7 +808,8 @@ class LSTMCell(_LayerRNNCell):
 
     self.built = True
 
-  def call(self, inputs, state):
+  def call(self, inputs, state, training=False):
+
     """Run one step of LSTM.
 
     Args:
@@ -747,6 +818,8 @@ class LSTMCell(_LayerRNNCell):
         `2-D, [batch, state_size]`.  If `state_is_tuple` is True, this must be a
         tuple of state Tensors, both `2-D`, with column sizes `c_state` and
         `m_state`.
+      training: if batch normalization is activated, then this parameter will
+        be passed to it when called
 
     Returns:
       A tuple containing:
@@ -777,8 +850,17 @@ class LSTMCell(_LayerRNNCell):
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-    lstm_matrix = math_ops.matmul(
+    if not self._normalize_in_to_hidden or self._normalize_in_together:
+      lstm_matrix = math_ops.matmul(
         array_ops.concat([inputs, m_prev], 1), self._kernel)
+      if self._normalize_in_to_hidden:
+        lstm_matrix = self._bn(lstm_matrix, training=training)
+    else:
+      op_i = math_ops.matmul(inputs, self._kernel_i)
+      op_m = math_ops.matmul(m_prev, self._kernel_m)
+      lstm_matrix  = self._bn_i(op_i, training=training)
+      lstm_matrix += self._bn_m(op_m, training=training)
+      
     lstm_matrix = nn_ops.bias_add(lstm_matrix, self._bias)
 
     i, j, f, o = array_ops.split(
@@ -795,10 +877,16 @@ class LSTMCell(_LayerRNNCell):
       # pylint: disable=invalid-unary-operand-type
       c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)
       # pylint: enable=invalid-unary-operand-type
-    if self._use_peepholes:
-      m = sigmoid(o + self._w_o_diag * c) * self._activation(c)
+    
+    if not self._normalize_cell:
+      c_new = c
     else:
-      m = sigmoid(o) * self._activation(c)
+      c_new = self._bn_c(c, training=training)
+
+    if self._use_peepholes:
+      m = sigmoid(o + self._w_o_diag * c_new) * self._activation(c_new)
+    else:
+      m = sigmoid(o) * self._activation(c_new)
 
     if self._num_proj is not None:
       m = math_ops.matmul(m, self._proj_kernel)
