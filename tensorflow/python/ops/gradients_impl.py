@@ -1026,6 +1026,6 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
         loop_vars
     )
 
-    _shape = x.shape.as_list()
-    hessians.append( array_ops.reshape(hessian.stack(), _shape + _shape) )
+    _shape = array_ops.shape(x)
+    hessians.append( array_ops.reshape(hessian.stack(), array_ops.concat((_shape, _shape), 0)) )
   return hessians
