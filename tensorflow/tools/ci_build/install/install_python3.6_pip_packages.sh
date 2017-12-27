@@ -26,6 +26,8 @@ add-apt-repository -y ppa:fkrull/deadsnakes
 apt-get update
 apt-get upgrade
 
+# Install python dep
+apt-get install python-dev
 # Install bz2 dep
 apt-get install libbz2-dev
 # Install curses dep
@@ -47,8 +49,11 @@ cd Python-3.6.1
 ./configure
 make install
 pip3.6 -V
+which pip3
+echo "****************************************************************************************************************************"
+
 which pip3.6
-ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
+echo "****************************************************************************************************************************"
 
 pip3 install --upgrade virtualenv
 
