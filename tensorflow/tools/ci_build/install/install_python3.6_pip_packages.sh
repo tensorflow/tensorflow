@@ -23,6 +23,8 @@
 # fkrull/deadsnakes is for Python3.6
 add-apt-repository -y ppa:fkrull/deadsnakes
 
+# Install python dep
+apt-get install python-dev
 # Install bz2 dep
 # apt-get install libbz2-dev bzip2-devel
 # Install curses dep
