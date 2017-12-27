@@ -1008,7 +1008,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
   hessians = []
   _gradients = gradients(ys, xs, **kwargs)
   for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
-    # tricky change shape to one-dimension without graph branching
+    # change shape to one-dimension without graph branching
     _gradient = array_ops.reshape(_gradient, [-1])
     
     # Declare an iterator and tensor array loop variables for the gradients.
@@ -1026,5 +1026,6 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
         loop_vars
     )
 
-    hessians.append(hessian.stack())
+    _shape = x.shape.as_list()
+    hessians.append( array_ops.reshape(hessian.stack(), _shape + _shape) )
   return hessians
