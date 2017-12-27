@@ -70,10 +70,7 @@ TEST(ConvertGraphDefToXla, Sum) {
 
   xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
   xla::Computation computation;
-  bool requires_runtime_context;
-  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation,
-                                    &requires_runtime_context));
-  ASSERT_FALSE(requires_runtime_context);
+  TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
 
   // Set up arguments.
   auto x_literal = xla::Literal::CreateR0<int32>(10);

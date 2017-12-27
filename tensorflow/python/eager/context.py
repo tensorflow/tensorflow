@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
 import random
@@ -60,6 +61,41 @@ class _EagerContext(threading.local):
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
+
+
+ContextStackEntry = collections.namedtuple(
+    "ContextStackEntry", ["is_building_function", "enter_context_fn"])
+
+
+class ContextStack(threading.local):
+  """A thread-local stack of context switches."""
+
+  def __init__(self):
+    super(ContextStack, self).__init__()
+    self.stack = []
+
+  def push(self, is_building_function, enter_context_fn):
+    """Push metadata about a context switch onto the stack.
+
+    A context switch can take one of two forms: installing a graph as the
+    default graph, or entering the eager context.
+
+    Args:
+      is_building_function: (bool.) Whether the context is building a function.
+      enter_context_fn: (function.) A callable that executes the context switch.
+        For example, `graph.as_default` or `eager_mode`.
+    """
+
+    self.stack.append(
+        ContextStackEntry(is_building_function, enter_context_fn))
+
+  def pop(self):
+    """Pop the stack."""
+
+    self.stack.pop()
+
+
+context_stack = ContextStack()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -183,10 +219,14 @@ class Context(object):
     ctx = self._eager_context
     old_mode = ctx.mode
     ctx.mode = mode
+    if mode == EAGER_MODE:
+      context_stack.push(False, eager_mode)
     try:
       yield
     finally:
       ctx.mode = old_mode
+      if mode == EAGER_MODE:
+        context_stack.pop()
 
   def in_graph_mode(self):
     """Returns True if current thread is in GRAPH mode."""

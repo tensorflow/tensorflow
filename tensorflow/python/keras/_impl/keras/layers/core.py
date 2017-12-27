@@ -104,13 +104,13 @@ class Dropout(tf_core_layers.Dropout, Layer):
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
-    self.supports_masking = True
     # Inheritance call order:
     # 1) tf.layers.Dropout, 2) keras.layers.Layer, 3) tf.layers.Layer
     super(Dropout, self).__init__(rate=rate,
                                   noise_shape=noise_shape,
                                   seed=seed,
                                   **kwargs)
+    self.supports_masking = True
 
   def call(self, inputs, training=None):
     if training is None:
@@ -547,8 +547,19 @@ class Lambda(Layer):
   Arguments:
       function: The function to be evaluated.
           Takes input tensor as first argument.
+      output_shape: Expected output shape from function.
+            This argument can be inferred if not explicitly provided.
+            Can be a tuple or function.
+            If a tuple, it only specifies the first dimension onward;
+                 sample dimension is assumed either the same as the input:
+                 `output_shape = (input_shape[0], ) + output_shape`
+                 or, the input is `None` and
+                 the sample dimension is also `None`:
+                 `output_shape = (None, ) + output_shape`
+            If a function, it specifies the entire shape as a function of the
+            input shape: `output_shape = f(input_shape)`
       arguments: optional dictionary of keyword arguments to be passed
-          to the function.
+            to the function.
 
   Input shape:
       Arbitrary. Use the keyword argument input_shape
@@ -557,16 +568,52 @@ class Lambda(Layer):
 
   Output shape:
       Specified by `output_shape` argument
-      (or auto-inferred when using TensorFlow).
   """
 
-  def __init__(self, function, mask=None, arguments=None, **kwargs):
+  def __init__(self, function, output_shape=None, mask=None, arguments=None,
+               **kwargs):
     super(Lambda, self).__init__(**kwargs)
     self.function = function
     self.arguments = arguments if arguments else {}
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    if output_shape is None:
+      self._output_shape = None
+    elif isinstance(output_shape, (tuple, list)):
+      self._output_shape = tuple(output_shape)
+    else:
+      if not callable(output_shape):
+        raise TypeError('In Lambda, `output_shape` '
+                        'must be a list, a tuple, or a function.')
+      self._output_shape = output_shape
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+
+    if self._output_shape is None:
+      x = K.placeholder(shape=input_shape)
+      x = self.call(x)
+      if isinstance(x, list):
+        return [tensor_shape.TensorShape(K.int_shape(x_elem)) for x_elem in x]
+      else:
+        return tensor_shape.TensorShape(K.int_shape(x))
+    elif isinstance(self._output_shape, (tuple, list)):
+      if isinstance(input_shape, list):
+        num_samples = input_shape[0][0]
+      else:
+        num_samples = input_shape[0] if input_shape else None
+      return tensor_shape.TensorShape((num_samples,) +
+                                      tuple(self._output_shape))
+    else:
+      shape = self._output_shape(input_shape)
+      if not isinstance(shape, (list, tuple)):
+        raise ValueError(
+            '`output_shape` function must return a tuple or a list of tuples.')
+      if isinstance(shape, list):
+        if isinstance(shape[0], int) or shape[0] is None:
+          shape = tuple(shape)
+      return tensor_shape.TensorShape(shape)
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
@@ -587,9 +634,21 @@ class Lambda(Layer):
       function = self.function.__name__
       function_type = 'function'
 
+    if isinstance(self._output_shape, python_types.LambdaType):
+      output_shape = func_dump(self._output_shape)
+      output_shape_type = 'lambda'
+    elif callable(self._output_shape):
+      output_shape = self._output_shape.__name__
+      output_shape_type = 'function'
+    else:
+      output_shape = self._output_shape
+      output_shape_type = 'raw'
+
     config = {
         'function': function,
         'function_type': function_type,
+        'output_shape': output_shape,
+        'output_shape_type': output_shape_type,
         'arguments': self.arguments
     }
     base_config = super(Lambda, self).get_config()
@@ -614,6 +673,19 @@ class Lambda(Layer):
     else:
       raise TypeError('Unknown function type:', function_type)
 
+    output_shape_type = config.pop('output_shape_type')
+    if output_shape_type == 'function':
+      # Simple lookup in custom objects
+      output_shape = deserialize_keras_object(
+          config['output_shape'],
+          custom_objects=custom_objects,
+          printable_module_name='output_shape function in Lambda layer')
+    elif output_shape_type == 'lambda':
+      # Unsafe deserialization from bytecode
+      output_shape = func_load(config['output_shape'], globs=globs)
+    else:
+      output_shape = config['output_shape']
+
     # If arguments were numpy array, they have been saved as
     # list. We need to recover the ndarray
     if 'arguments' in config:
@@ -625,6 +697,7 @@ class Lambda(Layer):
             config['arguments'][key] = np.array(arg_dict['value'])
 
     config['function'] = function
+    config['output_shape'] = output_shape
     return cls(**config)
 
 

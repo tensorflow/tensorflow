@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -32,7 +33,8 @@ namespace tensorflow {
 // allocated memory.
 class GPUDebugAllocator : public VisitableAllocator {
  public:
-  explicit GPUDebugAllocator(VisitableAllocator* allocator, int device_id);
+  explicit GPUDebugAllocator(VisitableAllocator* allocator,
+                             CudaGpuId cuda_gpu_id);
   ~GPUDebugAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -62,7 +64,8 @@ class GPUDebugAllocator : public VisitableAllocator {
 // user forgets to initialize the memory.
 class GPUNanResetAllocator : public VisitableAllocator {
  public:
-  explicit GPUNanResetAllocator(VisitableAllocator* allocator, int device_id);
+  explicit GPUNanResetAllocator(VisitableAllocator* allocator,
+                                CudaGpuId cuda_gpu_id);
   ~GPUNanResetAllocator() override;
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

@@ -80,6 +80,17 @@ class HloSharding {
     return HloSharding(flattened_list);
   }
 
+  // Creates a new sharding for a tuple type. The requested tuple shape must not
+  // be nested. For nested tuples, use the ShapeTree overload.
+  static HloSharding Tuple(const Shape& tuple_shape,
+                           tensorflow::gtl::ArraySlice<HloSharding> shardings) {
+    CHECK(ShapeUtil::IsTuple(tuple_shape));
+    CHECK(!ShapeUtil::IsNestedTuple(tuple_shape));
+    std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
+    CHECK_EQ(flattened_list.size(), ShapeUtil::TupleElementCount(tuple_shape));
+    return HloSharding(flattened_list);
+  }
+
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 

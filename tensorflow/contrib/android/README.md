@@ -32,9 +32,9 @@ dependencies {
 ```
 
 This will tell Gradle to use the
-[latest version](https://bintray.com/google/tensorflow/tensorflow-android/_latestVersion)
+[latest version](https://bintray.com/google/tensorflow/tensorflow/_latestVersion)
 of the TensorFlow AAR that has been released to
-[https://bintray.com/google/tensorflow/tensorflow-android](https://bintray.com/google/tensorflow/tensorflow-android).
+[JCenter](https://jcenter.bintray.com/org/tensorflow/tensorflow-android/).
 You may replace the `+` with an explicit version label if you wish to
 use a specific release of TensorFlow in your app.
 

@@ -145,11 +145,9 @@ TEST(GenerateHeader, Golden) {
       {
           xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
           xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
-          xla::ShapeUtil::MakeOpaqueShape(),
       },
       xla::ShapeUtil::MakeTupleShape(
           {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
-  compile_result.has_context_arg = true;
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
   string header;

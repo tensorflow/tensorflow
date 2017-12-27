@@ -347,11 +347,10 @@ over all the examples in the batch.
 
 Note that in the source code, we don't use this formulation, because it is
 numerically unstable.  Instead, we apply
-`tf.nn.softmax_cross_entropy_with_logits` on the unnormalized logits (e.g., we
-call `softmax_cross_entropy_with_logits` on `tf.matmul(x, W) + b`), because this
-more numerically stable function internally computes the softmax activation.  In
-your code, consider using `tf.nn.softmax_cross_entropy_with_logits`
-instead.
+`tf.losses.sparse_softmax_cross_entropy` on the unnormalized logits (e.g., we
+call `sparse_softmax_cross_entropy` on the output of `tf.matmul(x, W) + b`),
+because this more numerically stable function internally computes the softmax
+activation.
 
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.  Because TensorFlow knows the entire graph of your

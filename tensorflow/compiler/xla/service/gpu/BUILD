@@ -219,6 +219,7 @@ cc_library(
     srcs = [
         "convolution_thunk.cc",
         "copy_thunk.cc",
+        "cudnn_batchnorm_thunk.cc",
         "for_thunk.cc",
         "gemm_thunk.cc",
         "gpu_executable.cc",
@@ -232,6 +233,7 @@ cc_library(
     hdrs = [
         "convolution_thunk.h",
         "copy_thunk.h",
+        "cudnn_batchnorm_thunk.h",
         "for_thunk.h",
         "gemm_thunk.h",
         "gpu_executable.h",
@@ -246,6 +248,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":infeed_manager",
+        ":ir_emission_utils",
         ":partition_assignment",
         ":stream_assignment",
         "//tensorflow/compiler/xla:array2d",
@@ -431,11 +434,11 @@ cc_library(
         ":fusion_merger",
         ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_layout_assignment",
         ":hlo_schedule",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":layout_assignment",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
@@ -445,10 +448,11 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
-        "//tensorflow/compiler/xla/service:batchnorm_rewriter",
+        "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
@@ -467,6 +471,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
+        "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
+        "//tensorflow/compiler/xla/service/gpu:cudnn_batchnorm_rewriter",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:cuda_libdevice_path",
@@ -477,6 +483,19 @@ cc_library(
         "@llvm//:support",
     ],
     alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "cudnn_batchnorm_rewriter",
+    srcs = ["cudnn_batchnorm_rewriter.cc"],
+    hdrs = ["cudnn_batchnorm_rewriter.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@llvm//:core",
+    ],
 )
 
 cc_library(
@@ -492,9 +511,9 @@ cc_library(
 )
 
 cc_library(
-    name = "layout_assignment",
-    srcs = ["layout_assignment.cc"],
-    hdrs = ["layout_assignment.h"],
+    name = "gpu_layout_assignment",
+    srcs = ["gpu_layout_assignment.cc"],
+    hdrs = ["gpu_layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -508,17 +527,18 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "layout_assignment_test",
-    srcs = ["layout_assignment_test.cc"],
+    name = "gpu_layout_assignment_test",
+    srcs = ["gpu_layout_assignment_test.cc"],
     deps = [
-        ":layout_assignment",
+        ":gpu_layout_assignment",
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
     ],
 )
 

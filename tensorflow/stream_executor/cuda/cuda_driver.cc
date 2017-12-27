@@ -1115,19 +1115,20 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   return true;
 }
 
-/* static */ bool CUDADriver::SynchronizeStream(CudaContext* context,
-                                                CUstream stream) {
+/* static */ port::Status CUDADriver::SynchronizeStream(CudaContext *context,
+                                                        CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   CUresult res = cuStreamSynchronize(stream);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "could not synchronize on CUDA stream: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
-    return false;
+    port::Status status = port::InternalError(
+        port::StrCat("could not synchronize on CUDA stream: ", ToString(res)));
+    LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
+    return status;
   }
   VLOG(2) << "successfully synchronized stream " << stream << " on context "
           << context;
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool CUDADriver::IsStreamIdle(CudaContext *context,

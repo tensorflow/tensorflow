@@ -267,12 +267,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
-  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+  if (use_bfloat16_) {
     converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
-      layout_shape.set_element_type(BF16);
+      ShapeUtil::ForEachMutableSubshape(
+          &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
+            if (subshape->element_type() == F32) {
+              subshape->set_element_type(BF16);
+            }
+          });
       shape_with_layout = &layout_shape;
     }
   }
@@ -305,13 +310,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
-  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+  if (use_bfloat16_) {
     converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
-    layout_shape.set_element_type(BF16);
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
-      layout_shape.set_element_type(BF16);
+      ShapeUtil::ForEachMutableSubshape(
+          &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
+            if (subshape->element_type() == F32) {
+              subshape->set_element_type(BF16);
+            }
+          });
       shape_with_layout = &layout_shape;
     }
   }
@@ -501,7 +510,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
   const Literal* param_literal = &literal;
   std::unique_ptr<Literal> converted_literal;
-  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+  if (use_bfloat16_) {
     converted_literal = LiteralTestUtil::ConvertF32ToBF16(literal);
     param_literal = converted_literal.get();
   }
@@ -510,6 +519,12 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
   *data_handle =
       builder->Parameter(parameter_number, param_literal->shape(), name);
   return data;
+}
+
+ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
+    const Literal& literal, ComputationBuilder* builder) {
+  return builder->ConstantLiteral(
+      use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
 }
 
 }  // namespace xla

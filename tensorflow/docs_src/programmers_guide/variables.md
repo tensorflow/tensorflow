@@ -205,7 +205,7 @@ methods:
 v = tf.get_variable("v", shape=(), initializer=tf.zeros_initializer())
 assignment = v.assign_add(1)
 tf.global_variables_initializer().run()
-assignment.run()
+sess.run(assignment)  # or assignment.op.run(), or assignment.eval()
 ```
 
 Most TensorFlow optimizers have specialized ops that efficiently update the

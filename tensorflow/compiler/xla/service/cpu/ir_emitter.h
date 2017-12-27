@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -54,15 +55,6 @@ namespace cpu {
 
 // Wraps an llvm::TargetMachine and parses out some information that feeds into
 // code LLVM IR generation decisions.
-//
-// Ideally we'd be able to use llvm::TargetTransformInfo here (since its
-// interface is pretty much a perfect fit for our use case), but obtaining an
-// instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
-// super-ugly hacks is difficult.
-//
-// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
-// API that lets us directly create and use llvm::TargetTransformInfo instances
-// outside of a pass manager.
 class TargetMachineFeatures {
  public:
   TargetMachineFeatures(llvm::TargetMachine* target_machine)
@@ -77,20 +69,21 @@ class TargetMachineFeatures {
     return 128;
   }
 
-  // Return the size of the largest register size in bytes.  We need to pass in
+  // Return the size of the largest vector size in bytes.  We need to pass in
   // "function" since llvm functions can contain annotations for specializing
   // them to specific micro-architectures (though currently XLA does not use
   // this functionality).
-  //
-  // Ideally we should have been able to use
-  // llvm::TargetTransformInfo::getRegisterBitWidth(true) here.
-  unsigned largest_register_size_in_bytes(llvm::Function* function);
+  int vector_register_byte_size(const llvm::Function& function) {
+    llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
+    return tti->getRegisterBitWidth(/*Vector=*/true) / 8;
+  }
 
  private:
-  unsigned largest_register_size_in_bytes_impl(llvm::Function* function) const;
+  llvm::TargetTransformInfo* GetTargetTransformInfoFor(
+      const llvm::Function& function);
 
-  tensorflow::gtl::FlatMap<llvm::Function*, int>
-      largest_register_size_in_bytes_;
+  tensorflow::gtl::FlatMap<const llvm::Function*, llvm::TargetTransformInfo>
+      target_transform_infos_;
   llvm::TargetMachine* target_machine_;
 };
 
@@ -191,6 +184,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
+  Status HandleConditional(HloInstruction* conditional) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -237,7 +231,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Get the llvm::Value* that represents the "prof_counters" argument of the
   // computation function being emitted by this emitter.
-  llvm::Argument* GetProfileCountersArgument();
+  llvm::Value* GetProfileCountersArgument();
 
   // Get the xla::ExecutableRunOptions that represents the "run_options"
   // argument of the computation function being emitted by this emitter.
@@ -299,18 +293,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       llvm::Function* function, const Shape& return_shape, int64 element_count,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
       tensorflow::StringPiece name);
-
-  // Returns an array of compute function call arguments.
-  std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
-
-  // Emits a call to a runtime fork/join function which dispatches parallel
-  // calls to 'parallel_function' (and joins threads before returning).
-  Status EmitParallelForkJoin(
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* output_address, HloComputation* computation,
-      llvm::Function* parallel_function);
 
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
@@ -493,7 +475,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
           use_rdtscp_(false),
           prof_counters_(nullptr) {}
     ProfilingState(bool is_top_level_computation, bool use_rdtscp,
-                   llvm::Argument* prof_counters)
+                   llvm::Value* prof_counters)
         : is_top_level_computation_(is_top_level_computation),
           use_rdtscp_(use_rdtscp),
           prof_counters_(prof_counters) {}
@@ -526,7 +508,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
     bool use_rdtscp_;
 
     // The argument which corresponds to the profile counter buffer.
-    llvm::Argument* prof_counters_;
+    llvm::Value* prof_counters_;
 
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;

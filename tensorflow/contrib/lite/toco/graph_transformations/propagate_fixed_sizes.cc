@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -252,6 +253,33 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
   model->GetArray(output_name)
       .copy_shape(Shape({batch, height / block_size, width / block_size,
                          depth * block_size * block_size}));
+}
+
+void ProcessFillOperator(Model* model, FillOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& output_array = *model->arrays[op->outputs[0]];
+  if (output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+
+  auto& dims_array = model->GetArray(op->inputs[0]);
+  if (!dims_array.has_shape()) {
+    // Yield until dims shape been resolved.
+    return;
+  }
+  if (!dims_array.buffer) {
+    // Yield until the dims are constant
+    return;
+  }
+  CHECK(dims_array.data_type == ArrayDataType::kInt32) << "dims must be int32";
+  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 4)
+      << "dims vector can be no larger than 4 values";
+
+  std::vector<int32> const& dims =
+      dims_array.GetBuffer<ArrayDataType::kInt32>().data;
+  *(output_array.mutable_shape()->mutable_dims()) = dims;
 }
 
 void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
@@ -497,14 +525,14 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
     CHECK_EQ(input_array.shape().dimensions_count(),
              output_array.shape().dimensions_count());
     const std::vector<int>& input_dims = input_array.shape().dims();
-    CHECK_LT(op->concat_dim, input_dims.size());
-    concat_size += input_dims[op->concat_dim];
+    CHECK_LT(op->axis, input_dims.size());
+    concat_size += input_dims[op->axis];
   }
   // Write out the concat_size on the output array shape.
   auto& output_shape = *output_array.mutable_shape();
   auto& output_dims = *output_shape.mutable_dims();
-  CHECK_LT(op->concat_dim, output_shape.dimensions_count());
-  output_dims[op->concat_dim] = concat_size;
+  CHECK_LT(op->axis, output_shape.dimensions_count());
+  output_dims[op->axis] = concat_size;
 }
 
 void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
@@ -698,7 +726,10 @@ void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
+  if (input_shape.dimensions_count() != 4) {
+    // This method only handles input dimensions of 4
+    return;
+  }
   const auto input_height = input_shape.dims(1);
   const auto input_width = input_shape.dims(2);
 
@@ -817,6 +848,7 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
 
   // Copy the input dimensions to the output except for dimension 0,
   // where the dimension of indices_shape is used.
+  // TODO(mgubin): if axis != 0 this is not true, change when it's supported.
   auto output_dims = output_array.mutable_shape()->mutable_dims();
   output_dims->push_back(indices_shape.dims(0));
   for (int dim = 1; dim < input_shape.dimensions_count(); dim++) {
@@ -935,6 +967,34 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   auto& output_array = model->GetArray(op->outputs[1]);
   output_array.mutable_shape()->ReplaceDims({batch_size, num_units});
 }
+
+void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  const auto& input_array = *model->arrays[op->inputs[0]];
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  // The current ArgMax implementation only supports 4-dimensional inputs with
+  // the last dimension as the axis to perform ArgMax for.
+  const std::vector<int>& input_dims = input_array.shape().dims();
+  CHECK_EQ(input_dims.size(), 4);
+  std::vector<int> output_dims;
+
+  output_dims.reserve(input_dims.size() - 1);
+  for (int i = 0; i < input_dims.size() - 1; ++i) {
+    output_dims.push_back(input_dims[i]);
+  }
+  output_dims.push_back(1);
+  const string& output_name = op->outputs[0];
+  auto& output_array = *model->arrays[output_name];
+  if (output_array.has_shape()) {
+    return;
+  }
+  *output_array.mutable_shape()->mutable_dims() = output_dims;
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -960,6 +1020,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLocalResponseNormalization:
     case OperatorType::kTensorFlowIdentity:
     case OperatorType::kFakeQuant:
+    case OperatorType::kNeg:
     case OperatorType::kTensorFlowRsqrt:
     case OperatorType::kTensorFlowSqrt:
     case OperatorType::kTensorFlowSquare:
@@ -977,6 +1038,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSub:
     case OperatorType::kMul:
     case OperatorType::kDiv:
+    case OperatorType::kFloorDiv:
+    case OperatorType::kFloorMod:
     case OperatorType::kTensorFlowLess:
     case OperatorType::kTensorFlowLessEqual:
     case OperatorType::kTensorFlowGreater:
@@ -987,6 +1050,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kConv:
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));
+      break;
+    case OperatorType::kTransposeConv:
+      // Unimplemented, hopefully another graph transformation will drop it or
+      // rewrite it.
       break;
     case OperatorType::kDepthwiseConv:
       ProcessDepthwiseConvOperator(model,
@@ -999,6 +1066,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSpaceToDepth:
       ProcessSpaceToDepthOperator(model,
                                   static_cast<SpaceToDepthOperator*>(op));
+      break;
+    case OperatorType::kFill:
+      ProcessFillOperator(model, static_cast<FillOperator*>(op));
       break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
@@ -1062,8 +1132,13 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       // a more general non-depth concatenation that will hopefully be dropped,
       // or else at the moment we will abort.
       break;
+    case OperatorType::kExpandDims:
+    case OperatorType::kRange:
+    case OperatorType::kRank:
     case OperatorType::kTensorFlowShape:
-      // Unimplemented, hopefully another graph transformation will drop it or
+    case OperatorType::kStack:
+    case OperatorType::kTranspose:
+      // Unimplemented. Hopefully another graph transformation will drop it or
       // rewrite it.
       break;
     case OperatorType::kReorderAxes:
@@ -1099,6 +1174,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessStridedSliceOperator(model,
                                   static_cast<StridedSliceOperator*>(op));
       break;
+    case OperatorType::kArgMax:
+      ProcessArgMaxOperator(model, static_cast<ArgMaxOperator*>(op));
+      break;
     case OperatorType::kTensorFlowUnsupported:
       break;
     case OperatorType::kSvdf:
@@ -1114,6 +1192,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
   for (const auto& output : op->outputs) {
     if (model->arrays[output]->has_shape() &&
         (old_output_dims[output] != model->arrays[output]->shape().dims())) {
+      AddMessageF("Set shape of %s to [%s]", output,
+                  absl::StrJoin(model->arrays[output]->shape().dims(), ","));
       return true;
     }
   }

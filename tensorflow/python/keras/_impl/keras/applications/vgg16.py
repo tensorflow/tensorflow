@@ -25,6 +25,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
@@ -68,8 +70,9 @@ def VGG16(include_top=True,
   Arguments:
       include_top: whether to include the 3 fully-connected
           layers at the top of the network.
-      weights: one of `None` (random initialization)
-          or "imagenet" (pre-training on ImageNet).
+      weights: one of `None` (random initialization),
+          'imagenet' (pre-training on ImageNet),
+          or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
       input_shape: optional shape tuple, only to be specified
@@ -101,10 +104,11 @@ def VGG16(include_top=True,
       ValueError: in case of invalid argument for `weights`,
           or invalid input shape.
   """
-  if weights not in {'imagenet', None}:
+  if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
-                     '`None` (random initialization) or `imagenet` '
-                     '(pre-training on ImageNet).')
+                     '`None` (random initialization), `imagenet` '
+                     '(pre-training on ImageNet), '
+                     'or the path to the weights file to be loaded.')
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as imagenet with `include_top`'
@@ -211,4 +215,6 @@ def VGG16(include_top=True,
         dense = model.get_layer(name='fc1')
         layer_utils.convert_dense_weights_data_format(dense, shape,
                                                       'channels_first')
+  elif weights is not None:
+    model.load_weights(weights)
   return model

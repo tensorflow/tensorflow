@@ -39,8 +39,8 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
   """Prints a list of tensors.
 
-  This is an identity op with the side effect of printing `data` when
-  evaluating.
+  This is an identity op (behaves like `tf.identity`) with the side effect
+  of printing `data` when evaluating.
 
   Note: This op prints to the standard error. It is not currently compatible
     with jupyter notebook (printing to the notebook *server's* output, not into
@@ -57,7 +57,7 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
     name: A name for the operation (optional).
 
   Returns:
-    Same tensor as `input_`.
+    A `Tensor`. Has the same type and contents as `input_`.
   """
   return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 

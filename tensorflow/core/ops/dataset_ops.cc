@@ -313,6 +313,8 @@ REGISTER_OP("ParallelInterleaveDataset")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
     .Input("sloppy: bool")
+    .Input("buffer_output_elements: int64")
+    .Input("prefetch_input_elements: int64")
     .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
@@ -435,13 +437,11 @@ REGISTER_OP("DenseToSparseBatchDataset")
     .Input("batch_size: int64")
     .Input("row_shape: int64")
     .Output("handle: variant")
-    // NOTE(mrry): the 0th and 2nd elements will be DT_INT64.
     .Attr("output_types: list(type) >= 1")
-    // NOTE(mrry): the 1st and 2nd elements will be vectors.
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Creates a dataset that yields a SparseTensor for each element of the input.
+Creates a dataset that batches input elements into a SparseTensor.
 
 input_dataset: A handle to an input dataset. Must have a single component.
 batch_size: A scalar representing the number of elements to accumulate in a
@@ -508,8 +508,33 @@ reshuffle_each_iteration: If true, each iterator over this dataset will be given
   `seed` and `seed2` inputs. If false, each iterator will be given the same
   seed, and repeated iteration over this dataset will yield the exact same
   sequence of results.
-seed: A scalar seed for the random number generator. If either seed or
-  seed2 is set to be non-zero, the random number generator is seeded
+seed: A scalar seed for the random number generator. If either `seed` or
+  `seed2` is set to be non-zero, the random number generator is seeded
+  by the given seed.  Otherwise, a random seed is used.
+seed2: A second scalar seed to avoid seed collision.
+)doc");
+
+REGISTER_OP("ShuffleAndRepeatDataset")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("count: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that shuffles and repeats elements from `input_dataset`
+pseudorandomly.
+
+buffer_size: The number of output elements to buffer in an iterator over
+  this dataset. Compare with the `min_after_dequeue` attr when creating a
+  `RandomShuffleQueue`.
+count: A scalar representing the number of times the underlying dataset
+  should be repeated. The default is `-1`, which results in infinite repetition.
+seed: A scalar seed for the random number generator. If either `seed` or
+  `seed2` is set to be non-zero, the random number generator is seeded
   by the given seed.  Otherwise, a random seed is used.
 seed2: A second scalar seed to avoid seed collision.
 )doc");
@@ -531,6 +556,16 @@ will the returned when used.
 
 filename: A path on the filesystem where we should cache the dataset. Note: this
   will be a directory.
+)doc");
+
+REGISTER_OP("UniqueDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that contains the unique elements of `input_dataset`.
 )doc");
 
 REGISTER_OP("TextLineDataset")

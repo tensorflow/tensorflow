@@ -59,7 +59,7 @@ REGISTER_KERNEL_BUILDER(Name("BytesInUse").Device(DEVICE_GPU).HostMemory("out"),
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
-    Name("BytesInUse").Device(DEVICE_SYCL).HostMemory("out"), MaxBytesInUseOp);
+    Name("BytesInUse").Device(DEVICE_SYCL).HostMemory("out"), BytesInUseOp);
 #endif  // TENSORFLOW_USE_SYCL
 
 // Op that measures the total memory (in bytes) of a device.

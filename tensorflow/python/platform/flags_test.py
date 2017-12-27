@@ -17,11 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import unittest
 
 from absl import flags as absl_flags
 
 from tensorflow.python.platform import flags
+from tensorflow.python.platform import test
 
 
 flags.DEFINE_string(
@@ -48,8 +50,59 @@ flags.DEFINE_boolean(
 
 class FlagsTest(unittest.TestCase):
 
-  def test_global_flags_object(self):
-    self.assertIs(flags.FLAGS, absl_flags.FLAGS)
+  def setUp(self):
+    self.original_flags = flags.FlagValues()
+    self.wrapped_flags = flags._FlagValuesWrapper(self.original_flags)
+    flags.DEFINE_string(
+        'test', 'default', 'test flag', flag_values=self.wrapped_flags)
+
+  def test_attribute_overrides(self):
+    # Test that methods defined in absl.flags.FlagValues are the same as the
+    # wrapped ones.
+    self.assertEqual(flags.FLAGS.is_parsed, absl_flags.FLAGS.is_parsed)
+
+  def test_getattr(self):
+    self.assertFalse(self.wrapped_flags.is_parsed())
+    with test.mock.patch.object(sys, 'argv', new=['program', '--test=new']):
+      self.assertEqual('new', self.wrapped_flags.test)
+    self.assertTrue(self.wrapped_flags.is_parsed())
+
+  def test_setattr(self):
+    self.assertEqual('default', self.wrapped_flags.test)
+    self.wrapped_flags.test = 'new'
+    self.assertEqual('new', self.wrapped_flags.test)
+
+  def test_delattr(self):
+    del self.wrapped_flags.test
+    self.assertNotIn('test', self.wrapped_flags)
+    with self.assertRaises(AttributeError):
+      _ = self.wrapped_flags.test
+
+  def test_dir(self):
+    self.assertEqual(['test'], dir(self.wrapped_flags))
+
+  def test_getitem(self):
+    self.assertIs(self.original_flags['test'], self.wrapped_flags['test'])
+
+  def test_setitem(self):
+    flag = flags.Flag(flags.ArgumentParser(), flags.ArgumentSerializer(),
+                      'fruit', 'apple', 'the fruit type')
+    self.wrapped_flags['fruit'] = flag
+    self.assertIs(self.original_flags['fruit'], self.wrapped_flags['fruit'])
+    self.assertEqual('apple', self.wrapped_flags.fruit)
+
+  def test_len(self):
+    self.assertEqual(1, len(self.wrapped_flags))
+
+  def test_iter(self):
+    self.assertEqual(['test'], list(self.wrapped_flags))
+
+  def test_str(self):
+    self.assertEqual(str(self.wrapped_flags), str(self.original_flags))
+
+  def test_call(self):
+    self.wrapped_flags(['program', '--test=new'])
+    self.assertEqual('new', self.wrapped_flags.test)
 
   def test_keyword_arguments(self):
     test_cases = (

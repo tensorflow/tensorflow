@@ -79,6 +79,12 @@ Status FastParseExample(const FastParseExampleConfig& config,
                         gtl::ArraySlice<string> example_names,
                         thread::ThreadPool* thread_pool, Result* result);
 
+// TODO(mrry): Move the hash table construction into the config object.
+typedef FastParseExampleConfig FastParseSingleExampleConfig;
+
+Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
+                              const string& serialized, Result* result);
+
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.
 // But then constructs Example which is relatively slow.

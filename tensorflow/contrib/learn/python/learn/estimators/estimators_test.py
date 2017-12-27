@@ -22,7 +22,7 @@ import random
 
 import numpy as np
 
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -62,7 +62,7 @@ class FeatureEngineeringFunctionTest(test.TestCase):
       _ = labels
       predictions = features["transformed_x"]
       loss = constant_op.constant([2.])
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       return predictions, loss, update_global_step
 
     estimator = estimator_lib.Estimator(
@@ -100,7 +100,7 @@ class FeatureEngineeringFunctionTest(test.TestCase):
       _ = labels
       predictions = features["x"]
       loss = constant_op.constant([2.])
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       return predictions, loss, update_global_step
 
     estimator = estimator_lib.Estimator(
@@ -139,7 +139,7 @@ class FeatureEngineeringFunctionTest(test.TestCase):
       _ = labels
       predictions = features["x"]
       loss = constant_op.constant([2.])
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       return predictions, loss, update_global_step
 
     estimator_with_fe_fn = estimator_lib.Estimator(

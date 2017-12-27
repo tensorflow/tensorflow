@@ -56,14 +56,9 @@ class XlaContext : public ResourceBase {
   xla::ComputationBuilder* builder();
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
-  bool has_context_parameter() const { return has_context_parameter_; }
 
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
-
-  // Get the runtime context parameter, adding one if it does not already exist.
-  // Dies if not compiling a local executable.
-  const xla::ComputationDataHandle& GetOrCreateRuntimeContextParameter();
 
   const std::vector<XlaExpression>& retvals() { return retvals_; }
 
@@ -121,15 +116,8 @@ class XlaContext : public ResourceBase {
   const bool allow_cpu_custom_calls_;
 
   // If true, constant return values are returned as Tensors instead of
-  // run-time computation outptus.
+  // run-time computation outputs.
   const bool resolve_compile_time_constants_;
-
-  // When 'has_context_parameter_' is true, this is the computation handle
-  // for an additional final parameter to the computation, through which will be
-  // passed a XlaLocalRuntimeContext* at runtime. Created on demand by
-  // GetOrCreateRuntimeContextParameter().
-  bool has_context_parameter_ = false;
-  xla::ComputationDataHandle context_parameter_;
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.

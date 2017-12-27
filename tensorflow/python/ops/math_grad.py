@@ -184,6 +184,15 @@ def _SparseSegmentSumGrad(op, grad):
           None)
 
 
+@ops.RegisterGradient("SparseSegmentSumWithNumSegments")
+def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSumWithNumSegments."""
+  input_rows = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.unsorted_segment_sum(
+      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
+          None, None)
+
+
 @ops.RegisterGradient("SparseSegmentMean")
 def _SparseSegmentMeanGrad(op, grad):
   """Gradient for SparseSegmentMean."""
@@ -192,12 +201,28 @@ def _SparseSegmentMeanGrad(op, grad):
                                             dim0), None, None)
 
 
+@ops.RegisterGradient("SparseSegmentMeanWithNumSegments")
+def _SparseSegmentMeanWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentMeanWithNumSegments."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_mean_grad(grad, op.inputs[1], op.inputs[2],
+                                            dim0), None, None, None)
+
+
 @ops.RegisterGradient("SparseSegmentSqrtN")
 def _SparseSegmentSqrtNGrad(op, grad):
   """Gradient for SparseSegmentSqrtN."""
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None)
+
+
+@ops.RegisterGradient("SparseSegmentSqrtNWithNumSegments")
+def _SparseSegmentSqrtNWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSqrtNWithNumSegmnets."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
+                                              dim0), None, None, None)
 
 
 def _SegmentMinOrMaxGrad(op, grad, is_sorted):

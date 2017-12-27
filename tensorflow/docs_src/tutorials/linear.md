@@ -1,36 +1,40 @@
 # Large-scale Linear Models with TensorFlow
 
-The tf.estimator API provides (among other things) a rich set of tools for
+@{tf.estimator$Estimators} provides (among other things) a rich set of tools for
 working with linear models in TensorFlow. This document provides an overview of
 those tools. It explains:
 
-   * what a linear model is.
-   * why you might want to use a linear model.
-   * how tf.estimator makes it easy to build linear models in TensorFlow.
-   * how you can use tf.estimator to combine linear models with
-   deep learning to get the advantages of both.
+   * What a linear model is.
+   * Why you might want to use a linear model.
+   * How Estimators make it easy to build linear models in TensorFlow.
+   * How you can use Estimators to combine linear models with.
+     deep learning to get the advantages of both.
 
-Read this overview to decide whether the tf.estimator linear model tools might
+Read this overview to decide whether the Estimator's linear model tools  might
 be useful to you. Then do the @{$wide$Linear Models tutorial} to
 give it a try. This overview uses code samples from the tutorial, but the
 tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
-with basic machine learning concepts, and also with @{$get_started/estimator$`tf.estimator`}.
+with basic machine learning concepts, and also with
+@{$get_started/estimator$Estimators}.
 
 [TOC]
 
 ## What is a linear model?
 
-A *linear model* uses a single weighted sum of features to make a prediction.
-For example, if you have [data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names)
+A **linear model** uses a single weighted sum of features to make a prediction.
+For example, if you have
+[data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names)
 on age, years of education, and weekly hours of
-work for a population, you can learn weights for each of those numbers so that
+work for a population, a model can learn weights for each of those numbers so that
 their weighted sum estimates a person's salary. You can also use linear models
 for classification.
 
 Some linear models transform the weighted sum into a more convenient form. For
-example, *logistic regression* plugs the weighted sum into the logistic
+example, 
+[**logistic regression**](https://developers.google.com/machine-learning/glossary/#logistic_regression)
+plugs the weighted sum into the logistic
 function to turn the output into a value between 0 and 1. But you still just
 have one weight for each input feature.
 
@@ -51,10 +55,10 @@ Linear models:
    * provide an excellent starting point for learning about machine learning.
    * are widely used in industry.
 
-## How does tf.estimator help you build linear models?
+## How do Estimators help you build linear models?
 
 You can build a linear model from scratch in TensorFlow without the help of a
-special API. But tf.estimator provides some tools that make it easier to build
+special API. But Estimators provides some tools that make it easier to build
 effective large-scale linear models.
 
 ### Feature columns and transformations
@@ -86,10 +90,10 @@ become [0, 1, 0] and 'green' would become [0, 0, 1]. These vectors are called
 "sparse" because they may be very long, with many zeros, when the set of
 possible values is very large (such as all English words).
 
-While you don't need to use categorical columns to use tf.estimator linear
-models, one of the strengths of linear models is their ability to deal with
-large sparse vectors. Sparse features are a primary use case for the
-tf.estimator linear model tools.
+While you don't need to use categorical columns to use the linear model tools
+provided by Estimators, one of the strengths of linear models is their ability
+to deal with large sparse vectors. Sparse features are a primary use case for
+the linear model tools provided by Estimators.
 
 ##### Encoding sparse columns
 
@@ -173,7 +177,7 @@ the data itself. You provide the data through an input function.
 The input function must return a dictionary of tensors. Each key corresponds to
 the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See
-@{$input_fn$Building Input Functions with tf.estimator} for a
+@{$input_fn$Building Input Functions} for a
 more comprehensive look at input functions, and `input_fn` in the
 [linear models tutorial code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
 for an example implementation of an input function.
@@ -220,7 +224,7 @@ for key in sorted(results):
 
 ### Wide and deep learning
 
-The tf.estimator API also provides an estimator class that lets you jointly
+The `tf.estimator` module also provides an estimator class that lets you jointly
 train a linear model and a deep neural network. This novel approach combines the
 ability of linear models to "memorize" key features with the generalization
 ability of neural nets. Use `tf.estimator.DNNLinearCombinedClassifier` to

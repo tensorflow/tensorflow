@@ -61,10 +61,10 @@ def categorical_hinge(y_true, y_pred):
 
 def logcosh(y_true, y_pred):
 
-  def cosh(x):
-    return (K.exp(x) + K.exp(-x)) / 2
+  def _logcosh(x):
+    return x + K.softplus(-2. * x) - K.log(2.)
 
-  return K.mean(K.log(cosh(y_pred - y_true)), axis=-1)
+  return K.mean(_logcosh(y_pred - y_true), axis=-1)
 
 
 def categorical_crossentropy(y_true, y_pred):
