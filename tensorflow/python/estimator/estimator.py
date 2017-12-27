@@ -486,7 +486,7 @@ class Estimator(object):
     `ExportOutput`s, and the inputs are always the input receivers provided by
     the serving_input_receiver_fn.
 
-    Extra assets may be written into the SavedModel via the extra_assets
+    Extra assets may be written into the SavedModel via the assets_extra
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
