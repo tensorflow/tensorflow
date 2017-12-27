@@ -24,7 +24,7 @@
 add-apt-repository -y ppa:fkrull/deadsnakes
 
 # Install bz2 dep
-apt-get install libbz2-dev bzip2-devel
+# apt-get install libbz2-dev bzip2-devel
 # Install curses dep
 apt-get install libncurses5 libncurses5-dev libncursesw5
 # Install readline dep
@@ -35,13 +35,22 @@ apt-get install libsqlite3-dev
 apt-get update
 
 set -e
+# Install bz2 dep
+wget http://bzip.org/1.0.6/bzip2-1.0.6.tar.gz
+tar xpzf bzip2-1.0.6.tar.gz
+cd bzip2-1.0.6
+make
+make -f Makefile-libbz2_so
+make install PREFIX=/path/to/local # /usr/local by default
+cd ..
+
 # Install Python 3.6 and dev library
 wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
 tar xvf Python-3.6.1.tar.xz
 cd Python-3.6.1
 
 ./configure
-make altinstall
+make install
 pip3.6 -V
 which pip3.6
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
