@@ -143,7 +143,7 @@ class CheckpointsTest(test.TestCase):
         self.assertAllEqual(my4.eval(session), v4)
 
         # Check that tensors are not explicitly in the graph.
-        self.assertLess(len(str(session.graph.as_graph_def())), 28000)
+        self.assertLess(len(str(session.graph.as_graph_def())), 29000)
 
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
