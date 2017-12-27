@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_file_system.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/s3/aws_logging.h"
 #include "tensorflow/core/platform/s3/s3_crypto.h"
-#include "tensorflow/core/platform/s3/s3_logging.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
@@ -233,7 +233,7 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 S3FileSystem::S3FileSystem() {
-  S3LogSystem::InitializeAWSLogging();
+  AWSLogSystem::InitializeAWSLogging();
 
   Aws::SDKOptions options;
   options.cryptoOptions.sha256Factory_create_fn = []() {
@@ -249,7 +249,7 @@ S3FileSystem::~S3FileSystem() {
   Aws::SDKOptions options;
   Aws::ShutdownAPI(options);
 
-  S3LogSystem::ShutdownAWSLogging();
+  AWSLogSystem::ShutdownAWSLogging();
 }
 
 Status S3FileSystem::NewRandomAccessFile(

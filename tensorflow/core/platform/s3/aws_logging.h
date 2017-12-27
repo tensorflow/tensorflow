@@ -25,13 +25,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
+class AWSLogSystem : public Aws::Utils::Logging::LogSystemInterface {
  public:
   static void InitializeAWSLogging();
   static void ShutdownAWSLogging();
 
-  explicit S3LogSystem(Aws::Utils::Logging::LogLevel log_level);
-  virtual ~S3LogSystem() = default;
+  explicit AWSLogSystem(Aws::Utils::Logging::LogLevel log_level);
+  virtual ~AWSLogSystem() = default;
 
   // Gets the currently configured log level.
   virtual Aws::Utils::Logging::LogLevel GetLogLevel(void) const override {
@@ -59,8 +59,8 @@ class S3LogSystem : public Aws::Utils::Logging::LogSystemInterface {
   void LogMessage(Aws::Utils::Logging::LogLevel log_level,
                   const string& message);
   std::atomic<Aws::Utils::Logging::LogLevel> log_level_;
-   
-  DISALLOW_COPY_AND_ASSIGN(S3LogSystem);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(AWSLogSystem);
 };
 
 }  // namespace tensorflow

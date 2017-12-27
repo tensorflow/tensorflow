@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/s3/s3_logging.h"
+#include "tensorflow/core/platform/s3/aws_logging.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -25,11 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-S3LogSystem::S3LogSystem(Aws::Utils::Logging::LogLevel log_level)
+AWSLogSystem::AWSLogSystem(Aws::Utils::Logging::LogLevel log_level)
     : log_level_(log_level) {}
 
-void S3LogSystem::Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
-                      const char* format, ...) {
+void AWSLogSystem::Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
+                       const char* format, ...) {
   std::va_list args;
   va_start(args, format);
 
@@ -40,14 +40,14 @@ void S3LogSystem::Log(Aws::Utils::Logging::LogLevel log_level, const char* tag,
   LogMessage(log_level, s);
 }
 
-void S3LogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
-                            const char* tag,
-                            const Aws::OStringStream& message_stream) {
+void AWSLogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
+                             const char* tag,
+                             const Aws::OStringStream& message_stream) {
   LogMessage(log_level, message_stream.rdbuf()->str().c_str());
 }
 
-void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
-                             const std::string& message) {
+void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
+                              const std::string& message) {
   switch (log_level) {
     case Aws::Utils::Logging::LogLevel::Info:
       LOG(INFO) << message;
@@ -68,7 +68,7 @@ void S3LogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
 }
 
 namespace {
-static const char* kS3FileSystemLoggingTag = "S3FileSystemLogging";
+static const char* kAWSLoggingTag = "AWSLogging";
 
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
   Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
@@ -99,17 +99,17 @@ Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
 
 static bool initialized = false;
 static mutex s3_logging_mutex(LINKER_INITIALIZED);
-void S3LogSystem::InitializeAWSLogging() {
+void AWSLogSystem::InitializeAWSLogging() {
   std::lock_guard<mutex> s3_logging_lock(s3_logging_mutex);
   if (!initialized) {
-    Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<S3LogSystem>(
-        kS3FileSystemLoggingTag, ParseLogLevelFromEnv()));
+    Aws::Utils::Logging::InitializeAWSLogging(
+        Aws::MakeShared<AWSLogSystem>(kAWSLoggingTag, ParseLogLevelFromEnv()));
     initialized = true;
     return;
   }
 }
 
-void S3LogSystem::ShutdownAWSLogging() {
+void AWSLogSystem::ShutdownAWSLogging() {
   std::lock_guard<mutex> s3_logging_lock(s3_logging_mutex);
   if (initialized) {
     Aws::Utils::Logging::ShutdownAWSLogging();

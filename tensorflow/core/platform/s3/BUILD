@@ -28,12 +28,12 @@ filegroup(
 tf_cc_binary(
     name = "s3_file_system.so",
     srcs = [
+        "aws_logging.cc",
+        "aws_logging.h",
         "s3_crypto.cc",
         "s3_crypto.h",
         "s3_file_system.cc",
         "s3_file_system.h",
-        "s3_logging.cc",
-        "s3_logging.h",
     ],
     copts = ["-Wno-sign-compare"],
     defines = select({
@@ -69,12 +69,12 @@ cc_library(
 )
 
 cc_library(
-    name = "s3_logging",
+    name = "aws_logging",
     srcs = [
-        "s3_logging.cc",
+        "aws_logging.cc",
     ],
     hdrs = [
-        "s3_logging.h",
+        "aws_logging.h",
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -93,8 +93,8 @@ cc_library(
         "s3_file_system.h",
     ],
     deps = [
+        ":aws_logging",
         ":s3_crypto",
-        ":s3_logging",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@aws//:aws",
