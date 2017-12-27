@@ -235,9 +235,9 @@ def fold_batch_norms(input_graph_def):
 
     conv_op = node_from_map(input_node_map,
                             node.input[INPUT_ORDER[node.op].index("conv_op")])
-    if conv_op.op != "Conv2D":
+    if conv_op.op not in ("Conv2D", "DepthwiseConv2dNative"):
       tf_logging.warning(
-          "Didn't find expected Conv2D input to '%s'" % node.name)
+          "Didn't find expected Conv2D/DepthwiseConv2dNative input to '%s'" % node.name)
       continue
 
     weights_op = node_from_map(input_node_map, conv_op.input[1])
@@ -247,6 +247,8 @@ def fold_batch_norms(input_graph_def):
                          " run first?" % (conv_op.name, weights_op))
       continue
     weights = values_from_const(weights_op)
+    if conv_op.op == "DepthwiseConv2dNative":
+      weights = np.transpose(weights, (0,1,3,2))
     channel_count = weights.shape[3]
 
     mean_op = node_from_map(input_node_map,
@@ -329,6 +331,11 @@ def fold_batch_norms(input_graph_def):
       current_scale = scale_value[it.multi_index[3]]
       it[0] *= current_scale
       it.iternext()
+
+    if conv_op.op == "DepthwiseConv2dNative":
+      scaled_weights = np.transpose(scaled_weights, (0,1,3,2))
+      weights = np.transpose(weights, (0,1,3,2))
+
     scaled_weights_op = node_def_pb2.NodeDef()
     scaled_weights_op.op = "Const"
     scaled_weights_op.name = weights_op.name
