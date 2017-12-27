@@ -31,7 +31,8 @@ apt-get install python-dev
 # Install bz2 dep
 apt-get install libbz2-dev
 # Install curses dep
-apt-get install libncurses5 libncurses5-dev libncursesw5
+apt-get install libncurses5 libncurses5-dev
+apt-get install libncursesw5 libncursesw5-dev
 # Install readline dep
 apt-get install libreadline6 libreadline6-dev
 # Install sqlite3 dependencies
