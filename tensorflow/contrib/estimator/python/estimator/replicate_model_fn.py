@@ -329,7 +329,7 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
 
   @staticmethod
   def _clear_graph_state():
-    # Clearing a collection in Graph will prevent _PerGraphState from being
+    # Clearing the Graph collection will prevent _PerGraphState from being
     # serialized.
     ops_lib.get_default_graph().clear_collection(
         GatheringOptimizer.COLLECTION_FOR_GRAPH_STATES)
