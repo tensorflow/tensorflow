@@ -47,13 +47,10 @@ tar xvf Python-3.6.1.tar.xz
 cd Python-3.6.1
 
 ./configure
-make install
+make altinstall
 pip3.6 -V
-which pip3
-echo "****************************************************************************************************************************"
-
 which pip3.6
-echo "****************************************************************************************************************************"
+ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
 pip3 install --upgrade virtualenv
 
