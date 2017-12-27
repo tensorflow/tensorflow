@@ -29,6 +29,8 @@ apt-get install libbz2-dev
 apt-get install libncurses5 libncurses5-dev libncursesw5
 # Install readline dep
 apt-get install libreadline6 libreadline6-dev
+# Install sqlite3 dependencies
+apt-get install libsqlite3-dev
 
 apt-get update
 
@@ -72,6 +74,10 @@ pip3 install scikit-learn==0.18.1
 pip3 install pandas==0.19.2
 
 pip3 install gnureadline
+
+pip3 install bzip2
+
+
 
 # Install recent-enough version of wheel for Python 3.6 wheel builds
 pip3 install wheel==0.29.0
