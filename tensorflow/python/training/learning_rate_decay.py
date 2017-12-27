@@ -120,7 +120,7 @@ def piecewise_constant(x, boundaries, values, name=None):
       `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
     boundaries: A list of `Tensor`s or `int`s or `float`s with strictly
       increasing entries, and with all elements having the same type as `x`.
-    values: A list of `Tensor`s or float`s or `int`s that specifies the values
+    values: A list of `Tensor`s or `float`s or `int`s that specifies the values
       for the intervals defined by `boundaries`. It should have one more element
       than `boundaries`, and all elements should have the same type.
     name: A string. Optional name of the operation. Defaults to
