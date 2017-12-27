@@ -284,8 +284,9 @@ tensorflow/contrib/linear_optimizer/kernels
 tensorflow/contrib/linear_optimizer/kernels/g3doc
 tensorflow/contrib/linear_optimizer/python
 tensorflow/contrib/linear_optimizer/python/ops
-tensorflow/contrib/lite/python
-tensorflow/contrib/lite/toco/python
+# TODO(drpngx): Fix failing imports
+# tensorflow/contrib/lite/python
+# tensorflow/contrib/lite/toco/python
 tensorflow/contrib/lookup
 tensorflow/contrib/losses
 tensorflow/contrib/losses/python
