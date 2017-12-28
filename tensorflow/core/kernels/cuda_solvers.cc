@@ -387,10 +387,6 @@ static inline Status GetrfImpl(BufSizeFnT bufsize, SolverFnT solver,
                                cusolverDnHandle_t cusolver_dn_handle, int m,
                                int n, Scalar* A, int lda, int* dev_pivots,
                                int* dev_lapack_info) {
-  // Protect the cuSolver function with a lock. Although the documentation
-  // claims it is thread-safe, segmentation faults were observed when
-  // two or more threads accessed it concurrently.
-  mutex_lock lock(handle_map_mutex);
   /* Get amount of workspace memory required. */
   int lwork;
   TF_RETURN_IF_CUSOLVER_ERROR(
