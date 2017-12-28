@@ -312,8 +312,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     }
 
     // Allocate the output tensor
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst,0),
-                                       output_shape, res));
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst,0), output_shape, res));
     poplar::Tensor out_flat = out.flatten();
 
     auto cs = graph.addComputeSet(inst->name());
@@ -536,6 +535,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   xla::Shape partial_shape(output_shape);
   partial_shape.add_dimensions(overlap_count);
   LayoutUtil::ClearLayout(&partial_shape);
+  partial_shape.mutable_layout()->set_format(DENSE);
 
   Literal identity_literal = GetIdentityConstantLiteral(scatter_root);
 
