@@ -38,8 +38,6 @@ apt-get install libreadline6 libreadline6-dev
 # Install sqlite3 dependencies
 apt-get install libsqlite3-dev
 
-apt-get update
-
 set -e
 
 # Install Python 3.6 and dev library
