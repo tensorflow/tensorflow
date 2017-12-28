@@ -260,7 +260,7 @@ struct NCHWToNHWC {
 //   [dim0, dim1, dim2]
 // to:
 //   [dim0, dim2, dim1]
-template <typename Device, typename T>
+template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension1And2InTensor3 {
   void operator()(const Device& d, const T* in,
                   const gtl::ArraySlice<int64>& input_dims, T* out);
@@ -270,7 +270,7 @@ struct SwapDimension1And2InTensor3 {
 //   [dim0, dim1, dim2]
 // to:
 //   [dim2, dim1, dim0]
-template <typename Device, typename T>
+template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension0And2InTensor3 {
   void operator()(const Device& d, const T* in,
                   const gtl::ArraySlice<int64>& input_dims, T* out);

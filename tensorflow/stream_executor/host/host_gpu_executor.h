@@ -139,7 +139,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   bool StopTimer(Stream *stream, Timer *timer) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 

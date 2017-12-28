@@ -18,8 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 
 using InstructionFusionTest = HloTestBase;

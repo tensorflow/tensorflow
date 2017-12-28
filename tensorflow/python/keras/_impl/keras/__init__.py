@@ -25,6 +25,7 @@ from tensorflow.python.keras._impl.keras import callbacks
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import datasets
 from tensorflow.python.keras._impl.keras import engine
+from tensorflow.python.keras._impl.keras import estimator
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import layers
 from tensorflow.python.keras._impl.keras import losses
@@ -36,5 +37,7 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras import utils
 from tensorflow.python.keras._impl.keras import wrappers
 from tensorflow.python.keras._impl.keras.layers import Input
+from tensorflow.python.keras._impl.keras.models import Model
+from tensorflow.python.keras._impl.keras.models import Sequential
 
-__version__ = '2.0.8-tf'
+__version__ = '2.1.2-tf'

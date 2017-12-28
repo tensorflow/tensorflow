@@ -99,7 +99,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+  opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
                                  total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
@@ -374,6 +374,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
     return self._opt.get_slot(*args, **kwargs)
 
+  def variables(self):
+    """Fetches a list of optimizer variables in the default graph.
+
+    This wraps `variables()` from the actual optimizer. It does not include
+    the `SyncReplicasOptimizer`'s local step.
+
+    Returns:
+      A list of variables.
+    """
+    return self._opt.variables()
+
   def get_slot_names(self, *args, **kwargs):
     """Return a list of the names of slots created by the `Optimizer`.
 
@@ -438,7 +449,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
 
   def __init__(self, sync_optimizer, is_chief, num_tokens):
-    """Creates hook to handle SyncReplicaOptimizer initialization ops.
+    """Creates hook to handle SyncReplicasOptimizer initialization ops.
 
     Args:
       sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.

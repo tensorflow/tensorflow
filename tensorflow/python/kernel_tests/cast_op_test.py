@@ -144,9 +144,9 @@ class CastOpTest(test.TestCase):
 
     self._compare(np.inf, np.float32, np.inf, False)
     self._compare(np.inf, np.float64, np.inf, False)
-    if sys.byteorder == "big":  
-      self._compare(np.inf, np.int32, i4.max, False)  
-      self._compare(np.inf, np.int64, i8.max, False)  
+    if sys.byteorder == "big":
+      self._compare(np.inf, np.int32, i4.max, False)
+      self._compare(np.inf, np.int64, i8.max, False)
     else:
       # np.float64("np.inf").astype(np.int32) is negative on x86 but positive on ppc64le
       # Numpy link to relevant discussion - https://github.com/numpy/numpy/issues/9040
@@ -156,7 +156,7 @@ class CastOpTest(test.TestCase):
         self._compare(-np.inf, np.int64, i8.min, False)
       else:
         self._compare(np.inf, np.int32, i4.min, False)
-        self._compare(np.inf, np.int64, i8.min, False)  
+        self._compare(np.inf, np.int64, i8.min, False)
     self._compare(-np.inf, np.float32, -np.inf, False)
     self._compare(-np.inf, np.float64, -np.inf, False)
     self._compare(-np.inf, np.int32, i4.min, False)

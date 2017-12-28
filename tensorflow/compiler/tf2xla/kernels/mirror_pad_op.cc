@@ -92,7 +92,8 @@ class MirrorPadOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MirrorPadOp);
 };
 
-REGISTER_XLA_OP(Name("MirrorPad"), MirrorPadOp);
+REGISTER_XLA_OP(Name("MirrorPad").CompileTimeConstInput("paddings"),
+                MirrorPadOp);
 
 }  // namespace
 }  // namespace tensorflow

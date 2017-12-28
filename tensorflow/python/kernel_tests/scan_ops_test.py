@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradient_checker
@@ -91,6 +93,14 @@ class CumsumTest(test.TestCase):
       x = np.zeros([0]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
+
+  def testAxisType(self):
+    for dtype in self.valid_dtypes:
+      x = np.arange(1, 6).reshape([5]).astype(dtype)
+      for axis_dtype in [dtypes.int64, dtypes.int32]:
+        with self.test_session(use_gpu=True):
+          axis = constant_op.constant(0, axis_dtype)
+          tf_out = math_ops.cumsum(x, axis).eval()
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -189,6 +199,14 @@ class CumprodTest(test.TestCase):
       x = np.zeros([0]).astype(dtype)
       for axis in (-1, 0):
         self._compareAll(x, axis)
+
+  def testAxisType(self):
+    for dtype in self.valid_dtypes:
+      x = np.arange(1, 6).reshape([5]).astype(dtype)
+      for axis_dtype in [dtypes.int64, dtypes.int32]:
+        with self.test_session(use_gpu=True):
+          axis = constant_op.constant(0, axis_dtype)
+          tf_out = math_ops.cumprod(x, axis).eval()
 
   def test1D(self):
     for dtype in self.valid_dtypes:

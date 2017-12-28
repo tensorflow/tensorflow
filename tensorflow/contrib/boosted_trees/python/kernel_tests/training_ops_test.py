@@ -181,7 +181,6 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
         tree_weights: 1.0
         tree_metadata {
           num_layers_grown: 1
-          is_finalized: true
         }
         growing_metadata {
           num_trees_attempted: 1
@@ -189,7 +188,7 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
         }
       """
       self.assertEqual(new_stamp, 1)
-      self.assertEqual(stats.num_trees, 1)
+      self.assertEqual(stats.num_trees, 0)
       self.assertEqual(stats.num_layers, 1)
       self.assertEqual(stats.active_tree, 1)
       self.assertEqual(stats.active_layer, 1)
@@ -231,7 +230,6 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
         tree_weights: 1.0
         tree_metadata {
           num_layers_grown: 1
-          is_finalized: true
         }
         growing_metadata {
           num_trees_attempted: 1
@@ -239,7 +237,7 @@ class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):
         }
       """
       self.assertEqual(new_stamp, 2)
-      self.assertEqual(stats.num_trees, 1)
+      self.assertEqual(stats.num_trees, 0)
       self.assertEqual(stats.num_layers, 1)
       self.assertEqual(stats.active_tree, 1)
       self.assertEqual(stats.active_layer, 1)

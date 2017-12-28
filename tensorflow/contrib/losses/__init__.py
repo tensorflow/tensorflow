@@ -22,10 +22,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.losses.python import metric_learning
 # pylint: disable=wildcard-import
 from tensorflow.contrib.losses.python.losses import *
 # pylint: enable=wildcard-import
-
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
@@ -43,5 +43,6 @@ _allowed_symbols = [
     'sigmoid_cross_entropy',
     'softmax_cross_entropy',
     'sparse_softmax_cross_entropy',
+    'metric_learning'
 ]
 remove_undocumented(__name__, _allowed_symbols)

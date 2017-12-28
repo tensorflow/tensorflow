@@ -93,7 +93,8 @@ limitations under the License.
   ((sizeof(a) / sizeof(*(a))) / \
    static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
 
-#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+    (defined(_MSC_VER) && _MSC_VER >= 1900)
 // Define this to 1 if the code is compiled in C++11 mode; leave it
 // undefined otherwise.  Do NOT define it to 0 -- that causes
 // '#ifdef LANG_CXX11' to behave differently from '#if LANG_CXX11'.

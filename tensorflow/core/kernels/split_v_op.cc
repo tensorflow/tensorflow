@@ -225,11 +225,11 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const auto num_threads =
         context->device()->tensorflow_cpu_worker_threads()->num_threads;
     // TODO(jewillco): Tune heuristic further.
+    const auto input_element_count = input_shape.num_elements();
     const bool use_parallelism_between_outputs =
         (num_split >= 4 &&
-         input_shape.num_elements() >=
-             std::max(num_threads, num_split) * 4096 &&
-         input_shape.num_elements() < num_split * 180 * 1024);
+         input_element_count >= std::max(num_threads, num_split) * 4096 &&
+         input_element_count < num_split * 180 * 1024);
 
     auto range_output_func = [&indices, context, &input_shape, prefix_dim_size,
                               split_dim, &split_sizes_vec, &split_start_points,
@@ -267,7 +267,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
       // Run in parallel, disabling parallelism in functor.
       Shard(num_split,
             context->device()->tensorflow_cpu_worker_threads()->workers,
-            num_split, kint64max, range_output_func);
+            num_split, input_element_count / num_split, range_output_func);
     } else {
       // Run sequentially, but allow internal parallelism in functor.
       range_output_func(0, num_split);

@@ -64,7 +64,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
     IMAG,
     CONJ,
     COMPLEX,
-    ANGLE
+    ANGLE,
+    LGAMMA,
+    ERF
   };
 
   template <typename X_T, typename Y_T>
@@ -167,6 +169,12 @@ class CWiseUnaryGradTest : public ::testing::Test {
         break;
       case ANGLE:
         y = Angle(scope_, x);
+        break;
+      case LGAMMA:
+        y = Lgamma(scope_, x);
+        break;
+      case ERF:
+        y = Erf(scope_, x);
         break;
     }
 
@@ -503,81 +511,74 @@ TEST_F(CWiseUnaryGradTest, Angle) {
   TestCWiseGrad<complex64, float>(ANGLE, x_fn);
 }
 
+TEST_F(CWiseUnaryGradTest, Lgamma) {
+  auto x_fn = [this](const int i) {
+    return RV({-3.5, -2.5, -1.5, 1.0, 2.0, 3.5});
+  };
+  TestCWiseGrad<float, float>(LGAMMA, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{-3.5, 0.5}, {-1.5, -0.5}, {1.5, -1.0}, {3.5, 1.0}});
+  };
+  // TODO(kbsriram)
+  // Add test when the lgamma kernel supports complex numbers
+  if (false) {
+    TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
+  }
+}
+
+TEST_F(CWiseUnaryGradTest, Erf) {
+  auto x_fn = [this](const int i) {
+    return RV({-1.2, -1.0, -0.5, 0.3, 0.5, 1.3});
+  };
+  TestCWiseGrad<float, float>(ERF, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Erf_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{-1.2, 0.5}, {-0.5, -0.5}, {0.5, 0.5}, {1.2, -0.5}});
+  };
+  // TODO(kbsriram)
+  // Add test when the erf kernel supports complex numbers
+  if (false) {
+    TestCWiseGrad<complex64, complex64>(ERF, x_fn);
+  }
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
 
+  template <typename T>
   void TestMatMulGrad(const bool is_batch, const bool t_x, const bool t_y) {
-    // Generate random test data.
-    std::vector<Tensor> data;
-    RandMatMulGradData(is_batch, t_x, t_y, &data);
-    auto x = Const(root_, data[0]);
-    auto y = Const(root_, data[1]);
-    auto dz = Const(root_, data[2]);
-
-    std::vector<Tensor> grad_outputs;
-    ComputeMatMulGrad(is_batch, x, t_x, y, t_y, dz, &grad_outputs);
-
-    if (!t_x && !t_y) {
-      test::ExpectClose(grad_outputs[0],
-                        ComputeMatMul(is_batch, dz, false, y, true));
-      test::ExpectClose(grad_outputs[1],
-                        ComputeMatMul(is_batch, x, true, dz, false));
-    } else if (t_x && !t_y) {
-      test::ExpectClose(grad_outputs[0],
-                        ComputeMatMul(is_batch, y, false, dz, true));
-      test::ExpectClose(grad_outputs[1],
-                        ComputeMatMul(is_batch, x, false, dz, false));
-    } else if (!t_x && t_y) {
-      test::ExpectClose(grad_outputs[0],
-                        ComputeMatMul(is_batch, dz, false, y, false));
-      test::ExpectClose(grad_outputs[1],
-                        ComputeMatMul(is_batch, dz, true, x, false));
-    } else {
-      test::ExpectClose(grad_outputs[0],
-                        ComputeMatMul(is_batch, y, true, dz, true));
-      test::ExpectClose(grad_outputs[1],
-                        ComputeMatMul(is_batch, dz, true, x, true));
-    }
-  }
-
-  void ComputeMatMulGrad(const bool is_batch, const Output& x, const bool t_x,
-                         const Output& y, const bool t_y, const Output& dz,
-                         std::vector<Tensor>* out) {
-    // Compute forward MatMul: z = MatMul(x, y).
-    Output z;
-    if (is_batch) {
-      z = BatchMatMul(root_, x, y, BatchMatMul::AdjX(t_x).AdjY(t_y));
-    } else {
-      z = MatMul(root_, x, y, MatMul::TransposeA(t_x).TransposeB(t_y));
-    }
     TF_ASSERT_OK(root_.status());
-    CHECK_NOTNULL(z.node());
-    std::vector<Output> grad_outputs;
-    // Call MatMulGrad which populates 'grad_outputs'.
-    TF_ASSERT_OK(test::CallGradFunction(root_, Operation(z.node()), {dz},
-                                        &grad_outputs));
-    ASSERT_EQ(2, grad_outputs.size());
-    // Run graph and return MatMul gradient tensors for 'dx' and 'dy' in 'out'.
-    test::GetTensors(root_, {grad_outputs[0], grad_outputs[1]}, out);
-  }
-
-  Tensor ComputeMatMul(const bool is_batch, const Output& x, const bool t_x,
-                       const Output& y, const bool t_y) {
+    // Generate random (but compatible) shapes for matrix multiplication.
+    std::vector<TensorShape> shapes;
+    RandMatMulShapes(is_batch, t_x, t_y, &shapes);
+    TensorShape x_shape = shapes[0];
+    TensorShape y_shape = shapes[1];
+    TensorShape z_shape = shapes[2];
+    auto x =
+        Placeholder(root_, DataTypeToEnum<T>::v(), Placeholder::Shape(x_shape));
+    auto y =
+        Placeholder(root_, DataTypeToEnum<T>::v(), Placeholder::Shape(y_shape));
     Output z;
     if (is_batch) {
       z = BatchMatMul(root_, x, y, BatchMatMul::AdjX(t_x).AdjY(t_y));
     } else {
       z = MatMul(root_, x, y, MatMul::TransposeA(t_x).TransposeB(t_y));
     }
-    TF_EXPECT_OK(root_.status());
-    Tensor out;
-    test::GetTensor(root_, z, &out);
-    return out;
+
+    float max_error;
+    TF_ASSERT_OK((ComputeGradientError<T, T, float>(
+        root_, {x, y}, {x_shape, y_shape}, {z}, {z_shape}, &max_error)));
+    EXPECT_LT(max_error, 1e-3);
   }
 
-  void RandMatMulGradData(const bool is_batch, const bool tx, const bool ty,
-                          std::vector<Tensor>* data) {
+  void RandMatMulShapes(const bool is_batch, const bool tx, const bool ty,
+                        std::vector<TensorShape>* shapes) {
     // Choose a random batch size in [1, 4]
     const int b = 1 + (random::New64() % 4);
     // z = MatMul(x, y)
@@ -593,8 +594,7 @@ class MathGradTest : public ::testing::Test {
       // x.shape = [m, k]
       x_shape = tx ? TensorShape({k, m}) : TensorShape({m, k});
     }
-    data->emplace_back(DT_FLOAT, x_shape);
-    RandTensor(&data->back());
+    shapes->push_back(x_shape);
 
     TensorShape y_shape;
     if (is_batch) {
@@ -604,8 +604,7 @@ class MathGradTest : public ::testing::Test {
       // y.shape = [k, n]
       y_shape = ty ? TensorShape({n, k}) : TensorShape({k, n});
     }
-    data->emplace_back(DT_FLOAT, y_shape);
-    RandTensor(&data->back());
+    shapes->push_back(y_shape);
 
     TensorShape z_shape;
     if (is_batch) {
@@ -615,13 +614,7 @@ class MathGradTest : public ::testing::Test {
       // z.shape = [m, n]
       z_shape = TensorShape({m, n});
     }
-    data->emplace_back(DT_FLOAT, z_shape);
-    RandTensor(&data->back());
-  }
-
-  void RandTensor(Tensor* t) {
-    test::FillFn<float>(
-        t, [this](const int i) { return static_cast<float>(Rand()); });
+    shapes->push_back(z_shape);
   }
 
   int Rand() { return 1 + (random::New64() % 10); }
@@ -630,35 +623,67 @@ class MathGradTest : public ::testing::Test {
 };
 
 TEST_F(MathGradTest, MatMulGrad_NoTranspose) {
-  TestMatMulGrad(false, false, false);
+  TestMatMulGrad<float>(false, false, false);
+}
+
+TEST_F(MathGradTest, MatMulComplexGrad_NoTranspose) {
+  TestMatMulGrad<complex64>(false, false, false);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeX) {
-  TestMatMulGrad(false, true, false);
+  TestMatMulGrad<float>(false, true, false);
+}
+
+TEST_F(MathGradTest, MatMulComplexGrad_TransposeX) {
+  TestMatMulGrad<complex64>(false, true, false);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeY) {
-  TestMatMulGrad(false, false, true);
+  TestMatMulGrad<float>(false, false, true);
+}
+
+TEST_F(MathGradTest, MatMulComplexGrad_TransposeY) {
+  TestMatMulGrad<complex64>(false, false, true);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeX_TransposeY) {
-  TestMatMulGrad(false, true, true);
+  TestMatMulGrad<float>(false, true, true);
+}
+
+TEST_F(MathGradTest, MatMulComplexGrad_TransposeX_TransposeY) {
+  TestMatMulGrad<complex64>(false, true, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_NoTranspose) {
-  TestMatMulGrad(true, false, false);
+  TestMatMulGrad<float>(true, false, false);
+}
+
+TEST_F(MathGradTest, BatchMatMulComplexGrad_NoTranspose) {
+  TestMatMulGrad<complex64>(true, false, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX) {
-  TestMatMulGrad(true, true, false);
+  TestMatMulGrad<float>(true, true, false);
+}
+
+TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeX) {
+  TestMatMulGrad<complex64>(true, true, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeY) {
-  TestMatMulGrad(true, false, true);
+  TestMatMulGrad<float>(true, false, true);
+}
+
+TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeY) {
+  TestMatMulGrad<complex64>(true, false, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX_TransposeY) {
-  TestMatMulGrad(true, true, true);
+  TestMatMulGrad<float>(true, true, true);
+}
+
+TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeX_TransposeY) {
+  TestMatMulGrad<complex64>(true, true, true);
 }
 
 class NaryGradTest : public ::testing::Test {
@@ -818,6 +843,14 @@ TEST_F(NaryGradTest, SquaredDifference) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, Pow) {
+  TensorShape shape({3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // fix exponent to avoid overflow
+  auto y = Pow(scope_, x, Const(scope_, {1.f, 2.f, 3.f}));
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
 TEST_F(NaryGradTest, Maximum) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
@@ -840,16 +873,21 @@ TEST_F(NaryGradTest, Minimum) {
   RunTest(x, x_init_value, y, shape);
 }
 
-TEST_F(NaryGradTest, Lgamma) {
-  TensorShape shape({3, 2});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Lgamma(scope_, x);
-  // Select values to avoid instability when computing finite differences.
-  // Ref: https://en.wikipedia.org/wiki/File:Gamma_plot.svg
-  Tensor x_init_value =
-      test::AsTensor<float>({-3.5f, -2.5f, -1.5f, 1.0f, 2.0f, 3.5f}, {3, 2});
-  RunTest(x, x_init_value, y, shape);
-  // TODO(suharshs): add test case for complex values
+TEST_F(NaryGradTest, Prod) {
+  TensorShape x_shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Prod(scope_, x, {1});
+  // y's shape is the result of reducing x along axes 1
+  TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({3, 4});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Where3(scope_, Greater(scope_, x1, x2), x1, x2);
+  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
 }
 
 }  // namespace

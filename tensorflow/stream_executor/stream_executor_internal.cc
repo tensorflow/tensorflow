@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
-
 namespace perftools {
 namespace gputools {
 namespace internal {
@@ -39,7 +36,6 @@ StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
 // -- Host
 
 StreamExecutorFactory MakeHostExecutorImplementation;
-
 
 }  // namespace internal
 }  // namespace gputools

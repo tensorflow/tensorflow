@@ -101,13 +101,13 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    super(Embedding, self).__init__(**kwargs)
+    super(Embedding, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
     self.embeddings_initializer = initializers.get(embeddings_initializer)
     self.embeddings_regularizer = regularizers.get(embeddings_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.embeddings_constraint = constraints.get(embeddings_constraint)
     self.mask_zero = mask_zero
     self.input_length = input_length

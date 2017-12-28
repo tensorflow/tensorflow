@@ -22,6 +22,7 @@ import re
 
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
@@ -33,6 +34,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
+
+
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True,
+      constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 def _line_number_above():
@@ -146,7 +155,7 @@ class ProfileAnalyzerListProfileTest(test_util.TensorFlowTestCase):
     options.trace_level = config_pb2.RunOptions.FULL_TRACE
     run_metadata = config_pb2.RunMetadata()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       a = constant_op.constant([1, 2, 3])
       b = constant_op.constant([2, 2, 1])
       result = math_ops.add(a, b)

@@ -14,7 +14,17 @@
 # ==============================================================================
 """The TFGAN project provides a lightweight GAN training/testing framework.
 
-See examples in `tensorflow_models` for details on how to use.
+This file contains the core helper functions to create and train a GAN model.
+See the README or examples in `tensorflow_models` for details on how to use.
+
+TFGAN training occurs in four steps:
+1) Create a model
+2) Add a loss
+3) Create train ops
+4) Run the train ops
+
+The functions in this file are organized around these four steps. Each function
+corresponds to one of the steps.
 """
 
 from __future__ import absolute_import
@@ -26,7 +36,6 @@ from tensorflow.contrib.gan.python import losses as tfgan_losses
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.slim.python.slim import learning as slim_learning
 from tensorflow.contrib.training.python.training import training
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -49,17 +58,8 @@ __all__ = [
     'get_sequential_train_hooks',
     'get_joint_train_hooks',
     'get_sequential_train_steps',
+    'RunTrainOpsHook',
 ]
-
-
-def _convert_tensor_or_l_or_d(tensor_or_l_or_d):
-  """Convert input, list of inputs, or dictionary of inputs to Tensors."""
-  if isinstance(tensor_or_l_or_d, (list, tuple)):
-    return [ops.convert_to_tensor(x) for x in tensor_or_l_or_d]
-  elif isinstance(tensor_or_l_or_d, dict):
-    return {k: ops.convert_to_tensor(v) for k, v in tensor_or_l_or_d.items()}
-  else:
-    return ops.convert_to_tensor(tensor_or_l_or_d)
 
 
 def gan_model(
@@ -132,20 +132,6 @@ def gan_model(
       discriminator_variables,
       dis_scope,
       discriminator_fn)
-
-
-def _validate_distributions(distributions_l, noise_l):
-  if not isinstance(distributions_l, (tuple, list)):
-    raise ValueError('`predicted_distributions` must be a list. Instead, found '
-                     '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
-  if len(distributions_l) != len(noise_l):
-    raise ValueError('Length of `predicted_distributions` %i must be the same '
-                     'as the length of structured noise %i.' %
-                     (len(distributions_l), len(noise_l)))
 
 
 def infogan_model(
@@ -229,17 +215,8 @@ def infogan_model(
       disc_scope,
       lambda x, y: discriminator_fn(x, y)[0],  # conform to non-InfoGAN API
       structured_generator_inputs,
-      predicted_distributions)
-
-
-def _validate_acgan_discriminator_outputs(discriminator_output):
-  try:
-    a, b = discriminator_output
-  except (TypeError, ValueError):
-    raise TypeError(
-        'A discriminator function for ACGAN must output a tuple '
-        'consisting of (discrimination logits, classification logits).')
-  return a, b
+      predicted_distributions,
+      discriminator_fn)
 
 
 def acgan_model(
@@ -253,6 +230,7 @@ def acgan_model(
     # Optional scopes.
     generator_scope='Generator',
     discriminator_scope='Discriminator',
+    # Options.
     check_shapes=True):
   """Returns an ACGANModel contains all the pieces needed for ACGAN training.
 
@@ -349,6 +327,53 @@ def _use_aux_loss(aux_loss_weight):
     return False
 
 
+def _tensor_pool_adjusted_model(model, tensor_pool_fn):
+  """Adjusts model using `tensor_pool_fn`.
+
+  Args:
+    model: A GANModel tuple.
+    tensor_pool_fn: A function that takes (generated_data, generator_inputs),
+      stores them in an internal pool and returns a previously stored
+      (generated_data, generator_inputs) with some probability. For example
+      tfgan.features.tensor_pool.
+
+  Returns:
+    A new GANModel tuple where discriminator outputs are adjusted by taking
+    pooled generator outputs as inputs. Returns the original model if
+    `tensor_pool_fn` is None.
+
+  Raises:
+    ValueError: If tensor pool does not suport the `model`.
+  """
+  if tensor_pool_fn is None:
+    return model
+
+  pooled_generated_data, pooled_generator_inputs = tensor_pool_fn(
+      (model.generated_data, model.generator_inputs))
+
+  if isinstance(model, namedtuples.GANModel):
+    dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
+                                             pooled_generator_inputs)
+    return model._replace(discriminator_gen_outputs=dis_gen_outputs)
+  elif isinstance(model, namedtuples.ACGANModel):
+    (dis_pooled_gen_outputs,
+     dis_pooled_gen_classification_logits) = model.discriminator_fn(
+         pooled_generated_data, pooled_generator_inputs)
+    return model._replace(
+        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        discriminator_gen_classification_logits=
+        dis_pooled_gen_classification_logits)
+  elif isinstance(model, namedtuples.InfoGANModel):
+    (dis_pooled_gen_outputs,
+     pooled_predicted_distributions) = model.discriminator_and_aux_fn(
+         pooled_generated_data, pooled_generator_inputs)
+    return model._replace(
+        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        predicted_distributions=pooled_predicted_distributions)
+  else:
+    raise ValueError('Tensor pool does not support `model`: %s.' % type(model))
+
+
 def gan_loss(
     # GANModel.
     model,
@@ -361,6 +386,7 @@ def gan_loss(
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
+    tensor_pool_fn=None,
     # Options.
     add_summaries=True):
   """Returns losses necessary to train generator and discriminator.
@@ -386,6 +412,10 @@ def gan_loss(
       https://arxiv.org/abs/1610.09585
     aux_cond_discriminator_weight: If not None: add a classification loss as in
       https://arxiv.org/abs/1610.09585
+    tensor_pool_fn: A function that takes (generated_data, generator_inputs),
+      stores them in an internal pool and returns previous stored
+      (generated_data, generator_inputs). For example
+      `tf.gan.features.tensor_pool`. Defaults to None (not using tensor pool).
     add_summaries: Whether or not to add summaries for the losses.
 
   Returns:
@@ -425,7 +455,9 @@ def gan_loss(
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
-  dis_loss = discriminator_loss_fn(model, add_summaries=add_summaries)
+  dis_loss = discriminator_loss_fn(
+      _tensor_pool_adjusted_model(model, tensor_pool_fn),
+      add_summaries=add_summaries)
 
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
@@ -445,7 +477,7 @@ def gan_loss(
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
         model, add_summaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
-  # Gathers auxilliary losses.
+  # Gathers auxiliary losses.
   if model.generator_scope:
     gen_reg_loss = losses.get_regularization_loss(model.generator_scope.name)
   else:
@@ -498,11 +530,10 @@ def _get_update_ops(kwargs, gen_scope, dis_scope, check_for_unused_ops=True):
 
 
 def gan_train_ops(
-    model,  # GANModel
-    loss,  # GANLoss
+    model,
+    loss,
     generator_optimizer,
     discriminator_optimizer,
-    # Optional check flags.
     check_for_unused_update_ops=True,
     # Optional args to pass directly to the `create_train_op`.
     **kwargs):
@@ -549,7 +580,7 @@ def gan_train_ops(
     generator_global_step = variable_scope.get_variable(
         'dummy_global_step_generator',
         shape=[],
-        dtype=dtypes.int64,
+        dtype=global_step.dtype.base_dtype,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
@@ -570,7 +601,7 @@ def gan_train_ops(
     discriminator_global_step = variable_scope.get_variable(
         'dummy_global_step_discriminator',
         shape=[],
-        dtype=dtypes.int64,
+        dtype=global_step.dtype.base_dtype,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
@@ -802,3 +833,40 @@ def get_sequential_train_steps(
     return gen_loss + dis_loss, should_stop
 
   return sequential_train_steps
+
+
+# Helpers
+
+
+def _convert_tensor_or_l_or_d(tensor_or_l_or_d):
+  """Convert input, list of inputs, or dictionary of inputs to Tensors."""
+  if isinstance(tensor_or_l_or_d, (list, tuple)):
+    return [ops.convert_to_tensor(x) for x in tensor_or_l_or_d]
+  elif isinstance(tensor_or_l_or_d, dict):
+    return {k: ops.convert_to_tensor(v) for k, v in tensor_or_l_or_d.items()}
+  else:
+    return ops.convert_to_tensor(tensor_or_l_or_d)
+
+
+def _validate_distributions(distributions_l, noise_l):
+  if not isinstance(distributions_l, (tuple, list)):
+    raise ValueError('`predicted_distributions` must be a list. Instead, found '
+                     '%s.' % type(distributions_l))
+  for dist in distributions_l:
+    if not isinstance(dist, ds.Distribution):
+      raise ValueError('Every element in `predicted_distributions` must be a '
+                       '`tf.Distribution`. Instead, found %s.' % type(dist))
+  if len(distributions_l) != len(noise_l):
+    raise ValueError('Length of `predicted_distributions` %i must be the same '
+                     'as the length of structured noise %i.' %
+                     (len(distributions_l), len(noise_l)))
+
+
+def _validate_acgan_discriminator_outputs(discriminator_output):
+  try:
+    a, b = discriminator_output
+  except (TypeError, ValueError):
+    raise TypeError(
+        'A discriminator function for ACGAN must output a tuple '
+        'consisting of (discrimination logits, classification logits).')
+  return a, b

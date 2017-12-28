@@ -82,24 +82,6 @@ class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MUL> {
- public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input * update;
-  }
-};
-
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::DIV> {
- public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input / update;
-  }
-};
-
 }  // namespace update_executor
 
 namespace functor {
@@ -176,10 +158,6 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 #define REGISTER_SCATTER_ND_MATH(type)                           \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
-// TODO(simister): Re-enable after identifying a way to reduce the binary size
-// due to too many template instantiations.
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MUL);
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::DIV);
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH)

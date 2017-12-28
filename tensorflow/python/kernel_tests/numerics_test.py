@@ -103,6 +103,30 @@ class NumericsTest(test.TestCase):
       self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
       self.assertEqual([2, 3], checked.get_shape())
 
+  def testControlFlowCond(self):
+    predicate = array_ops.placeholder(dtypes.bool, shape=[])
+    _ = control_flow_ops.cond(predicate,
+                              lambda: constant_op.constant([37.]),
+                              lambda: constant_op.constant([42.]))
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+        r"TensorFlow control flow operations such as `tf\.cond\(\)` "
+        r"or `tf.while_loop\(\)`\."):
+      numerics.add_check_numerics_ops()
+
+  def testControlFlowWhile(self):
+    predicate = array_ops.placeholder(dtypes.bool, shape=[])
+    _ = control_flow_ops.while_loop(lambda _: predicate,
+                                    lambda _: constant_op.constant([37.]),
+                                    [constant_op.constant([42.])])
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+        r"TensorFlow control flow operations such as `tf\.cond\(\)` "
+        r"or `tf.while_loop\(\)`\."):
+      numerics.add_check_numerics_ops()
+
 
 if __name__ == "__main__":
   test.main()

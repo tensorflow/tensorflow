@@ -60,4 +60,15 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
+Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                            string* value) {
+  const char* tf_env_var_val = getenv(env_var_name.ToString().c_str());
+  if (tf_env_var_val != nullptr) {
+    *value = tf_env_var_val;
+  } else {
+    *value = default_val.ToString();
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

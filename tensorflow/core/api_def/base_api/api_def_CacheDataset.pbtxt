@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "CacheDataset"
+  in_arg {
+    name: "filename"
+    description: <<END
+A path on the filesystem where we should cache the dataset. Note: this
+will be a directory.
+END
+  }
+  summary: "Creates a dataset that caches elements from `input_dataset`."
+  description: <<END
+A CacheDataset will iterate over the input_dataset, and store tensors. If the
+cache already exists, the cache will be used. If the cache is inappropriate
+(e.g. cannot be opened, contains tensors of the wrong shape / size), an error
+will the returned when used.
+END
+}

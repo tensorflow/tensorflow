@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
 
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
@@ -23,6 +24,11 @@ namespace function {
 
 // {} -> y:DT_STRING (device where this op runs).
 FunctionDef FindDevice();
+
+// Adds a function call to the given scope and returns the output for the node.
+// TODO(phawkins): replace with C++ API for calling functions, when that exists.
+Output Call(Scope* scope, const string& op_name, const string& fn_name,
+            gtl::ArraySlice<Input> inputs);
 
 }  // namespace function
 }  // namespace test

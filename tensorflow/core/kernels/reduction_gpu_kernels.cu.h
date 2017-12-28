@@ -38,6 +38,35 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
+struct Sum {
+  __host__ __device__ T operator()(const T& a, const T& b) const {
+    return a + b;
+  }
+};
+
+// needed to work around a compiler bug in nvcc - it doesn't seem to like
+// the overloaded addition op for std::complex
+template <>
+struct Sum<std::complex<float>> {
+  __host__ __device__ std::complex<float> operator()(
+      const std::complex<float>& a, const std::complex<float>& b) const {
+    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
+                          make_cuComplex(b.real(), b.imag()));
+    return std::complex<float>(result.x, result.y);
+  }
+};
+
+template <>
+struct Sum<std::complex<double>> {
+  __host__ __device__ std::complex<double> operator()(
+      const std::complex<double>& a, const std::complex<double>& b) const {
+    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
+                         make_cuDoubleComplex(b.real(), b.imag()));
+    return std::complex<double>(result.x, result.y);
+  }
+};
+
+template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a * b;
@@ -237,7 +266,9 @@ __global__ void ColumnReduceMax16ColumnsKernel(
   if (row * num_cols + col < num_rows * num_cols)
     sum = in[row * num_cols + col];
 
-  __shared__ value_type partial_sums[32][33];
+  // 1D array necessary due to bug in CUDA 9 compiler.
+  // TODO(nluehr) revert to 2D array when compiler is ready.
+  __shared__ value_type partial_sums[32 * 33];
 
   row += rows_per_warp * gridDim.y * blockDim.y;
   for (; row < num_rows; row += rows_per_warp * gridDim.y * blockDim.y) {
@@ -254,16 +285,16 @@ __global__ void ColumnReduceMax16ColumnsKernel(
     if (lane < num_cols) sum = op(sum, tmp);
   }
 
-  if (lane < num_cols) partial_sums[lane][threadIdx.y] = sum;
+  if (lane < num_cols) partial_sums[lane * 33 + threadIdx.y] = sum;
 
   __syncthreads();
 
   if (threadIdx.y == 0 && threadIdx.x < num_cols) {
-    value_type s = partial_sums[threadIdx.x][0];
+    value_type s = partial_sums[threadIdx.x * 33];
 
     if (blockDim.y > 1) {
       for (int row = 1; row < blockDim.y; ++row) {
-        s = op(s, partial_sums[threadIdx.x][row]);
+        s = op(s, partial_sums[threadIdx.x * 33 + row]);
       }
     }
 
@@ -284,7 +315,9 @@ __global__ void ColumnReduceKernel(
   if (row < num_rows && col < num_cols)
     sum = in[row * num_cols + col];
 
-  __shared__ value_type partial_sums[32][33];
+  // 1D array necessary due to bug in CUDA 9 compiler.
+  // TODO(nluehr) revert to 2D array when compiler is ready.
+  __shared__ value_type partial_sums[32 * 33];
 
   row += gridDim.y * blockDim.y;
 
@@ -294,12 +327,12 @@ __global__ void ColumnReduceKernel(
     }
   }
 
-  partial_sums[threadIdx.x][threadIdx.y] = sum;
+  partial_sums[threadIdx.x * 33 + threadIdx.y] = sum;
 
   __syncthreads();
 
   if (threadIdx.y == 0 && col < num_cols) {
-    value_type s = partial_sums[threadIdx.x][0];
+    value_type s = partial_sums[threadIdx.x * 33];
 
     // only include input values in the reduction
     // elem   block_rows
@@ -315,7 +348,7 @@ __global__ void ColumnReduceKernel(
         min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
-      s = op(s, partial_sums[threadIdx.x][row]);
+      s = op(s, partial_sums[threadIdx.x * 33 + row]);
     }
 
     out[col * gridDim.y + blockIdx.y] = s;
@@ -427,7 +460,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     return;
   } else if (in_size <= 1 << 19) {
     const int num_threads = 256;
-    const int num_blocks = min(32, Eigen::divup(in_size, num_threads));
+    const int num_blocks = std::min(32, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
     // would be more effective, but all attempts
     // at making this a multiple of the number of
@@ -524,13 +557,13 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const cudaStream_t& cu_stream) {
   int rows_per_warp = 32 / extent_y;
-  dim3 block_dim(32, min(Eigen::divup(extent_x, rows_per_warp), 32), 1);
+  dim3 block_dim(32, std::min(Eigen::divup(extent_x, rows_per_warp), 32), 1);
   dim3 grid_dim(1,
                 Eigen::divup(static_cast<unsigned int>(extent_x),
                              rows_per_warp * block_dim.y),
                 1);
 
-  grid_dim.y = min((int)grid_dim.y, 32);
+  grid_dim.y = std::min((int)grid_dim.y, 32);
 
   if (grid_dim.y > 2 && grid_dim.y < 32) {
     int log2 = Log2Floor(grid_dim.y);
@@ -563,10 +596,10 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                        int extent_x, int extent_y, Op op,
                                        T init, const cudaStream_t& cu_stream) {
-  dim3 block_dim(32, min(extent_x, 32), 1);
+  dim3 block_dim(32, std::min(extent_x, 32), 1);
   dim3 grid_dim((extent_y + 31) / 32, 1, 1);
 
-  if (grid_dim.x < 16) grid_dim.y = min((extent_x + 31) / 32, 32);
+  if (grid_dim.x < 16) grid_dim.y = std::min((extent_x + 31) / 32, 32);
 
   if (grid_dim.y > 2 && grid_dim.y < 32) {
     int log2 = Log2Floor(grid_dim.y);
@@ -676,7 +709,8 @@ template <typename T, typename Op>
 struct IsSum {
   constexpr static bool value =
       (std::is_same<Op, cub::Sum>::value ||
-       std::is_same<Op, Eigen::internal::SumReducer<T>>::value);
+       std::is_same<Op, Eigen::internal::SumReducer<T>>::value ||
+       std::is_same<Op, Sum<T>>::value);
 };
 
 template <typename T, typename Op>
@@ -793,11 +827,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Eigen::internal::SumReducer<T>& reducer) {
-    ReduceImpl<T, cub::Sum, T*, T*, ReductionAxes>(
+    ReduceImpl<T, Sum<T>, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Sum());
+        Sum<T>());
   }
 
   template <typename OUT_T>
@@ -828,12 +862,12 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
 
     DividesBy<T> div_op(static_cast<T>(divisor));
     TransformOutputIterator<T, T, DividesBy<T>> itr((T*)out.data(), div_op);
-    ReduceImpl<T, cub::Sum, TransformOutputIterator<T, T, DividesBy<T>>, T*,
+    ReduceImpl<T, Sum<T>, TransformOutputIterator<T, T, DividesBy<T>>, T*,
                ReductionAxes>(ctx, itr, (T*)in.data(), in.rank(),
                               in.dimension(0),
                               in.rank() >= 2 ? in.dimension(1) : 1,
                               in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
-                              reduction_axes, cub::Sum());
+                              reduction_axes, Sum<T>());
   }
 
   template <typename OUT_T>

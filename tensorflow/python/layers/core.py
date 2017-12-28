@@ -43,7 +43,7 @@ class Dense(base.Layer):
   """Densely-connected layer class.
 
   This layer implements the operation:
-  `outputs = activation(inputs.kernel + bias)`
+  `outputs = activation(inputs * kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
@@ -107,7 +107,9 @@ class Dense(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -115,7 +117,6 @@ class Dense(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(min_ndim=2)
@@ -230,6 +231,9 @@ def dense(
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dense(units,
                 activation=activation,
@@ -282,11 +286,19 @@ class Dropout(base.Layer):
     self.noise_shape = noise_shape
     self.seed = seed
 
-  def _get_noise_shape(self, _):
+  def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
-    return self.noise_shape
+    if self.noise_shape is None:
+      return self.noise_shape
+
+    symbolic_shape = array_ops.shape(inputs)
+    noise_shape = [
+        symbolic_shape[axis] if shape is None else shape
+        for axis, shape in enumerate(self.noise_shape)
+    ]
+    return noise_shape
 
   def call(self, inputs, training=False):
 
@@ -332,6 +344,9 @@ def dropout(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
@@ -359,7 +374,8 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    if context.in_graph_mode():
+      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
     return outputs
 
   def _compute_output_shape(self, input_shape):

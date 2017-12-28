@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import re
 import time
+import sys
 
 import numpy as np
 
@@ -64,7 +65,8 @@ def _OptimizerOptions():
                 do_constant_folding=cfold)))
 
 
-class FunctionTestMethods(object):
+@test_util.with_c_api
+class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
   These test methods are used as mix-ins in two test cases: with
@@ -106,8 +108,9 @@ class FunctionTestMethods(object):
 
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(
-          ValueError, (r"Length of out_names \(2\) does not match number of "
-                       r"outputs \(1\): my_result1, my_result2")):
+          errors_impl.InvalidArgumentError,
+          (r"output names must be either empty or equal in size to outputs. "
+           "output names size = 2 outputs size = 1")):
         MyIdentityFunc([18.0])
 
   def testDefineFunction2Args(self):
@@ -122,18 +125,16 @@ class FunctionTestMethods(object):
       with session.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
-  def testValueErrorOnFunctionWithNoOutput(self):
-    # TODO(iga): Remove this restriction and this test
+  def testFunctionWithNoOutput(self):
 
     @function.Defun(dtypes.float32, dtypes.float32)
     def APlus2B(a, b):
-      print(a + b * 2)  # Create some ops to have nodes in the body
-                        # Using 'print' to make lint happy
+      c = a + b * 2  # Create some ops to have nodes in the body
+      print(c)  # Using 'print' to make lint happy
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError,
-                                   "Function can not return None"):
-        APlus2B([1.0], [2.0])
+      # Call function. There should be no exceptions.
+      APlus2B([1.0], [2.0])
 
   def testDefineFunction2ArgsOutputName(self):
 
@@ -211,7 +212,6 @@ class FunctionTestMethods(object):
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradient(self):
     dtype = dtypes.float32
 
@@ -244,7 +244,6 @@ class FunctionTestMethods(object):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
@@ -270,7 +269,6 @@ class FunctionTestMethods(object):
           "SymGrad expects to return 1.*but get 2.*instead"):
         _ = sess.run(dinp, {inp: x})
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -286,7 +284,6 @@ class FunctionTestMethods(object):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
@@ -313,8 +310,7 @@ class FunctionTestMethods(object):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
-  def testZNoDepOnY(self):
-
+  def _testZNoDepOnY(self, use_const_grad_ys):
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
@@ -324,11 +320,21 @@ class FunctionTestMethods(object):
       x = constant_op.constant(1.0)
       y = constant_op.constant(2.0)
       z = Foo(x, y)
-      dx, dy = gradients_impl.gradients([z], [x, y])
+      if use_const_grad_ys:
+        dx, dy = gradients_impl.gradients([z], [x, y], grad_ys=[1.0])
+      else:
+        dx, dy = gradients_impl.gradients([z], [x, y])
       with session.Session() as sess:
         dx_val, dy_val = sess.run([dx, dy])
         self.assertEqual([2.0], dx_val)
         self.assertEqual([0.0], dy_val)
+
+  def testZNoDepOnY(self):
+    self._testZNoDepOnY(False)
+
+  def testZNoDepOnYConstGradYs(self):
+    # Tests for constant folding of grad_ys
+    self._testZNoDepOnY(True)
 
   def testDefineFunctionNoArgs(self):
 
@@ -365,7 +371,7 @@ class FunctionTestMethods(object):
 
     @function.Defun(dtypes.float32)
     def Foo(x):
-      y = logging_ops.Print(x, [x], "Hello")
+      y = logging_ops.Print(x, [], "Hello")
       with ops.control_dependencies([y]):
         z = control_flow_ops.no_op()
       with ops.control_dependencies([z]):
@@ -502,14 +508,6 @@ class FunctionTestMethods(object):
 
   def testDefineErrors(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "can not return None"):
-
-        @function.Defun()
-        def NoResult():
-          pass
-
-        _ = NoResult.definition
-
       with self.assertRaisesRegexp(ValueError, "can not return None"):
 
         @function.Defun()
@@ -688,90 +686,6 @@ class FunctionTestMethods(object):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclare(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = foo(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareUsedInDefun(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun()
-    def Bar(x):
-      return foo(x)
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = Bar(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def Foo(x):
-      return x * x + 1
-
-    g = ops.Graph()
-    with g.as_default():
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.NotFoundError,
-                                     "not registered"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "int32.*float"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      with self.assertRaisesRegexp(
-          ValueError, "Expected number of arguments: 1, received: 2"):
-        _ = foo(2.0, 2.0)
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        self.assertAllEqual(y.eval(), 5.0)
-
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -811,13 +725,56 @@ class FunctionTestMethods(object):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  def testCaptureInWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun()
+      def Foo():
+        return control_flow_ops.while_loop(lambda i: i < 10,
+                                           lambda i: i + x,
+                                           [0])
+      y = Foo()
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 10)
+
+  def testCaptureInCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun(dtypes.bool)
+      def Foo(pred):
+        return control_flow_ops.cond(pred,
+                                     lambda: x,
+                                     lambda: x + 1)
+      y = Foo(True)
+      z = Foo(False)
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 2)
+
   def testStableName(self):
 
     @function.Defun()
     def Foo(x, y, z):
       return math_ops.tanh(math_ops.matmul(x, y) + z)
 
-    self.assertEqual("Foo_d643acf7", Foo.instantiate([dtypes.float32] * 3).name)
+    # We added more randomness to function names in C API.
+    # TODO(iga): Remove this if statement when we switch to C API.
+    if ops._USE_C_API:  # pylint: disable=protected-access
+      if sys.byteorder == 'big':
+        self.assertEqual("Foo_kEdkAG8SJvg",
+                         Foo.instantiate([dtypes.float32] * 3).name)
+      else:
+        self.assertEqual("Foo_aCYSbwBkR5A",
+                         Foo.instantiate([dtypes.float32] * 3).name)
+    else:
+      self.assertEqual("Foo_d643acf7",
+                       Foo.instantiate([dtypes.float32] * 3).name)
 
   def testSignatureHash(self):
     # Foo.Inner and Bar.Inner have identical function body but have
@@ -944,33 +901,95 @@ class FunctionTestMethods(object):
         [result])
     self.assertEqual(len(f.signature.input_arg), 3)
 
+  def testGradientWithIntegerFunctionArgument(self):
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
 
-class FunctionTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=False."""
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(dtypes.float32)
+      t = constant_op.constant(0, dtypes.int32)
+      out = Foo(t, inp)
+      dinp, = gradients_impl.gradients(out, [inp])
 
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = False
-    super(FunctionTest, self).setUp()
+    x = np.zeros((2,)).astype(np.float32)
+    with session.Session(graph=g) as sess:
+      self.assertAllClose(
+          np.array([1.0, 0.0]).astype(np.float32),
+          sess.run(dinp, {inp: x}))
 
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionTest, self).tearDown()
+  def testFunctionMarkedStateful(self):
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    @function.Defun(dtypes.int64)
+    def Bar(x):
+      return x
+
+    # NOTE(mrry): All functions are currently considered stateless by the
+    # runtime, so we simulate a "stateful" function.
+    # TODO(b/70565970): Remove this hack when we are able to build stateful
+    # functions using the API.
+    # pylint: disable=protected-access
+    Foo._signature.is_stateful = True
+    Bar._signature.is_stateful = True
+    # pylint: enable=protected-access
+
+    result_1 = Foo(3, [1.0, 2.0, 3.0, 4.0])
+    result_2 = Bar(constant_op.constant(100, dtype=dtypes.int64))
+
+    with session.Session() as sess:
+      self.assertEqual(4.0, sess.run(result_1))
+      self.assertEqual(100, sess.run(result_2))
+      self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
+
+  def testStatefulFunction(self):
+
+    @function.Defun()
+    def FunctionWithStatelessOp():
+      return constant_op.constant(42.0)
+
+    @function.Defun()
+    def FunctionWithStatefulOp():
+      return random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun()
+    def FunctionWithStatelessFunctionCall():
+      return FunctionWithStatelessOp()
+
+    @function.Defun()
+    def FunctionWithStatefulFunctionCall():
+      return FunctionWithStatefulOp()
+
+    # Test that the `is_stateful` bit is propagated.
+    self.assertFalse(FunctionWithStatelessOp.definition.signature.is_stateful)
+    self.assertTrue(FunctionWithStatefulOp.definition.signature.is_stateful)
+    self.assertFalse(
+        FunctionWithStatelessFunctionCall.definition.signature.is_stateful)
+    self.assertTrue(
+        FunctionWithStatefulFunctionCall.definition.signature.is_stateful)
+
+    # Ensure that two invocations of the same random-number-generating
+    # function produce different results.
+    result1 = FunctionWithStatefulFunctionCall()
+    result2 = FunctionWithStatefulFunctionCall()
+
+    # Statefulness affects how the function is treated by the various
+    # optimization passes, so run the test in each optimizer
+    # configuration.
+    for config in _OptimizerOptions():
+      with session.Session(config=config) as sess:
+        val1, val2 = sess.run((result1, result2))
+        self.assertFalse(all(val1 == val2))
+        val3, val4 = sess.run((result1, result2))
+        self.assertFalse(all(val3 == val1))
+        self.assertFalse(all(val4 == val2))
 
 
-class FunctionWithCApiTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=True."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = True
-    super(FunctionWithCApiTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionWithCApiTest, self).tearDown()
-
-
+@test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1119,7 +1138,8 @@ class FunctionsFromProtos(test.TestCase):
     library.function.extend([F1.definition])
 
     with self.assertRaisesRegexp(
-        ValueError, "FunctionDefLibrary missing 'G1_........' FunctionDef"):
+        ValueError,
+        "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function._from_library(library)
 
     # Create invalid function def that is missing F1 function def
@@ -1128,7 +1148,8 @@ class FunctionsFromProtos(test.TestCase):
     library.function.extend([G1.definition])
 
     with self.assertRaisesRegexp(
-        ValueError, "FunctionDefLibrary missing 'F1_........' FunctionDef"):
+        ValueError,
+        "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function._from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):
@@ -1161,6 +1182,7 @@ class FunctionsFromProtos(test.TestCase):
       function._from_library(library)
 
 
+@test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1213,6 +1235,37 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
+@test_util.with_c_api
+class FunctionCaptureByValueTest(test.TestCase):
+
+  def testCaptureByValue(self):
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant([[1.0]])
+      b = constant_op.constant([2.0])
+
+      # Foo() captures w and b.
+      @function.Defun(dtypes.float32, capture_by_value=True)
+      def Foo(x):
+
+        # Plus() captures b.
+        @function.Defun(dtypes.float32, capture_by_value=True)
+        def Plus(y):
+          return y + b
+
+        self.assertEqual(0, len(Plus.captured_inputs))
+
+        return Plus(math_ops.matmul(w, x))
+
+      y = Foo(constant_op.constant([[10.]]))
+
+    self.assertEqual(0, len(Foo.captured_inputs))
+
+    with self.test_session(graph=g):
+      self.assertAllEqual(y.eval(), [[12.0]])
+
+
+@test_util.with_c_api
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1348,6 +1401,7 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
+@test_util.with_c_api
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1415,6 +1469,24 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
+# Set C API before defining module level functions
+ops._USE_C_API = True
+
+
+@function.Defun(*[dtypes.float32] * 3)
+def LinearWithCApi(w, b, x):
+  return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+
+@function.Defun(*[dtypes.float32] * 5)
+def Linear2WithCApi(w1, b1, w2, b2, x):
+  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
+
+# Unset C API after defining module level functions
+ops._USE_C_API = False
+
+
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -1428,7 +1500,20 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
 
+  @test_util.enable_c_api
+  def testBasicWithCApi(self):
+    with ops.Graph().as_default():
+      a, b, c, d, e = [
+          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
+      ]
+      y = LinearWithCApi(a, b, c)
+      z = Linear2WithCApi(a, b, c, d, e)
+      with session.Session() as sess:
+        self.assertAllEqual([[1]], sess.run(y))
+        self.assertAllEqual([[5]], sess.run(z))
 
+
+@test_util.with_c_api
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

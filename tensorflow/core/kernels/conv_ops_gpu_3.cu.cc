@@ -34,6 +34,48 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+namespace {
+template <typename T, bool conjugate>
+struct maybe_conj {
+  __device__ static __inline__ T run(T x) {
+    if (conjugate) {
+      return Eigen::numext::conj(x);
+    } else {
+      return x;
+    }
+  }
+};
+
+// Partial specializations for Cuda types used to store complex numbers.
+template <bool conjugate>
+struct maybe_conj<float2, conjugate> {
+  __device__ static __inline__ float2 run(float2 c) {
+    if (conjugate) {
+      float2 c_conj;
+      c_conj.x = c.x;
+      c_conj.y = -c.y;
+      return c_conj;
+    } else {
+      return c;
+    }
+  }
+};
+
+template <bool conjugate>
+struct maybe_conj<double2, conjugate> {
+  __device__ static __inline__ double2 run(double2 c) {
+    if (conjugate) {
+      double2 c_conj;
+      c_conj.x = c.x;
+      c_conj.y = -c.y;
+      return c_conj;
+    } else {
+      return c;
+    }
+  }
+};
+
+}  // namespace
 
 // TODO(mjanusz): Move this to a shared util file.
 // A simple array that contains data that can be passed between CPU and GPU.
@@ -121,14 +163,15 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
     int index, const Dimension<IndexCount>& dims) {
   Index<IndexCount> tensor_index;
   for (int i = IndexCount - 1; i >= 0; i--) {
-    tensor_index[i] = index % dims[i];
-    index /= dims[i];
+    int new_index = index / dims[i];
+    tensor_index[i] = index - dims[i] * new_index;
+    index = new_index;
   }
   return tensor_index;
 }
 
 // A Cuda custom kernel that swaps dimension-0 and dimension-2 of a 3D tensor.
-template <typename T>
+template <typename T, bool conjugate = false>
 __global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
                                                   Dimension<3> input_dims,
                                                   T* output) {
@@ -149,12 +192,13 @@ __global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
 
     int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
 
-    output[output_index] = ldg(input + input_index);
+    output[output_index] =
+        maybe_conj<T, conjugate>::run(ldg(input + input_index));
   }
 }
 
 // A Cuda custom kernel that swaps dimension-1 and dimension-2 of a 3D tensor.
-template <typename T>
+template <typename T, bool conjugate = false>
 __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
                                                   Dimension<3> input_dims,
                                                   T* output) {
@@ -174,7 +218,8 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
 
     int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
 
-    output[output_index] = ldg(input + input_index);
+    output[output_index] =
+        maybe_conj<T, conjugate>::run(ldg(input + input_index));
   }
 }
 
@@ -188,7 +233,7 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
 // TileSizeJ equal to the number of threads in a warp (32 in nvidia GPUs).
 // With a TileSizeI, TileSizeJ of 32, NumThreads of 128 or 256 seems to get
 // the best performance on K40 GPUs.
-template <typename T, int NumThreads, int TileSizeI, int TileSizeJ>
+template <typename T, int NumThreads, int TileSizeI, int TileSizeJ, bool conjugate = false>
 __global__ void SwapDimension1And2InTensor3UsingTiles(
     const T* __restrict__ input, Dimension<3> input_dims,
     T* __restrict__ output) {
@@ -206,7 +251,9 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   int x = threadIdx.x;
 
   Dimension<3> output_dims = {
-      input_dims[0], input_dims[2], input_dims[1],
+      input_dims[0],
+      input_dims[2],
+      input_dims[1],
   };
 
   Dimension<3> input_dims_in_tiles = {
@@ -252,7 +299,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
     if (tj < tile_width) {
       for (int i_loc = ti; i_loc < (tile_height); i_loc += ReadRowPerPass) {
         shared_memory_tile[i_loc][tj] =
-            input[input_origin_flat_index + i_loc * input_dims[2] + tj];
+            maybe_conj<T, conjugate>::run(input[input_origin_flat_index + i_loc * input_dims[2] + tj]);
       }
     }
   }
@@ -260,7 +307,9 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   __syncthreads();
 
   Index<3> output_tile_index = {
-      input_tile_index[0], input_tile_index[2], input_tile_index[1],
+      input_tile_index[0],
+      input_tile_index[2],
+      input_tile_index[1],
   };
 
   Index<3> output_tile_origin = {
@@ -414,15 +463,15 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
     const Dimension<NDIMS - 2> padding_left_dim(padding_left);
 
     if (format == FORMAT_NHWC) {
-      PadInputCustomKernelNHWC<T, NDIMS><<<
-          config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, in.data(), input_dims, out.data(),
-          output_dims, padding_left_dim);
+      PadInputCustomKernelNHWC<T, NDIMS>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              config.virtual_thread_count, in.data(), input_dims, out.data(),
+              output_dims, padding_left_dim);
     } else if (format == FORMAT_NCHW) {
-      PadInputCustomKernelNCHW<T, NDIMS><<<
-          config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, in.data(), input_dims, out.data(),
-          output_dims, padding_left_dim);
+      PadInputCustomKernelNCHW<T, NDIMS>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              config.virtual_thread_count, in.data(), input_dims, out.data(),
+              output_dims, padding_left_dim);
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }
@@ -724,7 +773,7 @@ struct TransposeElemType<16> {
 // A helper function to make RunSwapDimension1And2InTensor3 concise. This
 // helper function looks at the data type and input matrix sizes and decides
 // the thread numbers and tile sizes to use.
-template <typename T>
+template <typename T, bool conjugate = false >
 void SwapDimension1And2InTensor3WithNarrowMatrices(
     const GPUDevice& d, const T* input, const Dimension<3>& input_dims,
     T* output, const int kMinDimensionToUseTiles) {
@@ -806,10 +855,11 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
 // Launch the GPU kernel that would swap dimension-1 and dimension-2 in a
 // 3D tensor. It looks at the shape of the incoming data, and decides the best
 // strategy to launch.
-template <typename T>
+template <typename T, bool conjugate = false>
 void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
                                     const Dimension<3>& input_dims, T* output) {
   // If both dimensions are not trivial, use tiles for the actual swapping.
+  // If one dimension is trivial, use SmallDim kernel for swapping.
   // Otherwise, the trivial swapping relying on the ldg cache is more efficient.
   static const int kMinDimensionToUseTiles = 16;
   static const int kMinDimensionToUseRectTiles = 96;
@@ -832,17 +882,17 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize>
+    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize, conjugate>
         <<<total_tiles_count, kNumThreads, 0, d.stream()>>>(input, input_dims,
                                                             output);
 
   } else if (narrow_matrix) {
-    SwapDimension1And2InTensor3WithNarrowMatrices(d, input, input_dims, output,
+    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(d, input, input_dims, output,
                                                   kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    SwapDimension1And2InTensor3Simple<T>
+    SwapDimension1And2InTensor3Simple<T, conjugate>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, input, input_dims, output);
   }
@@ -850,22 +900,22 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
 
 // A GPU helper functor that does general dimension 1 and 2 switch for 3D
 // tensor.
-template <typename T>
-struct SwapDimension1And2InTensor3<GPUDevice, T> {
+template <typename T, bool conjugate>
+struct SwapDimension1And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
                   const gtl::ArraySlice<int64>& combined_dims, T* out) {
     Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};
-    RunSwapDimension1And2InTensor3(d, in, input_dims, out);
+    RunSwapDimension1And2InTensor3<T, conjugate>(d, in, input_dims, out);
   }
 };
 
 // A GPU helper functor that does general dimension 0 and 2 switch for 3D
 // tensor.
-template <typename T>
-struct SwapDimension0And2InTensor3<GPUDevice, T> {
+template <typename T, bool conjugate>
+struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
                   const gtl::ArraySlice<int64>& combined_dims, T* out) {
@@ -874,7 +924,7 @@ struct SwapDimension0And2InTensor3<GPUDevice, T> {
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_size, d);
-    SwapDimension0And2InTensor3Simple<T>
+    SwapDimension0And2InTensor3Simple<T, conjugate>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, in, input_dims, out);
   }
@@ -934,12 +984,20 @@ template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint16>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint32>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint64>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, float4>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, float2,
+                                                     /*conjugate=*/true>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, double2,
+                                                     /*conjugate=*/true>;
 
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint8>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint16>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint32>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint64>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, float4>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, float2,
+                                                     /*conjugate=*/true>;
+template struct functor::SwapDimension0And2InTensor3<GPUDevice, double2,
+                                                     /*conjugate=*/true>;
 
 // For 2d ops.
 template struct functor::TransformFilter<GPUDevice, float, int, 4>;

@@ -586,6 +586,19 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   return Status::OK();
 }
 
+Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
+  if (shape_string.empty()) {
+    return errors::InvalidArgument("Specificed shape is empty.");
+  }
+  std::vector<int64> dims;
+  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
+    return errors::InvalidArgument("Could parse as shape: '", shape_string,
+                                   "'");
+  }
+  *result = TensorShape(dims);
+  return Status::OK();
+}
+
 int TransformFuncContext::CountParameters(const string& name) const {
   if (params.count(name)) {
     return params.at(name).size();

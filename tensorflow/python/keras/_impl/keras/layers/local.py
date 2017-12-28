@@ -98,7 +98,8 @@ class LocallyConnected1D(Layer):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(LocallyConnected1D, self).__init__(**kwargs)
+    super(LocallyConnected1D, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(kernel_size, 1, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, 1, 'strides')
@@ -113,7 +114,6 @@ class LocallyConnected1D(Layer):
     self.bias_initializer = initializers.get(bias_initializer)
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=3)
@@ -273,7 +273,8 @@ class LocallyConnected2D(Layer):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(LocallyConnected2D, self).__init__(**kwargs)
+    super(LocallyConnected2D, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(kernel_size, 2, 'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, 2, 'strides')
@@ -288,7 +289,6 @@ class LocallyConnected2D(Layer):
     self.bias_initializer = initializers.get(bias_initializer)
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=4)

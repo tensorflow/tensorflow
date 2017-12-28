@@ -229,6 +229,11 @@ string DebugStringWhole(const GraphDef& gdef);
 // of NodeDefs doesn't matter.
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 
+// Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
+// In other words, if two fdefs compare equal, their hash values will be the
+// same.
+uint64 FunctionDefHash(const FunctionDef& fdef);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name" and attributes "attrs".
 //
@@ -238,13 +243,24 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 // address spaces.
 string Canonicalize(const string& funcname, AttrSlice attrs);
 
+class CallFrameInterface {
+ public:
+  virtual ~CallFrameInterface() {}
+
+  virtual size_t num_args() const = 0;
+  virtual size_t num_retvals() const = 0;
+
+  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status SetRetval(int index, const Tensor& val) = 0;
+};
+
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
 //
 // Runtime must arrange accesses to one FunctionCallFrame s.t.
 //   1. SetArgs() happens before any GetArg();
 //   2. GetRetvals happens after all SetRetval();
-class FunctionCallFrame {
+class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
   ~FunctionCallFrame();
@@ -254,9 +270,12 @@ class FunctionCallFrame {
   Status GetRetvals(std::vector<Tensor>* rets) const;
   Status ConsumeRetvals(std::vector<Tensor>* rets);
 
+  size_t num_args() const override { return arg_types_.size(); }
+  size_t num_retvals() const override { return ret_types_.size(); }
+
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const;
-  Status SetRetval(int index, const Tensor& val);
+  Status GetArg(int index, Tensor* val) const override;
+  Status SetRetval(int index, const Tensor& val) override;
 
  private:
   DataTypeVector arg_types_;
@@ -349,7 +368,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
  private:
-  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
   struct FunctionDefAndOpRegistration {
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
@@ -402,6 +422,9 @@ class FunctionLibraryRuntime {
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
                              Handle* handle) = 0;
 
+  // Releases state associated with the handle.
+  virtual Status ReleaseHandle(Handle handle) = 0;
+
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
   //
@@ -417,6 +440,8 @@ class FunctionLibraryRuntime {
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".
+  // In the cross-process scenario, runner isn't used for making the Async
+  // RPC calls.
   struct Options {
     // The id of the step that is calling this function.
     int64 step_id = 0;
@@ -430,11 +455,23 @@ class FunctionLibraryRuntime {
     // Parameters for remote function execution.
     bool remote_execution = false;
     string source_device = "";  // Fully specified device name.
+
+    // Allocator attributes specifying where the args are / rets should be put.
+    // These should either be {} or match the length of args / retvals. If {},
+    // the default allocator attributes will be assumed for all args / retvals.
+    std::vector<AllocatorAttributes> args_alloc_attrs;
+    std::vector<AllocatorAttributes> rets_alloc_attrs;
+
+    // If true, we create a new IntraProcessRendezvous, else use the existing
+    // one.
+    bool create_rendezvous = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
+  virtual void Run(const Options& opts, Handle handle,
+                   CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   // Creates a "kernel" for the given node def "ndef".
   //
@@ -470,6 +507,40 @@ const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
                              std::unique_ptr<OpKernel>*)>
     CustomKernelCreator;
+
+// Used to instantiate and run functions in a distributed system.
+class DistributedFunctionLibraryRuntime {
+ public:
+  virtual ~DistributedFunctionLibraryRuntime() {}
+
+  // The _target attr in attrs determines where the function is instantiated.
+  virtual Status Instantiate(const string& function_name,
+                             const FunctionLibraryDefinition& lib_def,
+                             AttrSlice attrs,
+                             FunctionLibraryRuntime::LocalHandle* handle) = 0;
+
+  // opts.runner isn't used for execution.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
+};
+
+// Extracts the actual type from "attr_values" based on its definition
+// "arg_def".
+//
+// If "arg_def" is a N*T type, *is_type_list is set to false, and
+// *dtypes is set to be a vector of size N and each element is T.
+//
+// If "arg_def" is a list(type), *is_type_list is set to true, and
+// *dtypes is set to be a vector of types specified in attrs for
+// arg_def.
+//
+// Otherwise (arg_def is a simple type T), *is_type_list is set to
+// false, and *dtypes is set to a single element vector, whose only
+// element is T.
+Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
+                  bool* is_type_list, DataTypeVector* dtypes);
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);

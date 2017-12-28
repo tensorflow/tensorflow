@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Named tuples for TFGAN."""
+"""Named tuples for TFGAN.
+
+TFGAN training occurs in four steps, and each step communicates with the next
+step via one of these named tuples. At each step, you can either use a TFGAN
+helper function in `train.py`, or you can manually construct a tuple.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -74,6 +79,7 @@ class InfoGANModel(
     collections.namedtuple('InfoGANModel', GANModel._fields + (
         'structured_generator_inputs',
         'predicted_distributions',
+        'discriminator_and_aux_fn',
     ))):
   """An InfoGANModel contains all the pieces needed for InfoGAN training.
 
@@ -86,6 +92,8 @@ class InfoGANModel(
     predicted_distributions: A list of tf.Distributions. Predicted by the
       recognizer, and used to evaluate the likelihood of the structured noise.
       List length should match `structured_generator_inputs`.
+    discriminator_and_aux_fn: The original discriminator function that returns
+      a tuple of (logits, `predicted_distributions`).
   """
 
 
@@ -115,7 +123,7 @@ class GANLoss(
   """GANLoss contains the generator and discriminator losses.
 
   Args:
-    generator_loss: A tensor for the generator loss..
+    generator_loss: A tensor for the generator loss.
     discriminator_loss: A tensor for the discriminator loss.
   """
 

@@ -55,7 +55,9 @@ class StepperTest(test_util.TensorFlowTestCase):
     self.z = math_ops.multiply(self.x, self.y, name="z")  # Should be -4.0.
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True)
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
     config = config_pb2.ConfigProto(graph_options=graph_options)
     self.sess = session.Session(config=config)
@@ -588,7 +590,9 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
                                        name="v_add_plus_one")
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True)
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
     config = config_pb2.ConfigProto(graph_options=graph_options)
     self.sess = session.Session(config=config)
@@ -719,7 +723,9 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
         self.f, name="optim")
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True)
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
     config = config_pb2.ConfigProto(graph_options=graph_options)
     self.sess = session.Session(config=config)

@@ -216,7 +216,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
   result->clear();
   auto input_flat = input_tensor.flat<T>();
   const auto start = std::inner_product(
-      group_indices.begin(), group_indices.end(), input_strides.begin(), 0L);
+      group_indices.begin(), group_indices.end(), input_strides.begin(), 0LL);
   const TensorShape& input_shape = input_tensor.shape();
   const auto end = start + input_shape.dim_size(input_shape.dims() - 1);
   for (int64 i = start; i < end; ++i) {
@@ -279,7 +279,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
 
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
-        group_key.begin(), group_key.end(), output_strides.begin(), 0L);
+        group_key.begin(), group_key.end(), output_strides.begin(), 0LL);
     out(output_index) = group_set.size();
   }
 }

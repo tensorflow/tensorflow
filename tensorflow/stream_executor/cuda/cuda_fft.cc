@@ -184,12 +184,11 @@ port::Status CUDAFftPlan::Initialize(
         return port::Status{port::error::INTERNAL,
                             "Failed to set auto allocation for cuFFT plan."};
       }
-      size_t size_in_bytes;
       switch (rank) {
         case 1:
           ret = wrap::cufftMakePlan1d(parent, plan_, elem_count_[0],
                                       CUDAFftType(type), /*batch=*/1,
-                                      &size_in_bytes);
+                                      &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 1d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -199,7 +198,7 @@ port::Status CUDAFftPlan::Initialize(
         case 2:
           ret = wrap::cufftMakePlan2d(parent, plan_, elem_count_[0],
                                       elem_count_[1], CUDAFftType(type),
-                                      &size_in_bytes);
+                                      &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 2d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -209,7 +208,7 @@ port::Status CUDAFftPlan::Initialize(
         case 3:
           ret = wrap::cufftMakePlan3d(parent, plan_, elem_count_[0],
                                       elem_count_[1], elem_count_[2],
-                                      CUDAFftType(type), &size_in_bytes);
+                                      CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 3d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -223,24 +222,7 @@ port::Status CUDAFftPlan::Initialize(
           return port::Status{port::error::INVALID_ARGUMENT,
                               "cufftPlan only takes rank 1, 2, or 3."};
       }
-      // TODO(yangzihao): refactor this code and the one with the same function
-      // in the batch mode.
-      if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "failed to allocate work area.";
-          return allocated.status();
-        }
-      }
-      // Connect work area with allocated space.
-      ret = wrap::cufftSetWorkArea(parent, plan_, scratch_.opaque());
-      if (ret != CUFFT_SUCCESS) {
-        LOG(ERROR) << "failed to set work area for cuFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for cuFFT plan."};
-      }
-      return port::Status::OK();
+      return UpdateScratchAllocator(stream, scratch_allocator);
     }
   } else {
     // For either multiple batches or rank higher than 3, use cufftPlanMany().
@@ -270,32 +252,18 @@ port::Status CUDAFftPlan::Initialize(
             port::error::INTERNAL,
             "Failed to set auto allocation for cuFFT batched plan."};
       }
-      size_t size_in_bytes;
       ret = wrap::cufftMakePlanMany(
           parent, plan_, rank, elem_count_,
           input_embed ? input_embed_ : nullptr, input_stride, input_distance,
           output_embed ? output_embed_ : nullptr, output_stride,
-          output_distance, CUDAFftType(type), batch_count, &size_in_bytes);
+          output_distance, CUDAFftType(type), batch_count,
+          &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to make cuFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
                             "Failed to make cuFFT batched plan."};
       }
-      if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
-        if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "failed to allocate work area.";
-          return allocated.status();
-        }
-      }
-      // Connect work area with allocated space.
-      ret = wrap::cufftSetWorkArea(parent, plan_, scratch_.opaque());
-      if (ret != CUFFT_SUCCESS) {
-        LOG(ERROR) << "failed to set work area for cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for cuFFT batched plan."};
-      }
+      return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
   return port::Status::OK();
@@ -310,6 +278,26 @@ port::Status CUDAFftPlan::Initialize(CUDAExecutor *parent, Stream *stream,
                     /*input_distance=*/0,
                     /*output_embed=*/nullptr, /*output_stride=*/0,
                     /*output_distance=*/0, type, 1, scratch_allocator);
+}
+
+port::Status CUDAFftPlan::UpdateScratchAllocator(
+    Stream *stream, ScratchAllocator *scratch_allocator) {
+  if (scratch_size_bytes_ != 0) {
+    auto allocated =
+        scratch_allocator->AllocateBytes(stream, scratch_size_bytes_);
+    if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
+      LOG(ERROR) << "failed to allocate work area.";
+      return allocated.status();
+    }
+  }
+  // Connect work area with allocated space.
+  cufftResult_t ret = wrap::cufftSetWorkArea(parent_, plan_, scratch_.opaque());
+  if (ret != CUFFT_SUCCESS) {
+    LOG(ERROR) << "failed to set work area for cuFFT plan:" << ret;
+    return port::Status{port::error::INTERNAL,
+                        "Failed to set work area for cuFFT plan."};
+  }
+  return port::Status::OK();
 }
 
 CUDAFftPlan::~CUDAFftPlan() { wrap::cufftDestroy(parent_, plan_); }
@@ -459,6 +447,17 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
         << status.error_message();
   }
   return std::move(fft_plan_ptr);
+}
+
+void CUDAFft::UpdatePlanWithScratchAllocator(
+    Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
+  CUDAFftPlan *cuda_fft_plan = dynamic_cast<CUDAFftPlan *>(plan);
+  port::Status status =
+      cuda_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
+  if (!status.ok()) {
+    LOG(FATAL) << "failed to update custom allocator for cufft plan: "
+               << status.error_message();
+  }
 }
 
 template <typename FuncT, typename InputT, typename OutputT>

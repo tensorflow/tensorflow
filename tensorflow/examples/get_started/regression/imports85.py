@@ -91,7 +91,7 @@ def dataset(y_name="price", train_fraction=0.7):
     """Convert a csv line into a (features_dict,label) pair."""
     # Decode the line to a tuple of items based on the types of
     # csv_header.values().
-    items = tf.decode_csv(line, defaults.values())
+    items = tf.decode_csv(line, list(defaults.values()))
 
     # Convert the keys and items to a dict.
     pairs = zip(defaults.keys(), items)
@@ -127,7 +127,7 @@ def dataset(y_name="price", train_fraction=0.7):
   def in_test_set(line):
     """Returns a boolean tensor, true if the line is in the training set."""
     # Items not in the training set are in the test set.
-    # This line must use `~` instead of `not` beacuse `not` only works on python
+    # This line must use `~` instead of `not` because `not` only works on python
     # booleans but we are dealing with symbolic tensors.
     return ~in_training_set(line)
 
@@ -140,10 +140,10 @@ def dataset(y_name="price", train_fraction=0.7):
   train = (base_dataset
            # Take only the training-set lines.
            .filter(in_training_set)
-           # Cache data so you only read the file once.
-           .cache()
            # Decode each line into a (features_dict, label) pair.
-           .map(decode_line))
+           .map(decode_line)
+           # Cache data so you only decode the file once.
+           .cache())
 
   # Do the same for the test-set.
   test = (base_dataset.filter(in_test_set).cache().map(decode_line))

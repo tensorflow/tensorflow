@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python import train
+from tensorflow.contrib.gan.python.features.python import random_tensor_pool
 from tensorflow.contrib.slim.python.slim import learning as slim_learning
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -145,14 +146,16 @@ def get_infogan_model():
   return namedtuples.InfoGANModel(
       *get_gan_model(),
       structured_generator_inputs=[constant_op.constant(0)],
-      predicted_distributions=[categorical.Categorical([1.0])])
+      predicted_distributions=[categorical.Categorical([1.0])],
+      discriminator_and_aux_fn=infogan_discriminator_model)
 
 
 def get_callable_infogan_model():
   return namedtuples.InfoGANModel(
       *get_callable_gan_model(),
       structured_generator_inputs=[constant_op.constant(0)],
-      predicted_distributions=[categorical.Categorical([1.0])])
+      predicted_distributions=[categorical.Categorical([1.0])],
+      discriminator_and_aux_fn=infogan_discriminator_model)
 
 
 def create_infogan_model():
@@ -409,6 +412,51 @@ class GANLossTest(test.TestCase):
   def test_callable_acgan(self):
     self._test_acgan_helper(create_callable_acgan_model)
 
+  # Test tensor pool.
+  def _test_tensor_pool_helper(self, create_gan_model_fn):
+    model = create_gan_model_fn()
+    if isinstance(model, namedtuples.InfoGANModel):
+
+      def tensor_pool_fn_impl(input_values):
+        generated_data, generator_inputs = input_values
+        output_values = random_tensor_pool.tensor_pool(
+            [generated_data] + generator_inputs, pool_size=5)
+        return output_values[0], output_values[1:]
+
+      tensor_pool_fn = tensor_pool_fn_impl
+    else:
+
+      def tensor_pool_fn_impl(input_values):
+        return random_tensor_pool.tensor_pool(input_values, pool_size=5)
+
+      tensor_pool_fn = tensor_pool_fn_impl
+    loss = train.gan_loss(model, tensor_pool_fn=tensor_pool_fn)
+    self.assertTrue(isinstance(loss, namedtuples.GANLoss))
+
+    # Check values.
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      for _ in range(10):
+        sess.run([loss.generator_loss, loss.discriminator_loss])
+
+  def test_tensor_pool_gan(self):
+    self._test_tensor_pool_helper(create_gan_model)
+
+  def test_tensor_pool_callable_gan(self):
+    self._test_tensor_pool_helper(create_callable_gan_model)
+
+  def test_tensor_pool_infogan(self):
+    self._test_tensor_pool_helper(create_infogan_model)
+
+  def test_tensor_pool_callable_infogan(self):
+    self._test_tensor_pool_helper(create_callable_infogan_model)
+
+  def test_tensor_pool_acgan(self):
+    self._test_tensor_pool_helper(create_acgan_model)
+
+  def test_tensor_pool_callable_acgan(self):
+    self._test_tensor_pool_helper(create_callable_acgan_model)
+
   def test_doesnt_crash_when_in_nested_scope(self):
     with variable_scope.variable_scope('outer_scope'):
       gan_model = train.gan_model(
@@ -542,10 +590,16 @@ class GANTrainOpsTest(test.TestCase):
   def test_unused_update_ops_callable_acgan_provideupdates(self):
     self._test_unused_update_ops(create_callable_acgan_model, True)
 
-  def _test_sync_replicas_helper(self, create_gan_model_fn):
+  def _test_sync_replicas_helper(
+      self, create_gan_model_fn, create_global_step=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
     num_trainable_vars = len(variables_lib.get_trainable_variables())
+
+    if create_global_step:
+      gstep = variable_scope.get_variable(
+          'custom_gstep', dtype=dtypes.int32, initializer=0, trainable=False)
+      ops.add_to_collection(ops.GraphKeys.GLOBAL_STEP, gstep)
 
     g_opt = get_sync_optimizer()
     d_opt = get_sync_optimizer()
@@ -609,6 +663,9 @@ class GANTrainOpsTest(test.TestCase):
 
   def test_sync_replicas_callable_acgan(self):
     self._test_sync_replicas_helper(create_callable_acgan_model)
+
+  def test_global_step_can_be_int32(self):
+    self._test_sync_replicas_helper(create_gan_model, create_global_step=True)
 
 
 class GANTrainTest(test.TestCase):

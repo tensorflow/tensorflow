@@ -146,7 +146,7 @@ TEST_F(WhileLoopTest, InvalidCondOutputIndex) {
         *output = {less.node(), 100};
         return s.status();
       },
-      AddOneBody, error::INVALID_ARGUMENT,
+      AddOneBody, error::OUT_OF_RANGE,
       "Node 'cond/Less' (type: 'Less', num of outputs: 1) does not have output "
       "100");
 }
@@ -182,7 +182,7 @@ TEST_F(WhileLoopTest, InvalidBodyOutputIndex) {
                outputs->emplace_back(add.node(), 100);
                return s.status();
              },
-             error::INVALID_ARGUMENT,
+             error::OUT_OF_RANGE,
              "Node 'body/Add' (type: 'Add', num of outputs: 1) does not have "
              "output 100");
 }

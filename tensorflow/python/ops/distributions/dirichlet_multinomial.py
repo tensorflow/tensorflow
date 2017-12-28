@@ -122,21 +122,22 @@ class DirichletMultinomial(distribution.Distribution):
   #### Examples
 
   ```python
-  alpha = [1, 2, 3]
-  n = 2
+  alpha = [1., 2., 3.]
+  n = 2.
   dist = DirichletMultinomial(n, alpha)
   ```
 
-  Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+  Creates a 3-class distribution, with the 3rd class is most likely to be
+  drawn.
   The distribution functions can be evaluated on counts.
 
   ```python
   # counts same shape as alpha.
-  counts = [0, 0, 2]
+  counts = [0., 0., 2.]
   dist.prob(counts)  # Shape []
 
-  # alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match counts.
-  counts = [[1, 1, 0], [1, 0, 1]]
+  # alpha will be broadcast to [[1., 2., 3.], [1., 2., 3.]] to match counts.
+  counts = [[1., 1., 0.], [1., 0., 1.]]
   dist.prob(counts)  # Shape [2]
 
   # alpha will be broadcast to shape [5, 7, 3] to match counts.
@@ -147,12 +148,12 @@ class DirichletMultinomial(distribution.Distribution):
   Creates a 2-batch of 3-class distributions.
 
   ```python
-  alpha = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
-  n = [3, 3]
+  alpha = [[1., 2., 3.], [4., 5., 6.]]  # Shape [2, 3]
+  n = [3., 3.]
   dist = DirichletMultinomial(n, alpha)
 
-  # counts will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
-  counts = [2, 1, 0]
+  # counts will be broadcast to [[2., 1., 0.], [2., 1., 0.]] to match alpha.
+  counts = [2., 1., 0.]
   dist.prob(counts)  # Shape [2]
   ```
 

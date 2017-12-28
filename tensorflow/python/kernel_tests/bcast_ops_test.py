@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.gen_array_ops import _broadcast_args
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
 from tensorflow.python.platform import test
@@ -134,6 +136,19 @@ class BcastOpsTest(test.TestCase):
     r0, r1 = self._GetGradientArgs([3, 1, 5], [2, 0, 3, 0, 5])
     self.assertAllEqual(r0, [0, 1, 3])
     self.assertAllEqual(r1, [])
+
+  def testDataTypes(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      r = self._GetBroadcastShape(
+          constant_op.constant([2, 3, 5], dtype=dtype),
+          constant_op.constant([1], dtype=dtype))
+      self.assertAllEqual(r, [2, 3, 5])
+
+      r0, r1 = self._GetGradientArgs(
+          constant_op.constant([2, 3, 5], dtype=dtype),
+          constant_op.constant([1], dtype=dtype))
+      self.assertAllEqual(r0, [])
+      self.assertAllEqual(r1, [0, 1, 2])
 
 
 if __name__ == "__main__":
