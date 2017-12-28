@@ -141,6 +141,16 @@ TEST(AdaptiveSharedBatchSchedulerTest, BadOptions) {
   options = Scheduler::Options();
   options.feedback_smoothing_batches = 0;
   EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.initial_in_flight_batches_limit = 0.5;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.num_batch_threads = 5;
+  options.initial_in_flight_batches_limit = 8;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.batches_to_average_over = -5;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
 }
 
 TEST(AdaptiveSharedBatchSchedulerTest, ObeysQueueOptions) {
@@ -186,6 +196,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, ObeysQueueOptions) {
     queue_options.max_enqueued_batches = 2;
     TF_ASSERT_OK(
         scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
+    EXPECT_EQ(10, queue_0->max_task_size());
     queue_options.max_batch_size = 0;
     // Queue must have max_batch_size > 0.
     EXPECT_FALSE(
@@ -429,6 +440,106 @@ TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
     env.AdvanceByMicroseconds(1000);
     env.BlockUntilThreadsAsleep(2);
     EXPECT_EQ(scheduled_items, 7);
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesImplementation) {
+  AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+  options.use_in_flight_batches_implementation = true;
+  options.initial_in_flight_batches_limit = 2;
+  options.batches_to_average_over = 1000;
+  mutex mu;
+  int processed_batches = 0;
+  Notification finish_processing;
+  auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                            std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_GT(batch->num_tasks(), 0);
+    mu.lock();
+    int batch_num = ++processed_batches;
+    mu.unlock();
+    if (batch_num == 2) {
+      // Give third batch a chance to process if it's going to.
+      Env::Default()->SleepForMicroseconds(1000);
+      finish_processing.Notify();
+    }
+    if (batch_num == 3) {
+      ASSERT_TRUE(finish_processing.HasBeenNotified());
+    }
+    finish_processing.WaitForNotification();
+  };
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(
+      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
+  // Enqueue 3 batches.
+  for (int i = 0; i < 3; i++) {
+    TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  }
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+  {
+    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+    options.env = &env;
+    options.use_in_flight_batches_implementation = true;
+    options.initial_in_flight_batches_limit = 2;
+    options.batches_to_average_over = 1;
+    auto queue_callback = [&env](std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      switch (batch->size()) {
+        case 0:
+          env.AdvanceByMicroseconds(10);
+          break;
+        case 1:
+          env.AdvanceByMicroseconds(15);
+          break;
+        case 2:
+          env.AdvanceByMicroseconds(10);
+          break;
+        case 3:
+          env.AdvanceByMicroseconds(11);
+          break;
+      }
+    };
+    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+    TF_ASSERT_OK(
+        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
+    TF_ASSERT_OK(ScheduleTask(0, queue.get()));
+    double in_flight_batches_limit = 2;
+    while (scheduler->in_flight_batches_limit() == in_flight_batches_limit) {
+    }
+    // Initial direction will be negative.
+    EXPECT_LT(scheduler->in_flight_batches_limit(), in_flight_batches_limit);
+    in_flight_batches_limit = scheduler->in_flight_batches_limit();
+    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    while (scheduler->in_flight_batches_limit() == in_flight_batches_limit) {
+    }
+    // Latency increased -> change direction.
+    EXPECT_GT(scheduler->in_flight_batches_limit(), in_flight_batches_limit);
+    in_flight_batches_limit = scheduler->in_flight_batches_limit();
+    TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+    while (scheduler->in_flight_batches_limit() == in_flight_batches_limit) {
+    }
+    // Latency decreased -> keep going in same direction.
+    EXPECT_GT(scheduler->in_flight_batches_limit(), in_flight_batches_limit);
+    in_flight_batches_limit = scheduler->in_flight_batches_limit();
+    TF_ASSERT_OK(ScheduleTask(3, queue.get()));
+    while (scheduler->in_flight_batches_limit() == in_flight_batches_limit) {
+    }
+    // Latency increased -> change direction.
+    EXPECT_LT(scheduler->in_flight_batches_limit(), in_flight_batches_limit);
     start_teardown.Notify();
   }
   stop_teardown.Notify();

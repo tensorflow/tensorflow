@@ -28,7 +28,7 @@ import time
 import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.python.framework import ops
@@ -128,7 +128,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
        random_seed=params.get('random_seed'),
        kmeans_plus_plus_num_retries=params.get(
            'kmeans_plus_plus_num_retries')).training_graph()
-  incr_step = state_ops.assign_add(variables.get_global_step(), 1)
+  incr_step = state_ops.assign_add(training_util.get_global_step(), 1)
   loss = math_ops.reduce_sum(losses, name=KMeansClustering.LOSS_OP_NAME)
   summary.scalar('loss/raw', loss)
   training_op = with_dependencies([training_op, incr_step], loss)

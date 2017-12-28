@@ -43,6 +43,10 @@ Status ValidateAttrValue(const AttrValue& attr_value,
 const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def);
 OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
 
+// Searches op_def for input argument with the indicated name.
+// Returns nullptr if no such attr is found.
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
+
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
 string SummarizeOpDef(const OpDef& op_def);

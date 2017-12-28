@@ -82,6 +82,13 @@ class StepStatsCollector {
   void Save(const string& device, NodeExecStats* nt);
   void Save(const string& device, NodeExecStatsWrapper* stats);
 
+  // Generates a string reporting the currently used memory based
+  // on ResourceExhausted OOM `err` message.
+  // `err` message needs to contain device name and allocator name, E.g.:
+  // "ResourceExhaustedError: OOM when allocating tensor ...
+  // on /job:localhost/replica:0/task:0/device:GPU:0 by allocator GPU_0_bfc"
+  string ReportAllocsOnResourceExhausted(const string& err);
+
   // The following 2 Finalize methods populate the StepStats passed
   // from the constructor. Calling it more than once won't have any effect.
   // User shouldn't call Save() methods after Finalize.

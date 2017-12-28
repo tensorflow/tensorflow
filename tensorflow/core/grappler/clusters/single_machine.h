@@ -32,6 +32,8 @@ class SingleMachine : public Cluster {
   SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus);
   ~SingleMachine() override;
 
+  string type() const override { return "single_machine"; }
+
   Status Provision() override;
   Status Shutdown() override;
 
@@ -49,6 +51,7 @@ class SingleMachine : public Cluster {
                         RunMetadata* run_metadata, int64 timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
+  Status ShutdownSession();
   void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
                   const CostGraphDef& queue_costs);
 

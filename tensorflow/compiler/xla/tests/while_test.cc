@@ -357,8 +357,7 @@ TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
 
-// TODO(b/63003356): 11-06-2017: fails on all back-ends with incorrect result.
-TEST_F(WhileTest, DISABLED_WhileWithPermutationAndTupleResult) {
+TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
   std::vector<Shape> shape_elements = {
       ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
       ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
@@ -411,8 +410,7 @@ TEST_F(WhileTest, DISABLED_WhileWithPermutationAndTupleResult) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
 
-// TODO(b/63003356): 11-06-2017: fails on all back-ends with incorrect result.
-TEST_F(WhileTest, DISABLED_WhileWithPermutationAndVectorResult) {
+TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
   std::vector<Shape> shape_elements = {
       ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {3}),
       ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(F32, {3})};
@@ -913,8 +911,7 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   }
 }
 
-// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
-TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithTupleElement)) {
+TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   ComputationBuilder outer(client_, "outer");
@@ -950,8 +947,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithTupleElement)) {
                          ErrorSpec(1e-6));
 }
 
-// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
-TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithBroadcast)) {
+TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   auto element_shape = ShapeUtil::MakeShape(F32, {2});
 
   ComputationBuilder outer(client_, "outer");

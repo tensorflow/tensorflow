@@ -44,7 +44,8 @@ class ConstantTest(test.TestCase):
     np_ans = np.array(x)
     with self.test_session(use_gpu=False):
       tf_ans = ops.convert_to_tensor(x).eval()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+    dtype = dtypes_lib.as_dtype(np_ans.dtype)
+    if dtype.is_floating or dtype.is_complex:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
@@ -53,7 +54,8 @@ class ConstantTest(test.TestCase):
     np_ans = np.array(x)
     with self.test_session(use_gpu=True):
       tf_ans = ops.convert_to_tensor(x).eval()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+    dtype = dtypes_lib.as_dtype(np_ans.dtype)
+    if dtype.is_floating or dtype.is_complex:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
@@ -61,6 +63,19 @@ class ConstantTest(test.TestCase):
   def _testAll(self, x):
     self._testCpu(x)
     self._testGpu(x)
+
+  def testBFloat16(self):
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(bfloat16))
+    self._testAll(
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(bfloat16))
+    self._testAll(np.empty((2, 0, 5)).astype(bfloat16))
+
+  def testHalf(self):
+    self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float16))
+    self._testAll(
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float16))
+    self._testAll(np.empty((2, 0, 5)).astype(np.float16))
 
   def testFloat(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float32))
@@ -439,11 +454,10 @@ class ZerosLikeTest(test.TestCase):
 
   def testZerosLikeCPU(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64,
-        dtypes_lib.int8, dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16,
-        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.bool,
-        dtypes_lib.complex64, dtypes_lib.complex128,
-        dtypes_lib.string
+        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int8,
+        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16, dtypes_lib.int32,
+        dtypes_lib.int64, dtypes_lib.bool, dtypes_lib.complex64,
+        dtypes_lib.complex128, dtypes_lib.string
     ]:
       self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
       self._compareZeros(dtype, fully_defined_shape=True, use_gpu=False)
@@ -574,10 +588,10 @@ class OnesLikeTest(test.TestCase):
 
   def testOnesLike(self):
     for dtype in [
-        dtypes_lib.float32, dtypes_lib.float64,
-        dtypes_lib.int8, dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16,
-        dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.bool,
-        dtypes_lib.complex64, dtypes_lib.complex128
+        dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int8,
+        dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.uint16, dtypes_lib.int32,
+        dtypes_lib.int64, dtypes_lib.bool, dtypes_lib.complex64,
+        dtypes_lib.complex128
     ]:
       numpy_dtype = dtype.as_numpy_dtype
       with self.test_session():

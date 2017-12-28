@@ -19,7 +19,7 @@ from one graph to another. The copied elements are initialized inside a
 user-specified scope in the other graph. There are separate functions to
 copy ops and variables.
 There is also a function to retrive the copied version of an op from the
-first graph inside a scope in the second graph. 
+first graph inside a scope in the second graph.
 
 @@copy_op_to_graph
 @@copy_variable_to_graph
@@ -225,7 +225,7 @@ def copy_op_to_graph(org_instance, to_graph, variables,
                            new_original_op,
                            op_def)
     #Use Graph's hidden methods to add the op
-    to_graph._add_op(new_op)
+    to_graph._add_op(new_op)  # pylint: disable=protected-access
     to_graph._record_op_seen_by_control_dependencies(new_op)
     for device_function in reversed(to_graph._device_function_stack):
       new_op._set_device(device_function(new_op))

@@ -243,13 +243,24 @@ uint64 FunctionDefHash(const FunctionDef& fdef);
 // address spaces.
 string Canonicalize(const string& funcname, AttrSlice attrs);
 
+class CallFrameInterface {
+ public:
+  virtual ~CallFrameInterface() {}
+
+  virtual size_t num_args() const = 0;
+  virtual size_t num_retvals() const = 0;
+
+  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status SetRetval(int index, const Tensor& val) = 0;
+};
+
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
 //
 // Runtime must arrange accesses to one FunctionCallFrame s.t.
 //   1. SetArgs() happens before any GetArg();
 //   2. GetRetvals happens after all SetRetval();
-class FunctionCallFrame {
+class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
   ~FunctionCallFrame();
@@ -259,9 +270,12 @@ class FunctionCallFrame {
   Status GetRetvals(std::vector<Tensor>* rets) const;
   Status ConsumeRetvals(std::vector<Tensor>* rets);
 
+  size_t num_args() const override { return arg_types_.size(); }
+  size_t num_retvals() const override { return ret_types_.size(); }
+
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const;
-  Status SetRetval(int index, const Tensor& val);
+  Status GetArg(int index, Tensor* val) const override;
+  Status SetRetval(int index, const Tensor& val) override;
 
  private:
   DataTypeVector arg_types_;
@@ -408,6 +422,9 @@ class FunctionLibraryRuntime {
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
                              Handle* handle) = 0;
 
+  // Releases state associated with the handle.
+  virtual Status ReleaseHandle(Handle handle) = 0;
+
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
   //
@@ -453,6 +470,8 @@ class FunctionLibraryRuntime {
   virtual void Run(const Options& opts, Handle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
+  virtual void Run(const Options& opts, Handle handle,
+                   CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   // Creates a "kernel" for the given node def "ndef".
   //

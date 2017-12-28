@@ -31,6 +31,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
 from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 
@@ -464,7 +465,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     feed_key = None
     feed_value = None
     for key in self._feed_dict:
-      key_name = cli_shared.get_graph_element_name(key)
+      key_name = common.get_graph_element_name(key)
       if key_name == tensor_name:
         feed_key = key_name
         feed_value = self._feed_dict[key]
@@ -561,7 +562,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                                            list(self._tensor_filters.keys()))
     if self._feed_dict:
       # Register tab completion for feed_dict keys.
-      feed_keys = [cli_shared.get_graph_element_name(key)
+      feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]
       curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
 

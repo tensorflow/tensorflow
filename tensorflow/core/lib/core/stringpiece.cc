@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-size_t StringPiece::Hasher::operator()(StringPiece s) const {
+size_t StringPieceHasher::operator()(StringPiece s) const {
   return Hash64(s.data(), s.size());
 }
 

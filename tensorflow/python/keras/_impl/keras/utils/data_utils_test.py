@@ -22,6 +22,7 @@ from itertools import cycle
 import os
 import tarfile
 import threading
+import unittest
 import zipfile
 
 import numpy as np
@@ -115,14 +116,18 @@ def threadsafe_generator(f):
 
 class TestSequence(keras.utils.data_utils.Sequence):
 
-  def __init__(self, shape):
+  def __init__(self, shape, value=1.):
     self.shape = shape
+    self.inner = value
 
   def __getitem__(self, item):
-    return np.ones(self.shape, dtype=np.uint8) * item
+    return np.ones(self.shape, dtype=np.uint32) * item * self.inner
 
   def __len__(self):
     return 100
+
+  def on_epoch_end(self):
+    self.inner *= 5.0
 
 
 class FaultSequence(keras.utils.data_utils.Sequence):
@@ -160,6 +165,9 @@ class TestEnqueuers(test.TestCase):
     self.assertEqual(len(set(acc) - set(range(100))), 0)
     enqueuer.stop()
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
         create_generator_from_sequence_pcs(TestSequence([3, 200, 200, 3])),
@@ -178,16 +186,19 @@ class TestEnqueuers(test.TestCase):
         use_multiprocessing=False)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_enqueuer_fail_processes(self):
     enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
         create_generator_from_sequence_pcs(FaultSequence()),
         use_multiprocessing=True)
     enqueuer.start(3, 10)
     gen_output = enqueuer.get()
-    with self.assertRaises(StopIteration):
+    with self.assertRaises(IndexError):
       next(gen_output)
 
   def test_ordered_enqueuer_threads(self):
@@ -228,6 +239,73 @@ class TestEnqueuers(test.TestCase):
     with self.assertRaises(StopIteration):
       next(gen_output)
 
+  def test_on_epoch_end_processes(self):
+    enqueuer = keras.utils.data_utils.OrderedEnqueuer(
+        TestSequence([3, 200, 200, 3]), use_multiprocessing=True)
+    enqueuer.start(3, 10)
+    gen_output = enqueuer.get()
+    acc = []
+    for _ in range(200):
+      acc.append(next(gen_output)[0, 0, 0, 0])
+    # Check that order was keep in GeneratorEnqueuer with processes
+    self.assertEqual(acc[100:], list([k * 5 for k in range(100)]))
+    enqueuer.stop()
+
+  def test_context_switch(self):
+    enqueuer = keras.utils.data_utils.OrderedEnqueuer(
+        TestSequence([3, 200, 200, 3]), use_multiprocessing=True)
+    enqueuer2 = keras.utils.data_utils.OrderedEnqueuer(
+        TestSequence([3, 200, 200, 3], value=15), use_multiprocessing=True)
+    enqueuer.start(3, 10)
+    enqueuer2.start(3, 10)
+    gen_output = enqueuer.get()
+    gen_output2 = enqueuer2.get()
+    acc = []
+    for _ in range(100):
+      acc.append(next(gen_output)[0, 0, 0, 0])
+    self.assertEqual(acc[-1], 99)
+    # One epoch is completed so enqueuer will switch the Sequence
+
+    acc = []
+    for _ in range(100):
+      acc.append(next(gen_output2)[0, 0, 0, 0])
+    self.assertEqual(acc[-1], 99 * 15)
+    # One epoch has been completed so enqueuer2 will switch
+
+    # Be sure that both Sequence were updated
+    self.assertEqual(next(gen_output)[0, 0, 0, 0], 0)
+    self.assertEqual(next(gen_output)[0, 0, 0, 0], 5)
+    self.assertEqual(next(gen_output2)[0, 0, 0, 0], 0)
+    self.assertEqual(next(gen_output2)[0, 0, 0, 0], 15 * 5)
+
+    # Tear down everything
+    enqueuer.stop()
+    enqueuer2.stop()
+
+  def test_on_epoch_end_threads(self):
+    enqueuer = keras.utils.data_utils.OrderedEnqueuer(
+        TestSequence([3, 200, 200, 3]), use_multiprocessing=False)
+    enqueuer.start(3, 10)
+    gen_output = enqueuer.get()
+    acc = []
+    for _ in range(100):
+      acc.append(next(gen_output)[0, 0, 0, 0])
+    acc = []
+    for _ in range(100):
+      acc.append(next(gen_output)[0, 0, 0, 0])
+    # Check that order was keep in GeneratorEnqueuer with processes
+    self.assertEqual(acc, list([k * 5 for k in range(100)]))
+    enqueuer.stop()
+
 
 if __name__ == '__main__':
+  # Bazel sets these environment variables to very long paths.
+  # Tempfile uses them to create long paths, and in turn multiprocessing
+  # library tries to create sockets named after paths. Delete whatever bazel
+  # writes to these to avoid tests failing due to socket addresses being too
+  # long.
+  for var in ('TMPDIR', 'TMP', 'TEMP'):
+    if var in os.environ:
+      del os.environ[var]
+
   test.main()

@@ -131,8 +131,8 @@ error::Code ErrnoToCode(int err_number) {
     case ENETUNREACH:   // Network unreachable
     case ENOLCK:        // No locks available
     case ENOLINK:       // Link has been severed
-#if !(defined(__APPLE__) || defined(__FreeBSD__) || defined(_WIN32) \
-	|| defined(__HAIKU__))
+#if !(defined(__APPLE__) || defined(__FreeBSD__) || defined(_WIN32) || \
+      defined(__HAIKU__))
     case ENONET:  // Machine is not on the network
 #endif
       code = error::UNAVAILABLE;

@@ -68,7 +68,7 @@ class NodeNameMapping {
   // This is a superset of values in name_mapping_.
   std::unordered_set<string> used_names_;
   // Mapping from original node name from the graph to the normalized
-  // and uniqified version of it.
+  // and uniquified version of it.
   std::unordered_map<string, string> name_mapping_;
 };
 
@@ -226,12 +226,17 @@ Status FillFunctionBody(
       }
       node_def->add_input(strings::StrCat("^", normalized));
     }
+
+    // A function is stateful if any of its nodes are stateful.
+    if (node->op_def().is_stateful()) {
+      fdef->mutable_signature()->set_is_stateful(true);
+    }
   }
   return Status::OK();
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in third_party/tensorflow/python/framework/function.py.
+// code in tensorflow/python/framework/function.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,
