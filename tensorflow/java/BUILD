@@ -109,9 +109,9 @@ cc_library(
 cc_library(
     name = "java_op_gen_lib",
     srcs = [
-        "src/gen/cc/op_generator.h",
-        "src/gen/cc/op_generator.cc",
         "src/gen/cc/java_defs.h",
+        "src/gen/cc/op_generator.cc",
+        "src/gen/cc/op_generator.h",
     ],
     copts = tf_copts(),
     deps = [
