@@ -223,7 +223,8 @@ class TrainingHelper(Helper):
 
   def sample(self, time, outputs, name=None, **unused_kwargs):
     with ops.name_scope(name, "TrainingHelperSample", [time, outputs]):
-      sample_ids = math_ops.argmax(outputs, axis=-1, output_type=dtypes.int32)
+      sample_ids = math_ops.cast(
+          math_ops.argmax(outputs, axis=-1), dtypes.int32)
       return sample_ids
 
   def next_inputs(self, time, outputs, state, name=None, **unused_kwargs):

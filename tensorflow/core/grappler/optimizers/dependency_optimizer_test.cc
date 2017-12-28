@@ -157,7 +157,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -195,6 +195,41 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_EmptyInputOrOutput) {
       EXPECT_EQ("RandomUniform", node.input(0));
     }
   }
+}
+
+TEST_F(DependencyOptimizerTest, RemoveNoOps_DeviceBoundaries) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  // NoOp with a single input- and two output dependencies.
+  auto noop = ops::NoOp(s.WithControlDependencies(x).WithDevice("/CPU:1"));
+  // NoOp with a two input- and a single output dependency.
+  auto noop_1 = ops::NoOp(
+      s.WithControlDependencies(x).WithControlDependencies(y).WithDevice(
+          "/CPU:0"));
+  Output id = ops::Identity(
+      s.WithControlDependencies({noop.operation}).WithDevice("/CPU:1"), x);
+  Output id_1 = ops::Identity(
+      s.WithControlDependencies({noop.operation, noop_1.operation})
+          .WithDevice("/CPU:1"),
+      y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("Identity");
+  item.fetch.push_back("Identity_1");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The optimization should be disabled to prevent increasing the number of
+  // nodes crossing device boundaries.
+  TF_CHECK_OK(TopologicalSort(&item.graph));
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
@@ -248,7 +283,7 @@ TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch.push_back("id2");
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);

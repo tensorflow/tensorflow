@@ -436,7 +436,7 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
   port::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
 
-  result = implementation_->BlockHostUntilDoneWithStatus(stream);
+  result = implementation_->BlockHostUntilDone(stream);
   return result;
 }
 

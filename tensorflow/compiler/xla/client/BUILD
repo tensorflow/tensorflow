@@ -186,6 +186,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sharding_builder",
+    srcs = ["sharding_builder.cc"],
+    hdrs = ["sharding_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(

@@ -3,13 +3,13 @@ op {
   in_arg {
     name: "x"
     description: <<END
-Vector in source data format. Must be of size 4.
+Vector of size 4 or Tensor of shape (4, 2) in source data format.
 END
   }
   out_arg {
     name: "y"
     description: <<END
-Vector in destination data format. Must be of size 4.
+Vector of size 4 or Tensor of shape (4, 2) in destination data format.
 END
   }
   attr {
@@ -24,8 +24,8 @@ END
 destination data format.
 END
   }
-  summary: "Returns the permuted vector in the destination data format given the one in"
+  summary: "Returns the permuted vector/tensor in the destination data format given the"
   description: <<END
-the source data format.
+one in the source data format.
 END
 }

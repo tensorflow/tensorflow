@@ -988,8 +988,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
   return {lhs_shape.dimensions(transpose_lhs_ ? 1 : 0),
           lhs_shape.dimensions(transpose_lhs_ ? 0 : 1),
           rhs_shape.dimensions(transpose_rhs_ ? 0 : 1),
-          lhs_shape.layout().minor_to_major(0) == 0,
-          rhs_shape.layout().minor_to_major(0) == 0};
+          LayoutUtil::Minor(lhs_shape.layout(), 0) == 0,
+          LayoutUtil::Minor(rhs_shape.layout(), 0) == 0};
 }
 
 llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
@@ -1000,8 +1000,8 @@ llvm_ir::IrArray::Index DotOpEmitter::EmitOperandArrayLoopNest(
   // reduction dimension.
   std::vector<int64> dimensions;
   const Shape& shape = operand_array.GetShape();
-  for (int i = shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape.layout().minor_to_major(i);
+  for (int i = LayoutUtil::MinorToMajor(shape).size() - 1; i >= 0; --i) {
+    int64 dimension = LayoutUtil::Minor(shape.layout(), i);
     if (dimension != reduction_dimension) {
       dimensions.push_back(dimension);
     }

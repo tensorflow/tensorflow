@@ -80,6 +80,18 @@ class Cluster(object):
         devices.append(device_properties_pb2.NamedDevice.FromString(raw_dev))
     return devices
 
+  def ListAvailableOps(self):
+    """Returns a list of all the available operations (sorted alphatically)."""
+    return tf_cluster.TF_ListAvailableOps()
+
+  def GetSupportedDevices(self, item):
+    return tf_cluster.TF_GetSupportedDevices(self._tf_cluster, item.tf_item)
+
+  def EstimatePerformance(self, device):
+    """Estimate the performance of the specified device."""
+    serialized = device.SerializeToString()
+    return tf_cluster.TF_EstimatePerformance(serialized)
+
   def MeasureCosts(self, item):
     """Returns the cost of running the specified item.
 

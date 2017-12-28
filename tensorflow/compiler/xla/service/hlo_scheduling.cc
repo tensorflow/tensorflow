@@ -369,7 +369,17 @@ StatusOr<int64> MinimumMemoryForComputation(
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm == SchedulerAlgorithm::kListSchedule) {
+    return ListScheduler::Run(computation, points_to_analysis, size_function);
+  }
+  if (algorithm == SchedulerAlgorithm::kDfsSchedule) {
+    return RunDFSMemoryScheduler(computation, points_to_analysis,
+                                 size_function);
+  }
+
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -377,7 +387,6 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   // Note that this is just a heuristic. One obvious inaccuracy is that the
   // memory required for sub-computations might be different when considered
   // within the caller's context. But it's good enough for now.
-  VLOG(2) << "Computation: " << computation.name();
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
       ListScheduler::Run(computation, points_to_analysis, size_function));
@@ -410,27 +419,30 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 }  // namespace
 
 StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function) {
+CreateMemoryMinimizingSequence(const HloModule& module,
+                               const LogicalBuffer::SizeFunction& size_function,
+                               SchedulerAlgorithm algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
   for (const auto* computation : module.MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(sequence[computation],
-                        CreateMemoryMinimizingSequence(
-                            *computation, *points_to_analysis, size_function));
+    TF_ASSIGN_OR_RETURN(
+        sequence[computation],
+        CreateMemoryMinimizingSequence(*computation, *points_to_analysis,
+                                       size_function, algorithm));
   }
   return sequence;
 }
 
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
-                                        size_function);
+                                        size_function, algorithm);
 }
 
 }  // namespace xla

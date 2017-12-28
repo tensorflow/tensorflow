@@ -68,10 +68,10 @@ class CoreEstimatorPredictor(predictor.Predictor):
       serving_input_receiver = serving_input_receiver_fn()
       signature_def = _get_signature_def(
           serving_input_receiver, estimator, output_key)
-      checkpoint_path = estimator.model_dir
+      checkpoint_dir = estimator.model_dir
       self._session = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              checkpoint_dir=checkpoint_dir))
 
     feed_tensor_info = signature_def.inputs
     self._feed_tensors = {k: self._graph.get_tensor_by_name(v.name)

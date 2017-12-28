@@ -48,6 +48,28 @@ output: A Tensor with one more dimension than the input `bytes`.  The
   of `bytes` divided by the number of bytes to represent `out_type`.
 )doc");
 
+REGISTER_OP("DecodeCompressed")
+    .Input("bytes: string")
+    .Output("output: string")
+    .Attr("compression_type: string = ''")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Decompress strings. 
+
+This op decompresses each element of the `bytes` input `Tensor`, which
+is assumed to be compressed using the given `compression_type`. 
+
+The `output` is a string `Tensor` of the same shape as `bytes`, 
+each element containing the decompressed data from the corresponding
+element in `bytes`.
+
+bytes: A Tensor of string which is compressed.
+output: A Tensor with the same shape as input `bytes`, uncompressed
+  from bytes.
+compression_type: A scalar containing either (i) the empty string (no
+  compression), (ii) "ZLIB", or (iii) "GZIP".
+)doc");
+
 REGISTER_OP("ParseExample")
     .Input("serialized: string")
     .Input("names: string")
@@ -64,7 +86,7 @@ REGISTER_OP("ParseExample")
     .Attr("Tdense: list({float,int64,string}) >= 0")
     .Attr("dense_shapes: list(shape) >= 0")
     .SetShapeFn([](InferenceContext* c) {
-      ParseSingleExampleAttrs attrs;
+      ParseExampleAttrs attrs;
       TF_RETURN_IF_ERROR(attrs.Init(c));
 
       ShapeHandle input;
@@ -135,6 +157,86 @@ sparse_keys: A list of Nsparse string Tensors (scalars).
 sparse_types: A list of Nsparse types; the data types of data in each Feature
   given in sparse_keys.
   Currently the ParseExample supports DT_FLOAT (FloatList),
+  DT_INT64 (Int64List), and DT_STRING (BytesList).
+)doc");
+
+REGISTER_OP("ParseSingleExample")
+    .Input("serialized: string")
+    .Input("dense_defaults: Tdense")
+    .Output("sparse_indices: num_sparse * int64")
+    .Output("sparse_values: sparse_types")
+    .Output("sparse_shapes: num_sparse * int64")
+    .Output("dense_values: Tdense")
+    .Attr("num_sparse: int >= 0")
+    .Attr("sparse_keys: list(string) >= 0")
+    .Attr("dense_keys: list(string) >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tdense: list({float,int64,string}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ParseSingleExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+
+      // Output sparse_indices, sparse_values, and sparse_shapes.
+      int output_idx = 0;
+      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 1));
+      }
+      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
+        c->set_output(output_idx++, c->Vector(1));
+      }
+
+      // Output dense_shapes.
+      for (int i = 0; i < attrs.dense_keys.size(); ++i) {
+        ShapeHandle dense;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
+        c->set_output(output_idx++, dense);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Transforms a tf.Example proto (as a string) into typed tensors.
+
+serialized: A vector containing a batch of binary serialized Example protos.
+dense_keys: The keys expected in the Examples' features associated with dense
+  values.
+dense_defaults: A list of Tensors (some may be empty), whose length matches
+  the length of `dense_keys`. dense_defaults[j] provides default values
+  when the example's feature_map lacks dense_key[j].  If an empty Tensor is
+  provided for dense_defaults[j], then the Feature dense_keys[j] is required.
+  The input type is inferred from dense_defaults[j], even when it's empty.
+  If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
+  then the shape of dense_defaults[j] must match that of dense_shapes[j].
+  If dense_shapes[j] has an undefined major dimension (variable strides dense
+  feature), dense_defaults[j] must contain a single element:
+  the padding element.
+Tdense: The data types of data in each Feature given in dense_keys.
+  The length of this list must match the length of `dense_keys`.
+  Currently the ParseSingleExample op supports DT_FLOAT (FloatList),
+  DT_INT64 (Int64List), and DT_STRING (BytesList).
+dense_shapes: The shapes of data in each Feature given in dense_keys.
+  The length of this list must match the length of `dense_keys`.  The
+  number of elements in the Feature corresponding to dense_key[j] must
+  always equal dense_shapes[j].NumEntries().  If dense_shapes[j] ==
+  (D0, D1, ..., DN) then the shape of output Tensor dense_values[j]
+  will be (D0, D1, ..., DN): In the case dense_shapes[j] = (-1, D1,
+  ..., DN), the shape of the output Tensor dense_values[j] will be (M,
+  D1, .., DN), where M is the number of blocks of elements of length
+  D1 * .... * DN, in the input.
+num_sparse: The number of sparse features to be parsed from the example. This
+  must match the lengths of `sparse_keys` and `sparse_types`.
+sparse_keys: A list of `num_sparse` strings.
+  The keys expected in the Examples' features associated with sparse values.
+sparse_types: A list of `num_sparse` types; the data types of data in each
+  Feature given in sparse_keys.
+  Currently the ParseSingleExample op supports DT_FLOAT (FloatList),
   DT_INT64 (Int64List), and DT_STRING (BytesList).
 )doc");
 

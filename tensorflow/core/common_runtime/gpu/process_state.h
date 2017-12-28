@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMMON_RUNTIME_GPU_PROCESS_STATE_H_
 
 #include <functional>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -80,17 +82,17 @@ class ProcessState {
   //
   // 'total_bytes' is the total number of bytes that should be made
   // available to the allocator.  The first call to this function for
-  // a given gpu_id creates the allocator, so only the total_bytes
+  // a given tf_gpu_id creates the allocator, so only the total_bytes
   // used on that first call is used.
   //
   // "Allocator type" describes the type of algorithm to use for the
   // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
-  // REQUIRES: gpu_id must be a valid ordinal for a GPU available in the
+  // REQUIRES: tf_gpu_id must be a valid id for a BaseGPUDevice available in the
   // current system environment.  Otherwise returns nullptr.
-  virtual Allocator* GetGPUAllocator(const GPUOptions& options, int gpu_id,
-                                     size_t total_bytes);
+  virtual Allocator* GetGPUAllocator(const GPUOptions& options,
+                                     TfGpuId tf_gpu_id, size_t total_bytes);
 
   virtual Allocator* GetCUDAHostAllocator(int numa_node);
 

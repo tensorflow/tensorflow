@@ -105,6 +105,9 @@ enum BuiltinOperator : byte {
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
   PAD = 34,
+  UNIDIRECTIONAL_SEQUENCE_RNN = 35,
+  GATHER = 36,
+  BATCH_TO_SPACE_ND = 37,
 }
 
 // Options for the builtin operators.
@@ -131,6 +134,8 @@ union BuiltinOptions {
   EmbeddingLookupSparseOptions,
   MulOptions,
   PadOptions,
+  GatherOptions,
+  BatchToSpaceNDOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -255,6 +260,12 @@ table ReshapeOptions {
   new_shape:[int];
 }
 
+table BatchToSpaceNDOptions {
+  block_shape:[int];
+  before_crops:[int];
+  after_crops:[int];
+}
+
 table SkipGramOptions {
   ngram_size: int;
   max_skip_size: int;
@@ -273,6 +284,10 @@ enum CombinerType : byte {
 
 table EmbeddingLookupSparseOptions {
   combiner:CombinerType;
+}
+
+table GatherOptions {
+  axis: int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -350,4 +365,3 @@ table Model {
 }
 
 root_type Model;
-

@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "ShuffleAndRepeatDataset"
+  in_arg {
+    name: "buffer_size"
+    description: <<END
+The number of output elements to buffer in an iterator over
+this dataset. Compare with the `min_after_dequeue` attr when creating a
+`RandomShuffleQueue`.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+A scalar seed for the random number generator. If either `seed` or
+`seed2` is set to be non-zero, the random number generator is seeded
+by the given seed.  Otherwise, a random seed is used.
+END
+  }
+  in_arg {
+    name: "seed2"
+    description: <<END
+A second scalar seed to avoid seed collision.
+END
+  }
+  in_arg {
+    name: "count"
+    description: <<END
+A scalar representing the number of times the underlying dataset
+should be repeated. The default is `-1`, which results in infinite repetition.
+END
+  }
+  summary: "Creates a dataset that shuffles and repeats elements from `input_dataset`"
+  description: <<END
+pseudorandomly.
+END
+}

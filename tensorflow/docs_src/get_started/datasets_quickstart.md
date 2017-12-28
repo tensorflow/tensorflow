@@ -388,11 +388,15 @@ reading data from a variety of sources. Furthermore, `tf.data` has simple
 powerful methods for applying a wide variety of standard and custom
 transformations.
 
-Now that you have the basic idea of how to efficiently load data for an
-Estimator. The next step is to learn how to build your own custom estimator in:
+Now you have the basic idea of how to efficiently load data into an
+Estimator. Consider the following documents next:
 
-* @{$get_started/custom_estimators}
 
-If you'd like to learn more about additional functionality of `Datasets` see:
+* @{$get_started/custom_estimators}, which demonstrates how to build your own
+  custom `Estimator` model.
+* The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
+  how to experiment directly with `tf.data.Datasets` using TensorFlow's low
+  level APIs.
+* @{$programmers_guide/datasets} which goes into great detail about additional
+  functionality of `Datasets`.
 
-* @{$programmers_guide/datasets}

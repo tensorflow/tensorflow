@@ -116,7 +116,7 @@ class XlaContext : public ResourceBase {
   const bool allow_cpu_custom_calls_;
 
   // If true, constant return values are returned as Tensors instead of
-  // run-time computation outptus.
+  // run-time computation outputs.
   const bool resolve_compile_time_constants_;
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.

@@ -41,6 +41,8 @@ const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
 const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
 const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
+const char kDimMapNHWCToNCHW[] = "LayoutOptimizerDimMapNHWCToNCHW";
+const char kDimMapNCHWToNHWC[] = "LayoutOptimizerDimMapNCHWToNHWC";
 const char kVecPermuteNHWCToNCHW[] = "LayoutOptimizerVecPermuteNHWCToNCHW";
 const char kVecPermuteNCHWToNHWC[] = "LayoutOptimizerVecPermuteNCHWToNHWC";
 const char kReshapeNHWCToNCHW[] = "LayoutOptimizerReshapeNHWCToNCHW";
@@ -60,10 +62,16 @@ std::set<string> GetOpsFormatSupported() {
       "DepthwiseConv2dNativeBackpropInput",
       "DepthwiseConv2dNativeBackpropFilter",
       "FusedBatchNorm",
+      "FusedBatchNormV2",
       "FusedBatchNormGrad",
+      "FusedBatchNormGradV2",
       "FusedConv2DBiasActivation",
       "MaxPool",
+      "MaxPoolV2",
       "MaxPoolGrad",
+      "MaxPoolGradGrad",
+      "MaxPoolGradV2",
+      "MaxPoolGradGradV2",
       "SpaceToDepth",
       "DepthToSpace"};
   return ops_format_supported;
@@ -72,44 +80,92 @@ std::set<string> GetOpsFormatSupported() {
 // TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
 // because of the worse performance in some cases.
 std::set<string> GetOpsFormatAgnostic() {
-  std::set<string> ops_format_agnostic = {"Add",
+  std::set<string> ops_format_agnostic = {"Abs",
+                                          "Add",
                                           "AddN",
+                                          "AddV2",
                                           "Acos",
                                           "Acosh",
+                                          "Angle",
+                                          "ApproximateEqual",
                                           "Asin",
                                           "Asinh",
                                           "Atan",
+                                          "Atan2",
                                           "Atanh",
+                                          "Betainc",
+                                          "Bitcast",
+                                          "Cast",
                                           "Ceil",
-                                          "Cos",
-                                          "Cosh",
+                                          "CheckNumerics",
+                                          "Complex",
+                                          "ComplexAbs",
                                           "Concat",
                                           "ConcatV2",
+                                          "Conj",
+                                          "Cos",
+                                          "Cosh",
                                           "Digamma",
+                                          "Div",
+                                          "Elu",
+                                          "EluGrad",
+                                          "Enter",
+                                          "Equal",
                                           "Erf",
                                           "Erfc",
+                                          "Exit",
                                           "Exp",
                                           "Expm1",
+                                          "Fill",
                                           "Floor",
+                                          "FloorDiv",
+                                          "FloorMod",
+                                          "Greater",
+                                          "GreaterEqual",
+                                          "GuaranteeConst",
                                           "Identity",
+                                          "IdentityN",
+                                          "Igamma",
+                                          "Igammac",
+                                          "Imag",
                                           "Inv",
                                           "InvGrad",
                                           "IsFinite",
                                           "IsInf",
                                           "IsNan",
+                                          "Less",
+                                          "LessEqual",
                                           "Lgamma",
                                           "Log",
+                                          "LogicalAnd",
+                                          "LogicalNot",
+                                          "LogicalOr",
                                           "Log1p",
+                                          "Maximum",
+                                          "Merge",
+                                          "Minimum",
+                                          "Mod",
                                           "Mul",
                                           "Neg",
+                                          "NextIteration",
+                                          "NotEqual",
+                                          "OnesLike",
                                           "Pad",
+                                          "PreventGradient",
+                                          "Polygamma",
+                                          "Pow",
+                                          "Real",
                                           "RealDiv",
                                           "Reciprocal",
                                           "ReciprocalGrad",
                                           "Relu",
                                           "Relu6",
+                                          "Relu6Grad",
                                           "ReluGrad",
                                           "Rint",
+                                          "Select",
+                                          "Selu",
+                                          "SeluGrad",
                                           "Shape",
                                           "ShapeN",
                                           "Sigmoid",
@@ -118,7 +174,15 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Sin",
                                           "Sinh",
                                           "Slice",
+                                          "Snapshot",
+                                          "Softplus",
+                                          "SoftplusGrad",
                                           "Split",
+                                          "SplitV",
+                                          "Switch",
+                                          "TruncateDiv",
+                                          "TruncateMod",
+                                          "ReverseV2",
                                           "Round",
                                           "Rsqrt",
                                           "RsqrtGrad",
@@ -127,10 +191,13 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Square",
                                           "SquaredDifference",
                                           "Squeeze",
+                                          "StopGradient",
                                           /*"Sum",*/ "Sub",
                                           "Tan",
                                           "Tanh",
-                                          "TanhGrad"};
+                                          "TanhGrad",
+                                          "ZerosLike",
+                                          "Zeta"};
   return ops_format_agnostic;
 }
 
@@ -143,22 +210,46 @@ bool IsNodeByLayoutOptimizer(const string& node_name) {
   return false;
 }
 
-bool IsNodeNHWCToNCHW(const string& node_name) {
-  const string transpose_node_prefix = kTransposeNHWCToNCHW;
-  string prefix = node_name.substr(0, transpose_node_prefix.length());
-  if (prefix.compare(transpose_node_prefix) == 0) {
+bool IsNodeNHWCToNCHW(const string& node_name, const string& prefix_const) {
+  const string transform_prefix = prefix_const;
+  string prefix = node_name.substr(0, transform_prefix.length());
+  if (prefix.compare(transform_prefix) == 0) {
     return true;
   }
   return false;
 }
 
-bool IsNodeNCHWToNHWC(const string& node_name) {
-  const string transpose_node_prefix = kTransposeNCHWToNHWC;
-  string prefix = node_name.substr(0, transpose_node_prefix.length());
-  if (prefix.compare(transpose_node_prefix) == 0) {
+bool IsNodeNCHWToNHWC(const string& node_name, const string& prefix_const) {
+  const string transform_prefix = prefix_const;
+  string prefix = node_name.substr(0, transform_prefix.length());
+  if (prefix.compare(transform_prefix) == 0) {
     return true;
   }
   return false;
+}
+
+bool IsTransposeNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kTransposeNHWCToNCHW);
+}
+
+bool IsTransposeNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kTransposeNCHWToNHWC);
+}
+
+bool IsDimMapNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kDimMapNHWCToNCHW);
+}
+
+bool IsDimMapNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kDimMapNCHWToNHWC);
+}
+
+bool IsVecPermuteNHWCToNCHW(const string& node_name) {
+  return IsNodeNHWCToNCHW(node_name, kVecPermuteNHWCToNCHW);
+}
+
+bool IsVecPermuteNCHWToNHWC(const string& node_name) {
+  return IsNodeNCHWToNHWC(node_name, kVecPermuteNCHWToNHWC);
 }
 
 bool IsConcat(const NodeDef& node) {
@@ -171,9 +262,103 @@ bool IsConcatV1(const NodeDef& node) {
   return op == "Concat";
 }
 
+bool IsMaxPoolV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolV2";
+}
+
 bool IsMaxPoolGradV1(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPoolGrad";
+}
+
+bool IsMaxPoolGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradV2";
+}
+
+bool IsMaxPoolGradGradV1(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGrad";
+}
+
+bool IsMaxPoolGradGradV2(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPoolGradGradV2";
+}
+
+bool IsUnaryGrad(const NodeDef& node) {
+  bool is_unary_grad =
+      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
+      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
+      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
+      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+  return is_unary_grad;
+}
+
+bool IsComparisonOp(const NodeDef& node) {
+  bool is_compare = IsApproximateEqual(node) || IsEqual(node) ||
+                    IsGreater(node) || IsGreaterEqual(node) || IsLess(node) ||
+                    IsLessEqual(node) || IsNotEqual(node);
+  return is_compare;
+}
+
+bool IsLogicalOp(const NodeDef& node) {
+  return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
+}
+
+bool IsBinaryOp(const NodeDef& node) {
+  bool is_binary =
+      IsAdd(node) || IsAtan2(node) || IsComparisonOp(node) || IsComplex(node) ||
+      IsDiv(node) || IsFloorDiv(node) || IsIgamma(node) || IsIgammac(node) ||
+      IsLogicalAnd(node) || IsLogicalOr(node) || IsMaximum(node) ||
+      IsMinimum(node) || IsMod(node) || IsMul(node) || IsPolygamma(node) ||
+      IsPow(node) || IsRealDiv(node) || IsSquaredDifference(node) ||
+      IsSub(node) || IsTruncateDiv(node) || IsTruncateMod(node) || IsZeta(node);
+  return is_binary;
+}
+
+std::vector<int> NonControlInputs(const NodeDef& node) {
+  std::vector<int> pos;
+  for (int i = 0; i < node.input_size(); i++) {
+    if (!IsControlInput(node.input(i))) {
+      pos.push_back(i);
+    }
+  }
+  return pos;
+}
+
+std::vector<int> DataInputPosConcat(const NodeDef& node) {
+  int n = node.attr().at("N").i();
+  std::vector<int> input_pos;
+  int start = (IsConcatV1(node)) ? 1 : 0;
+  int end = start + n;
+  for (int i = start; i < end; i++) {
+    input_pos.push_back(i);
+  }
+  return input_pos;
+}
+
+std::vector<int> DataInputPos(const NodeDef& node) {
+  if (IsSplit(node)) {
+    return {1};
+  }
+  if (IsBinaryOp(node) || IsUnaryGrad(node)) {
+    return {0, 1};
+  }
+  if (IsBetainc(node) || IsSelect(node)) {
+    return {0, 1, 2};
+  }
+  if (IsShapeN(node) || IsIdentityN(node) || IsAddN(node)) {
+    return NonControlInputs(node);
+  }
+  if (IsConcat(node)) {
+    return DataInputPosConcat(node);
+  }
+  if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
+    return {0};
+  }
+  return {};
 }
 
 class GraphProcessor {
@@ -286,23 +471,31 @@ class NodeProcessor : public GraphProcessor {
  protected:
   bool IsPortDimsN(const NodeDef& node, int port, int n) const {
     if (node.attr().find("_output_shapes") != node.attr().end()) {
-      auto shape = node.attr().at("_output_shapes").list().shape(port);
-      if (shape.unknown_rank()) {
-        return false;
-      }
-      if (shape.dim_size() == n) {
-        return true;
+      if (node.attr().at("_output_shapes").list().shape_size() > port) {
+        auto shape = node.attr().at("_output_shapes").list().shape(port);
+        if (shape.unknown_rank()) {
+          return false;
+        }
+        if (shape.dim_size() == n) {
+          return true;
+        }
       }
     }
     return false;
   }
 
-  bool IsDimsN(const NodeDef& node, int n) const {
+  bool IsPortZeroDimsN(const NodeDef& node, int n) const {
     return IsPortDimsN(node, 0, n);
   }
 
-  bool IsDimsFour(const NodeDef& node) const {
-    return NodeProcessor::IsDimsN(node, 4) || IsNodeNCHWToNHWC(node.name());
+  bool IsPortZeroDimsFour(const NodeDef& node) const {
+    return NodeProcessor::IsPortZeroDimsN(node, 4) ||
+           IsTransposeNCHWToNHWC(node.name());
+  }
+
+  bool IsPortDimsFour(const NodeDef& node, int port) const {
+    return NodeProcessor::IsPortDimsN(node, port, 4) ||
+           IsTransposeNCHWToNHWC(node.name());
   }
 
   bool IsNHWC() const {
@@ -331,12 +524,7 @@ class NodeProcessor : public GraphProcessor {
     return nodes_to_preserve_.find(node_->name()) != nodes_to_preserve_.end();
   }
 
-  virtual bool ShouldProcess() const {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
-           IsOnGPU();
-  }
-
-  virtual bool IsOnGPU() const {
+  bool IsOnGPU() const {
     string device_name;
     if (node_->device().empty()) {
       device_name = virtual_placer_.get_canonical_device_name(*node_);
@@ -353,101 +541,31 @@ class NodeProcessor : public GraphProcessor {
     return false;
   }
 
-  void UpdateAttrDataFormat() {
-    if (node_->attr().find("data_format") != node_->attr().end()) {
-      if (node_->attr().at("data_format").s().compare("NHWC") == 0) {
-        string* data_format =
-            node_->mutable_attr()->at("data_format").mutable_s();
-        *data_format = "NCHW";
-      }
-    }
+  virtual bool ShouldProcess() const {
+    return !MustPreserve() && IsNHWC() && IsPortZeroDimsFour(*node_) &&
+           HasOutputs() && IsOnGPU();
   }
 
   virtual void UpdateAttrShape() {
     if (node_->attr().find("_output_shapes") != node_->attr().end()) {
-      auto shape = node_->mutable_attr()
-                       ->at("_output_shapes")
-                       .mutable_list()
-                       ->mutable_shape(0);
-      if (shape->dim_size() == 4) {
-        int64 h = shape->dim(1).size();
-        int64 w = shape->dim(2).size();
-        int64 c = shape->dim(3).size();
-        shape->mutable_dim(1)->set_size(c);
-        shape->mutable_dim(2)->set_size(h);
-        shape->mutable_dim(3)->set_size(w);
+      for (const auto& pos : GetOutputPos()) {
+        auto shape = node_->mutable_attr()
+                         ->at("_output_shapes")
+                         .mutable_list()
+                         ->mutable_shape(pos);
+        if (shape->dim_size() == 4) {
+          int64 h = shape->dim(1).size();
+          int64 w = shape->dim(2).size();
+          int64 c = shape->dim(3).size();
+          shape->mutable_dim(1)->set_size(c);
+          shape->mutable_dim(2)->set_size(h);
+          shape->mutable_dim(3)->set_size(w);
+        }
       }
     }
   }
 
-  void UpdateAttrKSize() {
-    if (node_->attr().find("ksize") != node_->attr().end()) {
-      auto list = node_->mutable_attr()->at("ksize").mutable_list();
-      UpdateTuple(list);
-    }
-  }
-
-  void UpdateAttrStrides() {
-    if (node_->attr().find("strides") != node_->attr().end()) {
-      auto list = node_->mutable_attr()->at("strides").mutable_list();
-      UpdateTuple(list);
-    }
-  }
-
-  Status UpdateAttrValue(NodeDef* node) {
-    TF_RETURN_IF_ERROR(HasAttribute(*node, "value"));
-    Tensor tensor;
-    auto success =
-        tensor.FromProto(node->mutable_attr()->at({"value"}).tensor());
-    if (!success) {
-      LOG(ERROR) << "Failed to parse TensorProto.";
-    }
-    if (tensor.dims() == 0) {
-      int value = tensor.scalar<int>()();
-      value = (value >= 0) ? value : value + 4;
-      if (value == 1 || value == 2) {
-        value = value + 1;
-      } else if (value == 3) {
-        value = 1;
-      }
-      tensor.scalar<int>()() = value;
-    } else if (tensor.dims() == 1) {
-      if (tensor.flat<int>().size() == 4) {
-        int c = tensor.flat<int>()(3);
-        tensor.flat<int>()(3) = tensor.flat<int>()(2);
-        tensor.flat<int>()(2) = tensor.flat<int>()(1);
-        tensor.flat<int>()(1) = c;
-      } else if (tensor.flat<int>().size() == 3) {
-        tensor.flat<int>()(0) = 0;
-        tensor.flat<int>()(1) = 2;
-        tensor.flat<int>()(2) = 3;
-      } else {
-        return Status(error::INVALID_ARGUMENT,
-                      strings::StrCat("Unsupported tensor size: ",
-                                      tensor.flat<int>().size()));
-      }
-    } else if (tensor.dims() == 2) {
-      for (int i = 0; i < 2; i++) {
-        int c = tensor.matrix<int>()(3, i);
-        tensor.matrix<int>()(3, i) = tensor.matrix<int>()(2, i);
-        tensor.matrix<int>()(2, i) = tensor.matrix<int>()(1, i);
-        tensor.matrix<int>()(1, i) = c;
-      }
-    } else {
-      return Status(
-          error::INVALID_ARGUMENT,
-          strings::StrCat("Unsupported dimension size: ", tensor.dims()));
-    }
-    if (tensor.dims() == 0) {
-      tensor.AsProtoField(node->mutable_attr()->at({"value"}).mutable_tensor());
-    } else {
-      tensor.AsProtoTensorContent(
-          node->mutable_attr()->at({"value"}).mutable_tensor());
-    }
-    return Status::OK();
-  }
-
-  Status UpdateAttrValueOfInput(int input_index) {
+  Status UpdateAttrValueOfInput(int input_index, bool permute) {
     auto input_node = node_map_->GetNode(node_->input(input_index));
     // We created a copy of the node, so that we don't modify the original node,
     // which might be used elsewhere. Note that this copy also copies the
@@ -461,13 +579,10 @@ class NodeProcessor : public GraphProcessor {
     *node_->mutable_input(input_index) = node_name;
     node_map_->AddNode(node_name, added_node);
     node_map_->AddOutput(node_name, node_->name());
-    return UpdateAttrValue(added_node);
+    return UpdateAttrValue(added_node, permute);
   }
 
-  virtual std::vector<int> GetInputPos() const {
-    std::vector<int> input_pos = {0};
-    return input_pos;
-  }
+  virtual std::vector<int> GetInputPos() const { return {0}; }
 
   virtual std::set<int> GetOutputPos() const {
     // For most nodes, no need to process control nodes or nodes that use an
@@ -475,42 +590,6 @@ class NodeProcessor : public GraphProcessor {
     // 4D NCHW/NHWC format and thus relevant here.
     std::set<int> output_pos = {0};
     return output_pos;
-  }
-
-  NodeDef* AddNodeTranspose(const string& node_name, const string& input_name,
-                            const string& const_name, DataType data_type,
-                            const TensorShapeProto& input_shape,
-                            bool NHWCToNCHW) {
-    NodeDef* node = graph_->add_node();
-    node_map_->AddNode(node_name, node);
-    node->set_name(node_name);
-    *node->add_input() = input_name;
-    *node->add_input() = const_name;
-    node->set_op("Transpose");
-    node->set_device(node_->device());
-    AttrValue attr_data_type;
-    attr_data_type.set_type(data_type);
-    node->mutable_attr()->insert({"T", attr_data_type});
-    AttrValue attr_data_type_perm;
-    attr_data_type_perm.set_type(DT_INT32);
-    node->mutable_attr()->insert({"Tperm", attr_data_type_perm});
-    if (!input_shape.unknown_rank()) {
-      AttrValue attr_output_shape;
-      auto output_shape = attr_output_shape.mutable_list()->add_shape();
-      if (NHWCToNCHW) {
-        output_shape->add_dim()->set_size(input_shape.dim(0).size());
-        output_shape->add_dim()->set_size(input_shape.dim(3).size());
-        output_shape->add_dim()->set_size(input_shape.dim(1).size());
-        output_shape->add_dim()->set_size(input_shape.dim(2).size());
-      } else {
-        output_shape->add_dim()->set_size(input_shape.dim(0).size());
-        output_shape->add_dim()->set_size(input_shape.dim(2).size());
-        output_shape->add_dim()->set_size(input_shape.dim(3).size());
-        output_shape->add_dim()->set_size(input_shape.dim(1).size());
-      }
-      node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
-    }
-    return node;
   }
 
   virtual Status AddLayoutTransposeToInputs() {
@@ -558,17 +637,30 @@ class NodeProcessor : public GraphProcessor {
             if (op == "Transpose") {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kTransposeNCHWToNHWC, "-");
-              TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+              DataType dtype;
+              if (IsAngle(*node_) || IsComplex(*node_) ||
+                  IsComplexAbs(*node_) || IsImag(*node_) || IsReal(*node_)) {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "Tout"));
+                dtype = node_->attr().at("Tout").type();
+              } else if (IsBitcast(*node_)) {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "type"));
+                dtype = node_->attr().at("type").type();
+              } else if (IsLogicalOp(*node_) || IsComparisonOp(*node_)) {
+                dtype = DT_BOOL;
+              } else {
+                TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
+                dtype = node_->attr().at("T").type();
+              }
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
               AddNodeTranspose(
-                  added_node_name, input, const_name,
-                  node_->attr().at("T").type(),
-                  node_->attr().at("_output_shapes").list().shape(0), false);
+                  added_node_name, input, const_name, dtype,
+                  node_->attr().at("_output_shapes").list().shape(input_port),
+                  false);
             } else if (op == "DataFormatVecPermute") {
               added_node_name = AddPrefixToNodeName(added_node_base_name,
                                                     kVecPermuteNCHWToNHWC, "-");
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "out_type"));
-              DataType dtype = (IsSplit(*node_))
+              DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
                                    ? DT_INT32
                                    : node_->attr().at("out_type").type();
               AddNodeDataFormatOp(added_node_name, input, op, dtype, false);
@@ -595,6 +687,137 @@ class NodeProcessor : public GraphProcessor {
 
   virtual Status CustomizedProcessing() { return Status::OK(); }
 
+  Status UpdateOrTransformParamInput(int param_index, const string& op,
+                                     DataType dtype) {
+    auto param_node = node_map_->GetNode(node_->input(param_index));
+    bool permute = (op == "DataFormatVecPermute") ? true : false;
+    if (IsConstant(*param_node)) {
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(param_index, permute));
+    } else {
+      AddDataFormatTranformToParamInput(op, param_index, dtype);
+    }
+    return Status::OK();
+  }
+
+  NodeDef* node_;
+  bool is_in_frame_;
+
+ private:
+  void UpdateAttrKSize() {
+    if (node_->attr().find("ksize") != node_->attr().end()) {
+      auto list = node_->mutable_attr()->at("ksize").mutable_list();
+      UpdateTuple(list);
+    }
+  }
+
+  void UpdateAttrStrides() {
+    if (node_->attr().find("strides") != node_->attr().end()) {
+      auto list = node_->mutable_attr()->at("strides").mutable_list();
+      UpdateTuple(list);
+    }
+  }
+
+  void UpdateAttrDataFormat() {
+    if (node_->attr().find("data_format") != node_->attr().end()) {
+      if (node_->attr().at("data_format").s().compare("NHWC") == 0) {
+        string* data_format =
+            node_->mutable_attr()->at("data_format").mutable_s();
+        *data_format = "NCHW";
+      }
+    }
+  }
+
+  Status UpdateAttrValue(NodeDef* node, bool permute) {
+    TF_RETURN_IF_ERROR(HasAttribute(*node, "value"));
+    Tensor tensor;
+    auto success =
+        tensor.FromProto(node->mutable_attr()->at({"value"}).tensor());
+    if (!success) {
+      LOG(ERROR) << "Failed to parse TensorProto.";
+    }
+
+    if (permute) {
+      if (tensor.dims() == 1) {
+        if (tensor.flat<int>().size() == 4) {
+          int c = tensor.flat<int>()(3);
+          tensor.flat<int>()(3) = tensor.flat<int>()(2);
+          tensor.flat<int>()(2) = tensor.flat<int>()(1);
+          tensor.flat<int>()(1) = c;
+        } else {
+          return Status(error::INVALID_ARGUMENT,
+                        strings::StrCat("Unsupported tensor size: ",
+                                        tensor.flat<int>().size()));
+        }
+      } else if (tensor.dims() == 2) {
+        for (int i = 0; i < 2; i++) {
+          int c = tensor.matrix<int>()(3, i);
+          tensor.matrix<int>()(3, i) = tensor.matrix<int>()(2, i);
+          tensor.matrix<int>()(2, i) = tensor.matrix<int>()(1, i);
+          tensor.matrix<int>()(1, i) = c;
+        }
+      } else {
+        return Status(
+            error::INVALID_ARGUMENT,
+            strings::StrCat("Unsupported dimension size: ", tensor.dims()));
+      }
+    } else {
+      for (int i = 0; i < tensor.flat<int>().size(); i++) {
+        int value = tensor.flat<int>()(i);
+        value = (value >= 0) ? value : value + 4;
+        if (value == 1 || value == 2) {
+          value = value + 1;
+        } else if (value == 3) {
+          value = 1;
+        }
+        tensor.flat<int>()(i) = value;
+      }
+    }
+
+    if (tensor.dims() == 0) {
+      tensor.AsProtoField(node->mutable_attr()->at({"value"}).mutable_tensor());
+    } else {
+      tensor.AsProtoTensorContent(
+          node->mutable_attr()->at({"value"}).mutable_tensor());
+    }
+    return Status::OK();
+  }
+
+  NodeDef* AddNodeTranspose(const string& node_name, const string& input_name,
+                            const string& const_name, DataType data_type,
+                            const TensorShapeProto& input_shape,
+                            bool NHWCToNCHW) {
+    NodeDef* node = graph_->add_node();
+    node_map_->AddNode(node_name, node);
+    node->set_name(node_name);
+    *node->add_input() = input_name;
+    *node->add_input() = const_name;
+    node->set_op("Transpose");
+    node->set_device(node_->device());
+    AttrValue attr_data_type;
+    attr_data_type.set_type(data_type);
+    node->mutable_attr()->insert({"T", attr_data_type});
+    AttrValue attr_data_type_perm;
+    attr_data_type_perm.set_type(DT_INT32);
+    node->mutable_attr()->insert({"Tperm", attr_data_type_perm});
+    if (!input_shape.unknown_rank()) {
+      AttrValue attr_output_shape;
+      auto output_shape = attr_output_shape.mutable_list()->add_shape();
+      if (NHWCToNCHW) {
+        output_shape->add_dim()->set_size(input_shape.dim(0).size());
+        output_shape->add_dim()->set_size(input_shape.dim(3).size());
+        output_shape->add_dim()->set_size(input_shape.dim(1).size());
+        output_shape->add_dim()->set_size(input_shape.dim(2).size());
+      } else {
+        output_shape->add_dim()->set_size(input_shape.dim(0).size());
+        output_shape->add_dim()->set_size(input_shape.dim(2).size());
+        output_shape->add_dim()->set_size(input_shape.dim(3).size());
+        output_shape->add_dim()->set_size(input_shape.dim(1).size());
+      }
+      node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
+    }
+    return node;
+  }
+
   NodeDef* AddNodePermNHWCToNCHW(const string& suffix,
                                  const string& depended_node,
                                  const string& device) {
@@ -617,51 +840,13 @@ class NodeProcessor : public GraphProcessor {
     return const_node;
   }
 
-  NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
-                               const string& op, DataType dtype,
-                               bool nhwc_to_nchw) {
-    NodeDef* added_node = graph_->add_node();
-    added_node->set_name(name);
-    added_node->set_op(op);
-    node_map_->AddNode(added_node->name(), added_node);
-    added_node->set_device(node_->device());
-    AttrValue attr_data_type;
-    attr_data_type.set_type(dtype);
-    added_node->mutable_attr()->insert({"T", attr_data_type});
-    string src_format = (nhwc_to_nchw) ? "NHWC" : "NCHW";
-    string dst_format = (nhwc_to_nchw) ? "NCHW" : "NHWC";
-    AttrValue attr_format;
-    attr_format.set_s(src_format);
-    added_node->mutable_attr()->insert({"src_format", attr_format});
-    attr_format.set_s(dst_format);
-    added_node->mutable_attr()->insert({"dst_format", attr_format});
-    *added_node->add_input() = input_name;
-    return added_node;
-  }
-
-  void AddDataFormatTranformToInput(const string& op, int input_pos,
-                                    DataType dtype) {
-    string name = strings::StrCat(kVecPermuteNHWCToNCHW, "_", node_->name(),
-                                  "_", input_pos);
-    auto added_node =
-        AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype, true);
-    *node_->mutable_input(input_pos) = added_node->name();
-    node_map_->UpdateOutput(added_node->input(0), node_->name(),
-                            added_node->name());
-    node_map_->AddOutput(added_node->name(), node_->name());
-  }
-
-  NodeDef* node_;
-  bool is_in_frame_;
-
- private:
   string GetOrAddNodePermNHWCToNCHW(int pos) {
     string const_name;
     if (is_in_frame_) {
       string suffix = strings::StrCat(node_->name(), "_", pos);
       string input = NodeName(node_->input(pos));
       string depended_node;
-      if (!IsNodeNCHWToNHWC(input)) {
+      if (!IsTransposeNCHWToNHWC(input)) {
         depended_node = input;
       } else {
         auto input_node = node_map_->GetNode(input);
@@ -696,6 +881,41 @@ class NodeProcessor : public GraphProcessor {
     list->set_i(2, h);
     list->set_i(3, w);
   }
+
+  NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
+                               const string& op, DataType dtype,
+                               bool nhwc_to_nchw) {
+    NodeDef* added_node = graph_->add_node();
+    added_node->set_name(name);
+    added_node->set_op(op);
+    node_map_->AddNode(added_node->name(), added_node);
+    added_node->set_device(node_->device());
+    AttrValue attr_data_type;
+    attr_data_type.set_type(dtype);
+    added_node->mutable_attr()->insert({"T", attr_data_type});
+    string src_format = (nhwc_to_nchw) ? "NHWC" : "NCHW";
+    string dst_format = (nhwc_to_nchw) ? "NCHW" : "NHWC";
+    AttrValue attr_format;
+    attr_format.set_s(src_format);
+    added_node->mutable_attr()->insert({"src_format", attr_format});
+    attr_format.set_s(dst_format);
+    added_node->mutable_attr()->insert({"dst_format", attr_format});
+    *added_node->add_input() = input_name;
+    return added_node;
+  }
+
+  void AddDataFormatTranformToParamInput(const string& op, int input_pos,
+                                         DataType dtype) {
+    string prefix = (op == "DataFormatVecPermute") ? kVecPermuteNHWCToNCHW
+                                                   : kDimMapNHWCToNCHW;
+    string name = strings::StrCat(prefix, "_", node_->name(), "_", input_pos);
+    auto added_node =
+        AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype, true);
+    *node_->mutable_input(input_pos) = added_node->name();
+    node_map_->UpdateOutput(added_node->input(0), node_->name(),
+                            added_node->name());
+    node_map_->AddOutput(added_node->name(), node_->name());
+  }
 };
 
 class AvgPoolGradProcessor : public NodeProcessor {
@@ -704,11 +924,10 @@ class AvgPoolGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {1};
-    return input_pos;
+  std::vector<int> GetInputPos() const override { return {1}; }
+  Status CustomizedProcessing() override {
+    return UpdateOrTransformParamInput(0, "DataFormatVecPermute", DT_INT32);
   }
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
 };
 
 class BiasAddGradProcessor : public NodeProcessor {
@@ -726,7 +945,9 @@ class BiasAddGradProcessor : public NodeProcessor {
     }
     auto input = node_map_->GetNode(node_->input(0));
     if (input) {
-      if (IsNHWC() && IsDimsFour(*input)) {
+      int port;
+      ParseNodeName(node_->input(0), &port);
+      if (IsNHWC() && IsPortDimsFour(*input, port)) {
         return true;
       }
     }
@@ -743,8 +964,8 @@ class Conv2DProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsNHWC() && IsDimsFour(*node_) && HasOutputs() &&
-           (!IsGemmUsed() || no_gemm_) && IsOnGPU();
+    return !MustPreserve() && IsNHWC() && IsPortZeroDimsFour(*node_) &&
+           HasOutputs() && (!IsGemmUsed() || no_gemm_) && IsOnGPU();
   }
 
   TensorShapeProto GetShape(const string& input_name) const {
@@ -817,10 +1038,7 @@ class Conv2DBackpropFilterProcessor : public Conv2DProcessor {
     return Conv2DProcessor::IsGemmUsed(filter_shape, input_shape);
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 2}; }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
   // No need to update output shape, as it is always of shape
@@ -841,19 +1059,10 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     return Conv2DProcessor::IsGemmUsed(filter_shape, input_shape);
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {2};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {2}; }
 
   Status CustomizedProcessing() override {
-    auto input_size_node = node_map_->GetNode(node_->input(0));
-    if (IsConstant(*input_size_node)) {
-      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(0));
-    } else {
-      AddDataFormatTranformToInput("DataFormatVecPermute", 0, DT_INT32);
-    }
-    return Status::OK();
+    return UpdateOrTransformParamInput(0, "DataFormatVecPermute", DT_INT32);
   }
 };
 
@@ -867,10 +1076,7 @@ class FusedBatchNormGradProcessor : public NodeProcessor {
     return NodeProcessor::ShouldProcess() && IsTraining();
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1};
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return {0, 1}; }
 
  private:
   bool IsTraining() const {
@@ -889,9 +1095,47 @@ class MaxPoolGradProcessor : public NodeProcessor {
       : NodeProcessor(opt_cxt) {}
 
  protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1, 2};
-    return input_pos;
+  std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
+};
+
+class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
+ public:
+  explicit MaxPoolGradV2Processor(const OptimizeContext& opt_cxt)
+      : MaxPoolGradProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    for (int i = 3; i < node_->input_size(); i++) {
+      TF_RETURN_IF_ERROR(
+          UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
+    }
+    return Status::OK();
+  }
+};
+
+class MaxPoolV2Processor : public NodeProcessor {
+ public:
+  explicit MaxPoolV2Processor(const OptimizeContext& opt_cxt)
+      : NodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    // We check data_input's shape instead, because the shape inference of
+    // MaxPoolV2 is not able to infer the shape when ksize or strides is not
+    // constant.
+    auto data_input = node_map_->GetNode(node_->input(0));
+    int port;
+    ParseNodeName(node_->input(0), &port);
+    return !MustPreserve() && IsNHWC() && IsPortDimsFour(*data_input, port) &&
+           HasOutputs() && IsOnGPU();
+  }
+
+  Status CustomizedProcessing() override {
+    for (int i = 1; i < node_->input_size(); i++) {
+      TF_RETURN_IF_ERROR(
+          UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
+    }
+    return Status::OK();
   }
 };
 
@@ -902,7 +1146,7 @@ class AgnosticNodeProcessor : public NodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() && IsOnGPU();
   }
 
@@ -919,7 +1163,9 @@ class AgnosticNodeProcessor : public NodeProcessor {
     while (!queue.empty()) {
       NodeDef* current_node = queue.front();
       queue.pop_front();
-      if (IsNodeNCHWToNHWC(current_node->name())) {
+      if (IsTransposeNCHWToNHWC(current_node->name()) ||
+          IsDimMapNCHWToNHWC(current_node->name()) ||
+          IsVecPermuteNCHWToNHWC(current_node->name())) {
         return true;
       }
       // We only continue searching if the path is connected through
@@ -937,31 +1183,6 @@ class AgnosticNodeProcessor : public NodeProcessor {
   }
 
   bool IsNodeAfterNCHWToNHWC() const { return IsNodeAfterNCHWToNHWC(*node_); }
-
- private:
-  std::vector<int> DataInputPos(const NodeDef& node) const {
-    if (IsSplit(node)) {
-      return {1};
-    }
-    if (IsConcatV1(node)) {
-      return {1};
-    }
-    if (IsAdd(node) || IsMul(node) || IsRealDiv(node) ||
-        IsSquaredDifference(node) || IsSub(node)) {
-      return {0, 1};
-    }
-    if (IsShapeN(node)) {
-      std::vector<int> pos;
-      for (int i = 0; i < node.input_size(); i++) {
-        pos.push_back(i);
-      }
-      return pos;
-    }
-    if (node.input_size() > 0 && !IsControlInput(node.input(0))) {
-      return {0};
-    }
-    return {};
-  }
 };
 
 class AddNProcessor : public AgnosticNodeProcessor {
@@ -971,12 +1192,7 @@ class AddNProcessor : public AgnosticNodeProcessor {
 
  protected:
   std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    input_pos.reserve(node_->input_size());
-    for (int i = 0; i < node_->input_size(); i++) {
-      input_pos.push_back(i);
-    }
-    return input_pos;
+    return NonControlInputs(*node_);
   }
 };
 
@@ -987,7 +1203,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() &&
            (IsNDOperateWithMD(4, 0) || IsNDOperateWithMD(4, 1) ||
             IsNDOperateWithMD(4, 4) || IsNDOperateWithMD(0, 4) ||
@@ -999,10 +1215,14 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     std::vector<int> input_pos;
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
-    if (IsDimsFour(*input0)) {
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    int input1_port;
+    ParseNodeName(node_->input(1), &input1_port);
+    if (IsPortDimsFour(*input0, input0_port)) {
       input_pos.push_back(0);
     }
-    if (IsDimsFour(*input1)) {
+    if (IsPortDimsFour(*input1, input1_port)) {
       input_pos.push_back(1);
     }
     return input_pos;
@@ -1011,9 +1231,16 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
   bool IsNDOperateWithMD(int n, int m) const {
     auto input0 = node_map_->GetNode(node_->input(0));
     auto input1 = node_map_->GetNode(node_->input(1));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    int input1_port;
+    ParseNodeName(node_->input(1), &input1_port);
+
     if (input0 && input1) {
-      bool input0_is_n = (n == 4) ? IsDimsFour(*input0) : IsDimsN(*input0, n);
-      bool input1_is_m = (m == 4) ? IsDimsFour(*input1) : IsDimsN(*input1, m);
+      bool input0_is_n = (n == 4) ? IsPortDimsFour(*input0, input0_port)
+                                  : IsPortDimsN(*input0, input0_port, n);
+      bool input1_is_m = (m == 4) ? IsPortDimsFour(*input1, input1_port)
+                                  : IsPortDimsN(*input1, input1_port, m);
       return input0_is_n && input1_is_m;
     }
     return false;
@@ -1082,8 +1309,14 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
           AddPrefixToNodeName(base_name, kReshapeConst, "-");
       auto input_node = node_map_->GetNode(node_->input(vector_index));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
-      int vector_size =
-          input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
+      int port;
+      ParseNodeName(node_->input(vector_index), &port);
+      int vector_size = input_node->attr()
+                            .at("_output_shapes")
+                            .list()
+                            .shape(port)
+                            .dim(0)
+                            .size();
       AddNodeShapeConst(shape_const_node_name, vector_size,
                         NodeName(node_->input(vector_index)));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
@@ -1104,106 +1337,45 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   explicit ConcatProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {
     // For Concat,  the concat axis is the first input; for ConcatV2,
-    // the last input.
-    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : (node_->input_size() - 1);
+    // the last input. Note that if with control inputs, the number of inputs
+    // is larger than the integer attribute N.
+    int n = node_->attr().at("N").i();
+    axis_node_pos_ = (IsConcatV1(*node_)) ? 0 : n;
   }
 
  protected:
   std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    int start = (IsConcatV1(*node_)) ? 1 : 0;
-    int end =
-        (IsConcatV1(*node_)) ? node_->input_size() : (node_->input_size() - 1);
-    for (int i = start; i < end; i++) {
-      input_pos.push_back(i);
-    }
-    return input_pos;
+    return DataInputPosConcat(*node_);
   }
 
   Status CustomizedProcessing() override {
-    auto dim_node = node_map_->GetNode(node_->input(axis_node_pos_));
-    if (IsConstant(*dim_node)) {
-      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(axis_node_pos_));
-    } else {
-      DataType dtype =
-          (IsSplit(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
-      AddDataFormatTranformToInput("DataFormatDimMap", axis_node_pos_, dtype);
-    }
+    DataType dtype =
+        (IsConcatV1(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
+    TF_RETURN_IF_ERROR(
+        UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap", dtype));
     return Status::OK();
   }
+
   int axis_node_pos_;
 };
 
-class PadProcessor : public AgnosticNodeProcessor {
+class FillProcessor : public AgnosticNodeProcessor {
  public:
-  explicit PadProcessor(const OptimizeContext& opt_cxt)
+  explicit FillProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsFour(*node_) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && PaddingSupported() && IsOnGPU();
-  }
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
+  std::vector<int> GetInputPos() const override { return {}; }
 
- private:
-  bool PaddingSupported() const {
-    auto pad_const = node_map_->GetNode(node_->input(1));
-    bool is_const = IsConstant(*pad_const);
-    bool is_4D = false;
-    if (HasAttribute(*pad_const, "value").ok()) {
-      Tensor tensor;
-      if (tensor.FromProto(pad_const->mutable_attr()->at({"value"}).tensor())) {
-        if (tensor.dims() == 2) {
-          if (tensor.dim_size(0) == 4 && tensor.dim_size(1) == 2) {
-            is_4D = true;
-          }
-        }
-      }
-    }
-    return is_const && is_4D;
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("index_type").type();
+    return UpdateOrTransformParamInput(0, "DataFormatVecPermute", dtype);
   }
 };
 
-class SplitProcessor : public ConcatProcessor {
+class IdentityNProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SplitProcessor(const OptimizeContext& opt_cxt)
-      : ConcatProcessor(opt_cxt) {
-    axis_node_pos_ = 0;
-  }
-
- protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {1};
-    return input_pos;
-  }
-
-  std::set<int> GetOutputPos() const override {
-    std::set<int> output_pos{0};
-    if (HasAttribute(*node_, "num_split").ok()) {
-      for (int i = 1; i < node_->attr().at("num_split").i(); i++) {
-        output_pos.insert(i);
-      }
-    }
-    return output_pos;
-  }
-};
-
-class ReluGradProcessor : public AgnosticNodeProcessor {
- public:
-  explicit ReluGradProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
-
- protected:
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos = {0, 1};
-    return input_pos;
-  }
-};
-
-class ShapeProcessor : public AgnosticNodeProcessor {
- public:
-  explicit ShapeProcessor(const OptimizeContext& opt_cxt)
+  explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
@@ -1216,9 +1388,15 @@ class ShapeProcessor : public AgnosticNodeProcessor {
     std::vector<int> input_pos;
     for (int i = 0; i < node_->input_size(); i++) {
       auto input = node_map_->GetNode(node_->input(i));
-      if (IsDimsFour(*input) &&
-          (IsNodeAfterNCHWToNHWC(*input) || IsNodeNCHWToNHWC(input->name()))) {
-        input_pos.push_back(i);
+      int port;
+      ParseNodeName(node_->input(i), &port);
+      // Skip control input.
+      if (port != -1) {
+        if (IsPortDimsFour(*input, port) &&
+            (IsNodeAfterNCHWToNHWC(*input) ||
+             IsTransposeNCHWToNHWC(input->name()))) {
+          input_pos.push_back(i);
+        }
       }
     }
     return input_pos;
@@ -1231,12 +1409,134 @@ class ShapeProcessor : public AgnosticNodeProcessor {
     }
     return output_pos;
   }
+};
 
+class ShapeProcessor : public IdentityNProcessor {
+ public:
+  explicit ShapeProcessor(const OptimizeContext& opt_cxt)
+      : IdentityNProcessor(opt_cxt) {}
+
+ protected:
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
   Status CustomizedProcessing() override {
     return AddTransformToOutputs("DataFormatVecPermute");
   }
+};
+
+class MergeProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit MergeProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    return !MustPreserve() && IsPortZeroDimsFour(*node_) && HasOutputs() &&
+           IsEveryInputAfterNCHWToNHWC() && IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override {
+    std::vector<int> input_pos;
+    input_pos.reserve(node_->input_size());
+    for (int i = 0; i < node_->input_size(); i++) {
+      input_pos.push_back(i);
+    }
+    return input_pos;
+  }
+
+ private:
+  bool IsEveryInputAfterNCHWToNHWC() const {
+    for (const auto& input : node_->input()) {
+      auto input_node = node_map_->GetNode(input);
+      if (IsNodeAfterNCHWToNHWC(*input_node) ||
+          IsTransposeNCHWToNHWC(input_node->name())) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+};
+
+class PadProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit PadProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tpaddings").type();
+    return UpdateOrTransformParamInput(1, "DataFormatVecPermute", dtype);
+  }
+};
+
+class ReverseProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit ReverseProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tidx").type();
+    return UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype);
+  }
+};
+
+class SplitProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SplitProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {
+    axis_node_pos_ = 0;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {1}; }
+
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos{0};
+    if (HasAttribute(*node_, "num_split").ok()) {
+      for (int i = 1; i < node_->attr().at("num_split").i(); i++) {
+        output_pos.insert(i);
+      }
+    }
+    return output_pos;
+  }
+
+  Status CustomizedProcessing() override {
+    return UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap",
+                                       DT_INT32);
+  }
+
+  int axis_node_pos_;
+};
+
+class SplitVProcessor : public SplitProcessor {
+ public:
+  explicit SplitVProcessor(const OptimizeContext& opt_cxt)
+      : SplitProcessor(opt_cxt) {
+    axis_node_pos_ = 2;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {0}; }
+};
+
+class TernaryOpProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TernaryOpProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
+};
+
+class UnaryGradProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {0, 1}; }
 };
 
 class SliceProcessor : public AgnosticNodeProcessor {
@@ -1248,13 +1548,9 @@ class SliceProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
-      auto index_node = node_map_->GetNode(node_->input(i));
-      if (IsConstant(*index_node)) {
-        TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
-      } else {
-        AddDataFormatTranformToInput("DataFormatVecPermute", i,
-                                     node_->attr().at("Index").type());
-      }
+      DataType dtype = node_->attr().at("Index").type();
+      TF_RETURN_IF_ERROR(
+          UpdateOrTransformParamInput(i, "DataFormatVecPermute", dtype));
     }
     return Status::OK();
   }
@@ -1267,7 +1563,7 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsDimsN(*node_, 2) && HasOutputs() &&
+    return !MustPreserve() && IsPortZeroDimsN(*node_, 2) && HasOutputs() &&
            IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW() &&
            IsOnGPU();
   }
@@ -1275,12 +1571,15 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
   bool IsInputConvertible() const {
+    int input_port;
     auto input = node_map_->GetNode(node_->input(0));
-    if (IsNodeNCHWToNHWC(input->name())) {
+    ParseNodeName(node_->input(0), &input_port);
+    if (IsTransposeNCHWToNHWC(input->name())) {
       input = node_map_->GetNode(input->input(0));
+      ParseNodeName(input->input(0), &input_port);
     }
     if (input->attr().find("_output_shapes") != input->attr().end()) {
-      auto shape = input->attr().at("_output_shapes").list().shape(0);
+      auto shape = input->attr().at("_output_shapes").list().shape(input_port);
       if (shape.dim_size() != 4) {
         return false;
       }
@@ -1318,40 +1617,27 @@ class SumProcessor : public AgnosticNodeProcessor {
  protected:
   bool ShouldProcess() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
+    int port;
+    ParseNodeName(node_->input(0), &port);
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsDimsFour(*input0) && IsAlongDimNHW() && IsOnGPU();
+           IsPortDimsFour(*input0, port) && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
-  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(1); }
-
- private:
-  bool IsAlongDimNHW() const {
-    NodeDef* reduction_indices = node_map_->GetNode(node_->input(1));
-    if (!IsConstant(*reduction_indices)) {
-      return false;
-    }
-    Tensor tensor;
-    if (reduction_indices->attr().find({"value"}) ==
-        reduction_indices->attr().end()) {
-      return false;
-    }
-    auto success =
-        tensor.FromProto(reduction_indices->attr().at({"value"}).tensor());
-    if (!success) {
-      LOG(ERROR) << "Failed to parse TensorProto.";
-      return false;
-    }
-    if (tensor.flat<int>().size() != 3) {
-      return false;
-    }
-    if (tensor.flat<int>()(0) == 0 && tensor.flat<int>()(1) == 1 &&
-        tensor.flat<int>()(2) == 2) {
-      return true;
-    }
-    return false;
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tidx").type();
+    return UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype);
   }
+};
+
+class SwitchProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SwitchProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::set<int> GetOutputPos() const override { return {0, 1}; }
 };
 
 class DataLayoutOptimizer : GraphProcessor {
@@ -1422,10 +1708,14 @@ class DataLayoutOptimizer : GraphProcessor {
               new Conv2DBackpropFilterProcessor(opt_cxt, true));
         } else if (IsDepthwiseConv2dNativeBackpropInput(*node)) {
           node_processor.reset(new Conv2DBackpropInputProcessor(opt_cxt, true));
-        } else if (IsFusedBatchNormGradV1(*node)) {
+        } else if (IsFusedBatchNormGrad(*node)) {
           node_processor.reset(new FusedBatchNormGradProcessor(opt_cxt));
-        } else if (IsMaxPoolGradV1(*node)) {
+        } else if (IsMaxPoolV2(*node)) {
+          node_processor.reset(new MaxPoolV2Processor(opt_cxt));
+        } else if (IsMaxPoolGradV1(*node) || IsMaxPoolGradGradV1(*node)) {
           node_processor.reset(new MaxPoolGradProcessor(opt_cxt));
+        } else if (IsMaxPoolGradV2(*node) || IsMaxPoolGradGradV2(*node)) {
+          node_processor.reset(new MaxPoolGradV2Processor(opt_cxt));
         } else {
           node_processor.reset(new NodeProcessor(opt_cxt));
         }
@@ -1450,25 +1740,38 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (IsAdd(*node) || IsMul(*node) || IsRealDiv(*node) ||
-                     IsSquaredDifference(*node) || IsSub(*node)) {
+          } else if (IsBetainc(*node) || IsSelect(*node)) {
+            node_processor.reset(new TernaryOpProcessor(opt_cxt));
+          } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
           } else if (IsConcat(*node)) {
             node_processor.reset(new ConcatProcessor(opt_cxt));
+          } else if (IsFill(*node)) {
+            node_processor.reset(new FillProcessor(opt_cxt));
+          } else if (IsIdentityN(*node)) {
+            node_processor.reset(new IdentityNProcessor(opt_cxt));
+          } else if (IsMerge(*node)) {
+            node_processor.reset(new MergeProcessor(opt_cxt));
           } else if (IsPad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
-          } else if (IsReluGrad(*node)) {
-            node_processor.reset(new ReluGradProcessor(opt_cxt));
+          } else if (IsReverseV2(*node)) {
+            node_processor.reset(new ReverseProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
             node_processor.reset(new SplitProcessor(opt_cxt));
+          } else if (IsSplitV(*node)) {
+            node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsSum(*node)) {
             node_processor.reset(new SumProcessor(opt_cxt));
+          } else if (IsSwitch(*node)) {
+            node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsUnaryGrad(*node)) {
+            node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {
             node_processor.reset(new AgnosticNodeProcessor(opt_cxt));
           }
@@ -1486,8 +1789,16 @@ class DataLayoutOptimizer : GraphProcessor {
     for (int i = 0; i < graph_->node_size(); i++) {
       auto node = graph_->mutable_node(i);
       node->mutable_attr()->erase("_output_shapes");
-      if (IsNodeNHWCToNCHW(node->name())) {
-        if (IsNodeNCHWToNHWC(node->input(0))) {
+      if (IsTransposeNHWCToNCHW(node->name()) ||
+          IsDimMapNHWCToNCHW(node->name()) ||
+          IsVecPermuteNHWCToNCHW(node->name())) {
+        bool transpose_pair = IsTransposeNHWCToNCHW(node->name()) &&
+                              IsTransposeNCHWToNHWC(node->input(0));
+        bool dim_map_pair = IsDimMapNHWCToNCHW(node->name()) &&
+                            IsDimMapNCHWToNHWC(node->input(0));
+        bool vec_permute_pair = IsVecPermuteNHWCToNCHW(node->name()) &&
+                                IsVecPermuteNCHWToNHWC(node->input(0));
+        if (transpose_pair || dim_map_pair || vec_permute_pair) {
           const string& trans_first = node->input(0);
           const string& trans_second = node->name();
           auto outputs = node_map_->GetOutputs(trans_second);

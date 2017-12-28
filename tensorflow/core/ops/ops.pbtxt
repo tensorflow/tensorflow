@@ -6395,12 +6395,12 @@ op {
   name: "DataFormatDimMap"
   input_arg {
     name: "x"
-    description: "Scalar. Dimension index in source data format. Must be in the range [-4, 4)."
+    description: "A Tensor with each element as a dimension index in source data format.\nMust be in the range [-4, 4)."
     type_attr: "T"
   }
   output_arg {
     name: "y"
-    description: "Scalar. Dimension index in destination data format."
+    description: "A Tensor with each element as a dimension index in destination data format."
     type_attr: "T"
   }
   attr {
@@ -6439,12 +6439,12 @@ op {
   name: "DataFormatVecPermute"
   input_arg {
     name: "x"
-    description: "Vector in source data format. Must be of size 4."
+    description: "Vector of size 4 or Tensor of shape (4, 2) in source data format."
     type_attr: "T"
   }
   output_arg {
     name: "y"
-    description: "Vector in destination data format. Must be of size 4."
+    description: "Vector of size 4 or Tensor of shape (4, 2) in destination data format."
     type_attr: "T"
   }
   attr {
@@ -6476,8 +6476,8 @@ op {
     }
     description: "destination data format."
   }
-  summary: "Returns the permuted vector in the destination data format given the one in"
-  description: "the source data format."
+  summary: "Returns the permuted vector/tensor in the destination data format given the"
+  description: "one in the source data format."
 }
 op {
   name: "DatasetToSingleElement"
@@ -6868,6 +6868,29 @@ op {
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
 op {
+  name: "DecodeCompressed"
+  input_arg {
+    name: "bytes"
+    description: "A Tensor of string which is compressed."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor with the same shape as input `bytes`, uncompressed\nfrom bytes."
+    type: DT_STRING
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+  }
+  summary: "Decompress strings."
+  description: "This op decompresses each element of the `bytes` input `Tensor`, which\nis assumed to be compressed using the given `compression_type`.\n\nThe `output` is a string `Tensor` of the same shape as `bytes`,\neach element containing the decompressed data from the corresponding\nelement in `bytes`."
+}
+op {
   name: "DecodeGif"
   input_arg {
     name: "contents"
@@ -7169,7 +7192,7 @@ op {
     has_minimum: true
     minimum: 1
   }
-  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -9230,7 +9253,7 @@ op {
   input_arg {
     name: "dims"
     description: "1-D. Represents the shape of the output tensor."
-    type: DT_INT32
+    type_attr: "index_type"
   }
   input_arg {
     name: "value"
@@ -9244,6 +9267,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "index_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Creates a tensor filled with a scalar value."
   description: "This operation creates a tensor of shape `dims` and fills it with `value`.\n\nFor example:\n\n```\n# Output tensor has shape [2, 3].\nfill([2, 3], 9) ==> [[9, 9, 9]\n                     [9, 9, 9]]\n```"
@@ -10875,6 +10911,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -16950,6 +16988,14 @@ op {
     name: "sloppy"
     type: DT_BOOL
   }
+  input_arg {
+    name: "buffer_output_elements"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "prefetch_input_elements"
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -17186,6 +17232,88 @@ op {
     has_minimum: true
   }
   summary: "Transforms a vector of brain.Example protos (as strings) into typed tensors."
+}
+op {
+  name: "ParseSingleExample"
+  input_arg {
+    name: "serialized"
+    description: "A vector containing a batch of binary serialized Example protos."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_defaults"
+    description: "A list of Tensors (some may be empty), whose length matches\nthe length of `dense_keys`. dense_defaults[j] provides default values\nwhen the example\'s feature_map lacks dense_key[j].  If an empty Tensor is\nprovided for dense_defaults[j], then the Feature dense_keys[j] is required.\nThe input type is inferred from dense_defaults[j], even when it\'s empty.\nIf dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,\nthen the shape of dense_defaults[j] must match that of dense_shapes[j].\nIf dense_shapes[j] has an undefined major dimension (variable strides dense\nfeature), dense_defaults[j] must contain a single element:\nthe padding element."
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_types"
+  }
+  output_arg {
+    name: "sparse_shapes"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "dense_values"
+    type_list_attr: "Tdense"
+  }
+  attr {
+    name: "num_sparse"
+    type: "int"
+    description: "The number of sparse features to be parsed from the example. This\nmust match the lengths of `sparse_keys` and `sparse_types`."
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_keys"
+    type: "list(string)"
+    description: "A list of `num_sparse` strings.\nThe keys expected in the Examples\' features associated with sparse values."
+    has_minimum: true
+  }
+  attr {
+    name: "dense_keys"
+    type: "list(string)"
+    description: "The keys expected in the Examples\' features associated with dense\nvalues."
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    description: "A list of `num_sparse` types; the data types of data in each\nFeature given in sparse_keys.\nCurrently the ParseSingleExample op supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    description: "The data types of data in each Feature given in dense_keys.\nThe length of this list must match the length of `dense_keys`.\nCurrently the ParseSingleExample op supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    description: "The shapes of data in each Feature given in dense_keys.\nThe length of this list must match the length of `dense_keys`.  The\nnumber of elements in the Feature corresponding to dense_key[j] must\nalways equal dense_shapes[j].NumEntries().  If dense_shapes[j] ==\n(D0, D1, ..., DN) then the shape of output Tensor dense_values[j]\nwill be (D0, D1, ..., DN): In the case dense_shapes[j] = (-1, D1,\n..., DN), the shape of the output Tensor dense_values[j] will be (M,\nD1, .., DN), where M is the number of blocks of elements of length\nD1 * .... * DN, in the input."
+    has_minimum: true
+  }
+  summary: "Transforms a tf.Example proto (as a string) into typed tensors."
 }
 op {
   name: "ParseSingleSequenceExample"
@@ -19967,6 +20095,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -21183,6 +21313,14 @@ op {
       i: 32
     }
     description: "The batch size."
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The type of compression for the file. Currently ZLIB and\nGZIP are supported. Defaults to none."
   }
   summary: "Emits randomized records."
   is_stateful: true
@@ -26591,6 +26729,51 @@ op {
   summary: "Generate a glob pattern matching all sharded file names."
 }
 op {
+  name: "ShuffleAndRepeatDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The number of output elements to buffer in an iterator over\nthis dataset. Compare with the `min_after_dequeue` attr when creating a\n`RandomShuffleQueue`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    description: "A second scalar seed to avoid seed collision."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of times the underlying dataset\nshould be repeated. The default is `-1`, which results in infinite repetition."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that shuffles and repeats elements from `input_dataset`"
+  description: "pseudorandomly."
+}
+op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
@@ -26603,7 +26786,7 @@ op {
   }
   input_arg {
     name: "seed"
-    description: "A scalar seed for the random number generator. If either seed or\nseed2 is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
     type: DT_INT64
   }
   input_arg {
@@ -33935,6 +34118,30 @@ op {
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
+}
+op {
+  name: "UniqueDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the unique elements of `input_dataset`."
 }
 op {
   name: "UniqueV2"

@@ -75,6 +75,11 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     CHECK_EQ(op->outputs.size(), 1);
     auto* cast_op = static_cast<CastOperator*>(op);
     model->arrays[op->outputs[0]]->data_type = cast_op->dst_data_type;
+  } else if (op->type == OperatorType::kArgMax) {
+    // Data type of the ArgMax op is specified.
+    CHECK_EQ(op->outputs.size(), 1);
+    auto* argmax_op = static_cast<ArgMaxOperator*>(op);
+    model->arrays[op->outputs[0]]->data_type = argmax_op->output_data_type;
   } else if (op->type == OperatorType::kTensorFlowUnsupported) {
     auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
     if (unsupported_op->output_data_types.size() != op->outputs.size()) {

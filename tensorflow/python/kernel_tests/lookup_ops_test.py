@@ -618,15 +618,20 @@ class IndexToStringTableFromFileTest(test.TestCase):
     return vocabulary_file
 
   def test_index_to_string_table(self):
-    vocabulary_file = self._createVocabFile("i2f_vocab1.txt")
-    with self.test_session():
-      table = lookup_ops.index_to_string_table_from_file(
-          vocabulary_file=vocabulary_file)
-      features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
-      self.assertRaises(errors_impl.OpError, features.eval)
-      lookup_ops.tables_initializer().run()
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          features.eval())
+    vocabulary_path = self._createVocabFile("i2f_vocab1.txt")
+    # vocabulary_file supports string and tensor
+    type_funcs = [str, constant_op.constant]
+    for type_func in type_funcs:
+      vocabulary_file = type_func(vocabulary_path)
+      with self.test_session():
+        table = lookup_ops.index_to_string_table_from_file(
+            vocabulary_file=vocabulary_file)
+        features = table.lookup(
+            constant_op.constant([0, 1, 2, 3], dtypes.int64))
+        self.assertRaises(errors_impl.OpError, features.eval)
+        lookup_ops.tables_initializer().run()
+        self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
+                            features.eval())
 
   def test_index_to_string_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(

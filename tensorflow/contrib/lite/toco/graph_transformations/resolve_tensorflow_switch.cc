@@ -59,7 +59,7 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
   // From the TensorFlow docs on .switch() in
   // third_party/tensorflow/python/ops/control_flow_ops.py
   //
-  //    If `pred` is false, the `data` input is forwared to the first output.
+  //    If `pred` is false, the `data` input is forwarded to the first output.
   //    Otherwise, the data goes to the second output.
   //
   // Note that this comment used to say the opposite and was recently fixed:

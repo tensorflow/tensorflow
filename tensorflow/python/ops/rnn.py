@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -811,12 +812,23 @@ def _dynamic_rnn_loop(cell,
   # variable, this will reduce the performance overheads of padding to a fixed
   # maximum length.
   loop_bound = time_steps
+
+  # This is a workaround since we cannot currently use maximum_iterations if
+  # time_steps is defined inside control flow, see the comment in
+  # control_flow_ops.py.
+  if (context.in_eager_mode() or
+      not (control_flow_util.IsInWhileLoop(time_steps.op) or
+           control_flow_util.IsInCond(time_steps.op))):
+    maximum_iterations = time_steps
+  else:
+    maximum_iterations = None
+
   _, output_final_ta, final_state = control_flow_ops.while_loop(
       cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
-      maximum_iterations=time_steps,
+      maximum_iterations=maximum_iterations,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.

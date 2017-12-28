@@ -450,10 +450,6 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesImplementation) {
   options.use_in_flight_batches_implementation = true;
   options.initial_in_flight_batches_limit = 2;
   options.batches_to_average_over = 1000;
-  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-  TF_ASSERT_OK(
-      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-  std::unique_ptr<BatchScheduler<FakeTask>> queue;
   mutex mu;
   int processed_batches = 0;
   Notification finish_processing;
@@ -474,7 +470,10 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesImplementation) {
     }
     finish_processing.WaitForNotification();
   };
-
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(
+      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
   TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
 
   // Enqueue 3 batches.
@@ -494,10 +493,6 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
     options.use_in_flight_batches_implementation = true;
     options.initial_in_flight_batches_limit = 2;
     options.batches_to_average_over = 1;
-    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(
-        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
     auto queue_callback = [&env](std::unique_ptr<Batch<FakeTask>> batch) {
       ASSERT_TRUE(batch->IsClosed());
       switch (batch->size()) {
@@ -515,8 +510,12 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
           break;
       }
     };
-
+    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+    TF_ASSERT_OK(
+        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
     TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
     TF_ASSERT_OK(ScheduleTask(0, queue.get()));
     double in_flight_batches_limit = 2;
     while (scheduler->in_flight_batches_limit() == in_flight_batches_limit) {

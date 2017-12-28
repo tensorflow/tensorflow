@@ -107,14 +107,9 @@ Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
                                   string name, DataType type,
                                   const xla::ComputationDataHandle& handle,
                                   XlaResource** resource) {
-  resources_.emplace_back(new XlaResource);
+  resources_.emplace_back(
+      new XlaResource(kind, arg_num, std::move(name), type, handle));
   *resource = resources_.back().get();
-  XlaResource& r = **resource;
-  r.kind = kind;
-  r.arg_num = arg_num;
-  r.name = std::move(name);
-  r.type = type;
-  r.initial_value = r.value = handle;
   return Status::OK();
 }
 

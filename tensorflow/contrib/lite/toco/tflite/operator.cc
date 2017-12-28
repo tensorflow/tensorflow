@@ -130,6 +130,37 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
   }
 };
 
+class BatchToSpaceND
+    : public BuiltinOperator<BatchToSpaceNDOperator,
+                             ::tflite::BatchToSpaceNDOptions,
+                             ::tflite::BuiltinOptions_BatchToSpaceNDOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto block_shape = builder->CreateVector(op.block_shape);
+    auto before_crops = builder->CreateVector(op.before_crops);
+    auto after_crops = builder->CreateVector(op.after_crops);
+    return ::tflite::CreateBatchToSpaceNDOptions(*builder, block_shape,
+                                                 before_crops, after_crops);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->block_shape.insert(op->block_shape.end(),
+                           options.block_shape()->begin(),
+                           options.block_shape()->end());
+    op->before_crops.insert(op->before_crops.end(),
+                            options.before_crops()->begin(),
+                            options.before_crops()->end());
+    op->after_crops.insert(op->after_crops.end(),
+                           options.after_crops()->begin(),
+                           options.after_crops()->end());
+  }
+};
+
 class Cast : public CustomOperator<CastOperator> {
  public:
   using CustomOperator::CustomOperator;
@@ -208,6 +239,22 @@ class FullyConnected
                    TocoOperator* op) const override {
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+};
+
+class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
+                                      ::tflite::BuiltinOptions_GatherOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateGatherOptions(*builder, op.axis);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->axis = options.axis();
   }
 };
 
@@ -555,6 +602,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new Add(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
   ops.emplace_back(new AveragePool(::tflite::BuiltinOperator_AVERAGE_POOL_2D,
                                    OperatorType::kAveragePool));
+  ops.emplace_back(
+      new BatchToSpaceND(::tflite::BuiltinOperator_BATCH_TO_SPACE_ND,
+                         OperatorType::kBatchToSpaceND));
   ops.emplace_back(new Concatenation(::tflite::BuiltinOperator_CONCATENATION,
                                      OperatorType::kConcatenation));
   ops.emplace_back(
@@ -564,6 +614,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                OperatorType::kDepthwiseConv));
   ops.emplace_back(new FullyConnected(::tflite::BuiltinOperator_FULLY_CONNECTED,
                                       OperatorType::kFullyConnected));
+  ops.emplace_back(
+      new Gather(::tflite::BuiltinOperator_GATHER, OperatorType::kGather));
   ops.emplace_back(
       new L2Normalization(::tflite::BuiltinOperator_L2_NORMALIZATION,
                           OperatorType::kL2Normalization));
@@ -596,6 +648,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
+  ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
       "RSQRT", OperatorType::kTensorFlowRsqrt));
   ops.emplace_back(
@@ -606,8 +659,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "DEQUANTIZE", OperatorType::kDequantize));
   ops.emplace_back(
       new SimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor));
-  ops.emplace_back(
-      new SimpleOperator<GatherOperator>("GATHER", OperatorType::kGather));
   ops.emplace_back(
       new SimpleOperator<ReluOperator>("RELU", OperatorType::kRelu));
   ops.emplace_back(
