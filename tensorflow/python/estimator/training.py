@@ -670,11 +670,19 @@ class _TrainingExecutor(object):
             'RunConfig or set the TF_CONFIG environment variable.')
 
     logging.info('Start Tensorflow server.')
+
+    if config.session_config is None:
+      session_config=config_pb2.ConfigProto(log_device_placement=False)
+    else:
+      session_config=config_pb2.ConfigProto(
+          log_device_placement=False,
+          gpu_options=config.session_config.gpu_options)
+
     server = server_lib.Server(
         config.cluster_spec,
         job_name=config.task_type,
         task_index=config.task_id,
-        config=config_pb2.ConfigProto(log_device_placement=False),
+        config=session_config,
         start=False)
     server.start()
     return server
