@@ -73,8 +73,9 @@ REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 REGISTER_XLA_BACKEND(DEVICE_IPU_XLA_JIT, kIpuAllTypes, OpFilter);
 
 // Additional ops not explicitly defined by standard JIT
-
-REGISTER_XLA_OP(Name("ArgMax").Device(DEVICE_IPU_XLA_JIT), XlaArgMaxOp);
+REGISTER_XLA_OP(Name("ArgMax")
+                  .Device(DEVICE_IPU_XLA_JIT)
+                  .CompileTimeConstInput("dimension"), XlaArgMaxOp);
 
 REGISTER_XLA_OP(Name("Enter").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("Exit").Device(DEVICE_IPU_XLA_JIT), NoOp);
