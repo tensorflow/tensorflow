@@ -192,7 +192,15 @@ class GrpcMasterService : public AsyncServiceInterface {
                             delete call_opts;
                             delete wrapped_request;
                             delete trace;
-                            call->SendResponse(ToGrpcStatus(status));
+                            if (call->request.store_errors_in_response_body() &&
+                                !status.ok()) {
+                              call->response.set_status_code(status.code());
+                              call->response.set_status_error_message(
+                                  status.error_message());
+                              call->SendResponse(ToGrpcStatus(Status::OK()));
+                            } else {
+                              call->SendResponse(ToGrpcStatus(status));
+                            }
                           });
     ENQUEUE_REQUEST(RunStep, true);
   }
