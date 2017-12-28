@@ -194,10 +194,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "fill_functor",
-    srcs = ["fill_functor.cc"],
-    hdrs = ["fill_functor.h"],
+    prefix = "fill_functor",
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -3068,6 +3067,7 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":image_resizer_state",
+        ":fill_functor",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
