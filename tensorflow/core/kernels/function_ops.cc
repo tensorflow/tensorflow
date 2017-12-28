@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -51,6 +52,8 @@ class ArgOp : public OpKernel {
                     " vs. expect ", DataTypeString(dtype_)));
     ctx->set_output(0, val);
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   int index_;
@@ -76,6 +79,8 @@ class RetvalOp : public OpKernel {
     OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
     OP_REQUIRES_OK(ctx, frame->SetRetval(index_, val));
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   int index_;
@@ -241,6 +246,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
+    opts.step_container = ctx->step_container();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -290,9 +296,11 @@ class RemoteCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* target;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
-    AttrValueMap attr_values = func_->attr();
+    AttrValueMap attr_values = func_.attr();
     AttrValue v;
-    v.set_s(target->scalar<string>()());
+    const string& target_device =
+        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
+    v.set_s(target_device);
     AddAttr("_target", v, &attr_values);
 
     FunctionLibraryRuntime* lib = ctx->function_library();
@@ -301,7 +309,7 @@ class RemoteCallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(func_->name(), AttrSlice(&attr_values), &handle),
+        ctx, lib->Instantiate(func_.name(), AttrSlice(&attr_values), &handle),
         done);
 
     OpInputList arguments;
@@ -310,6 +318,11 @@ class RemoteCallOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.runner = ctx->runner();
+    opts.source_device = lib->device()->name();
+    if (opts.source_device != target_device) {
+      opts.remote_execution = true;
+    }
+    opts.create_rendezvous = true;
     std::vector<Tensor> args;
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {
@@ -319,9 +332,10 @@ class RemoteCallOp : public AsyncOpKernel {
     lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
-      }
-      for (size_t i = 0; i < rets->size(); ++i) {
-        ctx->set_output(i, (*rets)[i]);
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
       }
       delete rets;
       done();
@@ -330,14 +344,17 @@ class RemoteCallOp : public AsyncOpKernel {
 
  private:
   string target_;
-  const NameAttrList* func_;
+  NameAttrList func_;
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_CPU), RemoteCallOp);
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_GPU), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_SYCL), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_SYCL).HostMemory("target"), RemoteCallOp);
 
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -272,7 +272,7 @@ train = optimizer.minimize(loss)
 ```
 
 ```python
-sess.run(init) # reset values to incorrect defaults.
+sess.run(init) # reset variables to incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]})
 
@@ -317,7 +317,7 @@ y_train = [0, -1, -2, -3]
 # training loop
 init = tf.global_variables_initializer()
 sess = tf.Session()
-sess.run(init) # reset values to wrong
+sess.run(init) # initialize variables with incorrect defaults.
 for i in range(1000):
   sess.run(train, {x: x_train, y: y_train})
 
@@ -330,8 +330,8 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
-Notice that the loss is a very small number (very close to zero). If you run 
-this program, your loss may not be exactly the same as the aforementioned loss 
+Notice that the loss is a very small number (very close to zero). If you run
+this program, your loss may not be exactly the same as the aforementioned loss
 because the model is initialized with pseudorandom values.
 
 This more complicated program can still be visualized in TensorBoard
@@ -375,7 +375,7 @@ estimator = tf.estimator.LinearRegressor(feature_columns=feature_columns)
 x_train = np.array([1., 2., 3., 4.])
 y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
-y_eval = np.array([-1.01, -4.1, -7, 0.])
+y_eval = np.array([-1.01, -4.1, -7., 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
@@ -383,7 +383,7 @@ train_input_fn = tf.estimator.inputs.numpy_input_fn(
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
-# We can invoke 1000 training steps by invoking the  method and passing the
+# We can invoke 1000 training steps by invoking the method and passing the
 # training data set.
 estimator.train(input_fn=input_fn, steps=1000)
 
@@ -447,13 +447,13 @@ estimator = tf.estimator.Estimator(model_fn=model_fn)
 x_train = np.array([1., 2., 3., 4.])
 y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
-y_eval = np.array([-1.01, -4.1, -7, 0.])
+y_eval = np.array([-1.01, -4.1, -7., 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1, shuffle=False)
 
 # train
 estimator.train(input_fn=input_fn, steps=1000)

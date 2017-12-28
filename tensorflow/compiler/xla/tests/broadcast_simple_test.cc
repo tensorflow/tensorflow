@@ -96,7 +96,7 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
       }
       default: {
         // Default to Add
-        CHECK(false);
+        LOG(FATAL);
       }
     }
   }
@@ -159,7 +159,7 @@ XLA_TEST_F(BroadcastSimpleTest, 1DTo2D) {
 }
 
 // Tests implicit broadcasting of PREDs.
-XLA_TEST_F(BroadcastSimpleTest, LogicalAnd2DTo3D_Pred) {
+XLA_TEST_F(BroadcastSimpleTest, BooleanAnd2DTo3D_Pred) {
   ComputationBuilder b(client_, TestName());
 
   Array2D<bool> x_vals(2, 1);
@@ -174,7 +174,7 @@ XLA_TEST_F(BroadcastSimpleTest, LogicalAnd2DTo3D_Pred) {
   ComputationDataHandle x, y;
   auto x_data = CreateR2Parameter<bool>(x_vals, 0, "x", &b, &x);
   auto y_data = CreateR3Parameter<bool>(y_vals, 1, "y", &b, &y);
-  b.LogicalAnd(x, y, /*broadcast_dimensions=*/{1, 2});
+  b.And(x, y, /*broadcast_dimensions=*/{1, 2});
 
   Array3D<bool> expected(2, 2, 1);
   expected(0, 0, 0) = false;

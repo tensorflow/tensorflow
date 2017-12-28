@@ -37,6 +37,9 @@ See the @{$python/train} guide.
 @@clip_by_average_norm
 @@clip_by_global_norm
 @@global_norm
+@@cosine_decay
+@@linear_cosine_decay
+@@noisy_linear_cosine_decay
 @@exponential_decay
 @@inverse_time_decay
 @@natural_exp_decay
@@ -77,6 +80,7 @@ See the @{$python/train} guide.
 @@GlobalStepWaiterHook
 @@FinalOpsHook
 @@FeedFnHook
+@@ProfilerHook
 @@SecondOrStepTimer
 @@global_step
 @@basic_train_loop
@@ -145,6 +149,7 @@ from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_session_run_hooks import GlobalStepWaiterHook
 from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
 from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
+from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
 from tensorflow.python.training.checkpoint_utils import list_variables

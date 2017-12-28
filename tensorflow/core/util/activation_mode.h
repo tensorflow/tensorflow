@@ -28,6 +28,7 @@ namespace tensorflow {
 
 // ActivationMode: the activation function we apply to the input tensor:
 enum ActivationMode {
+  NONE = 0,
   SIGMOID = 1,
   RELU = 2,
   RELU6 = 3,

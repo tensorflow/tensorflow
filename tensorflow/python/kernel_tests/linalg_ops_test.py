@@ -21,9 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 
@@ -34,10 +36,12 @@ def _AddTest(test_class, op_name, testcase_name, fn):
   setattr(test_class, test_name, fn)
 
 
-def _RandomPDMatrix(n, rng):
+def _RandomPDMatrix(n, rng, dtype=np.float64):
   """Random positive definite matrix."""
-  temp = rng.randn(n, n)
-  return temp.dot(temp.T)
+  temp = rng.randn(n, n).astype(dtype)
+  if dtype in [np.complex64, np.complex128]:
+    temp.imag = rng.randn(n, n)
+  return np.conj(temp).dot(temp.T)
 
 
 class CholeskySolveTest(test.TestCase):
@@ -46,9 +50,9 @@ class CholeskySolveTest(test.TestCase):
     self.rng = np.random.RandomState(0)
 
   def test_works_with_five_different_random_pos_def_matrices(self):
-    with self.test_session(use_gpu=True):
-      for n in range(1, 6):
-        for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
+    for n in range(1, 6):
+      for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
+        with self.test_session(use_gpu=True):
           # Create 2 x n x n matrix
           array = np.array(
               [_RandomPDMatrix(n, self.rng),
@@ -59,6 +63,76 @@ class CholeskySolveTest(test.TestCase):
             x = linalg_ops.cholesky_solve(chol, rhs)
             self.assertAllClose(
                 rhs, math_ops.matmul(array, x).eval(), atol=atol)
+
+
+class LogdetTest(test.TestCase):
+
+  def setUp(self):
+    self.rng = np.random.RandomState(42)
+
+  def test_works_with_five_different_random_pos_def_matrices(self):
+    for n in range(1, 6):
+      for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                             (np.complex64, 0.05), (np.complex128, 1e-5)]:
+        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.test_session(use_gpu=True):
+          # Create 2 x n x n matrix
+          # matrix = np.array(
+          #     [_RandomPDMatrix(n, self.rng, np_dtype),
+          #      _RandomPDMatrix(n, self.rng, np_dtype)]).astype(np_dtype)
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, logdet_tf.eval(), atol=atol)
+
+  def test_works_with_underflow_case(self):
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                           (np.complex64, 0.05), (np.complex128, 1e-5)]:
+      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+      _, logdet_np = np.linalg.slogdet(matrix)
+      with self.test_session(use_gpu=True):
+        logdet_tf = linalg.logdet(matrix)
+        self.assertAllClose(logdet_np, logdet_tf.eval(), atol=atol)
+
+
+class SlogdetTest(test.TestCase):
+
+  def setUp(self):
+    self.rng = np.random.RandomState(42)
+
+  def test_works_with_five_different_random_pos_def_matrices(self):
+    for n in range(1, 6):
+      for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                             (np.complex64, 0.05), (np.complex128, 1e-5)]:
+        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+        sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+        with self.test_session(use_gpu=True):
+          sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+          self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
+          self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+
+  def test_works_with_underflow_case(self):
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                           (np.complex64, 0.05), (np.complex128, 1e-5)]:
+      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+      sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+      with self.test_session(use_gpu=True):
+        sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+        self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
+        self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+
+
+class AdjointTest(test.TestCase):
+
+  def test_compare_to_numpy(self):
+    for dtype in np.float64, np.float64, np.complex64, np.complex128:
+      matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
+                                                       6 + 6j]]).astype(dtype)
+      expected_transposed = np.conj(matrix_np.T)
+      with self.test_session():
+        matrix = ops.convert_to_tensor(matrix_np)
+        transposed = linalg.adjoint(matrix)
+        self.assertEqual((3, 2), transposed.get_shape())
+        self.assertAllEqual(expected_transposed, transposed.eval())
 
 
 class EyeTest(test.TestCase):

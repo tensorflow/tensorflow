@@ -29,6 +29,7 @@ cc_binary(
     defines = ["STANDALONE_DEMO_LIB"],
     linkopts = [
         "-landroid",
+        "-ldl",
         "-ljnigraphics",
         "-llog",
         "-lm",

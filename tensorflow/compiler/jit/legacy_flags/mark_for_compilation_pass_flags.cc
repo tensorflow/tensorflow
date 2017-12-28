@@ -39,21 +39,23 @@ static void AllocateFlags() {
   flags->tf_xla_min_cluster_size = 2;
   flags->tf_xla_max_cluster_size = std::numeric_limits<int32>::max();
   flags->tf_xla_clustering_debug = false;
-  flag_list = new std::vector<Flag>({
-      Flag("tf_xla_auto_jit", &flags->tf_xla_auto_jit,
-           "Control compilation of operators into XLA computations on CPU and "
-           "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
-           "things very likely to be improved; 2 = on for everything.  "
-           "Experimental."),
-      Flag("tf_xla_min_cluster_size", &flags->tf_xla_min_cluster_size,
-           "Minimum number of operators in an XLA compilation. Ignored for "
-           "operators placed on an XLA device or operators explicitly marked "
-           "for compilation."),
-      Flag("tf_xla_max_cluster_size", &flags->tf_xla_max_cluster_size,
-           "Maximum number of operators in an XLA compilation."),
-      Flag("tf_xla_clustering_debug", &flags->tf_xla_clustering_debug,
-           "Dump graphs during XLA compilation."),
-  });
+  flags->tf_xla_cpu_global_jit = false;
+  flag_list = new std::vector<Flag>(
+      {Flag("tf_xla_auto_jit", &flags->tf_xla_auto_jit,
+            "Control compilation of operators into XLA computations on CPU and "
+            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
+            "things very likely to be improved; 2 = on for everything.  "
+            "Experimental."),
+       Flag("tf_xla_min_cluster_size", &flags->tf_xla_min_cluster_size,
+            "Minimum number of operators in an XLA compilation. Ignored for "
+            "operators placed on an XLA device or operators explicitly marked "
+            "for compilation."),
+       Flag("tf_xla_max_cluster_size", &flags->tf_xla_max_cluster_size,
+            "Maximum number of operators in an XLA compilation."),
+       Flag("tf_xla_clustering_debug", &flags->tf_xla_clustering_debug,
+            "Dump graphs during XLA compilation."),
+       Flag("tf_xla_cpu_global_jit", &flags->tf_xla_cpu_global_jit,
+            "Enables global JIT compilation for CPU via SessionOptions.")});
   xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
 }
 

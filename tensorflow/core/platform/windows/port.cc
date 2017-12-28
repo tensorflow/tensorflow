@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
 
@@ -118,7 +118,7 @@ void AdjustFilenameForLogging(string* filename) {
 }
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
   snappy::RawCompress(input, length, &(*output)[0], &outlen);
@@ -131,7 +131,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::GetUncompressedLength(input, length, result);
 #else
   return false;
@@ -139,7 +139,7 @@ bool Snappy_GetUncompressedLength(const char* input, size_t length,
 }
 
 bool Snappy_Uncompress(const char* input, size_t length, char* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::RawUncompress(input, length, output);
 #else
   return false;

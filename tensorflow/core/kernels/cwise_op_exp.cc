@@ -20,7 +20,8 @@ REGISTER5(UnaryOp, CPU, "Exp", functor::exp, float, Eigen::half, double,
           complex64, complex128);
 
 #if GOOGLE_CUDA
-REGISTER3(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double);
+REGISTER5(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double,
+          complex64, complex128);
 #endif
 
 #if TENSORFLOW_USE_SYCL

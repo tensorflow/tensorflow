@@ -197,7 +197,7 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
         mutable_input_graph_def, inputs, outputs, remote_graph_executor_name,
         output_graph_def));
   } else {
-    CHECK(false) << "Fuse targets are not specified.";
+    LOG(FATAL) << "Fuse targets are not specified.";
   }
 
   return Status::OK();

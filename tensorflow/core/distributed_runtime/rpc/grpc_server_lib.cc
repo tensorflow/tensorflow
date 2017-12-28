@@ -330,7 +330,7 @@ Status GrpcServer::Start() {
     case STOPPED:
       return errors::FailedPrecondition("Server has stopped.");
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 
@@ -347,7 +347,7 @@ Status GrpcServer::Stop() {
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
       return Status::OK();
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 
@@ -364,7 +364,7 @@ Status GrpcServer::Join() {
       worker_thread_.reset();
       return Status::OK();
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 

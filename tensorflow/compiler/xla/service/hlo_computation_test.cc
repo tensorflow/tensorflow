@@ -284,6 +284,93 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
 
+TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
+  // Test that DeepCopyInstruction properly handles an array when the indices to
+  // copy are specified.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+  auto computation = builder.Build();
+
+  {
+    // If the index is true, then a copy should be made.
+    ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
+    EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
+                    .ValueOrDie(),
+                op::Copy(constant));
+  }
+
+  {
+    // If the index is false, then no copy should be made.
+    ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/false);
+    EXPECT_EQ(computation->DeepCopyInstruction(constant, &indices_to_copy)
+                  .ValueOrDie(),
+              constant);
+  }
+}
+
+TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
+  // Test that DeepCopyInstruction properly copies elements of a tuple as
+  // specified by the given indices.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  auto tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({constant1, constant2}));
+  auto computation = builder.Build();
+
+  {
+    // All true values should copy all array elements.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/true);
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                     op::Copy(op::GetTupleElement(tuple))));
+    EXPECT_THAT(deep_copy, op::Tuple(copies_added.element({0}),
+                                     copies_added.element({1})));
+  }
+
+  {
+    // All false elements should copy no array elements, but the GTE and tuple
+    // instruction scaffolding should be built.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/false);
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::GetTupleElement(tuple),
+                                     op::GetTupleElement(tuple)));
+    EXPECT_TRUE(copies_added.element({}) == nullptr);
+    EXPECT_TRUE(copies_added.element({0}) == nullptr);
+    EXPECT_TRUE(copies_added.element({1}) == nullptr);
+  }
+
+  {
+    // Verify one element copied, the other not.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/false);
+    *indices_to_copy.mutable_element({0}) = true;
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                     op::GetTupleElement(tuple)));
+    EXPECT_TRUE(copies_added.element({}) == nullptr);
+    EXPECT_TRUE(copies_added.element({0}) != nullptr);
+    EXPECT_TRUE(copies_added.element({1}) == nullptr);
+  }
+}
+
 TEST_F(HloComputationTest, CycleDetection) {
   // Test whether the visitor can detect cycles in the graph.
   auto builder = HloComputation::Builder(TestName());
@@ -466,7 +553,3 @@ TEST_F(HloComputationTest, Reachability) {
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -79,13 +79,25 @@ PrimitiveType NativeToPrimitiveType<double>() {
 }
 
 template <>
+PrimitiveType NativeToPrimitiveType<bfloat16>() {
+  return BF16;
+}
+
+template <>
 PrimitiveType NativeToPrimitiveType<half>() {
   return F16;
 }
 
-bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64;
+template <>
+PrimitiveType NativeToPrimitiveType<complex64>() {
+  return C64;
 }
+
+bool IsFloatingPointType(PrimitiveType type) {
+  return type == F16 || type == F32 || type == F64 || type == BF16;
+}
+
+bool IsComplexType(PrimitiveType type) { return type == C64; }
 
 bool IsSignedIntegralType(PrimitiveType type) {
   return type == S8 || type == S16 || type == S32 || type == S64;
@@ -111,6 +123,7 @@ int BitWidth(PrimitiveType type) {
     case S16:
     case U16:
     case F16:
+    case BF16:
       return 16;
 
     case U32:
@@ -121,6 +134,7 @@ int BitWidth(PrimitiveType type) {
     case U64:
     case S64:
     case F64:
+    case C64:
       return 64;
 
     case TUPLE:
@@ -131,6 +145,16 @@ int BitWidth(PrimitiveType type) {
 
     default:
       LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
+
+PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
+  switch (complex_type) {
+    case C64:
+      return F32;
+    default:
+      LOG(FATAL) << "Primitive type is not complex: "
+                 << PrimitiveType_Name(complex_type);
   }
 }
 

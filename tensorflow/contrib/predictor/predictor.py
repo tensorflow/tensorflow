@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Abstract base class for all predictors."""
 
 from __future__ import absolute_import
@@ -66,8 +65,9 @@ class Predictor(object):
     expected_keys = set(self.feed_tensors.keys())
     unexpected_keys = input_keys - expected_keys
     if unexpected_keys:
-      raise ValueError('Got unexpected keys in input_dict: {}'.format(
-          unexpected_keys))
+      raise ValueError(
+          'Got unexpected keys in input_dict: {}\nexpected: {}'.format(
+              unexpected_keys, expected_keys))
 
     feed_dict = {}
     for key in self.feed_tensors.keys():

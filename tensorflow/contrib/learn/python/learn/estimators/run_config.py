@@ -335,7 +335,9 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # For class instance without __repr__, some special cares are required.
     # Otherwise, the object address will be used.
     if '_cluster_spec' in ordered_state:
-      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+      ordered_state['_cluster_spec'] = collections.OrderedDict(
+          sorted(ordered_state['_cluster_spec'].as_dict().items(),
+                 key=lambda t: t[0]))
     return ', '.join(
         '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
@@ -386,8 +388,21 @@ def _count_ps(cluster_spec):
 
 
 def _count_worker(cluster_spec):
-  """Counts the number of workers in cluster_spec."""
-  return len(cluster_spec.as_dict().get('worker', [])) if cluster_spec else 0
+  """Counts the number of workers in cluster_spec.
+
+  Workers with TaskType.WORKER and TaskType.MASTER are included in the return
+  value.
+
+  Args:
+    cluster_spec: a ClusterSpec instance that describes current deployment.
+
+  Returns:
+    The total number of eligible workers.
+
+    If 'cluster_spec' was None, then 0 is returned.
+  """
+  return (len(cluster_spec.as_dict().get('worker', [])) +
+          len(cluster_spec.as_dict().get('master', []))) if cluster_spec else 0
 
 
 def _get_master(cluster_spec, task_type, task_id):

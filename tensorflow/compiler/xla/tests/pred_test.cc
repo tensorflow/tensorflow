@@ -90,7 +90,7 @@ TEST_F(PredTest, ConstantR2Pred) {
       builder.ConstantR2<bool>({{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
   { 011 },
-  { 100 },
+  { 100 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -119,7 +119,9 @@ TEST_F(PredTest, AnyR1VacuouslyFalse) {
 TEST_F(PredTest, AnyR2True) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2<bool>({
-      {false, false, false}, {false, false, false}, {false, false, true},
+      {false, false, false},
+      {false, false, false},
+      {false, false, true},
   });
   TF_ASSERT_OK(Any(a, &builder).status());
   ComputeAndCompareR0<bool>(&builder, true, {});
@@ -128,7 +130,9 @@ TEST_F(PredTest, AnyR2True) {
 TEST_F(PredTest, AnyR2False) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2<bool>({
-      {false, false, false}, {false, false, false}, {false, false, false},
+      {false, false, false},
+      {false, false, false},
+      {false, false, false},
   });
   TF_ASSERT_OK(Any(a, &builder).status());
   ComputeAndCompareR0<bool>(&builder, false, {});

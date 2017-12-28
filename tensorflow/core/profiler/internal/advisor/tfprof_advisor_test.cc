@@ -48,7 +48,7 @@ class TFProfAdvisorTest : public ::testing::Test {
     for (const auto& attr : attrs) {
       (*def->mutable_attr())[attr.first].set_s(attr.second);
     }
-    std::unique_ptr<TFGraphNode> node(new TFGraphNode(def));
+    std::unique_ptr<TFGraphNode> node(new TFGraphNode(def, -1, nullptr));
 
     NodeExecStats node_stat;
     node_stat.set_all_start_micros(start_miros);

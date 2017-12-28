@@ -4,6 +4,8 @@ The documents in this unit dive into the details of writing TensorFlow
 code.  For TensorFlow 1.3, we revised this document extensively.
 The units are now as follows:
 
+  * @{$programmers_guide/estimators$Estimators}, which introduces a high-level
+    TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/tensors$Tensors}, which explains how to create,
     manipulate, and access Tensors--the fundamental object in TensorFlow.
   * @{$programmers_guide/variables$Variables}, which details how
@@ -18,17 +20,10 @@ The units are now as follows:
     such as Estimators or Keras, the high-level API creates and manages
     graphs and sessions for you, but understanding graphs and sessions
     can still be helpful.
-  * @{$programmers_guide/estimators$Estimators}, which introduces a high-level
-    TensorFlow API that greatly simplifies ML programming.
   * @{$programmers_guide/saved_model$Saving and Restoring}, which
     explains how to save and restore variables and models.
   * @{$programmers_guide/datasets$Input Pipelines}, which explains how to
     set up data pipelines to read data sets into your TensorFlow program.
-  * @{$programmers_guide/threading_and_queues$Threading and Queues}, which
-    explains TensorFlow's older system for multi-threaded, queue-based input
-    pipelines. Beginning with TensorFlow 1.2, we recommend using the
-    `tf.contrib.data` module instead, which is documented in the
-    "Input Pipelines" unit.
   * @{$programmers_guide/embedding$Embeddings}, which introduces the concept
     of embeddings, provides a simple example of training an embedding in
     TensorFlow, and explains how to view embeddings with the TensorBoard

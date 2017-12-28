@@ -104,8 +104,11 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
-  // Converts a constant 1D int32 or int64 tensor into an int64.
+  // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
+
+  // Converts a constant scalar float32 or float64 tensor into a float64.
+  Status ConstantInputAsFloatScalar(int index, double* out);
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
@@ -139,12 +142,13 @@ class XlaOpKernelContext {
   // SetConstantOutput where possible.
   void SetConstantOutput(int index, const Tensor& host_tensor);
 
+  // Sets output 'index' to an invalid value.
+  // Any subsequent attempt to consume this output will cause an error.
+  void SetInvalidOutput(int index);
+
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
-
-  // Mark the op has having side effects (i.e., via Send).
-  void SetOpHasSideEffects();
 
   // Variables
 
@@ -174,7 +178,7 @@ class XlaOpKernelContext {
 
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return context_->call_frame(); }
+  CallFrameInterface* call_frame() const { return context_->call_frame(); }
 
   FunctionLibraryRuntime* function_library() const {
     return context_->function_library();
@@ -191,15 +195,25 @@ class XlaOpKernelContext {
 
   // TODO(phawkins): find a better home for these helpers.
 
-  // Get an XLA lambda to compute Max. This is cached in the
+  // Gets an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
 
-  // Get an XLA lambda to compute Add. This is cached in the
+  // Gets an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
+
+  // Gets an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
+
+  // Gets an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
 
  private:
   OpKernelContext* const context_;

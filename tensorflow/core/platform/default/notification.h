@@ -29,7 +29,12 @@ namespace tensorflow {
 class Notification {
  public:
   Notification() : notified_(0) {}
-  ~Notification() {}
+  ~Notification() {
+    // In case the notification is being used to synchronize its own deletion,
+    // force any prior notifier to leave its critical section before the object
+    // is destroyed.
+    mutex_lock l(mu_);
+  }
 
   void Notify() {
     mutex_lock l(mu_);
@@ -43,9 +48,11 @@ class Notification {
   }
 
   void WaitForNotification() {
-    mutex_lock l(mu_);
-    while (!HasBeenNotified()) {
-      cv_.wait(l);
+    if (!HasBeenNotified()) {
+      mutex_lock l(mu_);
+      while (!HasBeenNotified()) {
+        cv_.wait(l);
+      }
     }
   }
 
@@ -53,16 +60,20 @@ class Notification {
   friend bool WaitForNotificationWithTimeout(Notification* n,
                                              int64 timeout_in_us);
   bool WaitForNotificationWithTimeout(int64 timeout_in_us) {
-    mutex_lock l(mu_);
-    while (!HasBeenNotified() &&
-           cv_.wait_for(l, std::chrono::microseconds(timeout_in_us)) !=
-               std::cv_status::timeout) {
+    bool notified = HasBeenNotified();
+    if (!notified) {
+      mutex_lock l(mu_);
+      do {
+        notified = HasBeenNotified();
+      } while (!notified &&
+               cv_.wait_for(l, std::chrono::microseconds(timeout_in_us)) !=
+                   std::cv_status::timeout);
     }
-    return HasBeenNotified();
+    return notified;
   }
 
   mutex mu_;                    // protects mutations of notified_
-  condition_variable cv_;       // signalled when notified_ becomes non-zero
+  condition_variable cv_;       // signaled when notified_ becomes non-zero
   std::atomic<bool> notified_;  // mutations under mu_
 };
 

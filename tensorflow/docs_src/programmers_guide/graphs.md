@@ -89,7 +89,7 @@ to all API functions in the same context.  For example:
 * Executing `v = tf.Variable(0)` adds to the graph a @{tf.Operation} that will
   store a writeable tensor value that persists between @{tf.Session.run} calls.
   The @{tf.Variable} object wraps this operation, and can be used [like a
-  tensor](#tensor-like-objects), which will read the current value of the
+  tensor](#tensor-like_objects), which will read the current value of the
   stored value. The @{tf.Variable} object also has methods such as
   @{tf.Variable.assign$`assign`} and @{tf.Variable.assign_add$`assign_add`} that
   create @{tf.Operation} objects that, when executed, update the stored value.
@@ -100,7 +100,7 @@ to all API functions in the same context.  For example:
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,
-see [Dealing with multiple graphs](#dealing-with-multiple-graphs) for more
+see [Dealing with multiple graphs](#programming_with_multiple_graphs) for more
 advanced use cases. High-level APIs such as the @{tf.estimator.Estimator} API
 manage the default graph on your behalf, and--for example--may create different
 graphs for training and evaluation.
@@ -319,7 +319,7 @@ described below.
 * **`target`.** If this argument is left empty (the default), the session will
   only use devices in the local machine. However, you may also specify a
   `grpc://` URL to specify the address of a TensorFlow server, which gives the
-  session access to all devices on machines that that server controls. See
+  session access to all devices on machines that this server controls. See
   @{tf.train.Server} for details of how to create a TensorFlow
   server. For example, in the common **between-graph replication**
   configuration, the @{tf.Session} connects to a @{tf.train.Server} in the same
@@ -329,7 +329,7 @@ described below.
 * **`graph`.** By default, a new @{tf.Session} will be bound to---and only able
   to run operations in---the current default graph. If you are using multiple
   graphs in your program (see [Programming with multiple
-  graphs](programming-with-multiple-graphs) for more details), you can specify
+  graphs](#programming_with_multiple_graphs) for more details), you can specify
   an explicit @{tf.Graph} when you construct the session.
 
 * **`config`.** This argument allows you to specify a @{tf.ConfigProto} that
@@ -404,8 +404,8 @@ y = tf.square(x)
 
 with tf.Session() as sess:
   # Feeding a value changes the result that is returned when you evaluate `y`.
-  print(sess.run(y, {x: [1.0, 2.0, 3.0]})  # => "[1.0, 4.0, 9.0]"
-  print(sess.run(y, {x: [0.0, 0.0, 5.0]})  # => "[0.0, 0.0, 25.0]"
+  print(sess.run(y, {x: [1.0, 2.0, 3.0]}))  # => "[1.0, 4.0, 9.0]"
+  print(sess.run(y, {x: [0.0, 0.0, 5.0]}))  # => "[0.0, 0.0, 25.0]"
 
   # Raises `tf.errors.InvalidArgumentError`, because you must feed a value for
   # a `tf.placeholder()` when evaluating a tensor that depends on it.

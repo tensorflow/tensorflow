@@ -33,7 +33,7 @@ roughly speaking, map variable names to tensor values.
 
 Create a `Saver` with `tf.train.Saver()` to manage all variables in the
 model. For example, the following snippet demonstrates how to call the
-`tf.train.Saver.save` method to save variables to a checkpoint file:
+`tf.train.Saver.save` method to save variables to checkpoint files:
 
 ```python
 # Create some variables.
@@ -58,7 +58,7 @@ with tf.Session() as sess:
   dec_v2.op.run()
   # Save the variables to disk.
   save_path = saver.save(sess, "/tmp/model.ckpt")
-  print("Model saved in file: %s" % save_path)
+  print("Model saved in path: %s" % save_path)
 ```
 
 
@@ -66,10 +66,10 @@ with tf.Session() as sess:
 ### Restoring variables
 
 The `tf.train.Saver` object not only saves variables to checkpoint files, it
-also restores variables.  Note that when you restore variables from a file you
-do not have to initialize them beforehand. For example, the following snippet
-demonstrates how to call the `tf.train.Saver.restore` method to restore
-variables from a checkpoint file:
+also restores variables. Note that when you restore variables you do not have
+to initialize them beforehand. For example, the following snippet demonstrates
+how to call the `tf.train.Saver.restore` method to restore variables from the
+checkpoint files:
 
 ```python
 tf.reset_default_graph()
@@ -91,6 +91,12 @@ with tf.Session() as sess:
   print("v1 : %s" % v1.eval())
   print("v2 : %s" % v2.eval())
 ```
+
+Notes:
+
+*  There is not a physical file called "/tmp/model.ckpt". It is the **prefix**
+   of filenames created for the checkpoint. Users only interact with the
+   prefix instead of physical checkpoint files.
 
 
 ### Choosing which variables to save and restore
@@ -158,6 +164,39 @@ Notes:
    optionally choose names for the variables in the checkpoint files.
 
 
+### Inspect variables in a checkpoint
+
+We can quickly inspect variables in a checkpoint with the
+[`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library.
+
+Continuing from the save/restore examples shown earlier:
+
+```python
+# import the inspect_checkpoint library
+from tensorflow.python.tools import inspect_checkpoint as chkp
+
+# print all tensors in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='', all_tensors=True)
+
+# tensor_name:  v1
+# [ 1.  1.  1.]
+# tensor_name:  v2
+# [-1. -1. -1. -1. -1.]
+
+# print only tensor v1 in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v1', all_tensors=False)
+
+# tensor_name:  v1
+# [ 1.  1.  1.]
+
+# print only tensor v2 in checkpoint file
+chkp.print_tensors_in_checkpoint_file("/tmp/model.ckpt", tensor_name='v2', all_tensors=False)
+
+# tensor_name:  v2
+# [-1. -1. -1. -1. -1.]
+```
+
+
 <a name="models"></a>
 ## Overview of saving and restoring models
 
@@ -205,7 +244,7 @@ For example, the following code suggests a typical way to use
 ```python
 export_dir = ...
 ...
-builder = tf.saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,

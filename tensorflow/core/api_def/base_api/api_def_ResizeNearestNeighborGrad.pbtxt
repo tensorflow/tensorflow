@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "ResizeNearestNeighborGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "grads"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.
+END
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+= A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
+original input size.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
+with respect to the input image.
+END
+  }
+  attr {
+    name: "align_corners"
+    description: <<END
+If true, rescale grads by (orig_height - 1) / (height - 1), which
+exactly aligns the 4 corners of grads and original_image. If false, rescale by
+orig_height / height. Treat similarly the width dimension.
+END
+  }
+  summary: "Computes the gradient of nearest neighbor interpolation."
+}

@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import execute
 from tensorflow.python.platform import tf_logging as logging
 
 _DEFAULT_CALLBACK_ACTION = "raise"
@@ -162,7 +163,7 @@ def inf_nan_callback(op_type,
         # TODO(cais): Consider moving this into execute.py.
         # pylint: disable=protected-access
         pywrap_tensorflow.TFE_Py_Execute(
-            ctx._handle, output.device, "CheckNumerics", [output._handle],
+            ctx._handle, output.device, "CheckNumerics", [output],
             check_numerics_op_attrs, 1)
         # pylint: enable=protected-access
       except core._NotOkStatusException:  # pylint: disable=protected-access
@@ -216,7 +217,24 @@ def add_execution_callback(callback):
   function has finished execution, providing access to the op's type, name
   input and output tensors. Multiple execution callbacks can be added, in
   which case the callbacks will be invoked in the order in which they are
-  added.
+  added. To clear all execution callbacks that have been added, use
+  `clear_execution_callbacks()`.
+
+  Example:
+  ```python
+  def print_even_callback(op_type, op_name, attrs, inputs, outputs):
+    # A callback that prints only the even output values.
+    if outputs[0].numpy() % 2 == 0:
+      print("Even output from %s: %s" % (op_name or op_type,  outputs))
+  tfe.add_execution_callback(print_even_callback)
+
+  x = tf.pow(2.0, 3.0) - 3.0
+  y = tf.multiply(x, tf.add(1.0, 5.0))
+  # When the line above is run, you will see all intermediate outputs that are
+  # even numbers printed to the console.
+
+  tfe.clear_execution_callbacks()
+  ```
 
   Args:
     callback: a callable of the signature
@@ -228,10 +246,11 @@ def add_execution_callback(callback):
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of
         alternating attribute name and attribute value.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+      `inputs` is the `list` of input `Tensor`(s) to the op.
+      `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
   """
+  execute.execute = execute.execute_with_callbacks
   context.get_default_context().add_post_execution_callback(callback)
 
 
@@ -244,11 +263,14 @@ def seterr(inf_or_nan=None):
   """Set how abnormal conditions are handled by the default eager context.
 
   Example:
-  ``` python
+  ```python
   tfe.seterr(inf_or_nan="raise")
-  a = tfe.Tensor(10.0)
-  b = tfe.Tensor(0.0)
-  c = a / b  # <-- Raises InfOrNanError.
+  a = tf.constant(10.0)
+  b = tf.constant(0.0)
+  try:
+    c = a / b  # <-- Raises InfOrNanError.
+  except Exception as e:
+    print("Caught Exception: %s" % e)
 
   tfe.seterr(inf_or_nan="ignore")
   c = a / b  # <-- Does NOT raise exception anymore.

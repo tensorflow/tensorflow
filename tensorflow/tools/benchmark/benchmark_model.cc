@@ -230,6 +230,23 @@ Status CalculateFlops(const GraphDef& graph,
   return Status::OK();
 }
 
+void RecordBenchmarkEntry(const string& output_prefix,
+                          const string& benchmark_name, const string& postfix,
+                          int num_runs, double total_time_s,
+                          double throughput = -1.0) {
+  std::stringstream stream;
+  stream << benchmark_name;
+  if (!postfix.empty()) {
+    stream << "_" << postfix;
+  }
+
+  TestReporter node_reporter(output_prefix, stream.str());
+  TF_QCHECK_OK(node_reporter.Initialize());
+  TF_QCHECK_OK(
+      node_reporter.Benchmark(num_runs, -1.0, total_time_s, throughput));
+  TF_QCHECK_OK(node_reporter.Close());
+}
+
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs, Session* session,
                     StatSummarizer* stats, int64* inference_time_us) {
@@ -350,7 +367,7 @@ int Main(int argc, char** argv) {
   bool show_type = true;
   bool show_summary = true;
   bool show_flops = false;
-  int warmup_runs = 2;
+  int warmup_runs = 1;
 
   std::vector<Flag> flag_list = {
       Flag("graph", &graph, "graph file name"),
@@ -441,8 +458,14 @@ int Main(int argc, char** argv) {
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
   std::unique_ptr<GraphDef> graph_def;
+
+  int64 initialization_start_us = Env::Default()->NowMicros();
   Status initialize_status =
       InitializeSession(num_threads, graph, &session, &graph_def);
+  int64 initialization_end_us = Env::Default()->NowMicros();
+  double initialization_time_s =
+      (initialization_end_us - initialization_start_us) / 1000000.0;
+  LOG(INFO) << "Initialized session in " << initialization_time_s << "s";
   if (!initialize_status.ok()) {
     return -1;
   }
@@ -507,7 +530,7 @@ int Main(int argc, char** argv) {
   }
 
   // Capture overall inference time without stat logging overhead. This is the
-  // timing data that can be compared to other libaries.
+  // timing data that can be compared to other libraries.
   SleepSeconds(inter_benchmark_sleep_seconds);
   int64 no_stat_time_us = 0;
   int64 no_stat_num_runs = 0;
@@ -587,11 +610,23 @@ int Main(int argc, char** argv) {
         static_cast<double>(no_stat_wall_time) / (1024 * 1024);
 
     // Report the stats.
-    TestReporter reporter(output_prefix, benchmark_name);
-    TF_QCHECK_OK(reporter.Initialize());
-    TF_QCHECK_OK(reporter.Benchmark(no_stat_num_runs, -1.0, no_stat_wall_time,
-                                    throughput));
-    TF_QCHECK_OK(reporter.Close());
+    RecordBenchmarkEntry(output_prefix, benchmark_name, "", no_stat_num_runs,
+                         no_stat_wall_time, throughput);
+
+    // Session initialization time.
+    RecordBenchmarkEntry(output_prefix, benchmark_name, "meta-init", 1,
+                         initialization_time_s);
+
+    // First inference time. Note: if warmup_runs is > 1 this will actually be
+    // an average of all the warmup runs.
+    RecordBenchmarkEntry(output_prefix, benchmark_name, "meta-first-inference",
+                         warmup_runs, warmup_time_us / 1000000.0);
+
+    // Time from starting to initialize TF to getting the first result back.
+    // This also assumes that only one warmup run is performed.
+    RecordBenchmarkEntry(
+        output_prefix, benchmark_name, "meta-init-plus-first-inference", 1,
+        initialization_time_s + (warmup_time_us / 1000000.0) / warmup_runs);
 
     std::map<string, int64> node_type_map_count;
     std::map<string, int64> node_type_map_time;
@@ -603,17 +638,10 @@ int Main(int argc, char** argv) {
                               &node_type_map_memory,
                               &node_type_map_times_called, &accumulated_us);
     for (const auto& time : node_type_map_time) {
-      std::stringstream stream;
-      stream << benchmark_name << "_" << time.first;
-      TestReporter node_reporter(output_prefix, stream.str());
-
       LOG(INFO) << "Outputting: [" << time.first << "]";
-
-      TF_QCHECK_OK(node_reporter.Initialize());
-      TF_QCHECK_OK(node_reporter.Benchmark(
-          stat_num_runs, -1.0, (time.second * stat_num_runs) / 1000000.0f,
-          -1.0));
-      TF_QCHECK_OK(node_reporter.Close());
+      RecordBenchmarkEntry(output_prefix, benchmark_name, time.first,
+                           stat_num_runs,
+                           (time.second * stat_num_runs) / 1000000.0f);
     }
   }
 

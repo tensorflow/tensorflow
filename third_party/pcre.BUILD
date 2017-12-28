@@ -50,12 +50,12 @@ cc_library(
         "-DNEWLINE=10",
         "-DNO_RECURSE",
         "-DPARENS_NEST_LIMIT=50",
-        "-DPCRE_STATIC=1",
         "-DPOSIX_MALLOC_THRESHOLD=10",
         "-DSTDC_HEADERS=1",
         "-DSUPPORT_UCP",
         "-DSUPPORT_UTF",
     ],
+    defines = ["PCRE_STATIC=1"],
     includes = ["."],
     visibility = ["@swig//:__pkg__"],  # Please use RE2
     alwayslink = 1,

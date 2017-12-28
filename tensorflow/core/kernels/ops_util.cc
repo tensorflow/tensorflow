@@ -37,11 +37,6 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
 Status GetBroadcastSize(const int index, const int in_size, const int ksize,
                         const int stride, const int pad_size, int* bindex,
                         int* bsize) {
-  // Cannot have strides larger than the patch size.
-  if (stride > ksize) {
-    return errors::InvalidArgument(
-        "stride must be less than or equal to kernel size");
-  }
   // Cannot have index beyond the input size.
   if (index * stride > in_size) {
     return errors::InvalidArgument(

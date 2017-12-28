@@ -36,7 +36,7 @@ GraphOptimizer::~GraphOptimizer() {}
 void GraphOptimizer::Optimize(
     FunctionLibraryRuntime* runtime, Env* env, Device* device,
     std::unique_ptr<Graph>* graph,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
@@ -61,6 +61,10 @@ void GraphOptimizer::Optimize(
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
       cf_opts.shape_map = shape_map;
+      if (opts_.max_folded_constant_in_bytes() > 0) {
+        cf_opts.max_constant_size_in_bytes =
+            opts_.max_folded_constant_in_bytes();
+      }
       bool was_mutated;
       ConstantFold(cf_opts, runtime, env, device, g, &was_mutated)
           .IgnoreError();

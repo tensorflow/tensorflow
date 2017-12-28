@@ -44,9 +44,11 @@ class BaseCandidateSamplerOp : public OpKernel {
     OP_REQUIRES(context, true_classes.dims() == 2,
                 errors::InvalidArgument("true_classes must be a matrix"));
     const int32 batch_size = true_classes.dim_size(0);
-    OP_REQUIRES(context, true_classes.dim_size(1) == num_true_,
-                errors::InvalidArgument("true_classes must have "
-                                        "num_true columns"));
+    OP_REQUIRES(
+        context, true_classes.dim_size(1) == num_true_,
+        errors::InvalidArgument("true_classes must have "
+                                "num_true columns, expected: ",
+                                true_classes.dim_size(1), " was: ", num_true_));
     CHECK(sampler_) << "CandidateSamplerOp did not set sampler_";
 
     if (unique_) {

@@ -50,6 +50,7 @@ const char* const kAreBucketsReadyName = "are_buckets_ready";
 const char* const kNumSparseFeaturesName = "num_sparse_features";
 const char* const kSparseBucketsName = "sparse_buckets";
 const char* const kSparseValuesName = "sparse_values";
+const char* const kSparseIndicesName = "sparse_indices";
 const char* const kSparseStreamsStateName = "sparse_streams_state";
 const char* const kSparseSummariesName = "sparse_summaries";
 const char* const kSparseConfigName = "sparse_config";
@@ -85,9 +86,23 @@ std::vector<float> GetBuckets(const int32 feature,
   return buckets_vector;
 }
 
-void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
-                      const OpInputList& buckets_list,
-                      OpKernelContext* const context) {
+int32 GetFeatureDimension(const int32 feature_index, const int64 instance,
+                          const OpInputList* const indices_list) {
+  if (indices_list != nullptr) {
+    // Sparse multidimensional.
+    return (*indices_list)[feature_index].matrix<int64>()(instance, 1);
+  }
+  // No indices, assume one-dimensional tensor.
+  return 0;
+}
+
+// Allows quantization for each of multiple dimensions of a sparse feature.
+void QuantizeFeatures(
+    const string& output_name, const OpInputList& values_list,
+    const OpInputList& buckets_list,
+    const OpInputList* const
+        indices_list /** Optional, provide for sparse features **/,
+    OpKernelContext* const context) {
   if (values_list.size() == 0) {
     return;
   }
@@ -100,10 +115,13 @@ void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
     const int64 num_values = values_tensor.dim_size(0);
 
     Tensor* output_t = nullptr;
+    // Output will have bucket id and dimension of the features for that bucket.
     OP_REQUIRES_OK(
-        context, output_list.allocate(feature_index, TensorShape({num_values}),
-                                      &output_t));
-    TTypes<int32>::Vec output = output_t->vec<int32>();
+        context, output_list.allocate(feature_index,
+                                      TensorShape({num_values, 2}), &output_t));
+
+    auto output = output_t->matrix<int32>();
+
     const std::vector<float>& buckets_vector =
         GetBuckets(feature_index, buckets_list);
     auto flat_values = values_tensor.flat<float>();
@@ -116,7 +134,11 @@ void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
       }
       const int32 bucket =
           static_cast<int32>(bucket_iter - buckets_vector.begin());
-      output(instance) = bucket;
+      // Bucket id.
+      output(instance, 0) = bucket;
+      // Dimension.
+      output(instance, 1) =
+          GetFeatureDimension(feature_index, instance, indices_list);
     }
   }
 }
@@ -851,6 +873,11 @@ class QuantilesOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list(kSparseValuesName,
                                        &sparse_float_feature_values_list));
+
+    OpInputList sparse_float_indices_list;
+    OP_REQUIRES_OK(context, context->input_list(kSparseIndicesName,
+                                                &sparse_float_indices_list));
+
     OpInputList sparse_buckets_list;
     OP_REQUIRES_OK(
         context, context->input_list(kSparseBucketsName, &sparse_buckets_list));
@@ -865,10 +892,10 @@ class QuantilesOp : public OpKernel {
 
     // Quantize the feature values
     QuantizeFeatures(kDenseOutputTensorName, dense_float_features_list,
-                     dense_buckets_list, context);
+                     dense_buckets_list, nullptr, context);
 
     QuantizeFeatures(kSparseOutputTensorName, sparse_float_feature_values_list,
-                     sparse_buckets_list, context);
+                     sparse_buckets_list, &sparse_float_indices_list, context);
   }
 };
 
@@ -885,15 +912,20 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
     VLOG(1) << "boundaries has shape: "
             << boundaries_tensor.shape().DebugString();
     auto boundaries = boundaries_tensor.flat<float>();
-    boundaries_.clear();
+    std::vector<T> boundaries_vector;
+    boundaries_vector.reserve(boundaries.size());
     for (size_t i = 0; i < boundaries.size(); i++) {
-      boundaries_.push_back(boundaries(i));
+      boundaries_vector.push_back(boundaries(i));
       VLOG(1) << "boundaries(" << i << ") : " << boundaries(i);
     }
-    OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+    OP_REQUIRES(
+        context,
+        std::is_sorted(boundaries_vector.begin(), boundaries_vector.end()),
+        errors::InvalidArgument("Expected sorted boundaries"));
 
     const Tensor& input_tensor = context->input(0);
+    VLOG(1) << "Inputs has shape: " << input_tensor.shape().DebugString()
+            << " Dtype: " << tensorflow::DataTypeString(input_tensor.dtype());
     auto input = input_tensor.flat<T>();
 
     Tensor* output_tensor = nullptr;
@@ -902,17 +934,20 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
     auto output = output_tensor->template flat<int32>();
 
     for (size_t i = 0; i < input.size(); i++) {
-      output(i) = CalculateBucketIndex(input(i));
+      output(i) = CalculateBucketIndex(input(i), boundaries_vector);
     }
   }
 
  private:
-  int32 CalculateBucketIndex(const T value) {
-    auto first_bigger_it =
-        std::upper_bound(boundaries_.begin(), boundaries_.end(), value);
-    return first_bigger_it - boundaries_.begin();
+  int32 CalculateBucketIndex(const T value, std::vector<T>& boundaries_vector) {
+    auto first_bigger_it = std::upper_bound(boundaries_vector.begin(),
+                                            boundaries_vector.end(), value);
+    int32 index = first_bigger_it - boundaries_vector.begin();
+    CHECK(index >= 0 && index <= boundaries_vector.size())
+        << "Invalid bucket index: " << index
+        << " boundaries_vector.size(): " << boundaries_vector.size();
+    return index;
   }
-  std::vector<T> boundaries_;
 };
 
 #define REGISTER_KERNEL(T)                                     \

@@ -45,8 +45,8 @@ import sys
 import tensorflow as tf
 
 from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
-import tensorflow.examples.speech_commands.input_data as input_data
-import tensorflow.examples.speech_commands.models as models
+import input_data
+import models
 from tensorflow.python.framework import graph_util
 
 FLAGS = None
@@ -153,7 +153,7 @@ if __name__ == '__main__':
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How long each spectrogram timeslice is',)
+      help='How long the stride is between spectrogram timeslices',)
   parser.add_argument(
       '--dct_coefficient_count',
       type=int,

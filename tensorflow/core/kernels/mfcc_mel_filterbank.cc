@@ -62,8 +62,8 @@ bool MfccMelFilterbank::Initialize(int input_length,
     return false;
   }
 
-  if (lower_frequency_limit <= 0) {
-    LOG(ERROR) << "Lower frequency limit must be positive.";
+  if (lower_frequency_limit < 0) {
+    LOG(ERROR) << "Lower frequency limit must be nonnegative.";
     return false;
   }
 

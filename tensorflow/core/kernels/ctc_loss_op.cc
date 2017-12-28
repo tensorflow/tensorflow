@@ -91,7 +91,14 @@ class CTCLossOp : public OpKernel {
     OP_REQUIRES(ctx, batch_size != 0,
                 errors::InvalidArgument("batch_size must not be 0"));
 
-    TensorShape labels_shape({batch_size, max_time});
+    // Figure out the maximum label length to use as sparse tensor dimension.
+    auto labels_indices_t = labels_indices->matrix<int64>();
+    int64 max_label_len = 0;
+    for (int i = 0; i < labels_indices->dim_size(0); i++) {
+      max_label_len = std::max(max_label_len, labels_indices_t(i, 1) + 1);
+    }
+
+    TensorShape labels_shape({batch_size, max_label_len});
     std::vector<int64> order{0, 1};
     sparse::SparseTensor labels_sp(*labels_indices, *labels_values,
                                    labels_shape, order);
