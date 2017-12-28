@@ -857,6 +857,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
+      self.assertTrue(y.op.name.startswith('flip_left_right'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
@@ -867,6 +868,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.random_flip_left_right(x_tf)
+      self.assertTrue(y.op.name.startswith('random_flip_left_right'))
 
       count_flipped = 0
       count_unflipped = 0
@@ -897,6 +899,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
+      self.assertTrue(y.op.name.startswith('flip_up_down'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
@@ -907,6 +910,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.random_flip_up_down(x_tf)
+      self.assertTrue(y.op.name.startswith('random_flip_up_down'))
       count_flipped = 0
       count_unflipped = 0
       for _ in range(50):
@@ -936,6 +940,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(x_tf)
+      self.assertTrue(y.op.name.startswith('transpose_image'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
@@ -1160,6 +1165,7 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.per_image_standardization(x)
+      self.assertTrue(y.op.name.startswith('per_image_standardization'))
       y_tf = y.eval()
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
@@ -1341,6 +1347,11 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     for params, err_msg in test_config:
       self._assertRaises(x, x_shape, *params, err_msg=err_msg)
 
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+    y = image_ops.crop_to_bounding_box(image, 0, 0, 55, 66)
+    self.assertTrue(y.name.startswith('crop_to_bounding_box'))
+
 
 class CentralCropTest(test_util.TensorFlowTestCase):
 
@@ -1416,6 +1427,13 @@ class CentralCropTest(test_util.TensorFlowTestCase):
         _ = image_ops.central_crop(x, 0.0)
       with self.assertRaises(ValueError):
         _ = image_ops.central_crop(x, 1.01)
+
+  def testNameScope(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session(use_gpu=True):
+      y = image_ops.central_crop(x_np, 1.0)
+      self.assertTrue(y.op.name.startswith('central_crop'))
 
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
@@ -1619,6 +1637,11 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
     for config_item in test_config:
       self._assertRaises(x, x_shape, *config_item)
+
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+    y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
+    self.assertTrue(y.op.name.startswith('pad_to_bounding_box'))
 
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
@@ -2224,6 +2247,13 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
     self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
 
+  def testNameScope(self):
+    img_shape = [1, 3, 2, 1]
+    with self.test_session(use_gpu=True):
+      single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+      y = image_ops.resize_images(single_image, [55, 66])
+      self.assertTrue(y.op.name.startswith('resize_images'))
+
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
@@ -2498,6 +2528,11 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     target_height, target_width = [5, 0]
     self._assertRaises(x, x_shape, target_height, target_width,
                        "target_width must be > 0")
+
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+    y = image_ops.resize_image_with_crop_or_pad(image, 55, 66)
+    self.assertTrue(y.op.name.startswith('resize_image_with_crop_or_pad'))
 
 
 def _SimpleColorRamp():
