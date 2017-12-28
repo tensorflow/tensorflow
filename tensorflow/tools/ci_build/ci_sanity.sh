@@ -495,15 +495,8 @@ do_clang_format_check() {
 }
 
 do_check_load_py_test() {
-  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:check_load_py_test"
-  ${BUILD_CMD}
-  cmd_status \
-    "check_load_py_test failed to build."
-
-  BUILD_CMD="bazel-bin/tensorflow/tools/pip_package/check_load_py_test"
-  ${BUILD_CMD}
-  cmd_status \
-    "check_load_py_test failed."
+  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  python check_load_py_test.py
 }
 
 do_cmake_python_sanity() {
