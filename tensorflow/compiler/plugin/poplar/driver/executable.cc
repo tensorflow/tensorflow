@@ -40,17 +40,21 @@ PoplarExecutable::PoplarExecutable(
 
 PoplarExecutable::~PoplarExecutable() {}
 
-StatusOr<se::DeviceMemoryBase>
+StatusOr<std::unique_ptr<ShapedBuffer>>
 PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
+    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+
+  std::vector<se::DeviceMemoryBase> argument_buffers;
+  for (int i = 0; i < arguments.size(); ++i) {
+    argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
+  }
 
   VLOG(1) << "Execute " << module().name();
   if (VLOG_IS_ON(2)) {
-    for (const auto& a : arguments) {
+    for (const auto& a : argument_buffers) {
       VLOG(2) << "-- argument " << a.opaque();
     }
   }
@@ -61,12 +65,14 @@ PoplarExecutable::ExecuteOnStream(
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(executor->implementation()));
 
-  perftools::gputools::DeviceMemoryBase retbuf;
-  TF_ASSIGN_OR_RETURN(retbuf,
+  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+
+  se::DeviceMemoryBase result;
+  TF_ASSIGN_OR_RETURN(result,
                       poplarExecutor->ExecuteEngine(poplar_engine_,
                                                     memory_allocator,
                                                     result_shape(),
-                                                    arguments,
+                                                    argument_buffers,
                                                     output_map_,
                                                     parameter_shapes_));
 
@@ -78,39 +84,18 @@ PoplarExecutable::ExecuteOnStream(
     execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return retbuf;
-}
-
-StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  se::Stream* stream = run_options->stream();
-
-  std::vector<se::DeviceMemoryBase> argument_buffers;
-  for (int i = 0; i < arguments.size(); ++i) {
-    argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
-  }
-
-  se::DeviceMemoryBase result;
-  TF_ASSIGN_OR_RETURN(result, ExecuteOnStream(run_options, argument_buffers,
-                                              hlo_execution_profile));
-
   auto result_buffer =
-          MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
+          MakeUnique<ShapedBuffer>(result_shape(), result_shape(),
+                                   stream->parent()->platform(),
                                    stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
-  perftools::gputools::StreamExecutor* executor(stream->parent());
-  sep::PoplarExecutor* poplarExecutor(
-          static_cast<sep::PoplarExecutor*>(executor->implementation()));
 
-  TF_RETURN_IF_ERROR(
-    result_buffer->mutable_shape_index_to_buffer_entry()
-      ->ForEachMutableElementWithStatus(
-              [&result, &result_buffer, poplarExecutor](const ShapeIndex& index,
-                                                        size_t* buffer_entry) {
+  TF_RETURN_IF_ERROR(result_buffer->buffers().ForEachMutableElementWithStatus(
+              [&result, &result_buffer, poplarExecutor](
+                      const ShapeIndex& index,
+                      se::DeviceMemoryBase* device_memory) {
                 se::DeviceMemoryBase buffer = result;
                 for (auto i : index) {
                   TF_ASSIGN_OR_RETURN(
@@ -118,18 +103,17 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
                           poplarExecutor->GetTupleBufferByIndex(buffer, i));
                 }
                 CHECK(!buffer.is_null() || buffer.size() == 0);
-                *buffer_entry = result_buffer->mutable_buffers()->size();
-                result_buffer->mutable_buffers()->push_back(buffer);
+                *device_memory = buffer;
                 return Status::OK();
               }));
 
   return std::move(result_buffer);
 }
 
-StatusOr<se::DeviceMemoryBase>
+StatusOr<std::unique_ptr<ShapedBuffer>>
 PoplarExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
+        const ServiceExecutableRunOptions* run_options,
+        tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   return tensorflow::errors::Unimplemented(
           "ExecuteAsyncOnStream is not yet supported on Poplar.");
 }

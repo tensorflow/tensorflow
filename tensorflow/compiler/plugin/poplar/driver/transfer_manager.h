@@ -1,6 +1,3 @@
-/* Copyright 2017 Graphcore Ltd
- */
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,88 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
 
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
-
-#include <vector>
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace poplarplugin {
 
-// An implementation of the XLA GenericTransferManager that
-// handles CPU-specific infeed.
-class PoplarTransferManager : public TransferManager {
+class PoplarTransferManager : public GenericTransferManager {
 public:
   PoplarTransferManager();
 
-  ~PoplarTransferManager() override {}
-
-  se::Platform::Id PlatformId() const override;
-
-  StatusOr<std::vector<se::DeviceMemoryBase>>
-  ShallowCopyTupleFromDevice(
-          se::StreamExecutor* executor,
-          const se::DeviceMemoryBase& source,
-          const Shape& shape) override;
-
-  Status WriteTuplePointersToDevice(
-          se::StreamExecutor* executor,
-          tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>
-          elements,
-          const Shape& shape, se::DeviceMemoryBase* region) override;
-
-  Status TransferLiteralFromDevice(
-          se::StreamExecutor* executor,
-          const se::DeviceMemoryBase& source,
-          const Shape& device_shape,
-          const Shape& literal_shape,
-          Literal* literal) override;
-
-  Status TransferLiteralToDevice(
-          se::StreamExecutor* executor,
-          const Literal& literal,
-          se::DeviceMemoryBase* destination) override;
-
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-          perftools::gputools::StreamExecutor* executor,
-          const ShapedBuffer& device_buffer) override;
-
-  Status TransferLiteralToDevice(
-          perftools::gputools::StreamExecutor* executor, const Literal& literal,
-          const ShapedBuffer& device_buffer) override;
-
-
-  Status
-  TransferLiteralToInfeed(se::StreamExecutor *executor,
-                          const Literal &literal) override;
-
-  Status TransferBufferToInfeed(se::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-
-  Status TransferLiteralFromOutfeed(
-          se::StreamExecutor* executor,
-          const Shape& literal_shape,
-          Literal* literal) override;
-
-  Status ResetDevices(
-          tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
-
-  int64 GetByteSizeRequirement(const Shape& shape) const override;
+  ~PoplarTransferManager() override = default;
 
 private:
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarTransferManager);
 };
 
-}  // namespace poplarplugin
-}  // namespace xla
+}
+}
 
 #endif

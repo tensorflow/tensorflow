@@ -152,7 +152,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   bool StartTimer(Stream *stream, Timer *timer) override;
   bool StopTimer(Stream *stream, Timer *timer) override;
 
-  port::Status BlockHostUntilDoneWithStatus(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 

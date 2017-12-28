@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -240,7 +240,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
         perftools::gputools::StreamExecutor* executor) {
   VLOG(1) << "Begin HloPasses: " << module->name();
   HloPassPipeline pipeline("IPU");
-  pipeline.AddPass<BatchNormRewriter>(true, true, true, false);
+  pipeline.AddPass<BatchNormExpander>(true, true, true, false);
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<HloCSE>(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,

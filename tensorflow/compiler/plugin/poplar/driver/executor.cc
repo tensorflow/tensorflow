@@ -197,7 +197,7 @@ bool PoplarExecutor::HostCallback(Stream *stream,
 
 bool PoplarExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
   AsPoplarStream(dependent)->EnqueueTask(
-      [other]() { auto ok = other->BlockHostUntilDoneWithStatus(); });
+      [other]() { auto ok = other->BlockHostUntilDone(); });
   AsPoplarStream(dependent)->BlockUntilDone();
   return true;
 }
@@ -212,7 +212,7 @@ bool PoplarExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-port::Status PoplarExecutor::BlockHostUntilDoneWithStatus(Stream *stream)  {
+port::Status PoplarExecutor::BlockHostUntilDone(Stream *stream)  {
   AsPoplarStream(stream)->BlockUntilDone();
   return port::Status::OK();
 }
