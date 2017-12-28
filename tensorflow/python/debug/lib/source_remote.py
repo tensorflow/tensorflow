@@ -39,9 +39,7 @@ def _load_debugged_source_file(file_path, source_file_proto):
   source_file_proto.bytes = file_stat.length
   try:
     with gfile.Open(file_path, "r") as f:
-      source_lines = f.readlines()
-      for line in source_lines:
-        source_file_proto.lines.append(line.strip())
+      source_file_proto.lines.extend(f.read().splitlines())
   except IOError:
     pass
 
