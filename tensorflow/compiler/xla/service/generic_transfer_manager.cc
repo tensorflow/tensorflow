@@ -38,14 +38,7 @@ namespace xla {
 
 GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
                                                size_t pointer_size)
-    : platform_id_(platform_id), pointer_size_(pointer_size) {
-  // We currently only support kHostPlatformId for CPU, kCudaPlatformId for
-  // GPU and kInterpreterPlatformId for Interpreter. Before supporting other
-  // platforms, we need to test this transfer manager on them.
-  CHECK(platform_id_ == se::host::kHostPlatformId ||
-        platform_id_ == se::interpreter::kInterpreterPlatformId ||
-        platform_id_ == se::cuda::kCudaPlatformId);
-}
+    : platform_id_(platform_id), pointer_size_(pointer_size) {}
 
 se::Platform::Id GenericTransferManager::PlatformId() const {
   return platform_id_;
