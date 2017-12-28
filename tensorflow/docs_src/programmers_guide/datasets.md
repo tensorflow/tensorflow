@@ -679,8 +679,8 @@ buffer and chooses the next element uniformly at random from that buffer.
 ```python
 filenames = ["/var/data/file1.tfrecord", "/var/data/file2.tfrecord"]
 dataset = tf.data.TFRecordDataset(filenames)
-dataset = dataset.map(...)
 dataset = dataset.shuffle(buffer_size=10000)
+dataset = dataset.map(...)
 dataset = dataset.batch(32)
 dataset = dataset.repeat()
 ```
@@ -696,8 +696,8 @@ with the `tf.data` API, we recommend using
 ```python
 filenames = ["/var/data/file1.tfrecord", "/var/data/file2.tfrecord"]
 dataset = tf.data.TFRecordDataset(filenames)
-dataset = dataset.map(...)
 dataset = dataset.shuffle(buffer_size=10000)
+dataset = dataset.map(...)
 dataset = dataset.batch(32)
 dataset = dataset.repeat(num_epochs)
 iterator = dataset.make_one_shot_iterator()
@@ -740,8 +740,8 @@ def dataset_input_fn():
 
   # Use `Dataset.map()` to build a pair of a feature dictionary and a label
   # tensor for each example.
-  dataset = dataset.map(parser)
   dataset = dataset.shuffle(buffer_size=10000)
+  dataset = dataset.map(parser)
   dataset = dataset.batch(32)
   dataset = dataset.repeat(num_epochs)
   iterator = dataset.make_one_shot_iterator()
