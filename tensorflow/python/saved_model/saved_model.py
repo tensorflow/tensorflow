@@ -30,6 +30,9 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 # pylint: enable=unused-import
+# pylint: disable=wildcard-import
+from tensorflow.python.saved_model.simple_save import *
+# pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -41,6 +44,7 @@ _allowed_symbols = [
     "main_op",
     "signature_constants",
     "signature_def_utils",
+    "simple_save",
     "tag_constants",
     "utils",
 ]

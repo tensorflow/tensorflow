@@ -24,19 +24,39 @@ namespace tensorflow {
 
 /// Returns in 'max_error' the maximum element-wise error for dy/dx between the
 /// computed and numeric Jacobian matrices where 'xs' and 'ys' are tensors.
+/// X_T and Y_T are the c++ types for the x and y tensors, and JAC_T is a
+/// real-valued type to store the Jacobian derivatives dy/dx.
 /// This function adds operations to the graph associated with 'scope'.
-template <typename T>
+///
+/// Examples:
+/// if y = Square(x), where x (and so y) are DT_FLOAT,
+/// <X_T, Y_T, JAC_T> should be <float, float, float>
+///
+/// if y = Square(x), where x (and so y) are DT_DOUBLE,
+/// <X_T, Y_T, JAC_T> should be <double, double, double>
+///
+/// if y = Square(x), where x (and so y) are DT_COMPLEX64,
+/// <X_T, Y_T, JAC_T> should be <complex64, complex64, float>
+/// Note that JAC_T is always real-valued, and should be an appropriate
+/// precision to host the partial derivatives for dy/dx
+///
+/// if y = ComplexAbs(x) where x is DT_COMPLEX64 (so y is DT_FLOAT)
+/// <X_T, Y_T, JAC_T> should be <complex64, float, float>
+///
+/// if y = Complex(x, x) where x is DT_FLOAT (so y is DT_COMPLEX64)
+/// <X_T, Y_T, JAC_T> should be <float, complex64, float>
+template <typename X_T, typename Y_T, typename JAC_T>
 Status ComputeGradientError(const Scope& scope, const OutputList& xs,
                             const std::vector<TensorShape>& x_shapes,
                             const OutputList& ys,
                             const std::vector<TensorShape>& y_shapes,
-                            T* max_error);
+                            JAC_T* max_error);
 
 /// Overload of ComputeGradientError which takes an initial value for 'x'.
-template <typename T>
+template <typename X_T, typename Y_T, typename JAC_T>
 Status ComputeGradientError(const Scope& scope, const Output& x,
                             const Tensor& x_init_value, const Output& y,
-                            const TensorShape& y_shape, T* max_error);
+                            const TensorShape& y_shape, JAC_T* max_error);
 
 }  // namespace tensorflow
 

@@ -32,7 +32,7 @@ from google.protobuf import text_format
 
 from tensorflow.contrib import learn
 from tensorflow.contrib import lookup
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import experiment
@@ -132,7 +132,7 @@ def linear_model_params_fn(features, labels, mode, params):
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
       loss,
-      variables.get_global_step(),
+      training_util.get_global_step(),
       optimizer='Adagrad',
       learning_rate=params['learning_rate'])
   return prediction, loss, train_op
@@ -147,7 +147,7 @@ def linear_model_fn(features, labels, mode):
     (_, features), = features.items()
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
   return prediction, loss, train_op
 
 
@@ -157,7 +157,7 @@ def linear_model_fn_with_model_fn_ops(features, labels, mode):
                   model_fn.ModeKeys.INFER)
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
   return model_fn.ModelFnOps(
       mode=mode, predictions=prediction, loss=loss, train_op=train_op)
 
@@ -168,7 +168,7 @@ def logistic_model_no_mode_fn(features, labels):
   labels = array_ops.one_hot(labels, 3, 1, 0)
   prediction, loss = (models.logistic_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
   return {
       'class': math_ops.argmax(prediction, 1),
       'prob': prediction
@@ -241,7 +241,7 @@ def _build_estimator_for_resource_export_test():
     const = constant_op.constant(-1, dtype=dtypes.int64)
     table = lookup.MutableHashTable(
         dtypes.string, dtypes.int64, const, name='LookupTableModel')
-    update_global_step = variables.get_global_step().assign_add(1)
+    update_global_step = training_util.get_global_step().assign_add(1)
     if mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL):
       key = constant_op.constant(['key'])
       value = constant_op.constant([42], dtype=dtypes.int64)
@@ -306,7 +306,7 @@ def _model_fn_ops(
         mode=mode,
         predictions=constant_op.constant(0.),
         loss=constant_op.constant(0.),
-        train_op=variables.get_global_step().assign_add(1))
+        train_op=training_util.get_global_step().assign_add(1))
 
 
 def _make_input_fn(features, labels):
@@ -389,7 +389,7 @@ class EstimatorModelFnTest(test.TestCase):
       self.assertEqual(expected_param, params)
       self.assertEqual(model_dir, expected_model_dir)
       return (constant_op.constant(0.), constant_op.constant(0.),
-              variables.get_global_step().assign_add(1))
+              training_util.get_global_step().assign_add(1))
     est = estimator.Estimator(model_fn=_argument_checker,
                               params=expected_param,
                               model_dir=expected_model_dir)
@@ -400,7 +400,7 @@ class EstimatorModelFnTest(test.TestCase):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         loss = 100.0 - w
       return None, loss, None
@@ -415,7 +415,7 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       predictions = loss
@@ -434,7 +434,7 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       return None, loss, train_op
@@ -464,7 +464,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant(0.),
           loss=constant_op.constant(0.),
-          train_op=variables.get_global_step().assign_add(1),
+          train_op=training_util.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -483,7 +483,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=variables.get_global_step().assign_add(1),
+          train_op=training_util.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(saver=self.mock_saver))
 
     def input_fn():

@@ -26,27 +26,33 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import compat
 
 
-# TODO(josh11b): add tests with string types, lists/tuples, Shape.
+# TODO(josh11b): add tests with lists/tuples, Shape.
 class ConstantTest(test.TestCase):
 
   def _testCpu(self, x):
     np_ans = np.array(x)
-    tf_ans = ops.convert_to_tensor(x).numpy()
+    with context.device("/device:CPU:0"):
+      tf_ans = ops.convert_to_tensor(x).numpy()
     if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
       self.assertAllClose(np_ans, tf_ans)
     else:
       self.assertAllEqual(np_ans, tf_ans)
 
   def _testGpu(self, x):
-    np_ans = np.array(x)
-    tf_ans = ops.convert_to_tensor(x).numpy()
-    if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
-      self.assertAllClose(np_ans, tf_ans)
-    else:
-      self.assertAllEqual(np_ans, tf_ans)
+    device = test_util.gpu_device_name()
+    if device:
+      np_ans = np.array(x)
+      with context.device(device):
+        tf_ans = ops.convert_to_tensor(x).numpy()
+      if np_ans.dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+        self.assertAllClose(np_ans, tf_ans)
+      else:
+        self.assertAllEqual(np_ans, tf_ans)
 
   def _testAll(self, x):
     self._testCpu(x)
@@ -58,31 +64,77 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float32))
     self._testAll(np.empty((2, 0, 5)).astype(np.float32))
 
+    orig = [-1.0, 2.0, 0.0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints
+    orig = [-1.5, 2, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints that don't fit in int32
+    orig = [1, 2**42, 0.5]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
   def testDouble(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(np.empty((2, 0, 5)).astype(np.float64))
 
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig, dtypes_lib.float64)
+    self.assertEqual(dtypes_lib.float64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # This integer is not exactly representable as a double, gets rounded.
+    tf_ans = constant_op.constant(2**54 + 1, dtypes_lib.float64)
+    self.assertEqual(2**54, tf_ans.numpy())
+
+    # This integer is larger than all non-infinite numbers representable
+    # by a double, raises an exception.
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+      constant_op.constant(10**310, dtypes_lib.float64)
+
   def testInt32(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(np.empty((2, 0, 5)).astype(np.int32))
+    self._testAll([-1, 2])
 
   def testInt64(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
+    # Should detect out of range for int32 and use int64 instead.
+    orig = [2, 2**48, -2**48]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.int64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Out of range for an int64
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+      constant_op.constant([2**72])
 
   def testComplex64(self):
     self._testAll(
-        np.complex(1, 2) * np.arange(-15, 15).reshape([2, 3, 5
-                                                      ]).astype(np.complex64))
+        np.complex(1, 2) *
+        np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(
-        np.complex(1, 2) * np.random.normal(size=30).reshape(
-            [2, 3, 5]).astype(np.complex64))
+        np.complex(1, 2) *
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
   def testComplex128(self):
@@ -93,6 +145,26 @@ class ConstantTest(test.TestCase):
         np.complex(1, 2) * np.random.normal(size=30).reshape(
             [2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
+
+  def testString(self):
+    val = [compat.as_bytes(str(x)) for x in np.arange(-15, 15)]
+    self._testCpu(np.array(val).reshape([2, 3, 5]))
+    self._testCpu(np.empty((2, 0, 5)).astype(np.str_))
+
+  def testStringWithNulls(self):
+    val = ops.convert_to_tensor(b"\0\0\0\0").numpy()
+    self.assertEqual(len(val), 4)
+    self.assertEqual(val, b"\0\0\0\0")
+
+    val = ops.convert_to_tensor(b"xx\0xx").numpy()
+    self.assertEqual(len(val), 5)
+    self.assertAllEqual(val, b"xx\0xx")
+
+    nested = [[b"\0\0\0\0", b"xx\0xx"], [b"\0_\0_\0_\0", b"\0"]]
+    val = ops.convert_to_tensor(nested).numpy()
+    # NOTE(mrry): Do not use assertAllEqual, because it converts nested to a
+    #   numpy array, which loses the null terminators.
+    self.assertEqual(val.tolist(), nested)
 
   def testExplicitShapeNumPy(self):
     c = constant_op.constant(
@@ -144,15 +216,68 @@ class ConstantTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, None):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
+  def testShape(self):
+    self._testAll(constant_op.constant([1]).get_shape())
+
+  def testDimension(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll(x)
+
+  def testDimensionList(self):
+    x = [constant_op.constant([1]).shape[0]]
+    self._testAll(x)
+
+    # Mixing with regular integers is fine too
+    self._testAll([1] + x)
+    self._testAll(x + [1])
+
+  def testDimensionTuple(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll((x,))
+    self._testAll((1, x))
+    self._testAll((x, 1))
+
+  def testInvalidLength(self):
+
+    class BadList(list):
+
+      def __init__(self):
+        super(BadList, self).__init__([1, 2, 3])  # pylint: disable=invalid-length-returned
+
+      def __len__(self):
+        return -1
+
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList()])
+    with self.assertRaisesRegexp(ValueError, "mixed types"):
+      constant_op.constant([1, 2, BadList()])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant(BadList())
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([[BadList(), 2], 3])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), [1, 2, 3]])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), []])
+
+    # TODO(allenl, josh11b): These cases should return exceptions rather than
+    # working (currently shape checking only checks the first element of each
+    # sequence recursively). Maybe the first one is fine, but the second one
+    # silently truncating is rather bad.
+
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[3, 2, 1], BadList()])
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[], BadList()])
+
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "setting an array element with a sequence"):
+    with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3], [4, 5]])
 
 

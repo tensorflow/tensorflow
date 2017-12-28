@@ -56,16 +56,13 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   void NewLogicalBuffer(HloInstruction* instruction, const ShapeIndex& index);
 
   Status DefaultAction(HloInstruction* hlo_instruction) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
+  Status HandleSend(HloInstruction* send) override;
+  Status HandleSelect(HloInstruction* select) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

@@ -28,7 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import urllib
+from six.moves.urllib.request import urlopen
 
 import numpy as np
 import tensorflow as tf
@@ -44,13 +44,13 @@ IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
 def main():
   # If the training and test sets aren't stored locally, download them.
   if not os.path.exists(IRIS_TRAINING):
-    raw = urllib.urlopen(IRIS_TRAINING_URL).read()
-    with open(IRIS_TRAINING, "w") as f:
+    raw = urlopen(IRIS_TRAINING_URL).read()
+    with open(IRIS_TRAINING, "wb") as f:
       f.write(raw)
 
   if not os.path.exists(IRIS_TEST):
-    raw = urllib.urlopen(IRIS_TEST_URL).read()
-    with open(IRIS_TEST, "w") as f:
+    raw = urlopen(IRIS_TEST_URL).read()
+    with open(IRIS_TEST, "wb") as f:
       f.write(raw)
 
   # Load datasets.
@@ -167,7 +167,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import urllib
+from six.moves.urllib.request import urlopen
 
 import tensorflow as tf
 import numpy as np
@@ -184,13 +184,13 @@ them.
 
 ```python
 if not os.path.exists(IRIS_TRAINING):
-  raw = urllib.urlopen(IRIS_TRAINING_URL).read()
-  with open(IRIS_TRAINING,'w') as f:
+  raw = urlopen(IRIS_TRAINING_URL).read()
+  with open(IRIS_TRAINING,'wb') as f:
     f.write(raw)
 
 if not os.path.exists(IRIS_TEST):
-  raw = urllib.urlopen(IRIS_TEST_URL).read()
-  with open(IRIS_TEST,'w') as f:
+  raw = urlopen(IRIS_TEST_URL).read()
+  with open(IRIS_TEST,'wb') as f:
     f.write(raw)
 ```
 
@@ -273,9 +273,7 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
     containing 10, 20, and 10 neurons, respectively.
 *   `n_classes=3`. Three target classes, representing the three Iris species.
 *   `model_dir=/tmp/iris_model`. The directory in which TensorFlow will save
-    checkpoint data during model training. For more on logging and monitoring
-    with TensorFlow, see
-    @{$monitors$Logging and Monitoring Basics with tf.estimator}.
+    checkpoint data and TensorBoard summaries during model training.
 
 ## Describe the training input pipeline {#train-input}
 
@@ -315,9 +313,7 @@ classifier.train(input_fn=train_input_fn, steps=1000)
 
 However, if you're looking to track the model while it trains, you'll likely
 want to instead use a TensorFlow @{tf.train.SessionRunHook$`SessionRunHook`}
-to perform logging operations. See the tutorial
-@{$monitors$Logging and Monitoring Basics with tf.estimator}
-for more on this topic.
+to perform logging operations.
 
 ## Evaluate Model Accuracy {#evaluate-accuracy}
 
@@ -404,7 +400,7 @@ second sample is *Iris virginica*.
     @{$linear$Large-scale Linear Models with TensorFlow}.
 
 *   To build your own Estimator using tf.estimator APIs, check out
-    @{$estimators$Creating Estimators in tf.estimator}.
+    @{$extend/estimators$Creating Estimators}.
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).

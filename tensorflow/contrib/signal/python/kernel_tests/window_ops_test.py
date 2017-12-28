@@ -22,8 +22,10 @@ import functools
 
 import numpy as np
 
+from tensorflow.contrib.signal.python.kernel_tests import test_util
 from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
@@ -90,6 +92,17 @@ class WindowOpsTest(test.TestCase):
     self._compare_window_fns(
         functools.partial(_scipy_raised_cosine, a=0.54, b=0.46),
         window_ops.hamming_window)
+
+  def test_constant_folding(self):
+    """Window functions should be constant foldable for constant inputs."""
+    for window_fn in (window_ops.hann_window, window_ops.hamming_window):
+      for dtype, _ in self._dtypes:
+        for periodic in [False, True]:
+          g = ops.Graph()
+          with g.as_default():
+            window = window_fn(100, periodic=periodic, dtype=dtype)
+            rewritten_graph = test_util.grappler_optimize(g, [window])
+            self.assertEqual(1, len(rewritten_graph.node))
 
 
 if __name__ == '__main__':

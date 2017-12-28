@@ -80,7 +80,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
         isinstance(self.params.num_trees, tensor_forest.ForestHParams))
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testContructionPollution"):
+        "DecisionsToDataThenNNTest_testConstructionPollution"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
 
@@ -95,7 +95,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
          for _ in range(100)])
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testInferenceContruction"):
+        "DecisionsToDataThenNNTest_testInferenceConstruction"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
       graph = graph_builder.inference_graph(data, None)
@@ -111,7 +111,7 @@ class DecisionsToDataThenNNTest(test_util.TensorFlowTestCase):
     labels = [1 for _ in range(100)]
 
     with variable_scope.variable_scope(
-        "DecisionsToDataThenNNTest_testTrainingContruction"):
+        "DecisionsToDataThenNNTest_testTrainingConstruction"):
       graph_builder = decisions_to_data_then_nn.DecisionsToDataThenNN(
           self.params)
       graph = graph_builder.training_graph(data, labels, None)

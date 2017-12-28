@@ -86,24 +86,25 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
           if (val.TotalBytes() > 0 && (!is_dead) &&
               DMAHelper::CanUseDMA(&val) && dma_ok) {
             // DMA cases.
-            RecvTensorResponse proto;
-            auto transport_options = proto.mutable_transport_options();
-            Status s = remote_memory_manager_->TransportOptionsFromTensor(
+            RecvTensorResponse* proto = new RecvTensorResponse;
+            proto->set_is_dead(is_dead);
+            proto->set_send_start_micros(Env::Default()->NowMicros());
+            TensorProto* tensor_proto = proto->mutable_tensor();
+            tensor_proto->set_dtype(val.dtype());
+            val.shape().AsProto(tensor_proto->mutable_tensor_shape());
+            auto transport_options = proto->mutable_transport_options();
+            remote_memory_manager_->TransportOptionsFromTensor(
                 transport_options, val, src_dev, send_args.device_context,
-                on_host);
-            if (s.ok()) {
-              proto.set_is_dead(is_dead);
-              proto.set_send_start_micros(Env::Default()->NowMicros());
-              TensorProto* tensor_proto = proto.mutable_tensor();
-              tensor_proto->set_dtype(val.dtype());
-              val.shape().AsProto(tensor_proto->mutable_tensor_shape());
-              grpc::EncodeRecvTensorResponseToByteBuffer(proto, response);
-              done(Status::OK());
-              return;
-            } else {
-              done(s);
-              return;
-            }
+                on_host, [proto, done, response](const Status& s) {
+                  if (s.ok()) {
+                    grpc::EncodeRecvTensorResponseToByteBuffer(*proto,
+                                                               response);
+                    done(Status::OK());
+                  } else {
+                    done(s);
+                  }
+                  delete proto;
+                });
           } else {
             // Non-DMA cases.
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {

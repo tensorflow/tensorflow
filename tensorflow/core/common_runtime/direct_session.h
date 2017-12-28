@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
-#include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -64,8 +64,7 @@ class DirectSession : public Session {
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
-  typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher>
-      NameNodeMap;
+  typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;
@@ -113,6 +112,7 @@ class DirectSession : public Session {
   // every partition.
   struct PerPartitionExecutorsAndLib {
     Graph* graph = nullptr;                  // not owned.
+    Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
   };
@@ -310,7 +310,7 @@ class DirectSession : public Session {
       GUARDED_BY(graph_def_lock_);
 
   // Execution_state; used when placing the entire graph.
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_
+  std::unique_ptr<GraphExecutionState> execution_state_
       GUARDED_BY(graph_def_lock_);
 
   // The function library, before any rewrites or optimizations have been

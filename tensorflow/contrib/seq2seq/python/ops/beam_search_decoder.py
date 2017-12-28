@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
+
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
@@ -66,8 +68,8 @@ class FinalBeamSearchDecoderOutput(
   Args:
     predicted_ids: The final prediction. A tensor of shape
       `[T, batch_size, beam_width]`.
-    beam_search_output: An instance of `BeamSearchDecoderOutput` that describes
-      the state of the beam search.
+    beam_search_decoder_output: An instance of `BeamSearchDecoderOutput` that
+      describes the state of the beam search.
   """
   pass
 
@@ -129,7 +131,39 @@ def _check_maybe(t):
 
 
 class BeamSearchDecoder(decoder.Decoder):
-  """BeamSearch sampling decoder."""
+  """BeamSearch sampling decoder.
+
+    **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
+    `AttentionWrapper`, then you must ensure that:
+
+    - The encoder output has been tiled to `beam_width` via
+      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
+    - The `batch_size` argument passed to the `zero_state` method of this
+      wrapper is equal to `true_batch_size * beam_width`.
+    - The initial state created with `zero_state` above contains a
+      `cell_state` value containing properly tiled final state from the
+      encoder.
+
+    An example:
+
+    ```
+    tiled_encoder_outputs = tf.contrib.seq2seq.tile_batch(
+        encoder_outputs, multiplier=beam_width)
+    tiled_encoder_final_state = tf.conrib.seq2seq.tile_batch(
+        encoder_final_state, multiplier=beam_width)
+    tiled_sequence_length = tf.contrib.seq2seq.tile_batch(
+        sequence_length, multiplier=beam_width)
+    attention_mechanism = MyFavoriteAttentionMechanism(
+        num_units=attention_depth,
+        memory=tiled_inputs,
+        memory_sequence_length=tiled_sequence_length)
+    attention_cell = AttentionWrapper(cell, attention_mechanism, ...)
+    decoder_initial_state = attention_cell.zero_state(
+        dtype, batch_size=true_batch_size * beam_width)
+    decoder_initial_state = decoder_initial_state.clone(
+        cell_state=tiled_encoder_final_state)
+    ```
+  """
 
   def __init__(self,
                cell,
@@ -140,7 +174,7 @@ class BeamSearchDecoder(decoder.Decoder):
                beam_width,
                output_layer=None,
                length_penalty_weight=0.0):
-    """Initialize BeamSearchDecoder.
+    """Initialize the BeamSearchDecoder.
 
     Args:
       cell: An `RNNCell` instance.
@@ -220,6 +254,20 @@ class BeamSearchDecoder(decoder.Decoder):
       return nest.map_structure(lambda s: s[1:], layer_output_shape)
 
   @property
+  def tracks_own_finished(self):
+    """The BeamSearchDecoder shuffles its beams and their finished state.
+
+    For this reason, it conflicts with the `dynamic_decode` function's
+    tracking of finished states.  Setting this property to true avoids
+    early stopping of decoding due to mismanagement of the finished state
+    in `dynamic_decode`.
+
+    Returns:
+      `True`.
+    """
+    return True
+
+  @property
   def output_size(self):
     # Return the cell output and the id
     return BeamSearchDecoderOutput(
@@ -256,7 +304,7 @@ class BeamSearchDecoder(decoder.Decoder):
             dtype=nest.flatten(self._initial_cell_state)[0].dtype),
         finished=finished,
         lengths=array_ops.zeros(
-            [self._batch_size, self._beam_width], dtype=dtypes.int32))
+            [self._batch_size, self._beam_width], dtype=dtypes.int64))
 
     return (finished, start_inputs, initial_state)
 
@@ -267,17 +315,25 @@ class BeamSearchDecoder(decoder.Decoder):
       outputs: An instance of BeamSearchDecoderOutput.
       final_state: An instance of BeamSearchDecoderState. Passed through to the
         output.
-      sequence_lengths: An `int32` tensor shaped `[batch_size, beam_width]`.
+      sequence_lengths: An `int64` tensor shaped `[batch_size, beam_width]`.
         The sequence lengths determined for each beam during decode.
+        **NOTE** These are ignored; the updated sequence lengths are stored in
+        `final_state.lengths`.
 
     Returns:
-      outputs: An instance of FinalBeamSearchDecoderOutput where the
+      outputs: An instance of `FinalBeamSearchDecoderOutput` where the
         predicted_ids are the result of calling _gather_tree.
-      final_state: The same input instance of BeamSearchDecoderState.
+      final_state: The same input instance of `BeamSearchDecoderState`.
     """
+    del sequence_lengths
+    # Get max_sequence_length across all beams for each batch.
+    max_sequence_lengths = math_ops.to_int32(
+        math_ops.reduce_max(final_state.lengths, axis=1))
     predicted_ids = beam_search_ops.gather_tree(
-        outputs.predicted_ids, outputs.parent_ids,
-        sequence_length=sequence_lengths)
+        outputs.predicted_ids,
+        outputs.parent_ids,
+        max_sequence_lengths=max_sequence_lengths,
+        end_token=self._end_token)
     outputs = FinalBeamSearchDecoderOutput(
         beam_search_decoder_output=outputs, predicted_ids=predicted_ids)
     return outputs, final_state
@@ -357,17 +413,17 @@ class BeamSearchDecoder(decoder.Decoder):
     We do this so that we can use nest and not run into problems with shapes.
 
     Args:
-      t: Tensor of dimension [batch_size*beam_width, s]
-      s: Tensor, Python int, or TensorShape.
+      t: `Tensor`, either scalar or shaped `[batch_size * beam_width] + s`.
+      s: `Tensor`, Python int, or `TensorShape`.
 
     Returns:
-      Either a reshaped version of t with dimension
-      [batch_size, beam_width, s] if t's first dimension is of size
-      batch_size*beam_width or t if not.
+      If `t` is a matrix or higher order tensor, then the return value is
+      `t` reshaped to `[batch_size, beam_width] + s`.  Otherwise `t` is
+      returned unchanged.
 
     Raises:
-      TypeError: If t is an instance of TensorArray.
-      ValueError: If the rank of t is not statically known.
+      TypeError: If `t` is an instance of `TensorArray`.
+      ValueError: If the rank of `t` is not statically known.
     """
     _check_maybe(t)
     if t.shape.ndims >= 1:
@@ -378,19 +434,19 @@ class BeamSearchDecoder(decoder.Decoder):
   def _maybe_merge_batch_beams(self, t, s):
     """Splits the tensor from a batch by beams into a batch of beams.
 
-    More exactly, t is a tensor of dimension [batch_size*beam_width, s]. We
-    reshape this into [batch_size, beam_width, s]
+    More exactly, `t` is a tensor of dimension `[batch_size * beam_width] + s`,
+    then we reshape it to `[batch_size, beam_width] + s`.
 
     Args:
-      t: Tensor of dimension [batch_size*beam_width, s]
-      s: Tensor, Python int, or TensorShape.
+      t: `Tensor` of dimension `[batch_size * beam_width] + s`.
+      s: `Tensor`, Python int, or `TensorShape`.
 
     Returns:
-      A reshaped version of t with dimension [batch_size, beam_width, s].
+      A reshaped version of t with shape `[batch_size, beam_width] + s`.
 
     Raises:
-      TypeError: If t is an instance of TensorArray.
-      ValueError:  If the rank of t is not statically known.
+      TypeError: If `t` is an instance of `TensorArray`.
+      ValueError:  If the rank of `t` is not statically known.
     """
     _check_maybe(t)
     if t.shape.ndims >= 2:
@@ -488,13 +544,12 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   # Calculate the continuation lengths by adding to all continuing beams.
   vocab_size = logits.shape[-1].value or array_ops.shape(logits)[-1]
   lengths_to_add = array_ops.one_hot(
-      indices=array_ops.tile(
-          array_ops.reshape(end_token, [1, 1]), [batch_size, beam_width]),
+      indices=array_ops.fill([batch_size, beam_width], end_token),
       depth=vocab_size,
-      on_value=0,
-      off_value=1)
-  add_mask = (1 - math_ops.to_int32(previously_finished))
-  lengths_to_add = array_ops.expand_dims(add_mask, 2) * lengths_to_add
+      on_value=np.int64(0), off_value=np.int64(1),
+      dtype=dtypes.int64)
+  add_mask = math_ops.to_int64(math_ops.logical_not(previously_finished))
+  lengths_to_add *= array_ops.expand_dims(add_mask, 2)
   new_prediction_lengths = (
       lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
 
@@ -520,6 +575,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       ops.convert_to_tensor(beam_width, dtype=dtypes.int32, name="beam_width"),
       num_available_beam)
   next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
+
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
 
@@ -529,9 +585,18 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       gather_from=total_probs,
       batch_size=batch_size,
       range_size=beam_width * vocab_size,
-      gather_shape=[-1])
-  next_word_ids = math_ops.to_int32(word_indices % vocab_size)
-  next_beam_ids = math_ops.to_int32(word_indices / vocab_size)
+      gather_shape=[-1],
+      name="next_beam_probs")
+  # Note: just doing the following
+  #   math_ops.to_int32(word_indices % vocab_size,
+  #       name="next_beam_word_ids")
+  # would be a lot cleaner but for reasons unclear, that hides the results of
+  # the op which prevents capturing it with tfdbg debug ops.
+  raw_next_word_ids = math_ops.mod(word_indices, vocab_size,
+                                   name="next_beam_word_ids")
+  next_word_ids = math_ops.to_int32(raw_next_word_ids)
+  next_beam_ids = math_ops.to_int32(word_indices / vocab_size,
+                                    name="next_beam_parent_ids")
 
   # Append new ids to current predictions
   previously_finished = _tensor_gather_helper(
@@ -541,15 +606,15 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_finished = math_ops.logical_or(previously_finished,
-                                      math_ops.equal(next_word_ids, end_token))
+                                      math_ops.equal(next_word_ids, end_token),
+                                      name="next_beam_finished")
 
   # Calculate the length of the next predictions.
-  # 1. Finished beams remain unchanged
-  # 2. Beams that are now finished (EOS predicted) remain unchanged
-  # 3. Beams that are not yet finished have their length increased by 1
-  lengths_to_add = math_ops.to_int32(
-      math_ops.not_equal(next_word_ids, end_token))
-  lengths_to_add = (1 - math_ops.to_int32(next_finished)) * lengths_to_add
+  # 1. Finished beams remain unchanged.
+  # 2. Beams that are now finished (EOS predicted) have their length
+  #    increased by 1.
+  # 3. Beams that are not yet finished have their length increased by 1.
+  lengths_to_add = math_ops.to_int64(math_ops.logical_not(previously_finished))
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,
@@ -607,13 +672,20 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
 def _length_penalty(sequence_lengths, penalty_factor):
   """Calculates the length penalty. See https://arxiv.org/abs/1609.08144.
 
+  Returns the length penalty tensor:
+  ```
+  [(5+sequence_lengths)/6]**penalty_factor
+  ```
+  where all operations are performed element-wise.
+
   Args:
-    sequence_lengths: The sequence length of all hypotheses, a tensor
-      of shape [beam_size, vocab_size].
+    sequence_lengths: `Tensor`, the sequence lengths of each hypotheses.
     penalty_factor: A scalar that weights the length penalty.
 
   Returns:
-    The length penalty factor, a tensor fo shape [beam_size].
+    If the penalty is `0`, returns the scalar `1.0`.  Otherwise returns
+    the length penalty factor, a tensor with the same shape as
+    `sequence_lengths`.
   """
   penalty_factor = ops.convert_to_tensor(penalty_factor, name="penalty_factor")
   penalty_factor.set_shape(())  # penalty should be a scalar.
@@ -635,8 +707,7 @@ def _mask_probs(probs, eos_token, finished):
     eos_token: An int32 id corresponding to the EOS token to allocate
       probability to.
     finished: A boolean tensor of shape `[batch_size, beam_width]` that
-      specifies which
-      elements in the beam are finished already.
+      specifies which elements in the beam are finished already.
 
   Returns:
     A tensor of shape `[batch_size, beam_width, vocab_size]`, where unfinished
@@ -644,10 +715,6 @@ def _mask_probs(probs, eos_token, finished):
     probability on the EOS token.
   """
   vocab_size = array_ops.shape(probs)[2]
-  finished_mask = array_ops.expand_dims(
-      math_ops.to_float(1. - math_ops.to_float(finished)), 2)
-  # These examples are not finished and we leave them
-  non_finished_examples = finished_mask * probs
   # All finished examples are replaced with a vector that has all
   # probability on EOS
   finished_row = array_ops.one_hot(
@@ -656,8 +723,13 @@ def _mask_probs(probs, eos_token, finished):
       dtype=probs.dtype,
       on_value=0.,
       off_value=probs.dtype.min)
-  finished_examples = (1. - finished_mask) * finished_row
-  return finished_examples + non_finished_examples
+  finished_probs = array_ops.tile(
+      array_ops.reshape(finished_row, [1, 1, -1]),
+      array_ops.concat([array_ops.shape(finished), [1]], 0))
+  finished_mask = array_ops.tile(
+      array_ops.expand_dims(finished, 2), [1, 1, vocab_size])
+
+  return array_ops.where(finished_mask, finished_probs, probs)
 
 
 def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
@@ -697,7 +769,7 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
 
 
 def _tensor_gather_helper(gather_indices, gather_from, batch_size,
-                          range_size, gather_shape):
+                          range_size, gather_shape, name=None):
   """Helper for gathering the right indices from the tensor.
 
   This works by reshaping gather_from to gather_shape (e.g. [-1]) and then
@@ -715,19 +787,22 @@ def _tensor_gather_helper(gather_indices, gather_from, batch_size,
       There, we want to preserve the attention_size elements, so gather_shape is
       [batch_size * beam_width, -1]. Then, upon reshape, we still have the
       attention_size as desired.
+    name: The tensor name for set of operations. By default this is
+      'tensor_gather_helper'. The final output is named 'output'.
 
   Returns:
     output: Gathered tensor of shape tf.shape(gather_from)[:1+len(gather_shape)]
   """
-  range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
-  gather_indices = array_ops.reshape(gather_indices + range_, [-1])
-  output = array_ops.gather(
-      array_ops.reshape(gather_from, gather_shape), gather_indices)
-  final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
-  static_batch_size = tensor_util.constant_value(batch_size)
-  final_static_shape = (tensor_shape.TensorShape([static_batch_size])
-                        .concatenate(
-                            gather_from.shape[1:1 + len(gather_shape)]))
-  output = array_ops.reshape(output, final_shape)
-  output.set_shape(final_static_shape)
-  return output
+  with ops.name_scope(name, "tensor_gather_helper"):
+    range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
+    gather_indices = array_ops.reshape(gather_indices + range_, [-1])
+    output = array_ops.gather(
+        array_ops.reshape(gather_from, gather_shape), gather_indices)
+    final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
+    static_batch_size = tensor_util.constant_value(batch_size)
+    final_static_shape = (tensor_shape.TensorShape([static_batch_size])
+                          .concatenate(
+                              gather_from.shape[1:1 + len(gather_shape)]))
+    output = array_ops.reshape(output, final_shape, name="output")
+    output.set_shape(final_static_shape)
+    return output

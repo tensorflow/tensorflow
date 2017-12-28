@@ -25,11 +25,13 @@ import threading
 
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -122,6 +124,11 @@ class QueueBase(object):
   @{tf.RandomShuffleQueue} for concrete
   implementations of this class, and instructions on how to create
   them.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, dtypes, shapes, names, queue_ref):
@@ -145,7 +152,12 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "Queues are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):
@@ -160,7 +172,10 @@ class QueueBase(object):
     else:
       self._names = None
     self._queue_ref = queue_ref
-    self._name = self._queue_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._queue_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @staticmethod
   def from_list(index, queues):
@@ -208,7 +223,9 @@ class QueueBase(object):
   @property
   def name(self):
     """The name of the underlying queue."""
-    return self._queue_ref.op.name
+    if context.in_graph_mode():
+      return self._queue_ref.op.name
+    return self._name
 
   @property
   def dtypes(self):
@@ -419,9 +436,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the `QueueBase` object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(shape)
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(shape)
 
     return self._dequeue_return_value(ret)
 
@@ -458,10 +476,13 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    batch_dim = tensor_shape.Dimension(tensor_util.constant_value(op.inputs[1]))
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      batch_dim = tensor_shape.Dimension(
+          tensor_util.constant_value(op.inputs[1]))
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -499,9 +520,10 @@ class QueueBase(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Queue object.
-    op = ret[0].op
-    for output, shape in zip(op.values(), self._shapes):
-      output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      for output, shape in zip(op.values(), self._shapes):
+        output.set_shape(tensor_shape.TensorShape([None]).concatenate(shape))
 
     return self._dequeue_return_value(ret)
 
@@ -579,6 +601,11 @@ class RandomShuffleQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, min_after_dequeue, dtypes, shapes=None,
@@ -652,6 +679,11 @@ class FIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes=None, names=None,
@@ -703,6 +735,11 @@ class PaddingFIFOQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, dtypes, shapes, names=None, shared_name=None,
@@ -765,6 +802,11 @@ class PriorityQueue(QueueBase):
 
   See @{tf.QueueBase} for a description of the methods on
   this class.
+
+  @compatibility(eager)
+  Queues are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, capacity, types, shapes=None, names=None, shared_name=None,
@@ -897,7 +939,10 @@ class Barrier(object):
     self._barrier_ref = gen_data_flow_ops._barrier(
         component_types=self._types, shapes=self._shapes,
         shared_name=shared_name, name=name)
-    self._name = self._barrier_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._barrier_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def barrier_ref(self):
@@ -907,7 +952,9 @@ class Barrier(object):
   @property
   def name(self):
     """The name of the underlying barrier."""
-    return self._barrier_ref.op.name
+    if context.in_graph_mode():
+      return self._barrier_ref.op.name
+    return self._name
 
   def insert_many(self, component_index, keys, values, name=None):
     """For each key, assigns the respective value to the specified component.
@@ -984,16 +1031,19 @@ class Barrier(object):
 
     # NOTE(mrry): Not using a shape function because we need access to
     # the Barrier object.
-    op = ret[0].op
-    if allow_small_batch:
-      batch_dim = None
-    else:
-      batch_dim = tensor_shape.Dimension(
-          tensor_util.constant_value(op.inputs[1]))
-    op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-    op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
-    for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
-      output.set_shape(tensor_shape.TensorShape([batch_dim]).concatenate(shape))
+    if context.in_graph_mode():
+      op = ret[0].op
+      if allow_small_batch:
+        batch_dim = None
+      else:
+        batch_dim = tensor_shape.Dimension(
+            tensor_util.constant_value(op.inputs[1]))
+      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
+      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
+        output.set_shape(
+            tensor_shape.TensorShape([batch_dim]).concatenate(
+                shape))
 
     return ret
 
@@ -1081,7 +1131,10 @@ class ConditionalAccumulatorBase(object):
     else:
       self._shape = tensor_shape.unknown_shape()
     self._accumulator_ref = accumulator_ref
-    self._name = self._accumulator_ref.op.name.split("/")[-1]
+    if context.in_graph_mode():
+      self._name = self._accumulator_ref.op.name.split("/")[-1]
+    else:
+      self._name = context.context().scope_name
 
   @property
   def accumulator_ref(self):
@@ -2173,7 +2226,8 @@ class RecordInput(object):
                shift_ratio=0,
                seed=0,
                name=None,
-               batches=None):
+               batches=None,
+               compression_type=None):
     """Constructs a RecordInput Op.
 
     Args:
@@ -2191,6 +2245,8 @@ class RecordInput(object):
         how many batches to create, which are returned as a list when
         `get_yield_op()` is called. An example use case is to split processing
         between devices on one computer.
+      compression_type: The type of compression for the file. Currently ZLIB and
+        GZIP are supported. Defaults to none.
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -2205,12 +2261,17 @@ class RecordInput(object):
     self._shift_ratio = shift_ratio
     self._seed = seed
     self._name = name
+    self._compression_type = python_io.TFRecordCompressionType.NONE
+    if compression_type is not None:
+      self._compression_type = compression_type
 
   def get_yield_op(self):
     """Adds a node that yields a group of records every time it is executed.
     If RecordInput `batches` parameter is not None, it yields a list of
     record batches with the specified `batch_size`.
     """
+    compression_type = python_io.TFRecordOptions.get_compression_type_string(
+        python_io.TFRecordOptions(self._compression_type))
     records = gen_data_flow_ops.record_input(
         file_pattern=self._file_pattern,
         file_buffer_size=self._buffer_size,
@@ -2218,6 +2279,7 @@ class RecordInput(object):
         file_shuffle_shift_ratio=self._shift_ratio,
         batch_size=self._batch_size,
         file_random_seed=self._seed,
+        compression_type=compression_type,
         name=self._name)
     if self._batches is None:
       return records

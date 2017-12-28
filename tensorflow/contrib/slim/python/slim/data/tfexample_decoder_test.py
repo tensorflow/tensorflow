@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -228,7 +229,10 @@ class TFExampleDecoderTest(test.TestCase):
     image_shape = (2, 3, 3)
     unused_image, serialized_example = self.GenerateImage(
         image_format='jpeg', image_shape=image_shape)
-    with self.assertRaises(TypeError):
+    # decode_raw support uint16 now so ValueError will be thrown instead.
+    with self.assertRaisesRegexp(
+        ValueError,
+        'true_fn and false_fn must have the same type: uint16, uint8'):
       unused_decoded_image = self.RunDecodeExample(
           serialized_example,
           tfexample_decoder.Image(dtype=dtypes.uint16),
@@ -689,7 +693,7 @@ class TFExampleDecoderTest(test.TestCase):
         else:
           self.assertAllClose(image, decoded_image, atol=0)
 
-  def testDecodeExampleWithBoundingBox(self):
+  def testDecodeExampleWithBoundingBoxSparse(self):
     num_bboxes = 10
     np_ymin = np.random.rand(num_bboxes, 1)
     np_xmin = np.random.rand(num_bboxes, 1)
@@ -713,6 +717,49 @@ class TFExampleDecoderTest(test.TestCase):
           'image/object/bbox/xmin': parsing_ops.VarLenFeature(dtypes.float32),
           'image/object/bbox/ymax': parsing_ops.VarLenFeature(dtypes.float32),
           'image/object/bbox/xmax': parsing_ops.VarLenFeature(dtypes.float32),
+      }
+
+      items_to_handlers = {
+          'object/bbox':
+              tfexample_decoder.BoundingBox(['ymin', 'xmin', 'ymax', 'xmax'],
+                                            'image/object/bbox/'),
+      }
+
+      decoder = tfexample_decoder.TFExampleDecoder(keys_to_features,
+                                                   items_to_handlers)
+      [tf_bboxes] = decoder.decode(serialized_example, ['object/bbox'])
+      bboxes = tf_bboxes.eval()
+
+    self.assertAllClose(np_bboxes, bboxes)
+
+  def testDecodeExampleWithBoundingBoxDense(self):
+    num_bboxes = 10
+    np_ymin = np.random.rand(num_bboxes, 1)
+    np_xmin = np.random.rand(num_bboxes, 1)
+    np_ymax = np.random.rand(num_bboxes, 1)
+    np_xmax = np.random.rand(num_bboxes, 1)
+    np_bboxes = np.hstack([np_ymin, np_xmin, np_ymax, np_xmax])
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature={
+        'image/object/bbox/ymin': self._EncodedFloatFeature(np_ymin),
+        'image/object/bbox/xmin': self._EncodedFloatFeature(np_xmin),
+        'image/object/bbox/ymax': self._EncodedFloatFeature(np_ymax),
+        'image/object/bbox/xmax': self._EncodedFloatFeature(np_xmax),
+    }))
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = array_ops.reshape(serialized_example, shape=[])
+
+      keys_to_features = {
+          'image/object/bbox/ymin': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/xmin': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/ymax': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/xmax': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
       }
 
       items_to_handlers = {
@@ -764,6 +811,87 @@ class TFExampleDecoderTest(test.TestCase):
       self.assertEqual(output_image.shape, (2, 2, 3, 3))
       self.assertAllEqual(np.squeeze(output_image[0, :, :, :]), image)
       self.assertAllEqual(np.squeeze(output_image[1, :, :, :]), image)
+
+  def testDecodeExampleWithLookup(self):
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature={
+        'image/object/class/text': self._BytesFeature(
+            np.array(['cat', 'dog', 'guinea pig'])),
+    }))
+    serialized_example = example.SerializeToString()
+    # 'dog' -> 0, 'guinea pig' -> 1, 'cat' -> 2
+    table = lookup_ops.index_table_from_tensor(
+        constant_op.constant(['dog', 'guinea pig', 'cat']))
+
+    with self.test_session() as sess:
+      sess.run(lookup_ops.tables_initializer())
+
+      serialized_example = array_ops.reshape(serialized_example, shape=[])
+
+      keys_to_features = {
+          'image/object/class/text': parsing_ops.VarLenFeature(dtypes.string),
+      }
+
+      items_to_handlers = {
+          'labels':
+              tfexample_decoder.LookupTensor('image/object/class/text', table),
+      }
+
+      decoder = tfexample_decoder.TFExampleDecoder(keys_to_features,
+                                                   items_to_handlers)
+      obtained_class_ids = decoder.decode(serialized_example)[0].eval()
+
+    self.assertAllClose([2, 0, 1], obtained_class_ids)
+
+  def testDecodeExampleWithBackupHandlerLookup(self):
+
+    example1 = example_pb2.Example(
+        features=feature_pb2.Features(
+            feature={
+                'image/object/class/text':
+                    self._BytesFeature(np.array(['cat', 'dog', 'guinea pig'])),
+                'image/object/class/label':
+                    self._EncodedInt64Feature(np.array([42, 10, 900]))
+            }))
+    example2 = example_pb2.Example(
+        features=feature_pb2.Features(
+            feature={
+                'image/object/class/text':
+                    self._BytesFeature(np.array(['cat', 'dog', 'guinea pig'])),
+            }))
+    example3 = example_pb2.Example(
+        features=feature_pb2.Features(
+            feature={
+                'image/object/class/label':
+                    self._EncodedInt64Feature(np.array([42, 10, 901]))
+            }))
+    # 'dog' -> 0, 'guinea pig' -> 1, 'cat' -> 2
+    table = lookup_ops.index_table_from_tensor(
+        constant_op.constant(['dog', 'guinea pig', 'cat']))
+    keys_to_features = {
+        'image/object/class/text': parsing_ops.VarLenFeature(dtypes.string),
+        'image/object/class/label': parsing_ops.VarLenFeature(dtypes.int64),
+    }
+    backup_handler = tfexample_decoder.BackupHandler(
+        handler=tfexample_decoder.Tensor('image/object/class/label'),
+        backup=tfexample_decoder.LookupTensor('image/object/class/text', table))
+    items_to_handlers = {
+        'labels': backup_handler,
+    }
+    decoder = tfexample_decoder.TFExampleDecoder(keys_to_features,
+                                                 items_to_handlers)
+    obtained_class_ids_each_example = []
+    with self.test_session() as sess:
+      sess.run(lookup_ops.tables_initializer())
+      for example in [example1, example2, example3]:
+        serialized_example = array_ops.reshape(
+            example.SerializeToString(), shape=[])
+        obtained_class_ids_each_example.append(
+            decoder.decode(serialized_example)[0].eval())
+
+    self.assertAllClose([42, 10, 900], obtained_class_ids_each_example[0])
+    self.assertAllClose([2, 0, 1], obtained_class_ids_each_example[1])
+    self.assertAllClose([42, 10, 901], obtained_class_ids_each_example[2])
 
 
 if __name__ == '__main__':

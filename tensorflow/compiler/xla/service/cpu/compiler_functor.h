@@ -44,6 +44,7 @@ class CompilerFunctor {
   explicit CompilerFunctor(
       llvm::TargetMachine* target_machine, const Disassembler* disassembler,
       int opt_level, bool optimize_for_size, bool enable_fast_math,
+      bool disable_expensive_passes,
       const VectorIntrinsics& available_intrinsics,
       LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
       LLVMCompiler::ModuleHook post_optimization_hook = nullptr)
@@ -52,6 +53,7 @@ class CompilerFunctor {
         opt_level_(opt_level),
         optimize_for_size_(optimize_for_size),
         enable_fast_math_(enable_fast_math),
+        disable_expensive_passes_(disable_expensive_passes),
         available_intrinsics_(available_intrinsics),
         pre_optimization_hook_(pre_optimization_hook),
         post_optimization_hook_(post_optimization_hook) {}
@@ -75,6 +77,7 @@ class CompilerFunctor {
   const unsigned opt_level_;
   const bool optimize_for_size_;
   const bool enable_fast_math_;
+  const bool disable_expensive_passes_;
   const VectorIntrinsics available_intrinsics_;
   LLVMCompiler::ModuleHook pre_optimization_hook_;
   LLVMCompiler::ModuleHook post_optimization_hook_;

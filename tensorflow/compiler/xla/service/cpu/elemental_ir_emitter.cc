@@ -44,15 +44,11 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
         default:
           return Unimplemented("tanh");
       }
-      // Create function type for the function.
-      llvm::FunctionType* function_type = llvm::FunctionType::get(
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
-          /*isVarArg=*/false);
       // Create function declaration for 'tanhf'.
       llvm::Function* function =
           llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-              llvm_ir::AsStringRef(function_name), function_type));
+              llvm_ir::AsStringRef(function_name), operand_value->getType(),
+              operand_value->getType()));
       function->setCallingConv(llvm::CallingConv::C);
       function->setDoesNotThrow();
       function->setDoesNotAccessMemory();
@@ -64,5 +60,50 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
+  string function_name;
+  switch (prim_type) {
+    case F32:
+      function_name = "atan2f";
+      break;
+    case F64:
+      function_name = "atan2";
+      break;
+    default:
+      return Unimplemented("atan2");
+  }
+  // Create function declaration for 'atan2'.
+  llvm::Function* function =
+      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
+          llvm_ir::AsStringRef(function_name), lhs->getType(), lhs->getType(),
+          rhs->getType()));
+  function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+  function->setDoesNotAccessMemory();
+  // Create instruction to call 'atan2'.
+  return ir_builder_->CreateCall(function, {lhs, rhs});
+}
+
+llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
+    const HloInstruction* hlo,
+    const HloToElementGeneratorMap& operand_to_generator) const {
+  if (hlo->opcode() == HloOpcode::kMap) {
+    return [this, hlo, &operand_to_generator](
+               const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
+      std::vector<llvm::Value*> operands;
+      for (int i = 0; i < hlo->operand_count(); i++) {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(i))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        operands.push_back(operand_value);
+      }
+      return ir_emitter_->EmitScalarCall(hlo->shape().element_type(),
+                                         hlo->to_apply(), operands,
+                                         llvm_ir::IrName(hlo));
+    };
+  }
+  return ElementalIrEmitter::MakeElementGenerator(hlo, operand_to_generator);
+}
 }  // namespace cpu
 }  // namespace xla

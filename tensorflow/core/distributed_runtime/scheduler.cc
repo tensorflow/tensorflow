@@ -226,7 +226,6 @@ Microseconds GreedyScheduler::ComputeSchedule(
   while (!event_queue.empty()) {
     Event event = event_queue.top();
     event_queue.pop();
-    Microseconds curr_time;
     if (event.is_completion) {
       Sim* sim = device_states_[event.node->assigned_device_name()];
       --sim->num_running;

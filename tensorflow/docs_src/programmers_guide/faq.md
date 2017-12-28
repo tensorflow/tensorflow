@@ -269,13 +269,13 @@ See the how-to documentation for
 There are three main options for dealing with data in a custom format.
 
 The easiest option is to write parsing code in Python that transforms the data
-into a numpy array. Then use @{tf.contrib.data.Dataset.from_tensor_slices} to
+into a numpy array. Then use @{tf.data.Dataset.from_tensor_slices} to
 create an input pipeline from the in-memory data.
 
 If your data doesn't fit in memory, try doing the parsing in the Dataset
 pipeline. Start with an appropriate file reader, like
-@{tf.contrib.data.TextLineDataset}. Then convert the dataset by mapping
-@{tf.contrib.data.Dataset.map$mapping} appropriate operations over it.
+@{tf.data.TextLineDataset}. Then convert the dataset by mapping
+@{tf.data.Dataset.map$mapping} appropriate operations over it.
 Prefer predefined TensorFlow operations such as @{tf.decode_raw},
 @{tf.decode_csv}, @{tf.parse_example}, or @{tf.image.decode_png}.
 

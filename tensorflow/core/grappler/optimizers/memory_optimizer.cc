@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
@@ -47,12 +49,11 @@ const char* kRecomputeHint = "_recompute_hint";
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
   std::unordered_set<string> cheap_ops = {
-      "Add",  "AddN",     "BiasAdd",           "Cast",
-      "Fill", "FloorDiv", "FloorMod",          "FusedBatchNorm",
-      "Mul",  "Neg",      "RealDiv",           "Reciprocal",
-      "Relu", "Relu6",    "Reshape",           "Rsqrt",
-      "Sqrt", "Square",   "SquaredDifference", "Sub",
-      "Tile", "Transpose"};
+      "Add",      "AddN",       "BiasAdd",        "Cast",   "Fill",
+      "FloorDiv", "FloorMod",   "FusedBatchNorm", "Mul",    "Neg",
+      "RealDiv",  "Reciprocal", "Relu",           "Relu6",  "Reshape",
+      "Rsqrt",    "Sigmoid",    "Sqrt",           "Square", "SquaredDifference",
+      "Sub",      "Tile",       "Transpose"};
   return cheap_ops;
 }
 
@@ -418,7 +419,7 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   // We don't use the results of this topological sort until later, but this
   // call invalidates all NodeDef pointers, so it needs to be done before we
   // start collecting those.
-  TopologicalSort(graph);
+  TF_CHECK_OK(TopologicalSort(graph));
   NodeMap node_map(graph);
   std::vector<RecomputedSubGraph> recomputed_subgraphs;
   // Do not recompute nodes which are fed, since the recomputed node would not
@@ -431,14 +432,16 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
       [&recomputation_targets_name_prefix](const NodeDef& node) {
         // Nodes whose inputs we may want to recompute. Typically targets will
         // be gradients (recomputation_targets_name_prefix="gradients/"),
-        // although the prefix is configurable since gradients may be created in
-        // a name scope.
+        // although the prefix is configurable since gradients may be created
+        // in a name scope.
         // TODO(allenl): Use a static schedule
         // (grappler::EstimateEarliestExecutionTimes) to recompute only nodes
         // whose outputs will sit around for a while.
         return node.name().find(recomputation_targets_name_prefix) == 0;
       };
-  if (optimization_level == RewriterConfig::HEURISTICS) {
+
+  if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||
+      optimization_level == RewriterConfig::HEURISTICS) {
     // TODO(allenl): Handle ResNet-like architectures better. Right now all of
     // the cheap forward ops get grouped into a single subgraph which must
     // execute before gradients start executing (unless layers are manually
@@ -602,6 +605,81 @@ static const NodeDef* FindSwapTrigger(
   return nullptr;
 }
 
+static void IdentifySwappingCandidates(Cluster* cluster,
+                                       const GrapplerItem& item,
+                                       GraphDef* optimized_graph) {
+  GraphMemory memory(item);
+  const std::unordered_map<string, DeviceProperties>& devices =
+      cluster->GetDevices();
+  if (!memory.InferStatically(devices).ok()) {
+    return;
+  }
+
+  for (const auto& device : devices) {
+    const string& name = device.first;
+    const DeviceProperties& prop = device.second;
+    if (prop.type() != "GPU") {
+      continue;
+    }
+    if (prop.memory_size() <= 0) {
+      continue;
+    }
+    const GraphMemory::MemoryUsage& mem_usage = memory.GetPeakMemoryUsage(name);
+    if (mem_usage.used_memory <= prop.memory_size()) {
+      continue;
+    }
+    int64 required_savings = mem_usage.used_memory - prop.memory_size();
+    // TODO(bsteiner): sort the tensors by how long they're live.
+
+    std::unordered_map<const NodeDef*, Costs::NanoSeconds> execution_times;
+    if (!EstimateEarliestExecutionTimes(item, cluster, &execution_times).ok()) {
+      return;
+    }
+    GraphView graph(optimized_graph);
+    for (const auto& live_tensor : mem_usage.live_tensors) {
+      if (live_tensor.deallocation_time - live_tensor.allocation_time <=
+          Costs::Duration(1e6)) {
+        // Not enough time to swap.
+        continue;
+      }
+      if (live_tensor.memory_used <= 1024) {
+        // Don't bother with small tensors.
+        continue;
+      }
+      Costs::NanoSeconds execution_time(-1);
+      GraphView::InputPort fanout_to_swap;
+      GraphView::OutputPort port =
+          graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
+      for (GraphView::InputPort input : graph.GetFanout(port)) {
+        auto it = execution_times.find(input.node);
+        if (it != execution_times.end()) {
+          if (it->second > execution_time) {
+            fanout_to_swap = input;
+            execution_time = it->second;
+          }
+        }
+      }
+      // Annotate the fanout to request the tensor to be swapped if it's not
+      // already been done.
+      AttrValue& val = (*fanout_to_swap.node->mutable_attr())["_swap_to_host"];
+      bool found = false;
+      for (int port_id : val.list().i()) {
+        if (port_id == fanout_to_swap.port_id) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        val.mutable_list()->add_i(fanout_to_swap.port_id);
+        required_savings -= live_tensor.memory_used;
+        if (required_savings < 0) {
+          break;
+        }
+      }
+    }
+  }
+}
+
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
@@ -609,6 +687,10 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   RecomputationRewritingPass(optimization_level_,
                              recomputation_targets_name_prefix_,
                              optimized_graph, item);
+
+  if (optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS) {
+    IdentifySwappingCandidates(cluster, item, optimized_graph);
+  }
 
   // Figure out what needs to be swapped;
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
@@ -634,7 +716,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   {
     // Estimate the size of the data to swap for each node.
     GraphProperties properties(item);
-    TF_RETURN_IF_ERROR(properties.InferStatically());
+    TF_RETURN_IF_ERROR(properties.InferStatically(true));
     for (auto& swap : nodes_to_swap) {
       const NodeDef* node = swap.first;
       std::vector<OpInfo::TensorProperties> props =

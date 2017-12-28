@@ -55,19 +55,20 @@ bool IsShapeOp(const Node* n) {
 // in shape_map.
 bool ReadPartialShapesFromShapeMap(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     std::vector<PartialTensorShape>* input_shapes) {
   CHECK(shape_map != nullptr);
   for (const Edge* in : n->in_edges()) {
     // Don't need to check if incoming control edges have known shapes.
     if (in->IsControlEdge()) continue;
-    if (shape_map->count(in->src()) == 0) {
+    const auto known_shape_iter = shape_map->find(in->src()->name());
+    if (known_shape_iter == shape_map->end()) {
       // One of n's inputs doesn't have known shapes, so don't replace n.
       return false;
     }
-    const auto& known_shape = shape_map->at(in->src());
-    CHECK_GT(known_shape.size(), in->src_output());
+    const auto& known_shape = known_shape_iter->second;
+    CHECK_GT(known_shape.size(), in->src_output()) << known_shape_iter->first;
     input_shapes->push_back(known_shape[in->src_output()]);
   }
   return true;
@@ -169,7 +170,7 @@ bool MaybeReplaceSizeOp(const Node* n,
 // be replaced.
 bool MaybeReplaceShapeOp(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
@@ -208,7 +209,7 @@ bool MaybeReplaceShapeOp(
 // (Shape, ShapeN, Size, or Rank).
 bool IsConstantFoldable(
     const Node* n,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
     std::unordered_map<const Node*, std::vector<Tensor>>*
@@ -459,7 +460,8 @@ Graph* GetConstantGraph(
 // new constant node.
 bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
                                NodeAndOutput tensor, const Tensor& constant,
-                               const gtl::FlatSet<Node*>& control_deps) {
+                               const gtl::FlatSet<Node*>& control_deps,
+                               int64 max_constant_size_in_bytes) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
   // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
@@ -468,8 +470,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   // constraint, do not replace it.
   // 3) If the constant op created does not have a kernel implementation
   // for the device, do not use it.
-  // 4) If the size of the constant in bytes is too large (> 10M), do not
-  // replace it. This prevents the size of the Graph from growing too large.
+  // 4) If the size of the constant in bytes is too large (>
+  // max_constant_in_bytes), do not replace it. This prevents the size of the
+  // Graph from growing too large.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
@@ -493,7 +496,7 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
       return false;
     }
   }
-  if (constant.TotalBytes() > 10 * 1024 * 1024) {
+  if (constant.TotalBytes() > max_constant_size_in_bytes) {
     return false;
   }
 
@@ -612,9 +615,9 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   for (size_t c = 0; c < outputs.size(); ++c) {
     const gtl::FlatSet<Node*>& control_deps =
         constant_control_deps[tensors_to_replace[c].first];
-    if (ReplaceTensorWithConstant(graph, partition_device,
-                                  tensors_to_replace[c], outputs[c],
-                                  control_deps)) {
+    if (ReplaceTensorWithConstant(
+            graph, partition_device, tensors_to_replace[c], outputs[c],
+            control_deps, opts.max_constant_size_in_bytes)) {
       ++num_nodes_replaced;
     }
   }

@@ -78,6 +78,8 @@ class RecordYielder {
     // Uses these many concurrent tfrecord iterators to iterate through
     // tfrecords.
     int32 parallelism = 1;
+
+    string compression_type;
   };
 
   explicit RecordYielder(OpKernelConstruction* context,

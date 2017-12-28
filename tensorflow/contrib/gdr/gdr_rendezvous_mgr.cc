@@ -61,16 +61,20 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
         const bool on_host =
             (dst_device_->tensorflow_gpu_device_info() == nullptr) ||
             recv_args_.alloc_attrs.on_host();
-        Status s = remote_memory_manager_->TensorFromTransportOptions(
+        remote_memory_manager_->TensorFromTransportOptions(
             const_cast<Tensor*>(&tensor()), transport_options, dst_device_,
-            recv_args_.device_context, on_host);
-        if (!s.ok()) {
-          mutex_lock l(mu_);
-          status_.Update(s);
-          LOG(ERROR)
-              << "Cannot find pinned memory region from allocator "
-              << dst_device_->GetAllocator(recv_args_.alloc_attrs)->Name();
-        }
+            recv_args_.device_context, on_host,
+            [this, recv_done](const Status& s) {
+              if (!s.ok()) {
+                mutex_lock l(mu_);
+                status_.Update(s);
+                LOG(ERROR) << "Cannot find pinned memory region from allocator "
+                           << dst_device_->GetAllocator(recv_args_.alloc_attrs)
+                                  ->Name();
+              }
+              recv_done();
+            });
+        return;
       }
       if (!s.ok()) {
         mutex_lock l(mu_);

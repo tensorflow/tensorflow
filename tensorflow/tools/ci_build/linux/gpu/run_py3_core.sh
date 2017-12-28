@@ -25,11 +25,11 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
 export PYTHON_BIN_PATH=`which python3`
 
 export TF_NEED_CUDA=1
+export TF_CUDA_VERSION=8.0
+export TF_CUDNN_VERSION=6
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 
 yes "" | $PYTHON_BIN_PATH configure.py

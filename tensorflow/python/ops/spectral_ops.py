@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Spectral operators (e.g. FFT, RFFT).
+"""Spectral operators (e.g. DCT, FFT, RFFT).
 
+@@dct
 @@fft
 @@ifft
 @@fft2d
@@ -30,6 +31,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import math as _math
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
@@ -166,5 +169,77 @@ rfft2d = _rfft_wrapper(gen_spectral_ops.rfft2d, 2, "rfft2d")
 irfft2d = _irfft_wrapper(gen_spectral_ops.irfft2d, 2, "irfft2d")
 rfft3d = _rfft_wrapper(gen_spectral_ops.rfft3d, 3, "rfft3d")
 irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
+
+
+def _validate_dct_arguments(dct_type, n, axis, norm):
+  if n is not None:
+    raise NotImplementedError("The DCT length argument is not implemented.")
+  if axis != -1:
+    raise NotImplementedError("axis must be -1. Got: %s" % axis)
+  if dct_type != 2:
+    raise ValueError("Only the Type II DCT is supported.")
+  if norm not in (None, "ortho"):
+    raise ValueError(
+        "Unknown normalization. Expected None or 'ortho', got: %s" % norm)
+
+
+# TODO(rjryan): Implement `type`, `n` and `axis` parameters.
+def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
+  """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
+
+  Currently only Type II is supported. Implemented using a length `2N` padded
+  @{tf.spectral.rfft}, as described here: https://dsp.stackexchange.com/a/10606
+
+  @compatibility(scipy)
+  Equivalent to scipy.fftpack.dct for the Type-II DCT.
+  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html
+  @end_compatibility
+
+  Args:
+    input: A `[..., samples]` `float32` `Tensor` containing the signals to
+      take the DCT of.
+    type: The DCT type to perform. Must be 2.
+    n: For future expansion. The length of the transform. Must be `None`.
+    axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
+    norm: The normalization to apply. `None` for no normalization or `'ortho'`
+      for orthonormal normalization.
+    name: An optional name for the operation.
+
+  Returns:
+    A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
+
+  Raises:
+    ValueError: If `type` is not `2`, `n` is not `None, `axis` is not `-1`, or
+      `norm` is not `None` or `'ortho'`.
+
+  [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
+  """
+  _validate_dct_arguments(type, n, axis, norm)
+  with _ops.name_scope(name, "dct", [input]):
+    # We use the RFFT to compute the DCT and TensorFlow only supports float32
+    # for FFTs at the moment.
+    input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
+
+    axis_dim = input.shape[-1].value or _array_ops.shape(input)[-1]
+    axis_dim_float = _math_ops.to_float(axis_dim)
+    scale = 2.0 * _math_ops.exp(_math_ops.complex(
+        0.0, -_math.pi * _math_ops.range(axis_dim_float) /
+        (2.0 * axis_dim_float)))
+
+    # TODO(rjryan): Benchmark performance and memory usage of the various
+    # approaches to computing a DCT via the RFFT.
+    dct2 = _math_ops.real(
+        rfft(input, fft_length=[2 * axis_dim])[..., :axis_dim] * scale)
+
+    if norm == "ortho":
+      n1 = 0.5 * _math_ops.rsqrt(axis_dim_float)
+      n2 = n1 * _math_ops.sqrt(2.0)
+      # Use tf.pad to make a vector of [n1, n2, n2, n2, ...].
+      weights = _array_ops.pad(
+          _array_ops.expand_dims(n1, 0), [[0, axis_dim - 1]],
+          constant_values=n2)
+      dct2 *= weights
+
+    return dct2
 
 remove_undocumented(__name__)

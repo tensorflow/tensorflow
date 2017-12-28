@@ -21,9 +21,13 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
+#include <unistd.h>
+#include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
 #include "i_malloc.h"
@@ -46,10 +50,50 @@ class MklCPUAllocator : public Allocator {
  public:
   // Constructor and other standard functions
 
-  MklCPUAllocator() {
+  /// Environment variable that user can set to upper bound on memory allocation
+  static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
+
+  /// Default upper limit on allocator size - 64GB
+  static const size_t kDefaultMaxLimit = 64LL << 30;
+
+  MklCPUAllocator() { TF_CHECK_OK(Initialize()); }
+
+  ~MklCPUAllocator() override { delete allocator_; }
+
+  Status Initialize() {
     VLOG(2) << "MklCPUAllocator: In MklCPUAllocator";
-    allocator_ =
-        new BFCAllocator(new MklSubAllocator, kMaxMemSize, kAllowGrowth, kName);
+
+    // Set upper bound on memory allocation to physical RAM available on the
+    // CPU unless explicitly specified by user
+    uint64 max_mem_bytes = kDefaultMaxLimit;
+#if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+    max_mem_bytes =
+        (uint64)sysconf(_SC_PHYS_PAGES) * (uint64)sysconf(_SC_PAGESIZE);
+#endif
+    char* user_mem_bytes = getenv(kMaxLimitStr);
+
+    if (user_mem_bytes != NULL) {
+      uint64 user_val = 0;
+      if (!strings::safe_strtou64(user_mem_bytes, &user_val)) {
+        return errors::InvalidArgument("Invalid memory limit (", user_mem_bytes,
+                                       ") specified for MKL allocator through ",
+                                       kMaxLimitStr);
+      }
+#if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+      if (user_val > max_mem_bytes) {
+        LOG(WARNING) << "The user specified a memory limit " << kMaxLimitStr
+                     << "=" << user_val
+                     << " greater than available physical memory: "
+                     << max_mem_bytes
+                     << ". This could significantly reduce performance!";
+      }
+#endif
+      max_mem_bytes = user_val;
+    }
+
+    VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
+    allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
+                                  kAllowGrowth, kName);
 
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
@@ -57,9 +101,9 @@ class MklCPUAllocator : public Allocator {
     i_calloc = CallocHook;
     i_realloc = ReallocHook;
     i_free = FreeHook;
-  }
 
-  ~MklCPUAllocator() override { delete allocator_; }
+    return Status::OK();
+  }
 
   inline string Name() override { return kName; }
 
@@ -71,16 +115,18 @@ class MklCPUAllocator : public Allocator {
     allocator_->DeallocateRaw(ptr);
   }
 
+  void GetStats(AllocatorStats* stats) { return allocator_->GetStats(stats); }
+
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
 
   static inline void* MallocHook(size_t size) {
-    VLOG(2) << "MklCPUAllocator: In MallocHook";
+    VLOG(3) << "MklCPUAllocator: In MallocHook";
     return cpu_allocator()->AllocateRaw(kAlignment, size);
   }
 
   static inline void FreeHook(void* ptr) {
-    VLOG(2) << "MklCPUAllocator: In FreeHook";
+    VLOG(3) << "MklCPUAllocator: In FreeHook";
     cpu_allocator()->DeallocateRaw(ptr);
   }
 
@@ -95,11 +141,6 @@ class MklCPUAllocator : public Allocator {
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
   }
-
-  // TODO(jbobba): We should ideally move this into CPUOptions in config.proto.
-  /// Memory limit - 64GB
-  static const size_t kMaxMemSize =
-      static_cast<size_t>(64) * 1024 * 1024 * 1024;
 
   /// Do we allow growth in BFC Allocator
   static const bool kAllowGrowth = true;

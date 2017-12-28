@@ -88,8 +88,15 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
-// NOTE: May return false negatives for tensor values.
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+
+// Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
+// words, if two AttrValues compare equal according to AreAttrValuesEqual,
+// they will have the same hash value.
+// Similarly to protobuf deterministic serialization, hash value is
+// guaranteed to be stable only for a given binary. In particular, one should
+// probably not persist the returned value.
+uint64 AttrValueHash(const AttrValue& a);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);

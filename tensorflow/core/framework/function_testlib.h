@@ -63,6 +63,9 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
 
+// x:T -> x * 2, where x is int32.
+FunctionDef XTimesTwoInt32();
+
 // x:T -> (x * 2) * 2.
 FunctionDef XTimesFour();
 

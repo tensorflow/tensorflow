@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -226,14 +227,28 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
+  int expected_num_files = 0;
+  std::vector<string> matching_paths;
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    string filename = io::JoinPath(BaseDir(), strings::StrCat("file", length));
+    string filename = io::JoinPath(BaseDir(), strings::StrCat("len", length));
 
     filename = strings::StrCat("file://", filename);
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
+    ++expected_num_files;
+
+    // Ensure that GetMatchingPaths works as intended.
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it with the "file://" URI scheme.
+        strings::StrCat("file://", io::JoinPath(BaseDir(), "l*")),
+        &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it without any URI scheme.
+        io::JoinPath(BaseDir(), "l*"), &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
 
     // Read the file back and check equality
     string output;
@@ -324,6 +339,20 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));
   EXPECT_FALSE(env->FileExists(filename).ok());
+}
+
+TEST_F(DefaultEnvTest, CreateUniqueFileName) {
+  Env* env = Env::Default();
+
+  string prefix = "tempfile-prefix-";
+  string suffix = ".tmp";
+  string filename = prefix;
+
+  EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
+
+  StringPiece str(filename);
+  EXPECT_TRUE(str.starts_with(prefix));
+  EXPECT_TRUE(str.ends_with(suffix));
 }
 
 }  // namespace tensorflow

@@ -169,6 +169,8 @@ class StreamExecutorInterface {
                       const KernelArgsArrayBase &args) {
     return false;
   }
+  // Releases any state associated with the kernel.
+  virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
   virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                                   uint64 size) = 0;
@@ -217,13 +219,15 @@ class StreamExecutorInterface {
   virtual void DeallocateTimer(Timer *timer) = 0;
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
-  virtual bool BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual SharedMemoryConfig GetDeviceSharedMemoryConfig() = 0;
   virtual port::Status SetDeviceSharedMemoryConfig(
       SharedMemoryConfig config) = 0;
+
+  virtual int64 GetDeviceLoad() { return -1; }
 
   virtual bool DeviceMemoryUsage(int64 *free, int64 *total) const {
     return false;

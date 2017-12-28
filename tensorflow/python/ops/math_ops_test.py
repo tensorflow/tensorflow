@@ -19,48 +19,58 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
-ops._USE_C_API = True
 
 exp = np.exp
 log = np.log
 
 
+@test_util.with_c_api
 class ReduceTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testReduceAllDims(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
-    with self.test_session(use_gpu=True):
-      y_tf = math_ops.reduce_sum(x).eval()
+    with test_util.device(use_gpu=True):
+      y_tf = self.evaluate(math_ops.reduce_sum(x))
       self.assertEqual(y_tf, 21)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
-    with self.test_session(use_gpu=True):
+    with test_util.device(use_gpu=True):
       for axis in (0, -2, (0, 0), (0, -2)):
-        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [5, 7, 9])
+        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
+                            [5, 7, 9])
       for axis in (1, -1, (1, 1), (1, -1)):
-        self.assertAllEqual(math_ops.reduce_sum(x, axis=axis).eval(), [6, 15])
+        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
+                            [6, 15])
       for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
-        self.assertEqual(math_ops.reduce_sum(x, axis=axis).eval(), 21)
+        self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testReduceInvalidAxis(self):
+    if context.in_eager_mode():
+      # The shape check is in run a graph construction time. In eager mode,
+      # it misses the check, magically return result given wrong shape.
+      return
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must be at most rank 1"):
+    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
 
+@test_util.with_c_api
 class LogSumExpTest(test_util.TensorFlowTestCase):
 
   def testReduceLogSumExp(self):
@@ -140,22 +150,25 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
       self.assertEqual(-np.inf, res)
 
 
+@test_util.with_c_api
 class RoundTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testRounding(self):
     x = [0.49, 0.7, -0.3, -0.8]
     # TODO(nolivia): Remove this when RoundOp is forwards compatible
     # x = np.arange(-5.0, 5.0, .25)
     for dtype in [np.float32, np.double, np.int32]:
       x_np = np.array(x, dtype=dtype)
-      with self.test_session(use_gpu=True):
+      with test_util.device(use_gpu=True):
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
         y_tf = math_ops.round(x_tf)
-        y_tf_np = y_tf.eval()
+        y_tf_np = self.evaluate(y_tf)
         y_np = np.round(x_np)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
 
+@test_util.with_c_api
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -185,81 +198,95 @@ class ModTest(test_util.TensorFlowTestCase):
         self.assertAllClose(y_tf_np, y_np)
 
 
+@test_util.with_c_api
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSquaredDifference(self):
     for dtype in [np.int32, np.float16]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
-      with self.test_session(use_gpu=True):
-        z_tf = math_ops.squared_difference(x, y).eval()
+      with test_util.device(use_gpu=True):
+        z_tf = self.evaluate(math_ops.squared_difference(x, y))
         self.assertAllClose(z, z_tf)
 
 
+@test_util.with_c_api
 class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testApproximateEqual(self):
     for dtype in [np.float32, np.double]:
       x = dtype(1)
       y = dtype(1.00009)
       z = False
-      with self.test_session(use_gpu=True):
+      with test_util.device(use_gpu=True):
         # Default tolerance is 0.00001
-        z_tf = math_ops.approximate_equal(x, y).eval()
+        z_tf = self.evaluate(math_ops.approximate_equal(x, y))
         self.assertAllEqual(z, z_tf)
 
     for dtype in [np.float32, np.double]:
       x = dtype(1)
       y = dtype(1.000009)
       z = True
-      with self.test_session(use_gpu=True):
+      with test_util.device(use_gpu=True):
         # Default tolerance is 0.00001
-        z_tf = math_ops.approximate_equal(x, y).eval()
+        z_tf = self.evaluate(math_ops.approximate_equal(x, y))
         self.assertAllEqual(z, z_tf)
 
     for dtype in [np.float32, np.double]:
       x = np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype)
       y = np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype)
       z = np.array([[[[False, True], [True, False]]]], dtype=np.bool)
-      with self.test_session(use_gpu=True):
-        z_tf = math_ops.approximate_equal(x, y, tolerance=0.0001).eval()
+      with test_util.device(use_gpu=True):
+        z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
 
 
+@test_util.with_c_api
 class ScalarMulTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAcceptsRefs(self):
-    var = variables.Variable(10)
+    if context.in_eager_mode():
+      var = resource_variable_ops.ResourceVariable(10, name="var")
+    else:
+      var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
     init = variables.global_variables_initializer()
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(init)
-      self.assertEqual(30, result.eval())
+    with test_util.device(use_gpu=True):
+      self.evaluate(init)
+      self.assertEqual(30, self.evaluate(result))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAcceptsConstant(self):
     const = constant_op.constant(10)
     result = math_ops.scalar_mul(3, const)
-    with self.test_session(use_gpu=True):
-      self.assertEqual(30, result.eval())
+    with test_util.device(use_gpu=True):
+      self.assertEqual(30, self.evaluate(result))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAcceptsTensor(self):
     tensor = array_ops.ones([10, 10])
     result = math_ops.scalar_mul(3, tensor)
     expected = array_ops.ones([10, 10]) * 3
 
-    with self.test_session(use_gpu=True):
-      self.assertAllEqual(expected.eval(), result.eval())
+    with test_util.device(use_gpu=True):
+      self.assertAllEqual(self.evaluate(expected), self.evaluate(result))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
     x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
-    with self.test_session(use_gpu=True):
-      self.assertAllEqual(x.values.eval(), [[-6, -9], [-15, -21], [0, 3]])
-      self.assertAllEqual(x.indices.eval(), [0, 2, 5])
+    with test_util.device(use_gpu=True):
+      self.assertAllEqual(self.evaluate(x.values),
+                          [[-6, -9], [-15, -21], [0, 3]])
+      self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
+@test_util.with_c_api
 class AccumulateNTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -279,6 +306,7 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
 
+@test_util.with_c_api
 class AddNTest(test_util.TensorFlowTestCase):
 
   def testPartials(self):
@@ -332,6 +360,7 @@ class AddNTest(test_util.TensorFlowTestCase):
                             [g.eval() for g in add_n_grad])
 
 
+@test_util.with_c_api
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.
 

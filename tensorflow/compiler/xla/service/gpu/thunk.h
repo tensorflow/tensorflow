@@ -43,6 +43,9 @@ class Thunk {
   enum class Kind {
     kConvolution,
     kCopy,
+    kCudnnBatchNormBackward,
+    kCudnnBatchNormForwardInference,
+    kCudnnBatchNormForwardTraining,
     kGemm,
     kInfeed,
     kKernel,
@@ -69,6 +72,29 @@ class Thunk {
   virtual tensorflow::Status Initialize(const GpuExecutable& executable) {
     return tensorflow::Status::OK();
   }
+
+  // Users of Thunk should call ShouldHaltAllActivityBeforeRunning(stream)
+  // before calling ExecuteOnStream(stream).  If it returns true, it's the
+  // user's responsibility to wait for all activity on the GPU to finish before
+  // calling ExecuteOnStream.
+  //
+  // This value is not required to be constant for a given Thunk.  For example,
+  // a Thunk that performs autotuning may return true for its first run and
+  // false thereafter.
+  virtual bool ShouldHaltAllActivityBeforeRunning(
+      perftools::gputools::Stream* /*stream*/) {
+    return false;
+  }
+
+  // Indicates whether thunks scheduled after this one should wait for this one
+  // to complete before running. For example, a convolution thunk creates a
+  // scratch allocator, then kicks off a convolution in cudnn via the stream
+  // executor. When the stream executor call returns, the scratch allocator goes
+  // out of scope, and the scratch memory is deallocated. In this case, the
+  // convolution thunk needs to return true so that future thunks wait for the
+  // convolution thunk to avoid reusing the deallocated memory until the
+  // convolution thunk is done with it.
+  virtual bool ShouldBlockFutureThunks() { return false; }
 
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's

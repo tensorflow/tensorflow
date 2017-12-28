@@ -48,6 +48,12 @@ tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
   // StreamExecutor uses the latter.
   loader_spec_->AddCudaPtxInMemory(
       se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
+
+  if (!executable.cubin().empty()) {
+    loader_spec_->AddCudaCubinInMemory(
+        reinterpret_cast<const char*>(executable.cubin().data()), kernel_name_);
+  }
+
   return tensorflow::Status::OK();
 }
 

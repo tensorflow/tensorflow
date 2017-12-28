@@ -22,19 +22,24 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool Variant::TryDecode(Variant* out) const {
+  const VariantTensorDataProto* p = get<VariantTensorDataProto>();
+  if (p == nullptr) return false;
+  VariantTensorData data(*p);
+  return out->Decode(data);
+}
+
 template <>
-void* Variant::MaybeDecodeAndGet() {
-  mutex_lock lock(mu_);
-  if (IsEmptyLocked()) {
+void* Variant::get() {
+  if (is_empty()) {
     return nullptr;
   }
   return value_->RawPtr();
 }
 
 template <>
-const void* Variant::MaybeDecodeAndGet() const {
-  mutex_lock lock(mu_);
-  if (IsEmptyLocked()) {
+const void* Variant::get() const {
+  if (is_empty()) {
     return nullptr;
   }
   return value_->RawPtr();

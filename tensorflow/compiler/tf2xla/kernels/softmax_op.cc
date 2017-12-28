@@ -202,7 +202,7 @@ class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
     // NaN otherwise; then add that vector to the labels to force out-of-range
     // values to NaNs.
     xla::ComputationDataHandle nan_or_zero = builder->Select(
-        builder->LogicalAnd(
+        builder->And(
             builder->Le(XlaHelpers::Zero(builder, indices_type), indices),
             builder->Lt(indices, XlaHelpers::IntegerLiteral(
                                      builder, indices_type, depth))),

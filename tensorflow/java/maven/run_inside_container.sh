@@ -19,11 +19,23 @@
 
 
 RELEASE_URL_PREFIX="https://storage.googleapis.com/tensorflow/libtensorflow"
+
+# By default we deploy to both ossrh and bintray. These two
+# environment variables can be set to skip either repository.
+DEPLOY_BINTRAY="${DEPLOY_BINTRAY:-true}"
+DEPLOY_OSSRH="${DEPLOY_OSSRH:-true}"
+
 IS_SNAPSHOT="false"
 if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   IS_SNAPSHOT="true"
+  # Bintray does not allow snapshots.
+  DEPLOY_BINTRAY="false"
 fi
 PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
+if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
+  echo "Must deploy to at least one of Bintray or OSSRH" >&2
+  exit 2
+fi
 
 set -ex
 
@@ -37,6 +49,20 @@ clean() {
 
 update_version_in_pom() {
   mvn versions:set -DnewVersion="${TF_VERSION}"
+}
+
+# Fetch a property from pom files for a given profile.
+# Arguments:
+#   profile - name of the selected profile.
+#   property - name of the property to be retrieved.
+# Output:
+#   Echo property value to stdout
+mvn_property() {
+  local profile="$1"
+  local prop="$2"
+  mvn -q --non-recursive exec:exec -P "${profile}" \
+    -Dexec.executable='echo' \
+    -Dexec.args="\${${prop}}"
 }
 
 download_libtensorflow() {
@@ -137,28 +163,49 @@ generate_java_protos() {
   rm -rf "${DIR}/proto/tmp"
 }
 
+# Deploy artifacts using a specific profile.
+# Arguments:
+#   profile - name of selected profile.
+# Outputs:
+#   n/a
+deploy_profile() {
+  local profile="$1"
+  # Deploy the non-android pieces.
+  mvn deploy -P"${profile}"
+  # Determine the correct pom file property to use
+  # for the repository url.
+  local rtype
+  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+    rtype='snapshotRepository'
+  else
+    rtype='repository'
+  fi
+  local url=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.url")
+  local repositoryId=$(mvn_property "${profile}" "project.distributionManagement.${rtype}.id")
+  mvn gpg:sign-and-deploy-file \
+    -Dfile="${DIR}/tensorflow-android/target/tensorflow.aar" \
+    -DpomFile="${DIR}/tensorflow-android/target/pom-android.xml" \
+    -Durl="${url}" \
+    -DrepositoryId="${repositoryId}"
+}
+
 # If successfully built, try to deploy.
 # If successfully deployed, clean.
 # If deployment fails, debug with
 #   ./release.sh ${TF_VERSION} ${SETTINGS_XML} bash
 # To get a shell to poke around the maven artifacts with.
 deploy_artifacts() {
-  # This deploys the non-android pieces
-  mvn deploy
-
-  # Sign and deploy the previously downloaded aar file as a single
-  # maven artifact.
-  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
-    REPO="https://oss.sonatype.org/content/repositories/snapshots"
-  else
-    REPO="https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+  # Deploy artifacts to ossrh if requested.
+  if [[ "${DEPLOY_OSSRH}" == "true" ]]; then
+    deploy_profile 'ossrh'
   fi
-  mvn gpg:sign-and-deploy-file -Dfile="${DIR}/tensorflow-android/target/tensorflow.aar" -DpomFile="${DIR}/tensorflow-android/target/pom-android.xml" -Durl=${REPO} -DrepositoryId=ossrh
-
+  # Deploy artifacts to bintray if requested.
+  if [[ "${DEPLOY_BINTRAY}" == "true" ]]; then
+    deploy_profile 'bintray'
+  fi
   # Clean up when everything works
   clean
 }
-
 
 if [ -z "${TF_VERSION}" ]
 then
@@ -189,8 +236,14 @@ set +ex
 if [[ "${IS_SNAPSHOT}" == "false" ]]; then
   echo "Uploaded to the staging repository"
   echo "After validating the release: "
-  echo "1. Login to https://oss.sonatype.org/#stagingRepositories"
-  echo "2. Find the 'org.tensorflow' staging release and click either 'Release' to release or 'Drop' to abort"
+  if [[ "${DEPLOY_OSSRH}" == "true" ]]; then
+    echo "* Login to https://oss.sonatype.org/#stagingRepositories"
+    echo "* Find the 'org.tensorflow' staging release and click either 'Release' to release or 'Drop' to abort"
+  fi
+  if [[ "${DEPLOY_BINTRAY}" == "true" ]]; then
+    echo "* Login to https://bintray.com/google/tensorflow/tensorflow"
+    echo "* Either 'Publish' unpublished items to release, or 'Discard' to abort"
+  fi
 else
   echo "Uploaded to the snapshot repository"
 fi

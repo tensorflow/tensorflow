@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
+from tensorflow.python import pywrap_tensorflow as print_mdl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -27,7 +30,9 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.util import compat
 
 
 def BuildSmallModel():
@@ -95,3 +100,12 @@ def SearchTFProfNode(node, name):
     r = SearchTFProfNode(c, name)
     if r: return r
   return None
+
+
+@contextlib.contextmanager
+def ProfilerFromFile(profile_file):
+  """Initialize a profiler from profile file."""
+  print_mdl.ProfilerFromFile(compat.as_bytes(profile_file))
+  profiler = model_analyzer.Profiler.__new__(model_analyzer.Profiler)
+  yield profiler
+  print_mdl.DeleteProfiler()

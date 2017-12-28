@@ -1,9 +1,9 @@
-##Profile Model Architecture
+## Profile Model Architecture
 
 * [Profile Model Parameters](#profile-model-parameters)
 * [Profile Model Float Operations](#profile-model-float-operations)
 
-###Profile Model Parameters
+### Profile Model Parameters
 
 <b>Notes:</b>
 `VariableV2` operation type might contain variables created by TensorFlow
@@ -39,9 +39,9 @@ param_stats = tf.profiler.profile(
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```
 
-###Profile Model Float Operations
+### Profile Model Float Operations
 
-####Caveats
+#### Caveats
 
 For an operation to have float operation statistics:
 

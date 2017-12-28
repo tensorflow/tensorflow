@@ -32,13 +32,24 @@ namespace tensorflow {
 class OpKernelContext;
 
 template <typename Device, typename T>
-class LaunchConv2DOp {
- public:
-  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-              const Tensor& input, const Tensor& filter, int row_stride,
-              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
-              TensorFormat data_format);
+struct LaunchConv2DOp {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
+                  TensorFormat data_format);
 };
+
+#ifdef GOOGLE_CUDA
+template <typename T>
+struct LaunchConv2DOp<Eigen::GpuDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
+                  TensorFormat data_format);
+};
+#endif  // GOOGLE_CUDA
 
 // Used to keep track of persistent memory buffers used within the op.
 // It uses malloc and free to avoid the time cost of initializing the memory.
@@ -54,17 +65,6 @@ struct Im2ColBufferResource : public ResourceBase {
   T* data;
   string DebugString() { return "Im2ColBufferResource"; }
 };
-
-#ifdef GOOGLE_CUDA
-template <typename T>
-class LaunchConv2DOp<Eigen::GpuDevice, T> {
- public:
-  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-              const Tensor& input, const Tensor& filter, int row_stride,
-              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
-              TensorFormat data_format);
-};
-#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 
