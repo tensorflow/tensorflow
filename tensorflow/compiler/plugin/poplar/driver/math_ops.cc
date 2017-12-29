@@ -77,6 +77,7 @@ LookupBinaryFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
     case HloOpcode::kAdd: return popstd::add;
+    case HloOpcode::kAtan2: return popstd::atan2;
     case HloOpcode::kDivide: return popstd::div;
     case HloOpcode::kEq: return popstd::eq;
     case HloOpcode::kGt: return popstd::gt;
