@@ -103,8 +103,8 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
 def piecewise_constant(x, boundaries, values, name=None):
   """Piecewise constant from boundaries and interval values.
 
-  Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
-    for steps 100001 to 110000, and 0.1 for any additional steps.
+  Example: use a learning rate that's 1.0 for the first 100001 steps, 0.5
+    for the next 10000 steps, and 0.1 for any additional steps.
 
   ```python
   global_step = tf.Variable(0, trainable=False)
