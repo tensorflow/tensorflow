@@ -1003,29 +1003,32 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       'colocate_gradients_with_ops': colocate_gradients_with_ops,
       'gate_gradients': gate_gradients,
       'aggregation_method': aggregation_method
-    }
+  }
   # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
   _gradients = gradients(ys, xs, **kwargs)
-  for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
+  for gradient, x in zip(_gradients, xs):
     # change shape to one-dimension without graph branching
-    _gradient = array_ops.reshape(_gradient, [-1])
-    
+    gradient = array_ops.reshape(gradient, [-1])
+
     # Declare an iterator and tensor array loop variables for the gradients.
     n = array_ops.size(x)
     loop_vars = [
-      array_ops.constant(0, dtypes.int32),
-      tensor_array_ops.TensorArray(x.dtype, n)
+        array_ops.constant(0, dtypes.int32),
+        tensor_array_ops.TensorArray(x.dtype, n)
     ]
     # Iterate over all elements of the gradient and compute second order
     # derivatives.
     _, hessian = control_flow_ops.while_loop(
         lambda j, _: j < n,
         lambda j, result: (j + 1,
-                           result.write(j, gradients(_gradient[j], x)[0])),
+                           result.write(j, gradients(gradient[j], x)[0])),
         loop_vars
     )
 
     _shape = array_ops.shape(x)
-    hessians.append( array_ops.reshape(hessian.stack(), array_ops.concat((_shape, _shape), 0)) )
+    _reshaped_hessian = array_ops.reshape(
+        hessian.stack(), array_ops.concat((_shape, _shape), 0)
+    )
+    hessians.append(_reshaped_hessian)
   return hessians
