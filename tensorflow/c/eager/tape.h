@@ -216,23 +216,16 @@ void GradientTape<Gradient, BackwardFunction>::RecordOperation(
 template <typename Gradient, typename BackwardFunction>
 void GradientTape<Gradient, BackwardFunction>::DeleteTrace(int64 tensor_id) {
   auto it = tensor_usage_.find(tensor_id);
-  if (it == tensor_usage_.end()) {
-    return;
-  }
-  it->second--;
-  if (it->second != 0) {
-    return;
-  }
-  tensor_usage_.erase(it);
   auto tensor_op_it = tensor_tape_.find(tensor_id);
-  if (tensor_op_it == tensor_tape_.end()) {
-    return;
-  }
   const int64 op_id = tensor_op_it->second;
-  if (op_id == -1) {
-    // Do not delete watched tensors.
+
+  if (it == tensor_usage_.end() || it->second != 0 || 
+      tensor_op_it == tensor_tape_.end() || op_id == -1 /*Do not delete watched tensors.*/) {
     return;
   }
+
+  it->second--;
+  tensor_usage_.erase(it);
   tensor_tape_.erase(tensor_op_it);
   auto op_it = op_tape_.find(op_id);
   CHECK(op_it != op_tape_.end());
