@@ -219,12 +219,13 @@ void GradientTape<Gradient, BackwardFunction>::DeleteTrace(int64 tensor_id) {
   auto tensor_op_it = tensor_tape_.find(tensor_id);
   const int64 op_id = tensor_op_it->second;
 
+  it->second--;
+
   if (it == tensor_usage_.end() || it->second != 0 || 
       tensor_op_it == tensor_tape_.end() || op_id == -1 /*Do not delete watched tensors.*/) {
     return;
   }
 
-  it->second--;
   tensor_usage_.erase(it);
   tensor_tape_.erase(tensor_op_it);
   auto op_it = op_tape_.find(op_id);
