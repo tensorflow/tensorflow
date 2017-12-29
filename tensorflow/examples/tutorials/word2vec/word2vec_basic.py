@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import math
 import os
+import sys
+import argparse
 import random
 from tempfile import gettempdir
 import zipfile
@@ -31,6 +33,22 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib.tensorboard.plugins import projector
+
+# Give a folder path as an argument with '--log_dir' to save
+# TensorBoard summaries. Default is a log folder in current directory.
+current_path = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+      '--log_dir',
+      type=str,
+      default=os.path.join(current_path, 'log'),
+      help='The log directory for TensorBoard summaries.')
+FLAGS, unparsed = parser.parse_known_args()
+
+# Create the directory for TensorBoard variables if there is not.
+if not os.path.exists(FLAGS.log_dir):
+  os.makedirs(FLAGS.log_dir)
 
 # Step 1: Download the data.
 url = 'http://mattmahoney.net/dc/'
@@ -220,14 +238,9 @@ with graph.as_default():
 # Step 5: Begin training.
 num_steps = 100001
 
-log_path = 'your_full_path/log'
-# Create the directory for TensorBoard variables if there is not.
-if not os.path.exists(log_path):
-  os.makedirs(log_path)
-
 with tf.Session(graph=graph) as session:
   # Open a writer to write summaries.
-  writer = tf.summary.FileWriter(log_path, session.graph)
+  writer = tf.summary.FileWriter(FLAGS.log_dir, session.graph)
 
   # We must initialize all variables before we use them.
   init.run()
@@ -248,8 +261,12 @@ with tf.Session(graph=graph) as session:
     # Feed metadata variable to session for visualizing the graph in TensorBoard.
     _, summary, loss_val = session.run([optimizer, merged, loss], feed_dict=feed_dict, run_metadata=run_metadata)
     average_loss += loss_val
+    
     # Add returned summaries to writer in each step.
     writer.add_summary(summary, step)
+    # Add metadata to visualize the graph for the last run.
+    if step == (num_steps - 1):
+      writer.add_run_metadata(run_metadata, 'step%d' % step)
 
     if step % 2000 == 0:
       if step > 0:
@@ -273,18 +290,18 @@ with tf.Session(graph=graph) as session:
   final_embeddings = normalized_embeddings.eval()
 
   # Write corresponding labels for the embeddings.
-  with open(log_path + '/metadata.tsv', 'w') as f:
+  with open(FLAGS.log_dir + '/metadata.tsv', 'w') as f:
     for i in xrange(vocabulary_size):
       f.write(reverse_dictionary[i] + '\n')
 
   # Save the model for checkpoints.
-  saver.save(session, os.path.join(log_path, "model.ckpt"))
+  saver.save(session, os.path.join(FLAGS.log_dir, "model.ckpt"))
 
   # Create a configuration for visualizing embeddings with the labels in TensorBoard.
   config = projector.ProjectorConfig()
   embedding_conf = config.embeddings.add()
   embedding_conf.tensor_name = embeddings.name
-  embedding_conf.metadata_path = os.path.join(log_path, 'metadata.tsv')
+  embedding_conf.metadata_path = os.path.join(FLAGS.log_dir, 'metadata.tsv')
   projector.visualize_embeddings(writer, config)
 
 writer.close()
