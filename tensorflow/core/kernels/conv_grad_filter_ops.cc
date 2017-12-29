@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -595,6 +596,13 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     if (filter_shape.num_elements() == 0) {
       return;
     }
+    // If input is empty, set gradients to zero.
+    if (input.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, T> f;
+      f(context->eigen_device<Device>(), filter_backprop->flat<T>());
+      return;
+    }
+
 
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).
