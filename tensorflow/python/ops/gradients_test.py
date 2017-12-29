@@ -642,7 +642,7 @@ class HessianTest(test_util.TensorFlowTestCase):
         for vec in np.eye(m)
     ]).astype("float32")
     self.assertAllEqual((m, m, m, m), hess_actual.shape)
-    self.assertAllClose(hess_value, hess_actual.reshape((m*m, m*m)))
+    self.assertAllClose(hess_value, hess_actual.reshape((m * m, m * m)))
 
   def testHessian2D_non_square_matrix(self):
     m = 3
