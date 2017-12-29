@@ -48,8 +48,8 @@ class GatherOpModel : public SingleOpModel {
     PopulateStringTensor(input_, data);
   }
 
-  void SetPositions(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(positions_, data);
+  void SetPositions(std::initializer_list<int> data) {
+    PopulateTensor<int>(positions_, data);
   }
 
   std::vector<float> GetOutputFloat() { return ExtractVector<float>(output_); }
@@ -76,7 +76,7 @@ TEST(GatherOpTest, Shuffle) {
               ElementsAreArray(ArrayFloatNear({0.7, 0.8, -2, 0.2})));
 }
 
-TEST(GatherOpTest, Index) {
+TEST(GatherOpTest, Test0DIndex) {
   GatherOpModel m({2, 2}, TensorType_FLOAT32, {});
   m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
   m.SetPositions({1});
@@ -87,7 +87,9 @@ TEST(GatherOpTest, Index) {
               ElementsAreArray({2}));
 }
 
-TEST(GatherOpTest, IndexToCornerCase) {
+TEST(GatherOpTest, Test0DIndexWith0DResult) {
+  // 0D tensor is special case in current TFLite. Test it once to make sure
+  // existing workarounds are fine with it.
   GatherOpModel m({3}, TensorType_FLOAT32, {});
   m.SetInputFloat({1.0, 2.0, 3.0});
   m.SetPositions({1});
