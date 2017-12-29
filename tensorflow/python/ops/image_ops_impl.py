@@ -346,17 +346,18 @@ def rot90(image, k=1, name=None):
     if shape.ndims == 3 or shape.ndims is None:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
-      pass
+      return _rot90_4D(image, k, scope)
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
-def _rot90_3D(image, k, scope):
+def _rot90_3D(image, k, name_scope):
   """Rotate image counter-clockwise by 90 degrees `k` times.
 
   Args:
     image: 3-D Tensor of shape `[height, width, channels]`.
     k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    name_scope: A valid TensorFlow name scope.
 
   Returns:
     A 3-D tensor of the same type and shape as `image`.
@@ -375,7 +376,7 @@ def _rot90_3D(image, k, scope):
            (math_ops.equal(k, 3), _rot270)]
 
   result = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
-                              name=scope)
+                              name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
 
@@ -405,7 +406,7 @@ def _rot90_4D(images, k, name_scope):
            (math_ops.equal(k, 3), _rot270)]
 
   result = control_flow_ops.case(cases, default=lambda: images, exclusive=True,
-                              name=scope)
+                              name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
   return result
@@ -430,7 +431,7 @@ def transpose_image(image):
   """
   image = ops.convert_to_tensor(image, name='image')
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
+      _CheckAtLeast3DImage(image, require_static=False), image)
 
   shape = image.get_shape()
   if shape.ndims == 3 or shape.ndims is None:
