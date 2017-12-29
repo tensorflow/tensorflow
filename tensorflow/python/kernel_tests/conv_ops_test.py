@@ -797,6 +797,20 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testConv2DBackpropFilterWithEmptyInput(self):
+    expected = [0, 0, 0, 0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(
+          input_sizes=[0, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[0, 1, 2, 1],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropFilter(self):
     expected = [
         17.0, 22.0, 27.0, 22.0, 29.0, 36.0, 27.0, 36.0, 45.0, 32.0, 43.0, 54.0,
