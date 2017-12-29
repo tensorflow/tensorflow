@@ -273,25 +273,27 @@ PoplarExecutor::AllocateSingleOutput(xla::DeviceMemoryAllocator* allocator,
                                      const int64 n,
                                      const OutputMap& map,
                                      const Args& args) {
+  int64 size(xla::ShapeUtil::ByteSizeOf(shape));
   auto it(map.find(n));
   if (it != map.end()) {
     // The output is an in-place update of one of the inputs
     se::DeviceMemoryBase buf(args[it->second]);
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
+    tc->size = size;
     tc->on_device = true;
     tc->output_handle = GetOutputCopyHandle(n);
     tc->output_convertor = GetOutputConversionFunction(shape);
     return std::make_tuple(buf, n+1);
   } else {
     // The output is not one of the inputs
-    int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     se::DeviceMemoryBase allocated =
             allocator->Allocate(0, size, false).ConsumeValueOrDie();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
+    tc->size = size;
     tc->on_device = true;
     tc->output_handle = GetOutputCopyHandle(n);
     tc->output_convertor = GetOutputConversionFunction(shape);
-    return std::make_tuple(se::DeviceMemoryBase(tc, size), n+1);
+    return std::make_tuple(allocated, n+1);
   }
 }
 
@@ -372,8 +374,9 @@ PoplarExecutor::GetTupleBufferByIndex(const se::DeviceMemoryBase& base,
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(base.opaque());
   void** bufs = (void**)tc->data;
+  int64 size = reinterpret_cast<const TensorControl*>(bufs[value])->size;
 
-  return se::DeviceMemoryBase(bufs[value], tc->size);
+  return se::DeviceMemoryBase(bufs[value], size);
 }
 
 port::StatusOr<se::DeviceMemoryBase>
