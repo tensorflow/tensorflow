@@ -33,6 +33,7 @@ _VERSION = '1.4.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
+    'gast >= 0.2.0',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',

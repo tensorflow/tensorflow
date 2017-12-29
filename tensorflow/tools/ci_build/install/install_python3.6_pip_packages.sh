@@ -72,4 +72,7 @@ pip3 install werkzeug
 
 pip3 install grpcio
 
+# Eager-to-graph execution needs gast:
+pip3 install --upgrade gast
+
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)
