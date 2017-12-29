@@ -143,7 +143,7 @@ bit.
 ![Converted Diagram](https://www.tensorflow.org/images/quantization1.png)
 
 The min and max operations actually look at the values in the input float
-tensor, and then feeds them into the Dequantize operation that converts the
+tensor, and then feeds them into the Quantize operation that converts the
 tensor into eight-bits. There are more details on how the quantized representation
 works later on.
 
