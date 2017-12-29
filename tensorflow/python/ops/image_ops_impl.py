@@ -262,96 +262,168 @@ def random_flip_left_right(image, seed=None):
 def flip_left_right(image):
   """Flip an image horizontally (left to right).
 
-  Outputs the contents of `image` flipped along the second dimension, which is
-  `width`.
+  Outputs the contents of `image` flipped along the width dimension.
 
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
-  return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
+      _CheckAtLeast3DImage(image, require_static=False), image)
+
+  shape = image.get_shape()
+  if shape.ndims == 3 or shape.ndims is None:
+    return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
+  elif shape.ndims == 4:
+    return array_ops.reverse(image, [2])
+  else:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
 def flip_up_down(image):
   """Flip an image vertically (upside down).
 
-  Outputs the contents of `image` flipped along the first dimension, which is
-  `height`.
+  Outputs the contents of `image` flipped along the height dimension.
 
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
   image = control_flow_ops.with_dependencies(
-      _Check3DImage(image, require_static=False), image)
-  return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
+      _CheckAtLeast3DImage(image, require_static=False), image)
+  shape = image.get_shape()
+  if shape.ndims == 3 or shape.ndims is None:
+    return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
+  elif shape.ndims == 4:
+    return array_ops.reverse(image, [1])
+  else:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
 
 
 def rot90(image, k=1, name=None):
-  """Rotate an image counter-clockwise by 90 degrees.
+  """Rotate image(s) counter-clockwise by 90 degrees.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels]`.
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
     k: A scalar integer. The number of times the image is rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
-    A rotated 3-D tensor of the same type and shape as `image`.
+    A rotated of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+        _CheckAtLeast3DImage(image, require_static=False), image)
     k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
 
-    def _rot90():
-      return array_ops.transpose(array_ops.reverse_v2(image, [1]),
-                                 [1, 0, 2])
-    def _rot180():
-      return array_ops.reverse_v2(image, [0, 1])
-    def _rot270():
-      return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
-                                  [1])
-    cases = [(math_ops.equal(k, 1), _rot90),
-             (math_ops.equal(k, 2), _rot180),
-             (math_ops.equal(k, 3), _rot270)]
+    shape = image.get_shape()
+    if shape.ndims == 3 or shape.ndims is None:
+      return _rot90_3D(image, k, scope)
+    elif shape.ndims == 4:
+      pass
+    else:
+      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
-    ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
-                                name=scope)
-    ret.set_shape([None, None, image.get_shape()[2]])
-    return ret
 
+def _rot90_3D(image, k, scope):
+  """Rotate image counter-clockwise by 90 degrees `k` times.
+
+  Args:
+    image: 3-D Tensor of shape `[height, width, channels]`.
+    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+
+  Returns:
+    A 3-D tensor of the same type and shape as `image`.
+
+  """
+  def _rot90():
+    return array_ops.transpose(array_ops.reverse_v2(image, [1]),
+                               [1, 0, 2])
+  def _rot180():
+    return array_ops.reverse_v2(image, [0, 1])
+  def _rot270():
+    return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
+                              [1])
+  cases = [(math_ops.equal(k, 1), _rot90),
+           (math_ops.equal(k, 2), _rot180),
+           (math_ops.equal(k, 3), _rot270)]
+
+  result = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
+                              name=scope)
+  result.set_shape([None, None, image.get_shape()[2]])
+  return result
+
+def _rot90_4D(images, k, name_scope):
+  """Rotate batch of images counter-clockwise by 90 degrees `k` times.
+
+  Args:
+    images: 4-D Tensor of shape `[height, width, channels]`.
+    k: A scalar integer. The number of times the images are rotated by 90 degrees.
+    name_scope: A valid TensorFlow name scope.
+
+  Returns:
+    A 4-D tensor of the same type and shape as `images`.
+
+  """
+  def _rot90():
+    return array_ops.transpose(array_ops.reverse_v2(images, [2]),
+                               [0, 2, 1, 3])
+  def _rot180():
+    return array_ops.reverse_v2(images, [1, 2])
+  def _rot270():
+    return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]),
+                                [2])
+
+  cases = [(math_ops.equal(k, 1), _rot90),
+           (math_ops.equal(k, 2), _rot180),
+           (math_ops.equal(k, 3), _rot270)]
+
+  result = control_flow_ops.case(cases, default=lambda: images, exclusive=True,
+                              name=scope)
+  shape = result.get_shape()
+  result.set_shape([shape[0], None, None, shape[3]])
+  return result
 
 def transpose_image(image):
-  """Transpose an image by swapping the first and second dimension.
+  """Transpose image(s) by swapping the height and width dimension.
 
   See also `transpose()`.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    A 3-D tensor of shape `[width, height, channels]`
+    If `image` was 4-D, a 4-D float Tensor of shape
+   `[batch, width, height, channels]`
+    If `image` was 3-D, a 3-D float Tensor of shape
+   `[width, height, channels]`
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -359,7 +431,14 @@ def transpose_image(image):
   image = ops.convert_to_tensor(image, name='image')
   image = control_flow_ops.with_dependencies(
       _Check3DImage(image, require_static=False), image)
-  return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+
+  shape = image.get_shape()
+  if shape.ndims == 3 or shape.ndims is None:
+    return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+  elif shape.ndims == 4:
+    return array_ops.transpose(image, [0, 2, 1, 3], name='transpose_image')
+  else:
+    raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
 def central_crop(image, central_fraction):
