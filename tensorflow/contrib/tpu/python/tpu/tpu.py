@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -51,6 +52,10 @@ _NOT_IMPLEMENTED_OPS = set([
     "TensorSummary",
     "TensorSummaryV2",
     ])
+
+_MAX_WARNING_LINES = 5
+
+_TPU_REPLICATE_ATTR = "_tpu_replicate"
 
 
 def _tpu_system_device_name(job):
@@ -119,6 +124,17 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   def __init__(self, name):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._name = name
+    self._unsupported_ops = []
+
+  def report_unsupported_operations(self):
+    if self._unsupported_ops:
+      op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
+                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+      logging.warning("%d unsupported operations found: \n%s",
+                      len(self._unsupported_ops), op_str)
+      if len(self._unsupported_ops) > _MAX_WARNING_LINES:
+        logging.warning("... and %d more" %
+                        (len(self._unsupported_ops) - _MAX_WARNING_LINES))
 
   def AddOp(self, op):
     self._AddOpInternal(op)
@@ -130,17 +146,16 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
                        (op.type, op.name))
 
     if op.type in _NOT_IMPLEMENTED_OPS:
-      logging.warning(
-          "Operation %s (%s) is not currently supported", op.type, op.name)
+      self._unsupported_ops.append(op)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
     # pylint: enable=protected-access
-    if "_tpu_replicate" in op.node_def.attr:
+    if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr["_tpu_replicate"].s = self._name
+    op.node_def.attr[_TPU_REPLICATE_ATTR].s = compat.as_bytes(self._name)
     op.graph.prevent_feeding(op)
     op.graph.prevent_fetching(op)
 
@@ -344,6 +359,7 @@ def replicate(computation,
           new_output_tensors.append(array_ops.identity(t))
       output_tensors = new_output_tensors
     finally:
+      context.report_unsupported_operations()
       context.Exit()
 
     # Fan-out: Builds a TPUReplicatedOutput node for each output.
