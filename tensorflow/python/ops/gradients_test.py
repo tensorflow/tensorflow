@@ -657,7 +657,7 @@ class HessianTest(test_util.TensorFlowTestCase):
       for vec in np.eye(m)
     ]).astype("float32")
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
-    self.assertAllClose(hess_value, hess_actual.reshape((m*n, m*n)))
+    self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
 @test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
