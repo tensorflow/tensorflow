@@ -39,7 +39,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
   *has_uninitialized_vars = false;
   *has_tensor_arrays = false;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    VLOG(2) << "  Input " << i
+    VLOG(2) << " Input " << i
             << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
     XlaCompiler::Argument& arg = (*args)[i];
