@@ -273,6 +273,7 @@ class MklSliceOp : public OpKernel {
       HANDLE_DIM(1);
       HANDLE_DIM(2);
       HANDLE_DIM(3);
+      HANDLE_DIM(4);
       HANDLE_DIM(5);
       HANDLE_DIM(6);
       HANDLE_DIM(7);

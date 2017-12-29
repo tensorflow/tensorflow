@@ -26,7 +26,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-
 class RecordInputOpTest(test.TestCase):
 
   def generateTestData(self,

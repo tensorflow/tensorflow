@@ -76,9 +76,10 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([a]):
         bytes_in_use_op = memory_stats_ops.BytesInUse()
       with ops.control_dependencies([bytes_in_use_op]):
-        b = math_ops.add(a, a)
+        b = random_ops.random_uniform(matrix_shape, dtype=dtype)
+        c = math_ops.matmul(a, b)
 
-      _, bytes_in_use, max_bytes_in_use = sess.run([b, bytes_in_use_op,
+      _, bytes_in_use, max_bytes_in_use = sess.run([c, bytes_in_use_op,
                                                     max_bytes_in_use_op])
 
       # intermediate result allocates 1 matrix, max usage is at least 2

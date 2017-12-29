@@ -18,6 +18,7 @@ limitations under the License.
 #include <math.h>
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 

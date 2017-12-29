@@ -157,6 +157,13 @@ def compute_weighted_loss(
     ValueError: If `weights` is `None` or the shape is not compatible with
       `losses`, or if the number of dimensions (rank) of either `losses` or
       `weights` is missing.
+
+  Note:
+    When calculating the gradient of a weighted loss contributions from
+    both `losses` and `weights` are considered. If your `weights` depend
+    on some model parameters but you do not want this to affect the loss
+    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    passing them to `compute_weighted_loss`.
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
