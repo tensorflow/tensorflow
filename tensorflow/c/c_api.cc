@@ -262,7 +262,7 @@ static Status TF_StringDecode_Impl(const char* src, size_t src_len,
   if (p == nullptr) {
     return InvalidArgument("invalid string encoding or truncated src buffer");
   }
-  else if (len64 > std::numeric_limits<size_t>::max()) {
+  if (len64 > std::numeric_limits<size_t>::max()) {
     return InvalidArgument("encoded string is ", len64,
                            "-bytes, which is too large for this architecture");
   }
