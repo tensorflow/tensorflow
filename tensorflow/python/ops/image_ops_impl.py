@@ -329,7 +329,7 @@ def rot90(image, k=1, name=None):
     name: A name for this operation (optional).
 
   Returns:
-    A rotated of the same type and shape as `image`.
+    A rotated tensor of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
