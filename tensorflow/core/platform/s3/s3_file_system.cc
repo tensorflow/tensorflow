@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
+#include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
@@ -61,6 +62,19 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       const char* region = getenv("S3_REGION");
       if (region) {
         cfg.region = Aws::String(region);
+      } else {
+      // If no AWS_REGION or S3_REGION, se ~/.aws/config if possible
+      const char* home = getenv("HOME");
+      if (home) {
+      Aws::String config_file(home);
+      config_file += "/.aws/config";
+      Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
+      loader.Load();
+      auto profiles = loader.GetProfiles();
+      if (!profiles["default"].GetRegion().empty()) {
+        cfg.region = profiles["default"].GetRegion();
+      }
+      }
       }
     }
     const char* use_https = getenv("S3_USE_HTTPS");
