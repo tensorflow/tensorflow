@@ -20,9 +20,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 # pylint: disable=wildcard-import
 from tensorflow.python import *
 # pylint: enable=wildcard-import
+sys.modules.update({name.replace('tensorflow.python', 'tensorflow'): mod
+                    for name, mod in sys.modules.items()
+                    if name.startswith('tensorflow.python.keras')})
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
@@ -31,6 +36,7 @@ del LazyLoader
 del absolute_import
 del division
 del print_function
+del sys
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They
