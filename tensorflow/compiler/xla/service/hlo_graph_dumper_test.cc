@@ -117,5 +117,18 @@ TEST(HloGraphDumperTest, NestedFusion) {
       HasSubstr(inner_sum->name()));
 }
 
+TEST(HloGraphDumperTest, Constant) {
+  HloComputation::Builder b("b");
+  auto instruction = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(-42)));
+  instruction->set_name("i_am_a_constant_root_instruction");
+  HloModule m(TestName());
+  HloComputation* root_computation = m.AddEntryComputation(b.Build());
+  string graph = hlo_graph_dumper::DumpGraph(
+      *root_computation, /*label=*/"an_empty_graph", DebugOptions());
+  EXPECT_THAT(graph, HasSubstr("an_empty_graph"));
+  EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
+}
+
 }  // anonymous namespace
 }  // namespace xla
