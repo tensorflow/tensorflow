@@ -301,7 +301,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
         "inner matrix shape.")
 
   if not op.get_attr("compute_uv"):
-    s, u, v = linalg_ops.svd(a, compute_uv=True, full_matrices=True)
+    s, u, v = linalg_ops.svd(a, compute_uv=True)
   else:
     s = op.outputs[0]
     u = op.outputs[1]
@@ -321,11 +321,10 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     if not op.get_attr("compute_uv"):
       if use_adjoint:
         grad_a = math_ops.matmul(
-            v[..., :, :m], math_ops.matmul(u, grad_s_mat), adjoint_b=True)
+            v, math_ops.matmul(u, grad_s_mat), adjoint_b=True)
       else:
-        grad_a = math_ops.matmul(u,
-                                 math_ops.matmul(
-                                     grad_s_mat, v[..., :, :m], adjoint_b=True))
+        grad_a = math_ops.matmul(
+            u, math_ops.matmul(grad_s_mat, v, adjoint_b=True))
       grad_a.set_shape(a_shape)
       return grad_a
 
