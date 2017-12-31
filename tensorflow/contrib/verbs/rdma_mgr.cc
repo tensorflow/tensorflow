@@ -103,7 +103,7 @@ void RdmaMgr::SetupChannels() {
         // local tx_message_buffer <---> remote rx_message_buffer_
         // local rx_message_buffer <---> remote tx_message_buffer_
         // hence idx[] = {1, 0}.
-        RdmaBuffer* rb = rc->message_buffers_[idx[i]];
+        RdmaMessageBuffer* rb = rc->message_buffers_[idx[i]];
         RemoteMR rmr;
         rmr.remote_addr = mr.remote_addr();
         rmr.rkey = mr.rkey();

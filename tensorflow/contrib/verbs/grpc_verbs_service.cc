@@ -123,14 +123,14 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   rc->Connect();
   int i = 0;
   int idx[] = {1, 0};
-  std::vector<RdmaBuffer*> mb(rc->message_buffers());
+  std::vector<RdmaMessageBuffer*> mb(rc->message_buffers());
   CHECK_EQ(request->mr_size(), RdmaChannel::kNumMessageBuffers);
   for (const auto& mr : request->mr()) {
     // the connections are crossed, i.e.
     // local tx_message_buffer <---> remote rx_message_buffer_
     // local rx_message_buffer <---> remote tx_message_buffer_
     // hence idx[] = {1, 0}.
-    RdmaBuffer* rb = mb[idx[i]];
+    RdmaMessageBuffer* rb = mb[idx[i]];
     RemoteMR rmr;
     rmr.remote_addr = mr.remote_addr();
     rmr.rkey = mr.rkey();

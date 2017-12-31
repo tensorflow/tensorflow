@@ -31,8 +31,8 @@ TensorFlow dynamically allocates memory for tensors that are to be sent or recei
 
 For best performance, we will adopt HKUST 0 copies approach in our solution. This means:
 
-1. Tensor writes will be done directly from the source tensor to the **result** tensor, with no memory copies in between. This should be done for all DMAble tensors which are located either on CPU or on a RDMA compatible GPU device (GPU direct). 
-2. Non DMAble tensors (CanMemCopy == false) will be serialized to a TensorProto on the sender side, RDMA written to a registered buffer on the receiver side, and then deserialized by the receiver.
+1. Tensor writes will be done directly from the source tensor to the **result** tensor, with no memory copies in between. This should be done for all DMAable tensors which are located either on CPU or on a RDMA compatible GPU device (GPU direct). 
+2. Non DMAable tensors (CanMemCopy == false) will be serialized to a TensorProto on the sender side, RDMA written to a registered buffer on the receiver side, and then deserialized by the receiver.
 3. Tensors which are located on a non-RDMA-compatible GPU, will be RDMA written to a registered CPU **proxy** buffer on the receiver side, and then copied to GPU by the receiver.
 
 ## Design details
@@ -59,9 +59,19 @@ Our entry point is the implementation of **RdmaRemoteRendezvous::RecvFromRemoteA
 1. Allocate the result tensor (and the proxy tensor if required).
 2. Send a **RDMA_MESSAGE_TENSOR_REQUEST** to the sender, containing the address of the destination tensor (result/proxy) for RDMA write.
 
-In order to allocate the result and proxy tensors, we need to know the tensor's meta-data, i.e. shape and data-type for DMAble tensors, and proto-size for serialized tensors. Unfortunately, this information is only available on the sender side which complicates manners. In order to avoid sending extra messages for querying the meta-data on each step, we store a local meta-data cache per tensor. Based on the assumption that the meta-data of a tensor rarely changes between steps, we expect that on most times the cache will only be updated once. 
+In order to allocate the result and proxy tensors, we need to know the tensor's meta-data, i.e. shape and data-type for DMAable tensors, and proto-size for serialized tensors. Unfortunately, this information is only available on the sender side which complicates manners. In order to avoid sending extra messages for querying the meta-data at each step, we store a local meta-data cache per tensor, which will only be update upon changes. Based on the assumption that the meta-data of a tensor rarely changes between steps, we expect that on most times the cache will only be updated once. The sender is responsible to detect changes in the meta-data, and update the receiver. In order for the sender to know that the meta-data had changed, each **RDMA_MESSAGE_TENSOR_REQUEST** will contain the meta-data that the receiver had grabbed from the local cache. The sender will then compare the meta-data from the message to the tensor's new meta-data.
 
-When the sender receives an **RDMA_MESSAGE_TENSOR_REQUEST**, if it is the first time this tensor is requested, or in the rare case that the tensor's meta-data changed, the sender will send a **RDMA_MESSAGE_META_DATA_RESPONSE** containing the new meta-data. In order for the sender to know that the meta-data has changed, the **RDMA_MESSAGE_TENSOR_REQUEST** will need to also contain the meta-data that the receiver had grabbed from the local cache. The sender will then compare the meta-data from the message to the tensor's new meta-data.
+When the sender receives an **RDMA_MESSAGE_TENSOR_REQUEST**, it will create a new **RdmaTensorResponse** object for the given request message, store it in a list of pending responses, and will invoke its **Start()** method. The **Start()** method does the following:
+
+1. Grab the source tensor from the local table (In code, **RecvLocalAsync()**).
+2. If the source tensor is not DMAable, serialize it to a TensorProto.
+3. If the source tensor is located on a device which cannot be DMA written from, copy it to CPU.
+4. If it is the first time this tensor is requested, or if the tensor's meta-data changed:
+	1. Clone the tensor's data to be sent later.
+	2. Send a **RDMA_MESSAGE_META_DATA_RESPONSE** containing the new meta-data.
+5. Otherwise:
+	1. RDMA write the tensor (or TensorProto) to the destination address and rkey specified in the request message. The immediate value for the write will be the request index.
+
 
 When the receiver receives the **RDMA_MESSAGE_META_DATA_RESPONSE**, it will locate the relevant **RdmaTensorRequest** using the request index specified in the message, and invoke its **RecvTensorMetaData()** which does the following:
 
@@ -69,11 +79,7 @@ When the receiver receives the **RDMA_MESSAGE_META_DATA_RESPONSE**, it will loca
 2. Reallocate the result/proxy tensors. 
 3. Re-send the tensor request. For tracability, the new message has a different name: **RDMA_MESSAGE_TENSOR_RE_REQUEST**.
 
-When the sender receives a **RDMA_MESSAGE_TENSOR_RE_REQUEST**, or a **RDMA_MESSAGE_TENSOR_REQUEST** where the meta-data is not changed, it will do the following:
-
-1. If the source tensor is not mem-copy-able, serialize it to a TensorProto.
-2. If the source tensor is located on a device which cannot be DMA written from, copy it to CPU.
-3. RDMA write the tensor (or TensorProto) to the destination address and rkey specified in the message. The immediate value for the write will be the request index.
+When the sender receives a **RDMA_MESSAGE_TENSOR_RE_REQUEST**, it will locate the relevant **RdmaTensorResponse** using the request index specified in the message, and invoke its **Resume()** method, which will RDMA write the contents of the tensor that was cloned earlier, to the new remote address specified in the re-request.
 
 When the receiver receives the RDMA write, it will locate the relevant **RdmaTensorRequest** using the request index which is the immediate value. It will then invoke its **RecvTensorContent()** which does the following:
 
@@ -89,24 +95,39 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 	* If the request arrives before the tensor is ready, then a callback is put in a local table, and will be invoked once the tensor arrives.
 	* If the tensor is ready before the request arives, than the tensor is put in a local table. When the request arrives, it will invoke the callback immediatly.
    In code it is done by calling **RecvLocalAsync()**, which receives the tensor's key, step-id, and the callback.
-2. When the callback is invoked, the relevant tensor is removed from the tag matching table. In the case where we need to send the tensor's meta-data, we will have to store the tensor until the re-request arrives. For that we use a map of **ReItem** objects, which hold copies of the tensor, recv_args and send_args.
-3. The sending of the tensor's meta-data and content is done by the class **RdmaTensorBuffer**. When a tensor is requested, a unique **RdmaTensorBuffer** is created for it, based on the tensor's name. In order to support simultaneous responses of the same tensor (for different steps), each **RdmaTensorBuffer** will hold a list of **RdmaTensorResponse** objects (one per step-id), from which we derive the relevant destination address and rkey. 
-4. The sending of protocol messages (**RDMA_MESSAGE_TENSOR_REQUEST**, **RDMA_MESSAGE_META_DATA_RESPONSE** and **RDMA_MESSAGE_TENSOR_RE_REQUEST**) is done by the class **RdmaMessageBuffer**. All messages are sent using RDMA writes from/to fixed messages buffers. This implies that we cannot send on a specific channel more than one message at a time. In order to synchronize the messages, the **RdmaMessageBuffer** holds the a local and remote buffer statuses which can be either busy or idle. When a write is issued, both statuses will be changed to busy. When the write-complete event is received, the local status is changed to idle. When the write is received on the remote side, the remote side will parse the message, and return an ACK back to the sending side on which the sending side will update the remote status to idle. When both the local and remote statuses are idle, the next message can be sent.
+2. When the callback is invoked, the relevant tensor is removed from the tag matching table. In the case where we need to send the tensor's meta-data, the **RdmaTensorResponse** will store a copy of the tensor until the re-request arrives.
+3. The sending of protocol messages (**RDMA_MESSAGE_TENSOR_REQUEST**, **RDMA_MESSAGE_META_DATA_RESPONSE** and **RDMA_MESSAGE_TENSOR_RE_REQUEST**) is done by the class **RdmaMessageBuffer**. All messages are sent using RDMA writes from/to fixed messages buffers. This implies that we cannot send on a specific channel more than one message at a time. In order to synchronize the messages, the **RdmaMessageBuffer** holds the a local and remote buffer statuses which can be either busy or idle. When a write is issued, both statuses will be changed to busy. When the write-complete event is received, the local status is changed to idle. When the write is received on the remote side, the remote side will parse the message, and return an ACK back to the sending side on which the sending side will update the remote status to idle. When both the local and remote statuses are idle, the next message can be sent.
 5. ACK writes are empty writes (hence they require no buffer) with immediate value 0x80000000. Message writes have the immediate value 0x80000001. All other writes are tensor-content writes whose immediate value is the request-index.
 
 ### RDMA components
 
 * **enum RdmaImmDataType**       - Immediate types to distinguish between different RDMA writes on the remote side. Ack writes and control-message writes have a fixed immediate value. The rest of the writes are tensor writes and the immediate value is the relevant request index.
-* **enum  RdmaWriteIDType**      - Types to distinguish between different RDMA write-complete events: Ack, control message, tensor DMA write and tensor proto write.
+* **enum  RdmaWriteIDType**      - Types to distinguish between different RDMA write-complete events: Ack, control message and tensor writes.
 * **class RdmaWriteID**          - Context for RDMA write complete events. Holds the RdmaWriteIDType and additional data.
-* **class RemoteAddressContext** - Remote address information (address + mr). Will be passed as write context for tensor proto writes.
 * **class RdmaTensorMetaData**   - Meta-data for a tensor (type, shape, is_dead, proto_size).
 * **class RdmaMemoryMgr**        - Manages the meta-data cache, and the registered memory regions.
 * **class RdmaTensorRequest**    - Holds and manages information for a single tensor request throughout the entire receive cycle. API:
-	* Start()                    - Start the request.
-	* RecvTensorMetaData()       - Receive meta-data from the remote side.
-	* RecvTensorContent()        - Receive tensor content from the remote side and invoke the done() callback. 
-* **class RdmaTensorResponse**   - Holds information for a single tensor response, such as destination address and rkey.
+	* **Start()**                - Start the request sequence.
+		* Allocate the result tensor (and proxy tensor if required).
+		* Send RDMA_MESSAGE_TENSOR_REQUEST to the remote side.
+	* **RecvTensorMetaData()**   - Receive meta-data from the remote side.
+		* Update the local meta-data cache.
+		* Reallocate the result tensor (and proxy tensor if required).
+		* Re-send the request to the remote side.
+	* **RecvTensorContent()**    - Receive tensor content from the remote side (RDMA write was completed).
+		* Decode proto if required and/or move to GPU if the content was not written to it directly (GPU direct is not avaliable).
+		* Invoke the done callback.
+* **class RdmaTensorResponse**   - Holds and manages information for a single tensor response throughout the entire send cycle. API:
+	* **Start()**                - Start the response sequence. 
+		* Find the tensor in the local tag-match table.
+		* Compare the tensor's meta-data to the meta-data in the message (taken from the requester's local cache). 
+			* If meta-data changed:
+				* Clone the tensor to be sent later.
+				* Send a meta-data update message and wait for re-request.
+			* Else:
+				* Send the tensor's content (using direct RDMA write).
+	* **Resume()**               - Resume the response sequence after a re-request. Send the tensor's content that was cloned earlier.
+	* **Destroy()**              - Destroy the response's resources and remove it form the pending list.
 * **class RdmaAdapter**          - The base for RDMA communications. It may contain multiple channels and buffers.  It is responsible for handling various incoming RDMA messages.
 * **class RdmaChannel**          - Responsible for RDMA connection to a particular node. It manages messagee buffers. A channel has a request table which stores all the pending tensor requests.
 * **class RdmaMessageBuffer**    - Responsible for sending or receiving messages. It has a fixed size memory to store the data. It has a queue to store the pending jobs. A channel has two message buffers one for tx and one for rx.
