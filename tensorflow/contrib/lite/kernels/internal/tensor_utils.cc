@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 
 #ifndef USE_NEON
-#if     defined(__ARM_NEON__) || defined(__ARM_NEON)
+#if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #define USE_NEON
 #endif  //  defined(__ARM_NEON__) || defined(__ARM_NEON)
 #endif  //  USE_NEON
