@@ -235,7 +235,7 @@ Later on, in
 ["Fit the DNNClassifier to the Iris Training Data,"](#fit-dnnclassifier)
 you'll use `training_set.data` and
 `training_set.target` to train your model, and in
-["Evaluate Model Accuracy,"](#evaluate-accuracy) you'll use `test_set.data` and
+["Evaluate Model Accuracy,"](#evaluate_model_accuracy) you'll use `test_set.data` and
 `test_set.target`. But first, you'll construct your model in the next section.
 
 ## Construct a Deep Neural Network Classifier
