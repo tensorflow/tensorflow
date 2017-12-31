@@ -34,7 +34,7 @@ inline bool TestCPUFeatureNeon() {
 #endif  // __aarch64__
 }
 
-#elif __ARM_NEON
+#elif defined __ARM_NEON || defined USE_NEON
 
 inline bool TestCPUFeatureNeon() {
   return true;
