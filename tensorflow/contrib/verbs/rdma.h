@@ -81,14 +81,62 @@ enum Location {
   local,
   remote
 };
-enum BufferType {
-  MESSAGE,
-  TENSOR
-};
+
 enum RdmaMessageType {
   RDMA_MESSAGE_META_DATA_UPDATE,
   RDMA_MESSAGE_TENSOR_RE_REQUEST,
   RDMA_MESSAGE_TENSOR_REQUEST,
+};
+
+struct RdmaMessage {
+  RdmaMessageType type_;
+  uint16_t name_size_;
+  string name_;
+  int64 step_id_;
+  uint64_t request_index_;
+  union {
+    uint64_t remote_addr_;
+#ifdef RDMA_DATA_VALIDATION
+    uint64_t checksum_;
+#endif
+  };
+  uint32_t rkey_;
+  bool is_dead_;
+  DataType data_type_;
+  TensorShape tensor_shape_;
+  size_t tensor_bytes_;
+
+  // type|name_size|name|step_id|request_index|remote_addr/checksum|rkey|...
+  //   1B|    2B   | 512|  8B   |     8B      |       8B           | 4B |...
+  // ...|is_dead|data_type|tensor_shape|tensor_bytes|
+  // ...|    1B |   XB    |    XB      |    8B      |
+  //
+  static const size_t kNameCapacity = 512;
+  static const size_t kTypeStartIndex = 0;
+  static const size_t kNameSizeStartIndex = kTypeStartIndex + sizeof(type_);
+  static const size_t kNameStartIndex =
+      kNameSizeStartIndex + sizeof(name_size_);
+  static const size_t kStepIdStartIndex = kNameStartIndex + kNameCapacity;
+  static const size_t kRequestIndexStartIndex =
+      kStepIdStartIndex + sizeof(step_id_);
+  static const size_t kRemoteAddrStartIndex =
+      kRequestIndexStartIndex + sizeof(request_index_);
+  static const size_t kChecksumStartIndex = kRemoteAddrStartIndex;
+  static const size_t kRkeyStartIndex =
+      kRemoteAddrStartIndex + sizeof(remote_addr_);
+  static const size_t kIsDeadStartIndex = kRkeyStartIndex + sizeof(rkey_);
+  static const size_t kDataTypeStartIndex =
+      kIsDeadStartIndex + sizeof(is_dead_);
+  static const size_t kTensorShapeStartIndex =
+      kDataTypeStartIndex + sizeof(data_type_);
+  static const size_t kTensorBytesStartIndex =
+      kTensorShapeStartIndex + sizeof(TensorShape);
+  static const size_t kTensorBufferStartIndex =
+      kTensorBytesStartIndex + sizeof(tensor_bytes_);
+  static const size_t kMessageTotalBytes = kTensorBufferStartIndex;
+  static const size_t kRdmaMessageBufferSize = kMessageTotalBytes;
+  static string CreateMessage(const RdmaMessage& rm);
+  static void ParseMessage(RdmaMessage& rm, void* buffer);
 };
 
 // Immediate types for RDMA write
@@ -100,11 +148,9 @@ enum RdmaImmDataType {
 
 // Write types for RDMA write-complete events
 enum RdmaWriteIDType {
-  RDMA_WRITE_ID_EMPTY_TENSOR,
   RDMA_WRITE_ID_ACK,
   RDMA_WRITE_ID_MESSAGE,
-  RDMA_WRITE_ID_TENSOR_DMA,
-  RDMA_WRITE_ID_TENSOR_PROTO
+  RDMA_WRITE_ID_TENSOR_WRITE
 };
 
 // Context for RDMA write-complete events
@@ -115,16 +161,6 @@ class RdmaWriteID {
 
   RdmaWriteIDType write_type;
   void* write_context;
-};
-
-// Remote address information (address + mr)
-// Will be passed as write context for proto tensor writes
-class RemoteAddressContext {
-  public:
-    RemoteAddressContext(void* address, ibv_mr* mr)
-      : address(address), mr(mr) {}
-    void* address;
-    ibv_mr* mr;
 };
 
 // Tensor meta-data
@@ -149,8 +185,6 @@ inline std::ostream& operator<<(std::ostream& out,
 }
 
 class RdmaChannel;
-class RdmaMessage;
-class RdmaTensorResponse;
 
 void MRDeleter(ibv_mr* mr);
 using MemoryRegionPtr = std::unique_ptr<ibv_mr, decltype(&MRDeleter)>;
@@ -264,15 +298,70 @@ class RdmaTensorRequest {
 #endif
 };
 
-class RdmaBuffer;
+// RdmaTensorResponse
+// Represents a single tensor response.
+class RdmaTensorResponse {
+ public:
+  // Creates a response for request message.
+  RdmaTensorResponse(RdmaChannel* channel, const RdmaMessage& rm)
+      : channel_(channel), rm_(rm) {}
+
+  void Update(const RdmaMessage& rm) { rm_ = rm; }
+
+  // Start the tensor response sequence.
+  //
+  // 1. Find the tensor in the local tag-match table and invoke RecvHandler.
+  //    (Using RecvLocalAsync()).
+  // 2. Compare the tensor's meta-data to the meta-data in the message (taken
+  //    from the requester's local cache).
+  //    If meta-data changed:
+  //    a. Clone the tensor to be sent later.
+  //    b. Send a meta-data update message and wait for re-request.
+  //    Else:
+  //    a. Send the tensor's content (using direct RDMA write).
+  void Start();
+
+  // Resume the response sequence, after a re-request.
+  //
+  // 1. Send the tensor's content that was cloned earlier.
+  void Resume();
+
+  // Destroy the response's resources and remove it from the pending list.
+  void Destroy();
+
+ private:
+  void RecvHandler(Rendezvous::ParsedKey parsed,
+                   const Rendezvous::Args& send_args,
+                   const Rendezvous::Args& recv_args, const Tensor& in,
+                   bool is_dead);
+  void Clone(const Tensor& in, const TensorProto& proto, bool is_dead);
+  void Send(const Tensor& in, const TensorProto& proto, bool is_dead);
+  bool TensorMetaDataChanged(const Tensor& in, bool is_dead,
+                             size_t tensor_bytes);
+  void SendMetaData(const Tensor& in, const TensorProto& proto, bool is_dead);
+  void SendContent(const Tensor& in, const TensorProto& proto, bool is_dead);
+
+  RdmaChannel* channel_;
+  RdmaMessage rm_;  // The request message
+  TensorBuffer* src_buffer_ = nullptr;
+  void* src_addr_ = nullptr;
+  ibv_mr* mr_ = nullptr;
+  uint64_t checksum_ = 0;
+
+  // Re-item:
+  TensorProto* proto_ = nullptr;
+  Tensor* tensor_ = nullptr;
+  bool is_dead_ = false;
+};
+
+class RdmaMessageBuffer;
 // Class that represents the Rdma Adapter.
 // Responsible for creation of the completion queue, and handling
 // of work completions.
 class RdmaAdapter {
   friend class RdmaChannel;
-  friend class RdmaBuffer;
   friend class RdmaMessageBuffer;
-  friend class RdmaTensorBuffer;
+  friend class RdmaTensorResponse;
   friend class RdmaMgr;
   friend class RdmaRemoteRendezvous;
 
@@ -307,10 +396,10 @@ class RdmaAdapter {
 // Responsible for connecting queue pairs.
 class RdmaChannel {
   friend class RdmaAdapter;
-  friend class RdmaBuffer;
   friend class RdmaMessageBuffer;
   friend class RdmaTensorBuffer;
   friend class RdmaTensorRequest;
+  friend class RdmaTensorResponse;
   friend class RdmaMgr;
   friend class RdmaRemoteRendezvous;
 
@@ -320,24 +409,27 @@ class RdmaChannel {
   ~RdmaChannel();
   inline const RdmaAddress& self() { return self_; }
   RdmaAddress address() const;
-  inline const std::vector<RdmaBuffer*>& message_buffers() const {
+  inline const std::vector<RdmaMessageBuffer*>& message_buffers() const {
     return message_buffers_;
   }
   void Connect(const RdmaAddress& remoteAddr);
   void Connect();
   void Recv();
-  RdmaBuffer* FindBuffer(const uint32_t index);
-  RdmaBuffer* FindBuffer(const string& name);
-  RdmaBuffer* FindOrCreateBuffer(const string& name,
-                                 BufferType buffer_type = TENSOR);
-  uint32_t LookupBufferIndex(const string& buffer_name);
   void SetRemoteAddress(const RdmaAddress& ra, bool override);
+
+  // Requests:
   RdmaTensorRequest* InsertTensorRequest(
       const string& key, int64 step_id, Device* dst_dev,
       const Rendezvous::Args recv_args,
       const RdmaTensorRequest::RecvDoneCallback& done);
   void RemoveTensorRequest(uint32_t request_index);
   RdmaTensorRequest* GetTensorRequest(uint32_t request_index);
+
+  // Responses:
+  RdmaTensorResponse* AddTensorResponse(const RdmaMessage& rm);
+  RdmaTensorResponse* UpdateTensorResponse(const RdmaMessage& rm);
+  void RemoveTensorResponse(uint32_t request_index);
+
   static const int kNumMessageBuffers = 2;
   static const int kPingRecvWrid = 0;
 
@@ -356,35 +448,31 @@ class RdmaChannel {
   string remote_name_;
   ibv_qp* qp_;
   mutex mu_;
-  bool connected_ GUARDED_BY(bt_mu_) = false;
-  RdmaAddress remote_ GUARDED_BY(bt_mu_);
-  bool remote_set_ GUARDED_BY(bt_mu_) = false;
+  bool connected_ GUARDED_BY(mu_) = false;
+  RdmaAddress remote_ GUARDED_BY(mu_);
+  bool remote_set_ GUARDED_BY(mu_) = false;
   mutex ct_mu_;
   typedef std::unordered_map<uint32_t, RdmaTensorRequest> RequestTable;
   RequestTable request_table_ GUARDED_BY(ct_mu_);
   uint32_t request_serial_ GUARDED_BY(ct_mu_);
-  mutex bt_mu_;
-  typedef std::unordered_map<unsigned int, RdmaBuffer*> BufferTable;
-  BufferTable buffer_table_ GUARDED_BY(bt_mu_);
-  typedef std::unordered_map<uint32_t, string> BufferIndexNameTable;
-  BufferIndexNameTable buffer_index_name_table_ GUARDED_BY(bt_mu_);
-  typedef std::unordered_map<string, uint32_t> BufferNameIndexTable;
-  BufferNameIndexTable buffer_name_index_table_ GUARDED_BY(bt_mu_);
-  RdmaBuffer* tx_message_buffer_;
-  RdmaBuffer* rx_message_buffer_;
-  std::vector<RdmaBuffer*> message_buffers_;
+  mutex responses_mu_;
+  typedef std::unordered_map<uint32_t, RdmaTensorResponse> ResponsesTable;
+  ResponsesTable responses_table_ GUARDED_BY(responses_mu_);
+  RdmaMessageBuffer* tx_message_buffer_;
+  RdmaMessageBuffer* rx_message_buffer_;
+  std::vector<RdmaMessageBuffer*> message_buffers_;
 };
 
-// Class that represents a buffer for Rdma writes and reads.
-class RdmaBuffer {
+// Class that represents a buffer for Rdma message sending.
+class RdmaMessageBuffer {
   friend class RdmaChannel;
   friend class RdmaAdapter;
   friend class RdmaMgr;
   friend class RdmaRemoteRendezvous;
 
  public:
-  explicit RdmaBuffer(RdmaChannel* channel, string name);
-  virtual ~RdmaBuffer();
+  explicit RdmaMessageBuffer(RdmaChannel* channel, string name);
+  ~RdmaMessageBuffer();
 
   inline void* buffer() const { return buffer_; }
   inline ibv_mr* self() const { return self_; }
@@ -399,12 +487,9 @@ class RdmaBuffer {
   }
   void FreeBuffer();
   void EnqueueItem(string Item);
-  virtual void SendNextItem() {};
+  void SendNextItem();
   void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
-  uint32_t LookupBufferIndex(const string& buffer_name) {
-    return const_cast<RdmaChannel*>(channel_)->LookupBufferIndex(buffer_name);
-  }
   void Write(uint32_t imm_data, size_t buffer_size);
   static void Write(const RdmaChannel* channel, uint32_t imm_data,
                     size_t buffer_size, uint64_t src_addr, uint32_t lkey,
@@ -424,146 +509,6 @@ class RdmaBuffer {
   std::queue<string> queue_ GUARDED_BY(mu_);
   BufferStatus local_status_ GUARDED_BY(mu_) = none;
   BufferStatus remote_status_ GUARDED_BY(mu_) = none;
-};
-
-class RdmaMessageBuffer : public RdmaBuffer {
-  friend class RdmaChannel;
-  friend class RdmaAapater;
-
- public:
-  explicit RdmaMessageBuffer(RdmaChannel* channel, string name);
-  virtual ~RdmaMessageBuffer() override {}
-  void SendNextItem() override;
-};
-
-class RdmaTensorBuffer : public RdmaBuffer {
- public:
-  explicit RdmaTensorBuffer(RdmaChannel* channel, string name);
-  virtual ~RdmaTensorBuffer() override;
-  void SendNextItem() override;
-  void PostCopyOperations(const string& key, const Tensor& in, int64 step_id,
-                          bool is_dead, const string& key_with_step_id,
-                          const Tensor* copy, const TensorProto* proto,
-                          const Rendezvous::Args& send_args,
-                          const Rendezvous::Args& recv_args, uint64_t checksum);
-
-  // Responses:
-  void AddOrUpdateResponse(const RdmaMessage& rm);
-  RdmaTensorResponse* GetResponse(int64 step_id);
-  void RemoveResponse(int64 step_id);
-
-  // Statistics:
-  static void CountCopies(const std::string& key, void* src_addr,
-                          void* dst_addr, size_t tensor_bytes,
-                          bool is_gpu_to_cpu);
-  static uint64_t Checksum(Device* device, const DeviceContext* device_context,
-                           const Tensor& in);
-
-  void ReSendNextItem();
-
- private:
-  static bool TensorMetaDataChanged(const RdmaMessage& rm, const Tensor& in,
-                                    bool is_dead, size_t tensor_bytes);
-  static bool TensorIsEmpty(const Tensor& in);
-  Rendezvous::DoneCallback getRecvTensorCallback(
-      const string& key_with_step_id, const string& key, int64 step_id,
-      const Rendezvous::ParsedKey& parsed);
-
-  struct ReItem {
-    Rendezvous::Args send_args;
-    Rendezvous::Args recv_args;
-    Tensor in;
-    bool is_dead;
-
-    ReItem(const Rendezvous::Args& send_args_,
-           const Rendezvous::Args& recv_args_, const Tensor& in_, bool is_dead_)
-        : send_args(send_args_),
-          recv_args(recv_args_),
-          in(in_),
-          is_dead(is_dead_) {
-      if (send_args.device_context) {
-        send_args.device_context->Ref();
-      }
-      if (recv_args.device_context) {
-        recv_args.device_context->Ref();
-      }
-    }
-
-    ~ReItem() {
-      if (send_args.device_context) {
-        send_args.device_context->Unref();
-      }
-      if (recv_args.device_context) {
-        recv_args.device_context->Unref();
-      }
-    }
-  };
-  typedef std::map<string, ReItem*> Table;
-  typedef Table::iterator Itable;
-
-  // map step-id to Response object
-  std::map<int64, RdmaTensorResponse> responses_ GUARDED_BY(mu_);
-  std::queue<string> requeue GUARDED_BY(mu_);
-  Table retable GUARDED_BY(mu_);
-};
-
-struct RdmaMessage {
-  RdmaMessageType type_;
-  uint16_t name_size_;
-  string name_;
-  int64 step_id_;
-  uint64_t request_index_;
-  union {
-    uint64_t remote_addr_;
-#ifdef RDMA_DATA_VALIDATION
-    uint64_t checksum_;
-#endif
-  };
-  uint32_t rkey_;
-  bool is_dead_;
-  DataType data_type_;
-  TensorShape tensor_shape_;
-  size_t tensor_bytes_;
-
-  // type|name_size|name|step_id|request_index|remote_addr/checksum|rkey|...
-  //   1B|    2B   | 512|  8B   |     8B      |       8B           | 4B |...
-  // ...|is_dead|data_type|tensor_shape|tensor_bytes|
-  // ...|    1B |   XB    |    XB      |    8B      |
-  //
-  static const size_t kNameCapacity = 512;
-  static const size_t kTypeStartIndex = 0;
-  static const size_t kNameSizeStartIndex = kTypeStartIndex + sizeof(type_);
-  static const size_t kNameStartIndex =
-      kNameSizeStartIndex + sizeof(name_size_);
-  static const size_t kStepIdStartIndex = kNameStartIndex + kNameCapacity;
-  static const size_t kRequestIndexStartIndex =
-      kStepIdStartIndex + sizeof(step_id_);
-  static const size_t kRemoteAddrStartIndex =
-      kRequestIndexStartIndex + sizeof(request_index_);
-  static const size_t kChecksumStartIndex = kRemoteAddrStartIndex;
-  static const size_t kRkeyStartIndex =
-      kRemoteAddrStartIndex + sizeof(remote_addr_);
-  static const size_t kIsDeadStartIndex = kRkeyStartIndex + sizeof(rkey_);
-  static const size_t kDataTypeStartIndex =
-      kIsDeadStartIndex + sizeof(is_dead_);
-  static const size_t kTensorShapeStartIndex =
-      kDataTypeStartIndex + sizeof(data_type_);
-  static const size_t kTensorBytesStartIndex =
-      kTensorShapeStartIndex + sizeof(TensorShape);
-  static const size_t kTensorBufferStartIndex =
-      kTensorBytesStartIndex + sizeof(tensor_bytes_);
-  static const size_t kMessageTotalBytes = kTensorBufferStartIndex;
-  static const size_t kRdmaMessageBufferSize = kMessageTotalBytes;
-  static string CreateMessage(const RdmaMessage& rm);
-  static void ParseMessage(RdmaMessage& rm, void* buffer);
-};
-
-// Represents tensor response information.
-class RdmaTensorResponse {
- public:
-  RdmaTensorResponse() {}
-  RdmaTensorResponse(const RdmaMessage& rm) : rm_(rm) {}
-  RdmaMessage rm_;
 };
 
 }  // namespace tensorflow
