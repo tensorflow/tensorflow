@@ -25,7 +25,7 @@
 #include "tensorflow/java/src/gen/cc/op_generator.h"
 
 namespace tensorflow {
-namespace op_gen {
+namespace java {
 
 const char kUsageHeader[] =
     "\n\nGenerator of operation wrappers in Java.\n\n"
@@ -51,7 +51,7 @@ const char kUsageHeader[] =
     "Finally, the '--base_package' overrides the default parent package "
     "under which the generated subpackage and classes are to be located.\n\n";
 
-}  // namespace op_gen
+}  // namespace java
 }  // namespace tensorflow
 
 int main(int argc, char* argv[]) {
@@ -67,13 +67,13 @@ int main(int argc, char* argv[]) {
       tensorflow::Flag(
           "base_package", &base_package,
           "Package parent to the generated subpackage and classes")};
-  tensorflow::string usage = tensorflow::op_gen::kUsageHeader;
+  tensorflow::string usage = tensorflow::java::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parsed_flags_ok && !lib_name.empty() && !output_dir.empty()) << usage;
 
-  tensorflow::OpGenerator generator;
+  tensorflow::java::OpGenerator generator;
   tensorflow::OpList ops;
   tensorflow::OpRegistry::Global()->Export(true, &ops);
   tensorflow::Status status =
