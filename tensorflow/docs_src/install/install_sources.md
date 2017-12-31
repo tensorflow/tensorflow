@@ -182,6 +182,7 @@ If bazel is not installed on your system, install it now by following
 
 To build TensorFlow, you must install the following packages:
 
+  * gast
   * six
   * numpy, which is a numerical processing package that TensorFlow requires.
   * wheel, which enables you to manage Python compressed packages
@@ -194,7 +195,7 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel</b> </pre>
+<pre> $ <b>sudo pip install gast six numpy wheel</b> </pre>
 
 Note: These are just the minimum requirements to _build_ tensorflow. Installing
 the pip package will download additional packages required to _run_ it. If you

@@ -344,5 +344,13 @@ def cross_replica_mean(tensor, name=None):
     return tpu_ops.cross_replica_sum(tensor / num_shards)
 
 
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
+
+
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.
