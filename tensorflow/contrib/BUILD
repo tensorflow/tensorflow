@@ -122,7 +122,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_kernels"]),
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
 )
 
 cc_library(
