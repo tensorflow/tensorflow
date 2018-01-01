@@ -274,10 +274,10 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
-        "@arm_neon_2_x86_sse",
-        "@gemmlowp//:gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp//:gemmlowp",
     ],
 )
 
