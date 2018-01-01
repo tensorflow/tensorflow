@@ -47,7 +47,9 @@ class BufferingResource:
                 name=name)
 
     def get_next(self, output_types, name=None):
-        return gen_prefetching_ops.function_buffering_resource_get_next(
+        self._function_buffering_resource = gen_prefetching_ops.function_buffering_resource_get_next(
             function_buffer_resource=self._function_buffering_resource,
             output_types=output_types,
             name=name)
+
+        return self._function_buffering_resource
