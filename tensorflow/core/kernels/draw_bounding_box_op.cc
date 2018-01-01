@@ -78,14 +78,19 @@ class DrawBoundingBoxesOp : public OpKernel {
     }
     if (context->num_inputs() == 3) {
       const Tensor& colors_tensor = context->input(2);
-      OP_REQUIRES(context, colors_tensor.shape().dims() == 2, errors::InvalidArgument("colors must be a 2-D matrix", colors_tensor.shape().DebugString()));
-      OP_REQUIRES(context, colors_tensor.shape().dim_size(1) == 4, errors::InvalidArgument("colors must be n x 4 (RGBA)", colors_tensor.shape().DebugString()));
+      OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
+                  errors::InvalidArgument("colors must be a 2-D matrix",
+                                          colors_tensor.shape().DebugString()));
+      OP_REQUIRES(context, colors_tensor.shape().dim_size(1) == 4,
+                  errors::InvalidArgument("colors must be n x 4 (RGBA)",
+                                          colors_tensor.shape().DebugString()));
       if (colors_tensor.NumElements() != 0) {
         color_table.clear();
 
         auto colors = colors_tensor.matrix<float>();
         for (int64 i = 0; i < colors.dimension(0); i++) {
-            color_table.emplace_back(std::array<float, 4>{colors(i, 0), colors(i, 1), colors(i, 2), colors(i, 3)});
+          color_table.emplace_back(std::array<float, 4>{
+              colors(i, 0), colors(i, 1), colors(i, 2), colors(i, 3)});
         }
       }
     }
@@ -188,11 +193,11 @@ class DrawBoundingBoxesOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(T)                                             \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      DrawBoundingBoxesOp<T>);                                             \
-  REGISTER_KERNEL_BUILDER(                                                 \
+#define REGISTER_CPU_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("DrawBoundingBoxes").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      DrawBoundingBoxesOp<T>);                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
       Name("DrawBoundingBoxesV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DrawBoundingBoxesOp<T>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
