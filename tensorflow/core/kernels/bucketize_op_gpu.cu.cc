@@ -98,16 +98,15 @@ struct BucketizeFunctor<GPUDevice, T> {
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&
         shared_mem_size < kMaxSharedMemBytes) {
-      BucketizeCustomKernel<T,
-                            true><<<config.block_count, config.thread_per_block,
-                                    shared_mem_size, d.stream()>>>(
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data());
+      BucketizeCustomKernel<T, true>
+          <<<config.block_count, config.thread_per_block, shared_mem_size,
+             d.stream()>>>(input.size(), input.data(), boundaries_vector.size(),
+                           boundaries_array.data(), output.data());
     } else {
-      BucketizeCustomKernel<T, false><<<
-          config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data());
+      BucketizeCustomKernel<T, false>
+          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+              input.size(), input.data(), boundaries_vector.size(),
+              boundaries_array.data(), output.data());
     }
     return Status::OK();
   }

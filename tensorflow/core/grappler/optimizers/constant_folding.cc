@@ -1486,7 +1486,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // TODO(rmlarsen): Handle non-associative/non-commutative operators like
     // subtraction and division, as well as mixed subtraction/addition,
     // division/multiplication.
-    if ((is_add || is_mul) && NumNonControlInputs(*node) == 2) {
+    // Don't touch BiasAdd since they can't handle vectors as their first
+    // inputs.
+    if ((IsAdd(*node) || is_mul) && NumNonControlInputs(*node) == 2) {
       NodeDef* left_child = node_map_->GetNode(node->input(0));
       NodeDef* right_child = node_map_->GetNode(node->input(1));
       // One child must be constant, and the other the same op as the parent.

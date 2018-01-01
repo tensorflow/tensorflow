@@ -117,6 +117,8 @@ bool IsExit(const NodeDef& node) {
   return op == "Exit" || op == "RefExit";
 }
 
+bool IsFill(const NodeDef& node) { return node.op() == "Fill"; }
+
 bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
@@ -224,6 +226,8 @@ bool IsRestore(const NodeDef& node) {
   return (node.op() == "Restore" || node.op() == "RestoreV2" ||
           node.op() == "RestoreSlice");
 }
+
+bool IsReverseV2(const NodeDef& node) { return node.op() == "ReverseV2"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 

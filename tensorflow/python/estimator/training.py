@@ -426,6 +426,11 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   executor = _TrainingExecutor(estimator=estimator, train_spec=train_spec,
                                eval_spec=eval_spec)
 
+  _execute_based_on_task_type(executor, config)
+
+
+def _execute_based_on_task_type(executor, config):
+  """Executes the `executor` based on `config.task_type`."""
   if (not config.cluster_spec and
       config.task_type != run_config_lib.TaskType.EVALUATOR):
     logging.info('Running training and evaluation locally (non-distributed).')
@@ -462,7 +467,6 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         'Task type {} is not supported. Supported task types are {}'.format(
             config.task_type, [x[len('run_'):] for x in available_tasks]))
   getattr(executor, task_to_run)()
-  return
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):
@@ -492,6 +496,7 @@ class _TrainingExecutor(object):
                estimator,
                train_spec,
                eval_spec,
+               train_hooks=None,
                continuous_eval_listener=None):
     if not isinstance(estimator, estimator_lib.Estimator):
       raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
@@ -504,6 +509,8 @@ class _TrainingExecutor(object):
     if not isinstance(eval_spec, EvalSpec):
       raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`.')
     self._eval_spec = eval_spec
+
+    self._train_hooks = _validate_hooks(train_hooks)
 
     if (continuous_eval_listener and
         not isinstance(continuous_eval_listener, _ContinuousEvalListener)):
@@ -607,7 +614,8 @@ class _TrainingExecutor(object):
                            self._eval_spec.throttle_secs))
 
     stop_hook = _StopAtSecsHook(self._eval_spec.throttle_secs)
-    train_hooks = list(self._train_spec.hooks) + [stop_hook]
+    train_hooks = (
+        list(self._train_spec.hooks) + [stop_hook] + list(self._train_hooks))
     logging.info('Start train and evaluate loop. The evaluate will happen '
                  'after {} secs (eval_spec.throttle_secs) or training is '
                  'finished.'.format(self._eval_spec.throttle_secs))
@@ -662,11 +670,19 @@ class _TrainingExecutor(object):
             'RunConfig or set the TF_CONFIG environment variable.')
 
     logging.info('Start Tensorflow server.')
+
+    if config.session_config is None:
+      session_config=config_pb2.ConfigProto(log_device_placement=False)
+    else:
+      session_config=config_pb2.ConfigProto(
+          log_device_placement=False,
+          gpu_options=config.session_config.gpu_options)
+
     server = server_lib.Server(
         config.cluster_spec,
         job_name=config.task_type,
         task_index=config.task_id,
-        config=config_pb2.ConfigProto(log_device_placement=False),
+        config=session_config,
         start=False)
     server.start()
     return server
@@ -695,10 +711,11 @@ class _TrainingExecutor(object):
                    start_delay_secs)
       time.sleep(start_delay_secs)
 
-    self._estimator.train(input_fn=self._train_spec.input_fn,
-                          max_steps=self._train_spec.max_steps,
-                          hooks=self._train_spec.hooks,
-                          saving_listeners=saving_listeners)
+    self._estimator.train(
+        input_fn=self._train_spec.input_fn,
+        max_steps=self._train_spec.max_steps,
+        hooks=list(self._train_spec.hooks) + list(self._train_hooks),
+        saving_listeners=saving_listeners)
 
   def _start_continuous_evaluation(self):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""

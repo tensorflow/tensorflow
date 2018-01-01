@@ -20,7 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeLibsvm")
     .Input("input: string")

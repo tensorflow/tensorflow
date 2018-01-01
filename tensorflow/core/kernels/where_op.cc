@@ -131,7 +131,7 @@ class WhereCPUOp : public OpKernel {
     OP_REQUIRES(
         context, input.dtype() != DT_HALF,
         errors::Unimplemented("No WhereOp available for float16/half type on "
-                              "GPU; dying in CPU WhereOp to avoid silently "
+                              "CPU; dying in CPU WhereOp to avoid silently "
                               "creating costly copies from device."));
 
     const int input_dims = input.dims();

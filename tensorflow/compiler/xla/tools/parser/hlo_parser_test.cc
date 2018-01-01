@@ -773,6 +773,18 @@ ENTRY add_constants {
 
 )"
 },
+{
+"Dot",
+R"(HloModule dot
+
+ENTRY dot {
+  a = f32[2,10]{1,0} parameter(0)
+  b = f32[10,3]{1,0} parameter(1)
+  ROOT dot = f32[2,3]{1,0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)"
+},
   });
   // clang-format on
 }

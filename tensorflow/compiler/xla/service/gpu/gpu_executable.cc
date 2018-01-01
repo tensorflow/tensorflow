@@ -155,6 +155,8 @@ Status GpuExecutable::ExecuteThunks(
         run_options->BorrowStream(main_stream->parent()->device_ordinal()));
   }
 
+  // The next event enqueued on stream N must not run until the thunk at
+  // last_blocking_thunk_for_stream[N] completes.
   std::map<int32, const Thunk*> last_blocking_thunk_for_stream;
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
@@ -172,6 +174,7 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event,
                                     last_blocking_thunk_for_stream[stream_no])
                               .get());
+      last_blocking_thunk_for_stream.erase(stream_no);
     }
 
     // If this thunk requests it, wait for all currently-executing thunks to
@@ -191,8 +194,16 @@ Status GpuExecutable::ExecuteThunks(
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
+
       if (thunk->ShouldBlockFutureThunks()) {
-        last_blocking_thunk_for_stream[stream_no] = thunk;
+        // Set last_blocking_thunk_for_stream on all streams other than this one
+        // so that all other streams will wait for this thunk to complete before
+        // executing any events that occur later in the total order.
+        for (int32 i = 0; i < sub_streams.size() + 1; ++i) {
+          if (i != stream_no) {
+            last_blocking_thunk_for_stream[i] = thunk;
+          }
+        }
       }
     }
     profiler.FinishOperation(thunk->hlo_instruction());

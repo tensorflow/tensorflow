@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#ifdef __SSE4_1__
+#ifdef TF_XLA_HAS_SSE4_1
 
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
     xla::cpu::runtime::V4F32SSE x) {
@@ -33,7 +33,7 @@ xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
   return Eigen::internal::plog(p);
 }
 
-#endif  // __SSE4_1__
+#endif  // TF_XLA_HAS_SSE4_1
 
 namespace xla {
 namespace cpu {

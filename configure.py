@@ -265,19 +265,6 @@ def reset_tf_configure_bazelrc():
     f.write('import %workspace%/.tf_configure.bazelrc\n')
 
 
-def run_gen_git_source(environ_cp):
-  """Run the gen_git_source to create links.
-
-  The links are for bazel to track dependencies for git hash propagation.
-
-  Args:
-    environ_cp: copy of the os.environ.
-  """
-  cmd = '"%s" tensorflow/tools/git/gen_git_source.py --configure %s' % (
-      environ_cp.get('PYTHON_BIN_PATH'), os.getcwd())
-  os.system(cmd)
-
-
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
 
@@ -511,6 +498,21 @@ def set_tf_cuda_clang(environ_cp):
   set_action_env_var(
       environ_cp,
       'TF_CUDA_CLANG',
+      None,
+      False,
+      question=question,
+      yes_reply=yes_reply,
+      no_reply=no_reply)
+
+
+def set_tf_download_clang(environ_cp):
+  """Set TF_DOWNLOAD_CLANG action_env."""
+  question = 'Do you want to download a fresh release of clang? (Experimental)'
+  yes_reply = 'Clang will be downloaded and used to compile tensorflow.'
+  no_reply = 'Clang will not be downloaded.'
+  set_action_env_var(
+      environ_cp,
+      'TF_DOWNLOAD_CLANG',
       None,
       False,
       question=question,
@@ -1236,7 +1238,6 @@ def main():
   reset_tf_configure_bazelrc()
   cleanup_makefile()
   setup_python(environ_cp)
-  run_gen_git_source(environ_cp)
 
   if is_windows():
     environ_cp['TF_NEED_S3'] = '0'
@@ -1285,8 +1286,19 @@ def main():
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      # Set up which clang we should use as the cuda / host compiler.
-      set_clang_cuda_compiler_path(environ_cp)
+      if not is_windows():
+        # Ask if we want to download clang release while building.
+        set_tf_download_clang(environ_cp)
+      else:
+        # We use bazel's generated crosstool on Windows and there is no
+        # way to provide downloaded toolchain for that yet.
+        # TODO(ibiryukov): Investigate using clang as a cuda compiler on
+        # Windows.
+        environ_cp['TF_DOWNLOAD_CLANG'] = '0'
+
+      if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
+        # Set up which clang we should use as the cuda / host compiler.
+        set_clang_cuda_compiler_path(environ_cp)
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows

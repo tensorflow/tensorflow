@@ -644,6 +644,56 @@ void RecordMutation(TF_Graph* graph, const TF_Operation& op,
   }
 }
 
+namespace {
+
+// Helper method that creates a shape handle for a shape described by dims.
+tensorflow::shape_inference::ShapeHandle ShapeHandleFromDims(
+    tensorflow::shape_inference::InferenceContext* ic, int num_dims,
+    const int64_t* dims) {
+  if (num_dims != -1) {
+    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+    dim_vec.reserve(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      dim_vec.push_back(ic->MakeDim(dims[i]));
+    }
+    return ic->MakeShape(dim_vec);
+  } else {
+    return ic->UnknownShape();
+  }
+}
+
+}  // namespace
+
+void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
+                                           int num_shapes_and_types,
+                                           const int64_t** shapes,
+                                           const int* ranks,
+                                           const TF_DataType* types,
+                                           TF_Status* status) {
+  Node* node = &output.oper->node;
+
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
+    return;
+  }
+
+  auto shape_and_type_vec =
+      std::vector<tensorflow::shape_inference::ShapeAndType>(
+          num_shapes_and_types);
+  for (int i = 0; i < num_shapes_and_types; ++i) {
+    tensorflow::shape_inference::ShapeHandle shape_handle =
+        ShapeHandleFromDims(ic, ranks[i], shapes[i]);
+    shape_and_type_vec[i] = tensorflow::shape_inference::ShapeAndType(
+        shape_handle, static_cast<DataType>(types[i]));
+  }
+
+  ic->set_output_handle_shapes_and_types(output.index, shape_and_type_vec);
+}
+
 // Helpers for loading a TensorFlow plugin (a .so file).
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len);
@@ -949,7 +999,6 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
   Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
-  // Set the shape.
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -957,18 +1006,8 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
         InvalidArgument("Node ", node->name(), " was not found in the graph");
     return;
   }
-
-  tensorflow::shape_inference::ShapeHandle new_shape;
-  if (num_dims != -1) {
-    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
-    dim_vec.reserve(num_dims);
-    for (int i = 0; i < num_dims; ++i) {
-      dim_vec.push_back(ic->MakeDim(dims[i]));
-    }
-    new_shape = ic->MakeShape(dim_vec);
-  } else {
-    new_shape = ic->UnknownShape();
-  }
+  tensorflow::shape_inference::ShapeHandle new_shape =
+      tensorflow::ShapeHandleFromDims(ic, num_dims, dims);
   status->status = graph->refiner.SetShape(node, output.index, new_shape);
 }
 

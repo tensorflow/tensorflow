@@ -86,6 +86,13 @@ TEST_F(ReferenceUtilTest, ReduceToRowArray2D) {
                                        ErrorSpec(0.0001));
 }
 
+TEST_F(ReferenceUtilTest, Reduce4Dto1DZeroSizedArray) {
+  auto result = Literal::CreateR1<float>(ReferenceUtil::Reduce4DTo1D(
+      Array4D<float>(1, 0, 1, 1), /*init=*/0, /*dims=*/{0, 1, 2},
+      [](float a, float b) { return a + b; }));
+  LiteralTestUtil::ExpectR1Equal<float>({0}, *result);
+}
+
 TEST_F(ReferenceUtilTest, MapArray2D) {
   auto identity = [](float value) { return log(exp(value)); };
   auto result = ReferenceUtil::MapArray2D(*matrix_, identity);

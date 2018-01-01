@@ -473,6 +473,41 @@ Status AddNGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
+Status PowGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto x = ConjugateHelper(scope, op.input(0));
+  auto y = ConjugateHelper(scope, op.input(1));
+  auto z = ConjugateHelper(scope, op.output(0));
+  auto grad = grad_inputs[0];
+  // grad * y * pow(x, y - 1)
+  auto one = Cast(scope, Const(scope, 1.0), y.type());
+  auto gx_1 = Mul(scope,
+                  Mul(scope, grad, y),
+                  Pow(scope, x, Sub(scope, y, one)));
+  // Avoid false singularity at x = 0
+  DataType x_dtype = x.type();
+  auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
+  if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
+    // real(x) < 0 is fine for the complex case
+    auto log_x = Where3(scope,
+                        NotEqual(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
+  } else {
+    // There's no sensible real value to return if x < 0, so return 0
+    auto log_x = Where3(scope,
+                        Greater(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
+  }
+}
+REGISTER_GRADIENT_OP("Pow", PowGrad);
+
 // MaximumMinimumGradCommon adds shared ops to calculate gradients for
 // the binary Maximum and Minimum ops.
 Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
@@ -727,24 +762,6 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
   return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
-
-Status SelectGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
-  auto comparator = op.input(0);
-  auto x = op.input(1);
-  auto zeros = ZerosLike(scope, x);
-  auto grad = grad_inputs[0];
-
-  auto gx_1 = Where3(scope, comparator, grad, zeros);
-  auto gx_2 = Where3(scope, comparator, zeros, grad);
-
-  grad_outputs->push_back(NoGradient());
-  grad_outputs->push_back(gx_1);
-  grad_outputs->push_back(gx_2);
-  return scope.status();
-}
-REGISTER_GRADIENT_OP("Select", SelectGrad);
 
 Status MinOrMaxGrad(const Scope& scope, const Operation& op,
                     const std::vector<Output>& grad_inputs,

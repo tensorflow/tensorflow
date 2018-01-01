@@ -262,7 +262,8 @@ Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
 }
 
 Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
-                            std::vector<Tensor>* output_tensors) {
+                            std::vector<Tensor>* output_tensors,
+                            NodeExecStats* stats) {
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (Tensor& t : *input_tensors) {
     inputs.push_back(TensorValue(&t));
@@ -284,6 +285,9 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.function_library = flib_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
+  if (stats != nullptr) {
+    params.track_allocations = true;
+  }
   // TODO(apassos): use a thread pool.
   std::function<void(std::function<void()>)> runner =
       [](std::function<void()> f) { f(); };
@@ -296,6 +300,34 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   output_tensors->clear();
   for (int i = 0; i < context.num_outputs(); ++i) {
     output_tensors->push_back(Tensor(*context.mutable_output(i)));
+  }
+  if (stats != nullptr) {
+    for (const auto& allocator_pair : context.wrapped_allocators()) {
+      AllocatorMemoryUsed* memory = stats->add_memory();
+      memory->set_allocator_name(allocator_pair.first->Name());
+      auto sizes = allocator_pair.second->GetSizes();
+      memory->set_total_bytes(std::get<0>(sizes));
+      memory->set_peak_bytes(std::get<1>(sizes));
+      memory->set_live_bytes(std::get<2>(sizes));
+
+      AllocatorStats allocator_stats;
+      allocator_pair.first->GetStats(&allocator_stats);
+      memory->set_allocator_bytes_in_use(allocator_stats.bytes_in_use);
+      allocator_pair.second->GetRecordsAndUnRef();
+    }
+    auto* ms = stats->mutable_memory_stats();
+    ms->set_host_temp_memory_size(context.host_temp_memory_size());
+    ms->set_device_temp_memory_size(context.device_temp_memory_size());
+    for (const auto& alloc_id : context.host_persistent_alloc_ids()) {
+      ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+    }
+    for (const auto& alloc_id : context.device_persistent_alloc_ids()) {
+      ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
+    }
+    ms->set_host_persistent_memory_size(
+        context.host_persistent_memory_allocated());
+    ms->set_device_persistent_memory_size(
+        context.device_persistent_memory_allocated());
   }
   return Status::OK();
 }

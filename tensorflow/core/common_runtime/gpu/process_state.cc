@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
@@ -47,27 +48,19 @@ const bool FLAGS_brain_mem_reg_cuda_dma = true;
 // performance issues.
 const bool FLAGS_brain_gpu_record_mem_types = false;
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
-
 namespace {
+
 bool useCudaMallocAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  if (debug_allocator_str != nullptr &&
-      strcmp(debug_allocator_str, "cuda_malloc") == 0)
-    return true;
-  else
-    return false;
+  return debug_allocator_str != nullptr &&
+         std::strcmp(debug_allocator_str, "cuda_malloc") == 0;
 }
 
 bool useCudaMemoryGuardAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  if (debug_allocator_str != nullptr &&
-      strcmp(debug_allocator_str, "memory_guard") == 0)
-    return true;
-  else
-    return false;
+  return debug_allocator_str != nullptr &&
+         std::strcmp(debug_allocator_str, "memory_guard") == 0;
 }
 
 }  // namespace

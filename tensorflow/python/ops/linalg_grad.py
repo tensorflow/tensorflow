@@ -268,14 +268,13 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
 
 @ops.RegisterGradient("Svd")
 def _SvdGrad(op, grad_s, grad_u, grad_v):
-  """Gradient for the singular value decomposition
+  """Gradient for the singular value decomposition."""
 
-  The derivation for the compute_uv=False case, and most of
-  the derivation for the full_matrices=True case, are in
-  Giles' paper (see reference at top of file).  A derivation for
-  the full_matrices=False case is available at
-  https://j-towns.github.io/papers/svd-derivative.pdf
-  """
+  # The derivation for the compute_uv=False case, and most of
+  # the derivation for the full_matrices=True case, are in
+  # Giles' paper (see reference at top of file).  A derivation for
+  # the full_matrices=False case is available at
+  # https://j-towns.github.io/papers/svd-derivative.pdf
   a = op.inputs[0]
   a_shape = a.get_shape().with_rank_at_least(2)
 

@@ -22,9 +22,24 @@
 
 # fkrull/deadsnakes is for Python3.6
 add-apt-repository -y ppa:fkrull/deadsnakes
+
 apt-get update
+apt-get upgrade
+
+# Install python dep
+apt-get install python-dev
+# Install bz2 dep
+apt-get install libbz2-dev
+# Install curses dep
+apt-get install libncurses5 libncurses5-dev
+apt-get install libncursesw5 libncursesw5-dev
+# Install readline dep
+apt-get install libreadline6 libreadline6-dev
+# Install sqlite3 dependencies
+apt-get install libsqlite3-dev
 
 set -e
+
 # Install Python 3.6 and dev library
 wget https://www.python.org/ftp/python/3.6.1/Python-3.6.1.tar.xz
 tar xvf Python-3.6.1.tar.xz
@@ -63,6 +78,10 @@ pip3 install scikit-learn==0.18.1
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
 
+pip3 install gnureadline
+
+pip3 install bz2file
+
 # Install recent-enough version of wheel for Python 3.6 wheel builds
 pip3 install wheel==0.29.0
 
@@ -71,5 +90,8 @@ pip3 install portpicker
 pip3 install werkzeug
 
 pip3 install grpcio
+
+# Eager-to-graph execution needs gast:
+pip3 install --upgrade gast
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)
