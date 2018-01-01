@@ -127,6 +127,9 @@ STRING(REGEX REPLACE "\n" ";" python_protos "${python_protos}")
 
 foreach(python_proto ${python_protos})
   if(NOT python_proto MATCHES "\#")
+    if(NOT EXISTS "${tensorflow_source_dir}/${python_proto}")
+      message(SEND_ERROR "Python proto directory not found: ${python_proto}")
+    endif()
     file(GLOB_RECURSE tf_python_protos_src RELATIVE ${tensorflow_source_dir}
         "${tensorflow_source_dir}/${python_proto}/*.proto"
     )
@@ -145,6 +148,9 @@ STRING(REGEX REPLACE "\n" ";" python_protos_cc "${python_protos_cc}")
 
 foreach(python_proto_cc ${python_protos_cc})
   if(NOT python_proto_cc MATCHES "\#")
+    if(NOT EXISTS "${tensorflow_source_dir}/${python_proto_cc}")
+      message(SEND_ERROR "Python proto CC directory not found: ${python_proto_cc}")
+    endif()
     file(GLOB_RECURSE tf_python_protos_cc_src RELATIVE ${tensorflow_source_dir}
         "${tensorflow_source_dir}/${python_proto_cc}/*.proto"
     )
@@ -204,6 +210,9 @@ STRING(REGEX REPLACE "\n" ";" python_modules "${python_modules}")
 
 foreach(python_module ${python_modules})
   if(NOT python_module MATCHES "\#")
+    if(NOT EXISTS "${tensorflow_source_dir}/${python_module}")
+      message(SEND_ERROR "Python module not found: ${python_module}")
+    endif()
     add_python_module(${python_module})
   endif()
 endforeach(python_module)
