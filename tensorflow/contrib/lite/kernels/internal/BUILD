@@ -274,6 +274,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp//:gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
     ],
@@ -285,6 +287,11 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "common.h",
+        "types.h",
+        "compatibility.h",
+        "optimized/neon_tensor_utils.h",
+        "optimized/cpu_check.h",
         "optimized/tensor_utils_impl.h",
         "reference/portable_tensor_utils.h",
         "tensor_utils.h",
@@ -293,6 +300,8 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite:builtin_op_data",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp//:gemmlowp",
     ] + select({
         ":arm": [
             ":neon_tensor_utils",
