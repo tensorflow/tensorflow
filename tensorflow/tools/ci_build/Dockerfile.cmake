@@ -23,6 +23,7 @@ RUN /install/install_deb_packages.sh
 
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends python-pip
+RUN pip install --upgrade gast
 RUN pip install --upgrade numpy
 
 # Install golang

@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -154,7 +155,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     # pylint: enable=protected-access
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr[_TPU_REPLICATE_ATTR].s = self._name
+    op.node_def.attr[_TPU_REPLICATE_ATTR].s = compat.as_bytes(self._name)
     op.graph.prevent_feeding(op)
     op.graph.prevent_fetching(op)
 

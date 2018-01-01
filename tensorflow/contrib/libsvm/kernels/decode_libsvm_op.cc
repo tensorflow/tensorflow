@@ -22,10 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
-namespace {
-template <typename T>
-bool ConvertHelper(const string& s, T* value);
-}
 
 template <typename T, typename Tlabel>
 class DecodeLibsvmOp : public OpKernel {
@@ -57,7 +53,7 @@ class DecodeLibsvmOp : public OpKernel {
                                           "]: \"", input_flat(i), "\""));
       Tlabel label_value;
       OP_REQUIRES(
-          ctx, ConvertHelper<Tlabel>(entries[0], &label_value),
+          ctx, strings::SafeStringToNumeric<Tlabel>(entries[0], &label_value),
           errors::InvalidArgument("Label format incorrect: ", entries[0]));
       label(i) = label_value;
       for (int j = 1; j < entries.size(); j++) {
@@ -74,7 +70,7 @@ class DecodeLibsvmOp : public OpKernel {
                         "Feature index should be >= 0, got ", feature_index));
         T feature_value;
         OP_REQUIRES(
-            ctx, ConvertHelper<T>(pair[1], &feature_value),
+            ctx, strings::SafeStringToNumeric<T>(pair[1], &feature_value),
             errors::InvalidArgument("Feature format incorrect: ", entries[j]));
         out_values.emplace_back(feature_value);
         out_indices.emplace_back(std::pair<int64, int64>(i, feature_index));
@@ -127,25 +123,6 @@ class DecodeLibsvmOp : public OpKernel {
  private:
   int64 num_features_;
 };
-
-namespace {
-template <>
-bool ConvertHelper<float>(const string& s, float* value) {
-  return strings::safe_strtof(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<double>(const string& s, double* value) {
-  return strings::safe_strtod(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<int32>(const string& s, int32* value) {
-  return strings::safe_strto32(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<int64>(const string& s, int64* value) {
-  return strings::safe_strto64(s.c_str(), value);
-}
-}  // namespace
 
 #define REGISTER_KERNEL(type)                                         \
   REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \

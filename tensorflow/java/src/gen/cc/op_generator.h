@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
+namespace java {
 
 /// \brief A generator of Java operation wrappers.
 ///
@@ -46,6 +47,7 @@ class OpGenerator {
   Env* env;
 };
 
+}  // namespace java
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_JAVA_SRC_GEN_CC_OP_GENERATOR_H_

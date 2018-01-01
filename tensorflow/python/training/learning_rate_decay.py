@@ -103,8 +103,8 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
 def piecewise_constant(x, boundaries, values, name=None):
   """Piecewise constant from boundaries and interval values.
 
-  Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
-    for steps 100001 to 110000, and 0.1 for any additional steps.
+  Example: use a learning rate that's 1.0 for the first 100001 steps, 0.5
+    for the next 10000 steps, and 0.1 for any additional steps.
 
   ```python
   global_step = tf.Variable(0, trainable=False)
@@ -424,11 +424,12 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
     return math_ops.div(learning_rate, denom, name=name)
 
 
-def cosine_decay(learning_rate, global_step, decay_steps, name=None):
+def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0,
+                 name=None):
   """Applies cosine decay to the learning rate.
 
   See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-  with Warm Restarts.
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses.  This function applies a cosine decay function
@@ -439,7 +440,8 @@ def cosine_decay(learning_rate, global_step, decay_steps, name=None):
   The function returns the decayed learning rate.  It is computed as:
   ```python
   global_step = min(global_step, decay_steps)
-  decayed = 0.5 * (1 + cos(pi * global_step / decay_steps))
+  cosine_decay = 0.5 * (1 + cos(pi * global_step / decay_steps))
+  decayed = (1 - alpha) * cosine_decay + alpha
   decayed_learning_rate = learning_rate * decayed
   ```
 
@@ -456,6 +458,8 @@ def cosine_decay(learning_rate, global_step, decay_steps, name=None):
       Global step to use for the decay computation.
     decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
       Number of steps to decay over.
+    alpha: A scalar `float32` or `float64` Tensor or a Python number.
+      Minimum learning rate value as a fraction of learning_rate.
     name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
@@ -476,7 +480,96 @@ def cosine_decay(learning_rate, global_step, decay_steps, name=None):
     cosine_decayed = 0.5 * (
         1.0 + math_ops.cos(constant_op.constant(math.pi) * completed_fraction))
 
-    return math_ops.multiply(learning_rate, cosine_decayed)
+    decayed = (1 - alpha) * cosine_decayed + alpha
+    return math_ops.multiply(learning_rate, decayed)
+
+
+def cosine_decay_restarts(learning_rate, global_step, first_decay_steps,
+                          t_mul=2.0, m_mul=1.0, alpha=0.0, name=None):
+  """Applies cosine decay with restarts to the learning rate.
+
+  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies a cosine decay function with
+  restarts to a provided initial learning rate.  It requires a `global_step`
+  value to compute the decayed learning rate.  You can just pass a TensorFlow
+  variable that you increment at each training step.
+
+  The function returns the decayed learning rate while taking into account
+  possible warm restarts. The learning rate multiplier first decays
+  from 1 to `alpha` for `first_decay_steps` steps. Then, a warm
+  restart is performed. Each new warm restart runs for `t_mul` times more steps
+  and with `m_mul` times smaller initial learning rate.
+
+  Example usage:
+  ```python
+  first_decay_steps = 1000
+  lr_decayed = cosine_decay_restarts(learning_rate, global_step,
+                                     first_decay_steps)
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` Tensor or a Python number.
+      The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Global step to use for the decay computation.
+    first_decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Number of steps to decay over.
+    t_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
+      Used to derive the number of iterations in the i-th period
+    m_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
+      Used to derive the initial learning rate of the i-th period:
+    alpha: A scalar `float32` or `float64` Tensor or a Python number.
+      Minimum learning rate value as a fraction of the learning_rate.
+    name: String. Optional name of the operation.  Defaults to 'SGDRDecay'.
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+  if global_step is None:
+    raise ValueError("cosine decay restarts requires global_step")
+  with ops.name_scope(name, "SGDRDecay",
+                      [learning_rate, global_step]) as name:
+    learning_rate = ops.convert_to_tensor(learning_rate,
+                                          name="initial_learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    first_decay_steps = math_ops.cast(first_decay_steps, dtype)
+    alpha = math_ops.cast(alpha, dtype)
+    t_mul = math_ops.cast(t_mul, dtype)
+    m_mul = math_ops.cast(m_mul, dtype)
+
+    completed_fraction = global_step / first_decay_steps
+
+    def compute_step(completed_fraction, geometric=False):
+      if geometric:
+        i_restart = math_ops.floor(math_ops.log(1.0 - completed_fraction * (
+            1.0 - t_mul)) / math_ops.log(t_mul))
+
+        sum_r = (1.0 - t_mul ** i_restart) / (1.0 - t_mul)
+        completed_fraction = (completed_fraction - sum_r) / t_mul ** i_restart
+
+      else:
+        i_restart = math_ops.floor(completed_fraction)
+        completed_fraction = completed_fraction - i_restart
+
+      return i_restart, completed_fraction
+
+    i_restart, completed_fraction = control_flow_ops.cond(
+        math_ops.equal(t_mul, 1.0),
+        lambda: compute_step(completed_fraction, geometric=False),
+        lambda: compute_step(completed_fraction, geometric=True))
+
+    m_fac = m_mul ** i_restart
+    cosine_decayed = 0.5 * m_fac * (1.0 + math_ops.cos(
+        constant_op.constant(math.pi) * completed_fraction))
+    decayed = (1 - alpha) * cosine_decayed + alpha
+
+  return math_ops.multiply(learning_rate, decayed, name=name)
 
 
 def linear_cosine_decay(learning_rate, global_step, decay_steps,
@@ -486,6 +579,10 @@ def linear_cosine_decay(learning_rate, global_step, decay_steps,
 
   See [Bello et al., ICML2017] Neural Optimizer Search with RL.
   https://arxiv.org/abs/1709.07417
+
+  For the idea of warm starts here controlled by `num_periods`,
+  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -562,6 +659,10 @@ def noisy_linear_cosine_decay(learning_rate, global_step, decay_steps,
 
   See [Bello et al., ICML2017] Neural Optimizer Search with RL.
   https://arxiv.org/abs/1709.07417
+
+  For the idea of warm starts here controlled by `num_periods`,
+  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
