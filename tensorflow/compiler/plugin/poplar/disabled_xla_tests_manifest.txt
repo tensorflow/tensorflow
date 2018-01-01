@@ -140,6 +140,8 @@ DynamicUpdateSliceTest.Int32R1 POPLAR // Tests for invalid wrapping behaviour
 DynamicUpdateSliceTest.Int32R2 POPLAR // Tests for invalid wrapping behaviour
 DynamicUpdateSliceTest.Int32R3 POPLAR // Tests for invalid wrapping behaviour
 
+ConditionalOpTest POPLAR // No Cond
+
 ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 
 SelectAndScatterTest.R4Randomized POPLAR // Timeout
