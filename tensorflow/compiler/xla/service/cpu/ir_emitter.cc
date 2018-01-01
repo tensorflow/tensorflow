@@ -3066,16 +3066,8 @@ llvm::TargetTransformInfo* TargetMachineFeatures::GetTargetTransformInfoFor(
     const llvm::Function& function) {
   auto it = target_transform_infos_.find(&function);
   if (it == target_transform_infos_.end()) {
-    // Using a dummy function analysis manager is kind of hacky, but LLVM's
-    // TargetTransformInfoWrapperPass::getTTI does the same thing.
-    //
-    // TODO(sanjoy): Fix this within LLVM by directly exposing
-    // TargetTransformInfo factories from TargetMachine.
-    llvm::FunctionAnalysisManager DummyFAM;
-    llvm::TargetTransformInfo target_transform_info =
-        target_machine_->getTargetIRAnalysis().run(function, DummyFAM);
     auto emplace_result = target_transform_infos_.emplace(
-        &function, std::move(target_transform_info));
+        &function, target_machine_->getTargetTransformInfo(function));
     CHECK(emplace_result.second);
     it = emplace_result.first;
   }

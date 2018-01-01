@@ -1769,6 +1769,7 @@ py_library(
         ":math_ops",
         ":nn_ops",
         ":random_ops",
+        "//third_party/py/numpy",
     ],
 )
 

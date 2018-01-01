@@ -79,6 +79,7 @@ load(
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
+    "if_windows",
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
@@ -562,7 +563,7 @@ cc_library(
         "platform/prefetch.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-    ],
+    ] + if_windows(["platform/windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
         [
