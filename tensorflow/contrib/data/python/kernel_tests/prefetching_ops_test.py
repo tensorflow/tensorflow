@@ -61,7 +61,7 @@ class StagingAreaOpsTest(test.TestCase):
 
     target = constant_op.constant(device0)
     with ops.device(device1):
-      buffer_resource_handle = prefetching_ops.function_buffering_resource(
+      buffer_resource = prefetching_ops.BufferingResource(
           f=_remote_fn,
           target_device=target,
           string_arg=iterator_3_handle,
@@ -70,7 +70,7 @@ class StagingAreaOpsTest(test.TestCase):
           shared_name=buffer_name)
 
     with ops.device(device1):
-      prefetch_op = prefetching_ops.function_buffering_resource_get_next(
+      prefetch_op = buffer_resource.get_next(
           function_buffer_resource=buffer_resource_handle,
           output_types=[dtypes.float32])
 
