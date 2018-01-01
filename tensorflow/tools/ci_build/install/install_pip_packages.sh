@@ -97,3 +97,6 @@ pip3 install portpicker
 pip2 install grpcio
 pip3 install grpcio
 
+# Eager-to-graph execution needs gast:
+pip2 install --upgrade gast
+pip3 install --upgrade gast
