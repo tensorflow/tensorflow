@@ -300,7 +300,7 @@ functions, methods, and properties. We also adhere to the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html).
 
 The TensorFlow C++ code base adheres to the
-[Google C++ style guide](http://google.github.io/styleguide/cppguide.html).
+[Google C++ style guide](https://google.github.io/styleguide/cppguide.html).
 
 (<sup>*</sup> With one exception: we use 2-space indentation instead of 4-space
 indentation.)
