@@ -288,13 +288,13 @@ cc_library(
     ],
     hdrs = [
         "common.h",
-        "types.h",
         "compatibility.h",
-        "optimized/neon_tensor_utils.h",
         "optimized/cpu_check.h",
+        "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
         "reference/portable_tensor_utils.h",
         "tensor_utils.h",
+        "types.h",
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
