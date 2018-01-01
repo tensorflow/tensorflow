@@ -6677,7 +6677,7 @@ func SampleDistortedBoundingBoxV2UseImageIfNoBoundingBoxes(value bool) SampleDis
 //     # Draw the bounding box in an image summary.
 //     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
 //                                                   bbox_for_draw)
-//     tf.image_summary('images_with_box', image_with_box)
+//     tf.summary.image('images_with_box', image_with_box)
 //
 //     # Employ the bounding box to distort the image.
 //     distorted_image = tf.slice(image, begin, size)
@@ -17313,7 +17313,7 @@ func SampleDistortedBoundingBoxUseImageIfNoBoundingBoxes(value bool) SampleDisto
 //     # Draw the bounding box in an image summary.
 //     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
 //                                                   bbox_for_draw)
-//     tf.image_summary('images_with_box', image_with_box)
+//     tf.summary.image('images_with_box', image_with_box)
 //
 //     # Employ the bounding box to distort the image.
 //     distorted_image = tf.slice(image, begin, size)

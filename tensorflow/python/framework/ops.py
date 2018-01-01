@@ -3822,6 +3822,9 @@ class Graph(object):
         above.
     """
     if name:
+      if isinstance(name, compat.bytes_or_text_types):
+        name = compat.as_str(name)
+
       if self._name_stack:
         # Scopes created in a nested scope may have initial characters
         # that are illegal as the initial character of an op name

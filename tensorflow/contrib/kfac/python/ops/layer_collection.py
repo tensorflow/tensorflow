@@ -76,14 +76,6 @@ _FULLY_CONNECTED_MULTI_APPROX_TO_BLOCK_TYPES = {
 VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
 
-def ensure_sequence(obj):
-  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
-  if isinstance(obj, (tuple, list)):
-    return obj
-  else:
-    return (obj,)
-
-
 class LayerParametersDict(OrderedDict):
   """An OrderedDict where keys are Tensors or tuples of Tensors.
 
@@ -142,7 +134,6 @@ class LayerCollection(object):
 
   def __init__(self,
                graph=None,
-               colocate_cov_ops_with_inputs=False,
                name="LayerCollection"):
     self.fisher_blocks = LayerParametersDict()
     self.fisher_factors = OrderedDict()
@@ -156,7 +147,6 @@ class LayerCollection(object):
     self._default_convolution_2d_approximation = APPROX_KRONECKER_NAME
     self._default_fully_connected_multi_approximation = (
         APPROX_KRONECKER_SERIES_2_NAME)
-    self._colocate_cov_ops_with_inputs = colocate_cov_ops_with_inputs
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
@@ -169,7 +159,7 @@ class LayerCollection(object):
   @property
   def registered_variables(self):
     """A tuple of all of the variables currently registered."""
-    tuple_of_tuples = (ensure_sequence(key) for key, block
+    tuple_of_tuples = (utils.ensure_sequence(key) for key, block
                        in six.iteritems(self.fisher_blocks))
     flat_tuple = tuple(item for tuple_ in tuple_of_tuples for item in tuple_)
     return flat_tuple
@@ -276,9 +266,9 @@ class LayerCollection(object):
     variable_to_block = {
         var: (params, block)
         for (params, block) in self.fisher_blocks.items()
-        for var in ensure_sequence(params)
+        for var in utils.ensure_sequence(params)
     }
-    for variable in ensure_sequence(layer_key):
+    for variable in utils.ensure_sequence(layer_key):
       if variable in variable_to_block:
         prev_key, prev_block = variable_to_block[variable]
         raise ValueError(
@@ -301,7 +291,7 @@ class LayerCollection(object):
           block.num_inputs()*block.num_registered_minibatches if isinstance(
               block, (fb.FullyConnectedSeriesFB, fb.FullyConnectedMultiIndepFB))
           else block.num_registered_minibatches)
-      key = ensure_sequence(key)
+      key = utils.ensure_sequence(key)
       for k in key:
         vars_to_uses[k] += n
     return vars_to_uses
@@ -382,12 +372,12 @@ class LayerCollection(object):
       ValueError: If the parameters were already registered in a layer or
         identified as part of an incompatible group.
     """
-    params = frozenset(ensure_sequence(params))
+    params = frozenset(utils.ensure_sequence(params))
 
     # Check if any of the variables in 'params' is already in
     # 'self.fisher_blocks.keys()'.
     for registered_params, fisher_block in self.fisher_blocks.items():
-      registered_params_set = set(ensure_sequence(registered_params))
+      registered_params_set = set(utils.ensure_sequence(registered_params))
       for variable in params:
         if (variable in registered_params_set and
             params != registered_params_set):
@@ -421,7 +411,7 @@ class LayerCollection(object):
 
   def _get_linked_approx(self, params):
     """If params were linked, return their specified approximation."""
-    params_set = frozenset(ensure_sequence(params))
+    params_set = frozenset(utils.ensure_sequence(params))
     if params_set in self.linked_parameters:
       return self.linked_parameters[params_set]
     else:
@@ -727,7 +717,6 @@ class LayerCollection(object):
 
     key = cls, args
     if key not in self.fisher_factors:
-      colo = self._colocate_cov_ops_with_inputs
       with variable_scope.variable_scope(self._var_scope):
-        self.fisher_factors[key] = cls(*args, colocate_cov_ops_with_inputs=colo)
+        self.fisher_factors[key] = cls(*args)
     return self.fisher_factors[key]
