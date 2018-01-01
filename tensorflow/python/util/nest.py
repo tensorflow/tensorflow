@@ -92,8 +92,7 @@ def _yield_value(iterable):
     for key in _sorted(iterable):
       yield iterable[key]
   else:
-    for value in iterable:
-      yield value
+    yield from iterable
 
 
 def is_sequence(seq):
@@ -397,8 +396,7 @@ def _yield_flat_up_to(shallow_tree, input_tree):
   if is_sequence(shallow_tree):
     for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
                                             _yield_value(input_tree)):
-      for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
-        yield input_leaf
+      yield from _yield_flat_up_to(shallow_branch, input_branch)
   else:
     yield input_tree
 
