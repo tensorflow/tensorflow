@@ -80,8 +80,7 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
   } else {
     allocation_ = new FileCopyAllocation(filename, error_reporter);
   }
-  if (!allocation_->valid()) return;
-  if (!CheckModelIdentifier()) return;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
   model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
 }
