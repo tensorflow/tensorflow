@@ -107,7 +107,8 @@ public:
                uint64 num_parameters)
           : FullVisitor(graph, resources),
             parameter_shapes(num_parameters),
-            all_outputs_are_parameters(false) {}
+            all_outputs_are_parameters(false),
+            standard_parameter_layouts(true) {}
 
   Status HandleParameter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
@@ -131,8 +132,11 @@ public:
                                     resources_));
       TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
 
-      // Host tensor needs to be host layout
-      out = ConvertFromDeviceLayout(module_shapes[i], out);
+      if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
+        // Host tensor needs to be host layout
+        out = ConvertFromDeviceLayout(module_shapes[i], out);
+        standard_parameter_layouts = false;
+      }
 
       graph_->createHostWrite(
               sep::GetInputCopyHandle(inst->parameter_number(), i), out, opt);
@@ -178,6 +182,8 @@ public:
       }
     }
 
+    all_outputs_are_parameters &= standard_parameter_layouts;
+
     tensor_map.clear();
 
     return Status::OK();
@@ -187,6 +193,7 @@ public:
   std::vector<Shape> parameter_shapes;
 
   bool all_outputs_are_parameters;
+  bool standard_parameter_layouts;
 };
 
 class CallTargetFinder : public DfsHloVisitorWithDefault {
