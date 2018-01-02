@@ -302,6 +302,12 @@ def get_var(environ_cp,
 
   Returns:
     boolean value of the variable.
+
+  Raises:
+    UserInputError: if an environment variable is set, but it cannot be
+    interpreted as a boolean indicator, assume that the user has made a
+    scripting error, and will continue to provide invalid input.
+    Raise the error to avoid infinitely looping.
   """
   if not question:
     question = 'Do you wish to build TensorFlow with %s support?' % query_item
@@ -321,12 +327,21 @@ def get_var(environ_cp,
   var = environ_cp.get(var_name)
   if var is not None:
     _var_content = var.strip().lower()
-    if _var_content in ['1', 'y', 'true']:
+    _true_contents = ['1', 'y', 'yes', 'true']
+    _false_contents = ['0', 'n', 'no', 'false']
+    if _var_content in _true_contents:
       var = True
-    elif _var_content in ['0', 'n', 'false']:
+    elif _var_content in _false_contents:
       var = False
     else:
-      var = None
+      raise UserInputError('environment variable %s must be set as a boolean indicator\n'
+                           'the followings are accepted as TRUE : %s\n'
+                           'the followings are accepted as FALSE: %s\n'
+                           'current value is %s' %
+                           (var_name,
+                            ','.join(_true_contents),
+                            ','.join(_false_contents),
+                            var))
 
   while var is None:
     user_input_origin = get_input(question)
