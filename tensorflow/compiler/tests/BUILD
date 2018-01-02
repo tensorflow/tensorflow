@@ -385,7 +385,6 @@ tf_xla_py_test(
     # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = [
         "gpu",
-        "cpu",
     ],
     tags = [
         "manual",
