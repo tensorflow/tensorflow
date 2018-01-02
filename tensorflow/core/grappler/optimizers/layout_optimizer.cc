@@ -1752,7 +1752,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
             node_processor.reset(new MergeProcessor(opt_cxt));
-          } else if (IsPad(*node)) {
+          } else if (IsPad(*node) || IsMirrorPad(*node) ||
+                     IsMirrorPadGrad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
