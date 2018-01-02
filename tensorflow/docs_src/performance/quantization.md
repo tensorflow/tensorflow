@@ -184,8 +184,8 @@ what the quantized values represent:
 Quantized | Float
 --------- | -----
 0         | -10.0
-255       | 30.0
 128       | 10.0
+255       | 30.0
 ```
 
 The advantages of this format are that it can represent arbitrary magnitudes of
