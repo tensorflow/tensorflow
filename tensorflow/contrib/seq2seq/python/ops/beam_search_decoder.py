@@ -135,9 +135,9 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
     A `TensorArray` of the same size and type as `t` and where beams are sorted
     in each `Tensor` according to `parent_ids`.
   """
-  max_time = array_ops.shape(parent_ids)[0]
-  batch_size = array_ops.shape(parent_ids)[1]
-  beam_width = array_ops.shape(parent_ids)[2]
+  max_time = parent_ids.shape[0].value or array_ops.shape(parent_ids)[0]
+  batch_size = parent_ids.shape[1].value or array_ops.shape(parent_ids)[1]
+  beam_width = parent_ids.shape[2].value or array_ops.shape(parent_ids)[2]
 
   # Generate beam ids that will be reordered by gather_tree.
   beam_ids = array_ops.expand_dims(

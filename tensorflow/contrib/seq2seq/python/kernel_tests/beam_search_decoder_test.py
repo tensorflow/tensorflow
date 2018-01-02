@@ -89,6 +89,8 @@ class TestGatherTree(test.TestCase):
 
     array = ops.convert_to_tensor(
         array, dtype=dtypes.float32)
+    parent_ids = ops.convert_to_tensor(
+        parent_ids, dtype=dtypes.int32)
     expected_array = ops.convert_to_tensor(
         expected_array, dtype=dtypes.float32)
 
