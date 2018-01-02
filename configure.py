@@ -327,11 +327,9 @@ def get_var(environ_cp,
   var = environ_cp.get(var_name)
   if var is not None:
     var_content = var.strip().lower()
-    true_contents = ('1', 'y', 'yes', 'true')
-    false_contents = ('0', 'n', 'no', 'false')
-    if var_content in true_contents:
+    if var_content in ('1', 't', 'true', 'y', 'yes'):
       var = True
-    elif var_content in false_contents:
+    elif var_content in ('0', 'f', 'false', 'n', 'no'):
       var = False
     else:
       raise UserInputError('Environment variable %s must be set as a boolean indicator.\n'
