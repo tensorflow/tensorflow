@@ -376,5 +376,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
-    tags = ["multi_gpu"],
+    tags = [
+        "manual",
+        "multi_gpu",
+        "notap",
+    ],
 )
