@@ -286,6 +286,8 @@ bool IsSwitch(const NodeDef& node) {
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
+bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
+
 bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 
 bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }

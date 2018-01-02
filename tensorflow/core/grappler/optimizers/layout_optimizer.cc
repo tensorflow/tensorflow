@@ -180,6 +180,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Split",
                                           "SplitV",
                                           "Switch",
+                                          "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
                                           "ReverseV2",
@@ -1351,9 +1352,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     DataType dtype =
         (IsConcatV1(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
-    TF_RETURN_IF_ERROR(
-        UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap", dtype));
-    return Status::OK();
+    return UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap",
+                                       dtype);
   }
 
   int axis_node_pos_;
@@ -1640,6 +1640,18 @@ class SwitchProcessor : public AgnosticNodeProcessor {
   std::set<int> GetOutputPos() const override { return {0, 1}; }
 };
 
+class TileProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TileProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tmultiples").type();
+    return UpdateOrTransformParamInput(1, "DataFormatVecPermute", dtype);
+  }
+};
+
 class DataLayoutOptimizer : GraphProcessor {
  public:
   explicit DataLayoutOptimizer(
@@ -1771,6 +1783,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsTile(*node)) {
+            node_processor.reset(new TileProcessor(opt_cxt));
           } else if (IsUnaryGrad(*node)) {
             node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {
