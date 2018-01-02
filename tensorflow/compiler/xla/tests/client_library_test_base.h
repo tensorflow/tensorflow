@@ -194,7 +194,7 @@ class ClientLibraryTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   void ComputeAndCompareTuple(
       ComputationBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec abs_error);
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
 
   // Convenience method for running a built computation and comparing the result
   // with the HloEvaluator.
@@ -252,6 +252,29 @@ class ClientLibraryTestBase : public ::testing::Test {
   std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
       int64 parameter_number, const Literal& literal, const string& name,
       ComputationBuilder* builder, ComputationDataHandle* data_handle);
+
+  // Creates a constant instruction with the given literal. When the
+  // use_bfloat16 flag is set but the literal has F32 elements, the elements
+  // will be converted to BF16s.
+  ComputationDataHandle CreateConstantFromLiteral(const Literal& literal,
+                                                  ComputationBuilder* builder);
+
+  // Creates a constant instruction with the given array. When the use_bfloat16
+  // flag is set but the array has float elements, the elements will be
+  // converted to bfloat16s.
+  template <typename NativeT>
+  ComputationDataHandle CreateConstantFromArray(const Array<NativeT>& array,
+                                                ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
+  }
+
+  // Same as CreateConstantFromArray, but for scalars.
+  template <typename NativeT>
+  ComputationDataHandle CreateConstantFromScalar(NativeT value,
+                                                 ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+                                     builder);
+  }
 
   // Creates a parameter instruction that wraps a given value and then stores
   // into "data_handle" the global handle for that parameter.
@@ -314,6 +337,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // tests with all float-type input/output converted to bfloat16.
   bool use_bfloat16() const { return use_bfloat16_; }
   void set_use_bfloat16(bool value) { use_bfloat16_ = value; }
+
+  // The float type used in this test, BF16 or F32 according to use_bfloat16.
+  PrimitiveType FloatType() const { return use_bfloat16_ ? BF16 : F32; }
 
   Client* client_;
   ExecutionOptions execution_options_;

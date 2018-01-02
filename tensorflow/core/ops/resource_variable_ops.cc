@@ -204,7 +204,10 @@ Status VariableShapeShapeFn(InferenceContext* c) {
   if (handle_data == nullptr || handle_data->empty()) {
     return errors::InvalidArgument("Handle doesn't have shape information.");
   }
-  c->set_output(0, (*handle_data)[0].shape);
+  ShapeHandle var_shape = (*handle_data)[0].shape;
+  int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
+                                       : InferenceContext::kUnknownDim;
+  c->set_output(0, c->Vector(rank));
   return Status::OK();
 }
 

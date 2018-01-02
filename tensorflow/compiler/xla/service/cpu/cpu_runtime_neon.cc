@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#ifdef __ARM_NEON__
+#ifdef TF_XLA_HAS_NEON
 
 xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
     xla::cpu::runtime::V4F32NEON x) {
@@ -32,7 +32,7 @@ xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_LogV4F32NEON(
   return Eigen::internal::plog(p);
 }
 
-#endif  // __ARM_NEON__
+#endif  // TF_XLA_HAS_NEON
 
 namespace xla {
 namespace cpu {

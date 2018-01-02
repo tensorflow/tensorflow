@@ -153,6 +153,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddCustomCallInstruction(
       const CustomCallRequest& custom_call_request);
 
+  // Enqueues a dot instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddDotInstruction(
+      const DotRequest& dot_request);
+
   // Enqueues a broadcast instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBroadcastInstruction(
       const BroadcastRequest& broadcast_request);
@@ -215,6 +219,12 @@ class UserComputation {
       const WhileRequest& while_request,
       const UserComputation& condition_computation,
       const UserComputation& body_computation);
+
+  // Enqueues a conditional instruction on this user computation.
+  StatusOr<ComputationDataHandle> AddConditionalInstruction(
+      const ConditionalRequest& conditional_request,
+      const UserComputation& true_computation,
+      const UserComputation& false_computation);
 
   // Enqueues a Send instruction onto this user computation.
   Status AddSendInstruction(const SendRequest& send_request);

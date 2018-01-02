@@ -629,14 +629,11 @@ Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
   ApiDefs api_defs;
   protobuf::TextFormat::ParseFromString(contents, &api_defs);
   for (const auto& api_def : api_defs.op()) {
-    // Check if the op definition is already loaded.
+    // Check if the op definition is loaded. If op definition is not
+    // loaded, then we just skip this ApiDef.
     if (map_.find(api_def.graph_op_name()) != map_.end()) {
       // Overwrite current api def with data in api_def.
       TF_RETURN_IF_ERROR(MergeApiDefs(&map_[api_def.graph_op_name()], api_def));
-    } else {
-      return errors::FailedPrecondition(
-          "Unexpected ApiDef override: ", api_def.graph_op_name(),
-          " is not defined in base ApiDef.");
     }
   }
   return Status::OK();

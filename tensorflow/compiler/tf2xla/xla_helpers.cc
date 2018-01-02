@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helper routines for Tla JIT compilation.
+// This file defines helper routines for XLA compilation.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
@@ -121,6 +121,8 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
 xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
                                                DataType data_type) {
   switch (data_type) {
+    case DT_BFLOAT16:
+      return b->ConstantR0<bfloat16>(bfloat16::epsilon());
     case DT_FLOAT:
       return b->ConstantR0<float>(std::numeric_limits<float>::epsilon());
     case DT_DOUBLE:
@@ -169,6 +171,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::S16:
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
+    case xla::BF16:
+      literal = *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value));
+      break;
     case xla::F16:
       literal =
           *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value));

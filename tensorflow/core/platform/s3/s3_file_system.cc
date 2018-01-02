@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/platform/s3/s3_file_system.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/s3/s3_file_system.h"
+#include "tensorflow/core/platform/s3/aws_logging.h"
 #include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
+#include <aws/core/utils/logging/AWSLogging.h>
+#include <aws/core/utils/logging/LogSystemInterface.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>
@@ -33,6 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
@@ -49,9 +53,15 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
     if (endpoint) {
       cfg.endpointOverride = Aws::String(endpoint);
     }
-    const char* region = getenv("S3_REGION");
+    const char* region = getenv("AWS_REGION");
     if (region) {
       cfg.region = Aws::String(region);
+    } else {
+      // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
+      const char* region = getenv("S3_REGION");
+      if (region) {
+        cfg.region = Aws::String(region);
+      }
     }
     const char* use_https = getenv("S3_USE_HTTPS");
     if (use_https) {
@@ -220,7 +230,11 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   uint64 length_;
 };
 
+}  // namespace
+
 S3FileSystem::S3FileSystem() {
+  AWSLogSystem::InitializeAWSLogging();
+
   Aws::SDKOptions options;
   options.cryptoOptions.sha256Factory_create_fn = []() {
     return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
@@ -234,6 +248,8 @@ S3FileSystem::S3FileSystem() {
 S3FileSystem::~S3FileSystem() {
   Aws::SDKOptions options;
   Aws::ShutdownAPI(options);
+
+  AWSLogSystem::ShutdownAWSLogging();
 }
 
 Status S3FileSystem::NewRandomAccessFile(

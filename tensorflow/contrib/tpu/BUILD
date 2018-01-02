@@ -32,21 +32,6 @@ cc_library(
 )
 
 py_library(
-    name = "tpu_test_util",
-    srcs = ["python/tpu/test_util.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":tpu_lib",
-        ":tpu_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:session",
-        "//tensorflow/python:variables",
-    ],
-)
-
-py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
@@ -211,6 +196,17 @@ tf_py_test(
     srcs = ["python/tpu/tpu_function_test.py"],
     additional_deps = [
         ":tpu",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "tpu_config_test",
+    size = "small",
+    srcs = ["python/tpu/tpu_config_test.py"],
+    additional_deps = [
+        ":tpu_estimator",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],

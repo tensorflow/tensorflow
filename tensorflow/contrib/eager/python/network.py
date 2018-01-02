@@ -451,8 +451,30 @@ class Network(base.Layer):
         "at https://github.com/tensorflow/tensorflow/issues/new if this is "
         "important to you")
 
+  def add_loss(self, losses, inputs=None):
+    raise RuntimeError(
+        "add_loss is not supported in Network class yet. Please file an issue "
+        "at https://github.com/tensorflow/tensorflow/issues/new if this is "
+        "important to you")
+
+  @property
+  def losses(self):
+    """Gather losses from `Layer`s in the `Network`.
+
+    Note that when executing eagerly, `Layer.losses` evaluates
+    regularizers. When using graph execution, variable regularization ops have
+    already been created and are simply returned here.
+
+    Returns:
+      A list of tensors.
+    """
+    layer_losses = []
+    for layer in self.layers:
+      layer_losses.extend(layer.losses)
+    return layer_losses
+
   # TODO(allenl): Support other Layer methods needed for graph mode, such as for
-  # losses and updates
+  # updates
 
 
 class Sequential(Network):

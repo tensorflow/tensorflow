@@ -28,6 +28,8 @@ filegroup(
 tf_cc_binary(
     name = "s3_file_system.so",
     srcs = [
+        "aws_logging.cc",
+        "aws_logging.h",
         "s3_crypto.cc",
         "s3_crypto.h",
         "s3_file_system.cc",
@@ -67,6 +69,22 @@ cc_library(
 )
 
 cc_library(
+    name = "aws_logging",
+    srcs = [
+        "aws_logging.cc",
+    ],
+    hdrs = [
+        "aws_logging.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@aws//:aws",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "s3_file_system",
     srcs = [
         "s3_file_system.cc",
@@ -75,6 +93,7 @@ cc_library(
         "s3_file_system.h",
     ],
     deps = [
+        ":aws_logging",
         ":s3_crypto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

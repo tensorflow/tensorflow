@@ -39,6 +39,8 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
+pip3.5 install --upgrade virtualenv
+
 # Install six.
 pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
@@ -71,5 +73,8 @@ pip3.5 install portpicker
 pip3.5 install werkzeug
 
 pip3.5 install grpcio
+
+# Eager-to-graph execution needs gast:
+pip3.5 install --upgrade gast
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

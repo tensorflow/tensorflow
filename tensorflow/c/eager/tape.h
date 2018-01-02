@@ -161,7 +161,7 @@ class GradientTape {
   // the tape refer to it); to aid in tape garbage collection.
   std::unordered_map<int64, int64> tensor_usage_;
 
-  // If true, all activations are deleted in the first call to ComputeGradient.
+  // If false, all activations are deleted in the first call to ComputeGradient.
   // Else, only when this is destructed.
   bool persistent_;
 };
@@ -350,7 +350,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
     // Call destructors for all unneeded gradient functions and
     // clear the op_tape. We can clear the tape because ownership of
     // backward functions that will be used for gradient computation
-    // has been transfered to `result`.
+    // has been transferred to `result`.
     for (const auto& op_pair : *op_tape) {
       op_pair.second.backward_function_deleter();
     }
@@ -491,6 +491,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     state.op_tape.erase(op_it);
     std::vector<Gradient*> out_gradients;
     out_gradients.reserve(trace.output_tensor_info.size());
+    bool any_gradient_nonzero = false;
     for (int i = 0; i < trace.output_tensor_info.size(); ++i) {
       const int64 id = trace.output_tensor_info[i].id;
       auto grad_it = gradients.find(id);
@@ -506,6 +507,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
                            trace.output_tensor_info[i].dtype));
         }
       } else {
+        any_gradient_nonzero = true;
         out_gradients.push_back(vspace.AggregateGradients(grad_it->second));
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
@@ -513,14 +515,26 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       }
     }
     std::vector<Gradient*> in_gradients;
-    Status s = vspace.CallBackwardFunction(trace.backward_function,
-                                           out_gradients, &in_gradients);
-    if (!persistent_) {
-      vspace.ReleaseBackwardFunction(trace.backward_function);
-    }
-    if (!s.ok()) {
-      cleanup();
-      return s;
+    if (any_gradient_nonzero) {
+      Status s = vspace.CallBackwardFunction(trace.backward_function,
+                                             out_gradients, &in_gradients);
+      if (!persistent_) {
+        vspace.ReleaseBackwardFunction(trace.backward_function);
+      }
+      if (!s.ok()) {
+        cleanup();
+        return s;
+      }
+    } else {
+      in_gradients.resize(trace.input_tensor_id.size());
+      if (!persistent_) {
+        vspace.ReleaseBackwardFunction(trace.backward_function);
+      }
+      for (Gradient* grad : out_gradients) {
+        if (grad != nullptr) {
+          vspace.DeleteGradient(grad);
+        }
+      }
     }
     VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "
             << trace.input_tensor_id.size() << " sources";

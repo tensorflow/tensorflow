@@ -114,6 +114,14 @@ message PaddingConfig {
   repeated PaddingConfigDimension dimensions = 1;
 }
 
+// A format specifies the method used by a layout to store an array in memory.
+enum Format {
+  INVALID_FORMAT = 0;
+  // The default layout, with exactly one storage location per element (ignoring
+  // padding).
+  DENSE = 1;
+}
+
 // A layout describes how the array is placed in (1D) memory space.  This
 // includes the minor-to-major ordering of dimensions within a shape, as well as
 // any padding present in those dimensions.
@@ -124,19 +132,23 @@ message PaddingConfig {
 //
 // See the XLA documentation for more information on shapes and layouts.
 message Layout {
+  // The method used to store the data in memory. The format determines which of
+  // the other fields are used by the layout.
+  Format format = 4;
+
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
 
-  // The width to which the layout of each dimension is padded up
-  // to. If present, the size of the padded_dimensions must equal the
-  // rank of the shape. The padding appears at the end of a dimension,
-  // not at the beginning. This kind of padding, unlike padding in
-  // e.g. convolution, is not part of the shape.
+  // The width to which the layout of each dimension is padded up to. If
+  // present, the size of the padded_dimensions must equal the rank of the
+  // shape. The padding appears at the end of a dimension, not at the
+  // beginning. This kind of padding, unlike padding in e.g. convolution, is not
+  // part of the shape. This field must be unset unless the format is DENSE.
   repeated int64 padded_dimensions = 2;
 
-  // Describes the values in the padding specified by
-  // padded_dimensions.
+  // Describes the values in the padding specified by padded_dimensions. This
+  // field must be unset unless the format is DENSE.
   PaddingValue padding_value = 3;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal()
@@ -498,6 +510,23 @@ message CustomCallRequest {
   Shape shape = 4;
 }
 
+message DotDimensionNumbers {
+  // The dimension numbers that represent the 'lhs' contracting dimensions.
+  repeated int64 lhs_contracting_dimensions = 1;
+  // The dimension numbers that represent the 'rhs' contracting dimensions.
+  repeated int64 rhs_contracting_dimensions = 2;
+  // The dimension numbers that represent the 'lhs' batch dimensions.
+  repeated int64 lhs_batch_dimensions = 3;
+  // The dimension numbers that represent the 'rhs' batch dimensions.
+  repeated int64 rhs_batch_dimensions = 4;
+};
+
+message DotRequest {
+  ComputationDataHandle lhs = 2;
+  ComputationDataHandle rhs = 3;
+  DotDimensionNumbers dimension_numbers = 4;
+}
+
 message MapRequest {
   repeated ComputationDataHandle operands = 2;
   ComputationHandle to_apply = 3;
@@ -651,6 +680,14 @@ message ConcatenateRequest {
   int64 dimension = 3;
 }
 
+message ConditionalRequest {
+  ComputationDataHandle predicate = 2;
+  ComputationDataHandle true_operand = 3;
+  ComputationHandle true_computation = 4;
+  ComputationDataHandle false_operand = 5;
+  ComputationHandle false_computation = 6;
+}
+
 message WhileRequest {
   ComputationHandle condition = 2;
   ComputationHandle body = 3;
@@ -731,9 +768,6 @@ enum BinaryOperation {
   BINOP_LE = 8;
   BINOP_LT = 9;
   BINOP_NE = 10;
-
-  // Dot product, matrix multiply.
-  BINOP_DOT = 12;
 
   // Element-wise maximum.
   BINOP_MAX = 14;
@@ -885,6 +919,7 @@ message OpRequest {
     ConvolveRequest convolve_request = 8;
     CrossReplicaSumRequest cross_replica_sum_request = 9;
     CustomCallRequest custom_call_request = 10;
+    DotRequest dot_request = 43;
     DynamicSliceRequest dynamic_slice_request = 11;
     DynamicUpdateSliceRequest dynamic_update_slice_request = 12;
     GetTupleElementRequest get_tuple_element_request = 13;
@@ -914,7 +949,8 @@ message OpRequest {
     BatchNormInferenceRequest batch_norm_inference_request = 38;
     FftRequest fft_request = 41;
     ConvertRequest bitcast_convert_request = 42;
-    // Next: 43
+    ConditionalRequest conditional_request = 44;
+    // Next: 45
   }
 }
 

@@ -127,6 +127,8 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
+  virtual void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
@@ -137,6 +139,8 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
+  virtual void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -157,26 +161,11 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() override {
-    CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
-    if (curr_pos_ == nodes_.end()) {
-      curr_pos_ = --(nodes_.rbegin().base());  // Last one in the list.
-    }
-    // Once curr_pos_ is set to a valid entry in the list, we keep using the
-    // cached curr_pos_ until RemoveCurrNode() is called. AddNode() will not
-    // change the GetCurrNode() return value.
-    return *curr_pos_;
-  }
-  void RemoveCurrNode() override {
-    // Make sure we have curr_pos_ ready to be removed.
-    GetCurrNode();
-    // Note curr_pos_ may not be pointing the last element if some nodes are
-    // added.
-    nodes_.erase(curr_pos_);
-
-    curr_pos_ = nodes_.end();  // Reset curr_pos_.
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
   bool Empty() const override { return nodes_.empty(); }
 
  private:
@@ -193,55 +182,18 @@ class LIFOManager : public ReadyNodeManager {
 // time_ready value (it depends on C++ STL push_heap and pop_heap).
 class FirstReadyManager : public ReadyNodeManager {
  public:
-  FirstReadyManager(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      : ReadyNodeManager(), node_state_(node_state) {
-    std::make_heap(nodes_.begin(), nodes_.end());
-    greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-      // Note: we need a node with minimum time_ready, not
-      // maximum; hence, using a > b for comparison function.
-      return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
-    };
-  }
+  FirstReadyManager();
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
   ~FirstReadyManager() override {}
-
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
-
-  const NodeDef* GetCurrNode() override {
-    if (nodes_.empty()) {
-      // Nothing in the node_; probably, the very first call. Move
-      // waiting_queue_ to node_.
-      _DrainWaitingQueue();
-      CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
-    }
-    return nodes_.front();
-  }
-
-  void RemoveCurrNode() override {
-    if (nodes_.empty()) {
-      // Make sure that there is a node to be removed at the front of nodes_.
-      GetCurrNode();
-    }
-    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-    nodes_.pop_back();
-    _DrainWaitingQueue();
-  }
-
-  bool Empty() const override {
-    return nodes_.empty() && waiting_queue_.empty();
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
 
  private:
   // Move all the nodes in the waiting_queue_ to nodes_.
-  void _DrainWaitingQueue() {
-    for (const auto* node : waiting_queue_) {
-      // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-      // the first element is the node with minimum time_ready.
-      nodes_.push_back(node);
-      std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-    }
-    waiting_queue_.clear();
-  }
+  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
@@ -259,13 +211,49 @@ class FirstReadyManager : public ReadyNodeManager {
   const std::unordered_map<const NodeDef*, NodeState>* node_state_;
 };
 
+// CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
+// ops (neither _Send nor _Recv) and FirstyReadyManagers for _Send ops and _Recv
+// ops, and then it chooses FirstReady among the ops chosen from each
+// internal NodeManagers. The objective is to maximize producer-consumer
+// locality within device, while processing nodes across devices, including
+// _Send and _Recv, fairly, in terms of their time_ready.
+class CompositeNodeManager : public ReadyNodeManager {
+ public:
+  CompositeNodeManager();
+  ~CompositeNodeManager() override {}
+
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
+  void AddNode(const NodeDef* node) override;
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
+
+ private:
+  // Internal ready node managers:
+  // LIFO for normal ops to maximize producer consumer locality.
+  // One LIFO per device.
+  std::unordered_map<string, LIFOManager> ops_lifo_map_;
+  // FirstReady for send and recv. Handle send and recv separately ensures that
+  // send and recv do not block previously read ops with LIFO schedule.
+  FirstReadyManager send_manager_;
+  FirstReadyManager recv_manager_;
+
+  // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
+  // Not owned by FirstReadyManager.
+  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
+};
+
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
   VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster);
-
+                   const bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
   // Initializes NodeState and DeviceState from grappler_item_ and
   // graph_properties_.
   Status Init();
@@ -280,6 +268,12 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
+  // Methods called from constructor.
+  static ReadyNodeManager* ReadyNodeManagerFactory(
+      const string& ready_node_manager);
+
+  // Return per device peak memory usage.
+  const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
  protected:
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
@@ -302,9 +296,6 @@ class VirtualScheduler {
   const string kAttrDstDevice = "dst_device_";
   const string kChannelDevice = "Channel";
 
-  // Methods called from constructor.
-  ReadyNodeManager* ReadyNodeManagerFactory(const string& ready_node_manager);
-
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -321,7 +312,7 @@ class VirtualScheduler {
   bool IsPersistentNode(const NodeDef* node) const;
 
   // Scheduler states:
-  std::unique_ptr<ReadyNodeManager> ready_nodes_;
+  ReadyNodeManager* ready_nodes_;  // Not owned.
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;
 
@@ -330,7 +321,10 @@ class VirtualScheduler {
 
   // Stats:
   std::map<string, int> op_counts_;  // Op counts with key with input shape.
-  std::map<string, int> op_costs_;   // Individual op costs (with input shapes).
+  // Individual op costs (with input shapes).
+  // Boolean field for whether the cost is accurate.
+  std::map<string, std::pair<int, bool>> op_costs_;
+
   Costs graph_costs_;                // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 

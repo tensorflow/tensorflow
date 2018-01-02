@@ -34,6 +34,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -83,6 +84,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -136,6 +138,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -213,6 +216,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -235,6 +239,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -262,6 +267,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -291,6 +297,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -392,6 +399,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
         type: DT_VARIANT
       }
     }
@@ -466,6 +474,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -835,6 +844,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -900,6 +910,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -986,6 +997,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1081,6 +1093,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1169,6 +1182,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1260,6 +1274,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1346,6 +1361,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1436,6 +1452,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1495,6 +1512,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1564,6 +1582,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1652,6 +1671,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1727,6 +1747,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1796,6 +1817,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1881,6 +1903,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1930,6 +1953,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -1979,6 +2003,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -2047,6 +2072,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -2163,6 +2189,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -2190,6 +2217,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -2312,6 +2340,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -2387,6 +2416,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -2459,6 +2489,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -2489,6 +2520,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2513,6 +2545,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -2686,6 +2719,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2750,6 +2784,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2818,6 +2853,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -2887,6 +2923,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -3283,6 +3320,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -3628,6 +3666,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -3721,6 +3760,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -4017,6 +4057,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -4070,6 +4111,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -4128,6 +4170,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -4186,6 +4229,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT64
@@ -4210,6 +4254,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT64
@@ -4686,6 +4731,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -4709,6 +4755,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5108,6 +5155,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -5242,6 +5290,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -5249,7 +5298,7 @@ op {
   attr {
     name: "strides"
     type: "list(int)"
-    description: "1-D tensor of length 4.  The stride of the sliding window for each\ndimension of `input`. The dimension order is determined by the value of\n  `data_format`, see below for details."
+    description: "1-D tensor of length 4.  The stride of the sliding window for each\ndimension of `input`. The dimension order is determined by the value of\n`data_format`, see below for details."
   }
   attr {
     name: "use_cudnn_on_gpu"
@@ -5283,6 +5332,19 @@ op {
       }
     }
   }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1."
+  }
   summary: "Computes a 2-D convolution given 4-D `input` and `filter` tensors."
   description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, out_channels]`, this op\nperforms the following:\n\n1. Flattens the filter to a 2-D matrix with shape\n   `[filter_height * filter_width * in_channels, output_channels]`.\n2. Extracts image patches from the input tensor to form a *virtual*\n   tensor of shape `[batch, out_height, out_width,\n   filter_height * filter_width * in_channels]`.\n3. For each patch, right-multiplies the filter matrix and the image patch\n   vector.\n\nIn detail, with the default NHWC format,\n\n    output[b, i, j, k] =\n        sum_{di, dj, q} input[b, strides[1] * i + di, strides[2] * j + dj, q] *\n                        filter[di, dj, q, k]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
@@ -5314,6 +5376,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -5354,6 +5417,19 @@ op {
         s: "NCHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each filter\nelement on that dimension. The dimension order is determined by the value of\n`data_format`, see above for details. Dilations in the batch and depth\ndimensions must be 1."
   }
   summary: "Computes the gradients of convolution with respect to the filter."
 }
@@ -5385,6 +5461,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -5426,6 +5503,19 @@ op {
       }
     }
   }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each filter\nelement on that dimension. The dimension order is determined by the value of\n`data_format`, see above for details. Dilations in the batch and depth\ndimensions must be 1."
+  }
   summary: "Computes the gradients of convolution with respect to the input."
 }
 op {
@@ -5450,6 +5540,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5486,6 +5577,20 @@ op {
         s: "NCDHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1."
   }
   summary: "Computes a 3-D convolution given 5-D `input` and `filter` tensors."
   description: "In signal processing, cross-correlation is a measure of similarity of\ntwo waveforms as a function of a time-lag applied to one of them. This\nis also known as a sliding dot product or sliding inner-product.\n\nOur Conv3D implements a form of cross-correlation."
@@ -5573,6 +5678,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5609,6 +5715,20 @@ op {
         s: "NCDHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1."
   }
   summary: "Computes the gradients of 3-D convolution with respect to the filter."
 }
@@ -5695,6 +5815,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -5731,6 +5852,20 @@ op {
         s: "NCDHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 5.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1."
   }
   summary: "Computes the gradients of 3-D convolution with respect to the input."
 }
@@ -5824,6 +5959,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -5849,6 +5985,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -6101,6 +6238,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -6160,6 +6298,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -6232,6 +6371,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -6250,6 +6390,94 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DataFormatDimMap"
+  input_arg {
+    name: "x"
+    description: "A Tensor with each element as a dimension index in source data format.\nMust be in the range [-4, 4)."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "A Tensor with each element as a dimension index in destination data format."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "src_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "source data format."
+  }
+  attr {
+    name: "dst_format"
+    type: "string"
+    default_value {
+      s: "NCHW"
+    }
+    description: "destination data format."
+  }
+  summary: "Returns the dimension index in the destination data format given the one in"
+  description: "the source data format."
+}
+op {
+  name: "DataFormatVecPermute"
+  input_arg {
+    name: "x"
+    description: "Vector of size 4 or Tensor of shape (4, 2) in source data format."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "Vector of size 4 or Tensor of shape (4, 2) in destination data format."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "src_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "source data format."
+  }
+  attr {
+    name: "dst_format"
+    type: "string"
+    default_value {
+      s: "NCHW"
+    }
+    description: "destination data format."
+  }
+  summary: "Returns the permuted vector/tensor in the destination data format given the"
+  description: "one in the source data format."
 }
 op {
   name: "DatasetToSingleElement"
@@ -6640,6 +6868,29 @@ op {
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
 op {
+  name: "DecodeCompressed"
+  input_arg {
+    name: "bytes"
+    description: "A Tensor of string which is compressed."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor with the same shape as input `bytes`, uncompressed\nfrom bytes."
+    type: DT_STRING
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+  }
+  summary: "Decompress strings."
+  description: "This op decompresses each element of the `bytes` input `Tensor`, which\nis assumed to be compressed using the given `compression_type`.\n\nThe `output` is a string `Tensor` of the same shape as `bytes`,\neach element containing the decompressed data from the corresponding\nelement in `bytes`."
+}
+op {
   name: "DecodeGif"
   input_arg {
     name: "contents"
@@ -6941,7 +7192,7 @@ op {
     has_minimum: true
     minimum: 1
   }
-  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -7045,7 +7296,7 @@ op {
     }
   }
   summary: "DepthToSpace for tensors of type T."
-  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The Y, X coordinates within each block of the output image are determined\n    by the high order component of the input channel index.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates\n                        within the input image, bX, bY means coordinates\n                        within the output block, oC means output channels).\n     The output would be the input transposed to the following layout:\n     n,iY,bY,iX,bX,oC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 1, 1, 4]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[[ [1],   [2],  [5],  [6]],\n      [ [3],   [4],  [7],  [8]],\n      [ [9],  [10], [13],  [14]],\n      [ [11], [12], [15],  [16]]]]\n\n```"
+  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The Y, X coordinates within each block of the output image are determined\n    by the high order component of the input channel index.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates\n                        within the input image, bX, bY means coordinates\n                        within the output block, oC means output channels).\n     The output would be the input transposed to the following layout:\n     n,iY,bY,iX,bX,oC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 1, 1, 4]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[[ [1],   [2],  [5],  [6]],\n      [ [3],   [4],  [7],  [8]],\n      [ [9],  [10], [13],  [14]],\n      [ [11], [12], [15],  [16]]]]\n\n```"
 }
 op {
   name: "DepthwiseConv2dNative"
@@ -7066,6 +7317,8 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -7101,6 +7354,19 @@ op {
       }
     }
   }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each filter\nelement on that dimension. The dimension order is determined by the value of\n`data_format`, see above for details. Dilations in the batch and depth\ndimensions must be 1."
+  }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
   description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\n```\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n```\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
@@ -7131,6 +7397,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -7165,6 +7432,19 @@ op {
         s: "NCHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each filter\nelement on that dimension. The dimension order is determined by the value of\n`data_format`, see above for details. Dilations in the batch and depth\ndimensions must be 1."
   }
   summary: "Computes the gradients of depthwise convolution with respect to the filter."
 }
@@ -7195,6 +7475,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -7229,6 +7510,19 @@ op {
         s: "NCHW"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each filter\nelement on that dimension. The dimension order is determined by the value of\n`data_format`, see above for details. Dilations in the batch and depth\ndimensions must be 1."
   }
   summary: "Computes the gradients of depthwise convolution with respect to the input."
 }
@@ -7329,7 +7623,7 @@ op {
   input_arg {
     name: "serialized_sparse"
     description: "The serialized `SparseTensor` objects. The last dimension\nmust have 3 columns."
-    type: DT_STRING
+    type_attr: "Tserialized"
   }
   output_arg {
     name: "sparse_indices"
@@ -7348,7 +7642,21 @@ op {
     type: "type"
     description: "The `dtype` of the serialized `SparseTensor` objects."
   }
+  attr {
+    name: "Tserialized"
+    type: "type"
+    default_value {
+      type: DT_STRING
+    }
+    allowed_values {
+      list {
+        type: DT_STRING
+        type: DT_VARIANT
+      }
+    }
+  }
   summary: "Deserialize `SparseTensor` objects."
+  description: "The input `serialized_sparse` must have the shape `[?, ?, ..., ?, 3]` where\nthe last dimension stores serialized `SparseTensor` objects and the other N\ndimensions (N >= 0) correspond to a batch. The ranks of the original\n`SparseTensor` objects must all match. When the final `SparseTensor` is\ncreated, its rank is the rank of the incoming `SparseTensor` objects plus N;\nthe sparse tensors have been concatenated along new dimensions, one for each\nbatch.\n\nThe output `SparseTensor` object\'s shape values for the original dimensions\nare the max across the input `SparseTensor` objects\' shape values for the\ncorresponding dimensions. The new dimensions match the size of the batch.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
 }
 op {
   name: "DestroyResourceOp"
@@ -7409,6 +7717,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -7438,6 +7747,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -7466,6 +7776,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -7507,6 +7818,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -7576,6 +7888,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -7644,6 +7957,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -7694,6 +8008,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -7803,6 +8118,34 @@ op {
   description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result. If you do not need this guarantee, ParallelDynamicStitch might\nperform better on some devices.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\nThis method can be used to merge partitions created by `dynamic_partition`\nas illustrated on the following example:\n\n```python\n    # Apply function (increments x_i) on elements for which a certain condition\n    # apply (x_i != -1 in this example).\n    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])\n    condition_mask=tf.not_equal(x,tf.constant(-1.))\n    partitioned_data = tf.dynamic_partition(\n        x, tf.cast(condition_mask, tf.int32) , 2)\n    partitioned_data[1] = partitioned_data[1] + 1.0\n    condition_indices = tf.dynamic_partition(\n        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)\n    x = tf.dynamic_stitch(condition_indices, partitioned_data)\n    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain\n    # unchanged.\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
+  name: "EagerPyFunc"
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  summary: "Eagerly executes a python function to compute func(input)->output. The"
+  description: "semantics of the input, output, and attributes are the same as those for\nPyFunc."
+  is_stateful: true
+}
+op {
   name: "EditDistance"
   input_arg {
     name: "hypothesis_indices"
@@ -7870,6 +8213,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -7901,6 +8245,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8147,6 +8492,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -8184,6 +8530,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8207,6 +8554,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -8249,6 +8597,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -8310,6 +8659,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -8418,6 +8768,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -8902,7 +9253,7 @@ op {
   input_arg {
     name: "dims"
     description: "1-D. Represents the shape of the output tensor."
-    type: DT_INT32
+    type_attr: "index_type"
   }
   input_arg {
     name: "value"
@@ -8916,6 +9267,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "index_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Creates a tensor filled with a scalar value."
   description: "This operation creates a tensor of shape `dims` and fills it with `value`.\n\nFor example:\n\n```\n# Output tensor has shape [2, 3].\nfill([2, 3], 9) ==> [[9, 9, 9]\n                     [9, 9, 9]]\n```"
@@ -9288,6 +9652,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9315,6 +9680,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -9352,6 +9718,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -9869,6 +10236,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -9969,6 +10337,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -10395,6 +10764,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -10431,6 +10801,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -10503,6 +10874,24 @@ op {
   description: "// TODO(mrry): Support non-int64 keys."
 }
 op {
+  name: "GuaranteeConst"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Gives a guarantee to the TF runtime that the input tensor is a constant."
+  description: "The runtime is then free to make optimizations based on this.\n\nOnly accepts value typed tensors as inputs and rejects resource variable handles\nas input.\n\nReturns the input tensor without modification."
+  is_stateful: true
+}
+op {
   name: "HSVToRGB"
   input_arg {
     name: "images"
@@ -10522,6 +10911,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -10707,6 +11098,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -11404,6 +11796,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -11440,6 +11833,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -11527,6 +11921,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11551,6 +11946,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11575,6 +11971,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11740,6 +12137,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -11826,8 +12224,9 @@ op {
     }
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
       }
     }
   }
@@ -11896,8 +12295,9 @@ op {
     }
     allowed_values {
       list {
-        type: DT_FLOAT
         type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
       }
     }
   }
@@ -12063,6 +12463,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -12099,6 +12500,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -12121,6 +12523,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -12155,6 +12558,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -12291,6 +12695,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -12317,6 +12722,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -12377,6 +12783,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -13268,6 +13675,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -13651,6 +14059,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -13690,6 +14099,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -13698,7 +14109,6 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_UINT16
-        type: DT_HALF
         type: DT_QINT8
       }
     }
@@ -13801,6 +14211,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -13875,6 +14286,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -13887,6 +14299,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -14045,6 +14458,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14127,6 +14541,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14205,6 +14620,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14283,6 +14699,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14364,6 +14781,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14442,6 +14860,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14477,6 +14896,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -14485,7 +14906,6 @@ op {
         type: DT_INT16
         type: DT_INT8
         type: DT_UINT16
-        type: DT_HALF
         type: DT_QINT8
       }
     }
@@ -14589,6 +15009,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14615,6 +15036,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -14672,6 +15094,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14865,6 +15288,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -14904,6 +15328,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -15032,6 +15457,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -15060,6 +15486,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -15092,7 +15519,7 @@ op {
   output_arg {
     name: "output"
     description: "2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`\ncontains the drawn class labels with range `[0, num_classes)`."
-    type: DT_INT64
+    type_attr: "output_dtype"
   }
   attr {
     name: "seed"
@@ -15126,6 +15553,20 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    name: "output_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -15493,6 +15934,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -15655,6 +16097,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -15717,6 +16160,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -15838,12 +16282,18 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_BOOL
       }
     }
   }
@@ -16538,6 +16988,14 @@ op {
     name: "sloppy"
     type: DT_BOOL
   }
+  input_arg {
+    name: "buffer_output_elements"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "prefetch_input_elements"
+    type: DT_INT64
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -16665,6 +17123,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -16773,6 +17232,88 @@ op {
     has_minimum: true
   }
   summary: "Transforms a vector of brain.Example protos (as strings) into typed tensors."
+}
+op {
+  name: "ParseSingleExample"
+  input_arg {
+    name: "serialized"
+    description: "A vector containing a batch of binary serialized Example protos."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_defaults"
+    description: "A list of Tensors (some may be empty), whose length matches\nthe length of `dense_keys`. dense_defaults[j] provides default values\nwhen the example\'s feature_map lacks dense_key[j].  If an empty Tensor is\nprovided for dense_defaults[j], then the Feature dense_keys[j] is required.\nThe input type is inferred from dense_defaults[j], even when it\'s empty.\nIf dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,\nthen the shape of dense_defaults[j] must match that of dense_shapes[j].\nIf dense_shapes[j] has an undefined major dimension (variable strides dense\nfeature), dense_defaults[j] must contain a single element:\nthe padding element."
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_types"
+  }
+  output_arg {
+    name: "sparse_shapes"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "dense_values"
+    type_list_attr: "Tdense"
+  }
+  attr {
+    name: "num_sparse"
+    type: "int"
+    description: "The number of sparse features to be parsed from the example. This\nmust match the lengths of `sparse_keys` and `sparse_types`."
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_keys"
+    type: "list(string)"
+    description: "A list of `num_sparse` strings.\nThe keys expected in the Examples\' features associated with sparse values."
+    has_minimum: true
+  }
+  attr {
+    name: "dense_keys"
+    type: "list(string)"
+    description: "The keys expected in the Examples\' features associated with dense\nvalues."
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    description: "A list of `num_sparse` types; the data types of data in each\nFeature given in sparse_keys.\nCurrently the ParseSingleExample op supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    description: "The data types of data in each Feature given in dense_keys.\nThe length of this list must match the length of `dense_keys`.\nCurrently the ParseSingleExample op supports DT_FLOAT (FloatList),\nDT_INT64 (Int64List), and DT_STRING (BytesList)."
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    description: "The shapes of data in each Feature given in dense_keys.\nThe length of this list must match the length of `dense_keys`.  The\nnumber of elements in the Feature corresponding to dense_key[j] must\nalways equal dense_shapes[j].NumEntries().  If dense_shapes[j] ==\n(D0, D1, ..., DN) then the shape of output Tensor dense_values[j]\nwill be (D0, D1, ..., DN): In the case dense_shapes[j] = (-1, D1,\n..., DN), the shape of the output Tensor dense_values[j] will be (M,\nD1, .., DN), where M is the number of blocks of elements of length\nD1 * .... * DN, in the input."
+    has_minimum: true
+  }
+  summary: "Transforms a tf.Example proto (as a string) into typed tensors."
 }
 op {
   name: "ParseSingleSequenceExample"
@@ -17144,6 +17685,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -17415,6 +17957,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -17583,6 +18126,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -17644,6 +18188,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -17693,6 +18238,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -18361,6 +18907,19 @@ op {
         s: "VALID"
       }
     }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+        i: 1
+        i: 1
+        i: 1
+        i: 1
+      }
+    }
+    description: "1-D tensor of length 4.  The dilation factor for each dimension of\n`input`. If set to k > 1, there will be k-1 skipped cells between each\nfilter element on that dimension. The dimension order is determined by the\nvalue of `data_format`, see above for details. Dilations in the batch and\ndepth dimensions must be 1."
   }
   summary: "Computes a 2D convolution given quantized 4D input and filter tensors."
   description: "The inputs are quantized tensors where the lowest value represents the real\nnumber of the associated minimum, and the highest represents the maximum.\nThis means that you can only interpret the quantized output in the same way, by\ntaking the returned minimum and maximum values into account."
@@ -19536,6 +20095,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -19598,6 +20159,37 @@ op {
     version: 8
     explanation: "Random crop is now pure Python"
   }
+  is_stateful: true
+}
+op {
+  name: "RandomDataset"
+  input_arg {
+    name: "seed"
+    description: "A scalar seed for the random number generator. If either seed or\nseed2 is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    description: "A second scalar seed to avoid seed collision."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a Dataset that returns pseudorandom numbers."
   is_stateful: true
 }
 op {
@@ -20015,6 +20607,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -20069,6 +20662,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -20180,6 +20774,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -20590,6 +21185,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -20622,6 +21218,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -20654,6 +21251,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -20715,6 +21313,14 @@ op {
       i: 32
     }
     description: "The batch size."
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The type of compression for the file. Currently ZLIB and\nGZIP are supported. Defaults to none."
   }
   summary: "Emits randomized records."
   is_stateful: true
@@ -20981,6 +21587,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21012,6 +21619,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21050,6 +21658,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21088,6 +21697,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21692,6 +22302,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21750,6 +22361,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21828,6 +22440,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21915,6 +22528,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -21996,6 +22610,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22078,6 +22693,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22156,6 +22772,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22238,6 +22855,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22291,6 +22909,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22353,6 +22972,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22434,6 +23054,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22502,6 +23123,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22565,6 +23187,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22642,6 +23265,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22764,6 +23388,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22779,6 +23404,49 @@ op {
   }
   summary: "Adds sparse updates to the variable referenced by `resource`."
   description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\'https://www.tensorflow.org/images/ScatterAdd.png\' alt>\n</div>"
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterNdUpdate"
+  input_arg {
+    name: "ref"
+    description: "A resource handle. Must be from a VarHandleOp."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    description: "A Tensor. Must be one of the following types: int32, int64.\nA tensor of indices into ref."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A Tensor. Must have the same type as ref. A tensor of updated\nvalues to add to ref."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "An optional bool. Defaults to True. If True, the assignment will\nbe protected by a lock; otherwise the behavior is undefined,\nbut may exhibit less contention."
+  }
+  summary: "Applies sparse `updates` to individual values or slices within a given"
+  description: "variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to update 4 scattered elements to a rank-1 tensor to\n8 elements. In Python, that update would look like this:\n\n```python\n    ref = tfe.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1] ,[7]])\n    updates = tf.constant([9, 10, 11, 12])\n    update = tf.scatter_nd_update(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(update)\n```\n\nThe resulting update to ref would look like this:\n\n    [1, 11, 3, 10, 9, 6, 7, 12]\n\nSee @{tf.scatter_nd} for more details about how to make updates to\nslices."
   is_stateful: true
 }
 op {
@@ -22819,6 +23487,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22898,6 +23567,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -22970,6 +23640,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23063,6 +23734,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23159,6 +23831,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23252,6 +23925,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23349,6 +24023,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23427,6 +24102,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23518,6 +24194,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23596,6 +24273,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -23688,6 +24366,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24028,6 +24707,7 @@ op {
         type: DT_INT64
         type: DT_BOOL
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -24088,6 +24768,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -24112,6 +24793,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -24140,6 +24822,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -24170,6 +24853,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -24283,7 +24967,7 @@ op {
     description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
   }
   summary: "Generate a single randomly distorted bounding box for an image."
-  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.summary.image(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
   is_stateful: true
 }
 op {
@@ -24386,7 +25070,7 @@ op {
     description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
   }
   summary: "Generate a single randomly distorted bounding box for an image."
-  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.summary.image(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
   is_stateful: true
 }
 op {
@@ -24513,6 +25197,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24611,6 +25296,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24680,6 +25366,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24749,6 +25436,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24857,6 +25545,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24924,6 +25613,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -24985,6 +25675,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25103,6 +25794,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25391,6 +26083,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25439,6 +26132,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25487,6 +26181,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25540,6 +26235,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25593,6 +26289,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -25722,6 +26419,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -25753,6 +26451,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -25794,13 +26493,27 @@ op {
   }
   output_arg {
     name: "serialized_sparse"
-    type: DT_STRING
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`."
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_STRING
+    }
+    description: "The `dtype` to use for serialization; the supported types are `string`\n(default) and `variant`."
+    allowed_values {
+      list {
+        type: DT_STRING
+        type: DT_VARIANT
+      }
+    }
+  }
+  summary: "Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object."
   description: "The `SparseTensor` must have rank `R` greater than 1, and the first dimension\nis treated as the minibatch dimension.  Elements of the `SparseTensor`\nmust be sorted in increasing order of this first dimension.  The serialized\n`SparseTensor` objects going into each row of `serialized_sparse` will have\nrank `R-1`.\n\nThe minibatch size `N` is extracted from `sparse_shape[0]`."
 }
 op {
@@ -25822,13 +26535,27 @@ op {
   }
   output_arg {
     name: "serialized_sparse"
-    type: DT_STRING
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object."
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_STRING
+    }
+    description: "The `dtype` to use for serialization; the supported types are `string`\n(default) and `variant`."
+    allowed_values {
+      list {
+        type: DT_STRING
+        type: DT_VARIANT
+      }
+    }
+  }
+  summary: "Serialize a `SparseTensor` into a `[3]` `Tensor` object."
 }
 op {
   name: "SerializeTensor"
@@ -26002,6 +26729,51 @@ op {
   summary: "Generate a glob pattern matching all sharded file names."
 }
 op {
+  name: "ShuffleAndRepeatDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The number of output elements to buffer in an iterator over\nthis dataset. Compare with the `min_after_dequeue` attr when creating a\n`RandomShuffleQueue`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    description: "A second scalar seed to avoid seed collision."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of times the underlying dataset\nshould be repeated. The default is `-1`, which results in infinite repetition."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that shuffles and repeats elements from `input_dataset`"
+  description: "pseudorandomly."
+}
+op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
@@ -26014,7 +26786,7 @@ op {
   }
   input_arg {
     name: "seed"
-    description: "A scalar seed for the random number generator. If either seed or\nseed2 is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    description: "A scalar seed for the random number generator. If either `seed` or\n`seed2` is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
     type: DT_INT64
   }
   input_arg {
@@ -26064,6 +26836,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -26094,6 +26867,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -26120,6 +26894,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -26148,6 +26923,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -26173,6 +26949,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -26357,6 +27134,22 @@ op {
   description: "The output tensor is a tensor with dimensions described by \'size\'\nwhose values are extracted from \'input\' starting at the offsets in\n\'begin\'.\n\n*Requirements*:\n  0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)"
 }
 op {
+  name: "Snapshot"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns a copy of the input tensor."
+}
+op {
   name: "Softmax"
   input_arg {
     name: "logits"
@@ -26374,6 +27167,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -26410,6 +27204,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -26444,6 +27239,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26482,6 +27278,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26513,6 +27310,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26551,6 +27349,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26688,7 +27487,7 @@ op {
     }
   }
   summary: "SpaceToDepth for tensors of type T."
-  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `block_size * block_size * input_depth`.\n  * The Y, X coordinates within each block of the input become the high order\n    component of the output channel index.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates\n                        within the output image, bX, bY means coordinates\n                        within the input block, iC means input channels).\n     The output would be a transpose to the following layout:\n     n,oY,oX,bY,bX,iC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 2, 2, 1]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
+  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `block_size * block_size * input_depth`.\n  * The Y, X coordinates within each block of the input become the high order\n    component of the output channel index.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates\n                        within the output image, bX, bY means coordinates\n                        within the input block, iC means input channels).\n     The output would be a transpose to the following layout:\n     n,oY,oX,bY,bX,iC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 2, 2, 1]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
   name: "SparseAccumulatorApplyGradient"
@@ -26740,6 +27539,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26801,6 +27601,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26877,6 +27678,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26896,6 +27698,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -26955,6 +27758,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27032,6 +27836,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27111,6 +27916,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27212,6 +28018,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27317,6 +28124,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27418,6 +28226,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27523,6 +28332,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27608,6 +28418,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27706,6 +28517,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27790,6 +28602,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27890,6 +28703,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -27997,6 +28811,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28178,6 +28993,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28232,6 +29048,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28286,6 +29103,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28491,6 +29309,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28555,6 +29374,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28617,6 +29437,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28686,6 +29507,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -28856,6 +29678,71 @@ op {
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
 op {
+  name: "SparseSegmentMeanWithNumSegments"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A 1-D tensor. Has same rank as `segment_ids`."
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "A 1-D tensor. Values should be sorted and can be repeated."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_segments"
+    description: "Should equal the number of distinct segment IDs."
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    description: "Has same shape as data, except for dimension 0 which has size\n`num_segments`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the mean along sparse segments of a tensor."
+  description: "Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is\nmisisng, the `output` tensor at that position will be zeroed.\n\nRead @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments."
+}
+op {
   name: "SparseSegmentSqrtN"
   input_arg {
     name: "data"
@@ -28955,6 +29842,71 @@ op {
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
 op {
+  name: "SparseSegmentSqrtNWithNumSegments"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A 1-D tensor. Has same rank as `segment_ids`."
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "A 1-D tensor. Values should be sorted and can be repeated."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_segments"
+    description: "Should equal the number of distinct segment IDs."
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    description: "Has same shape as data, except for dimension 0 which\nhas size `k`, the number of segments."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
+  description: "N is the size of the segment being reduced.\n\nLike `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is\nmisisng, the `output` tensor at that position will be zeroed.\n\nRead @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments."
+}
+op {
   name: "SparseSegmentSum"
   input_arg {
     name: "data"
@@ -28991,6 +29943,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -29009,6 +29962,81 @@ op {
   }
   summary: "Computes the sum along sparse segments of a tensor."
   description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n# => [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n# => [[ 1  2  3  4]\n#     [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n# => [[0 0 0 0]\n#     [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+}
+op {
+  name: "SparseSegmentSumWithNumSegments"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A 1-D tensor. Has same rank as `segment_ids`."
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    description: "A 1-D tensor. Values should be sorted and can be repeated."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_segments"
+    description: "Should equal the number of distinct segment IDs."
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    description: "Has same shape as data, except for dimension 0 which\nhas size `num_segments`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes the sum along sparse segments of a tensor."
+  description: "Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is\nmisisng, the `output` tensor at that position will be zeroed.\n\nRead @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\ntf.sparse_segment_sum_with_num_segments(\n    c, tf.constant([0, 1]), tf.constant([0, 0]), num_segments=3)\n# => [[0 0 0 0]\n#     [0 0 0 0]\n#     [0 0 0 0]]\n\ntf.sparse_segment_sum_with_num_segments(c,\n                                        tf.constant([0, 1]),\n                                        tf.constant([0, 2],\n                                        num_segments=4))\n# => [[ 1  2  3  4]\n#     [ 0  0  0  0]\n#     [-1 -2 -3 -4]\n#     [ 0  0  0  0]]\n```"
 }
 op {
   name: "SparseSlice"
@@ -29121,6 +30149,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -29200,6 +30229,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -29269,6 +30299,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -29375,6 +30406,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -29737,6 +30769,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -29767,6 +30800,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -29793,6 +30827,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -29825,6 +30860,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -30225,7 +31261,7 @@ op {
   input_arg {
     name: "seed"
     description: "2 seeds (shape [2])."
-    type: DT_INT64
+    type_attr: "Tseed"
   }
   output_arg {
     name: "output"
@@ -30252,6 +31288,19 @@ op {
     type: "type"
     default_value {
       type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    default_value {
+      type: DT_INT64
     }
     allowed_values {
       list {
@@ -30273,7 +31322,7 @@ op {
   input_arg {
     name: "seed"
     description: "2 seeds (shape [2])."
-    type: DT_INT64
+    type_attr: "Tseed"
   }
   output_arg {
     name: "output"
@@ -30308,6 +31357,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tseed"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Outputs deterministic pseudorandom random values from a uniform distribution."
   description: "The generated values follow a uniform distribution in the range `[0, 1)`. The\nlower bound 0 is included in the range, while the upper bound 1 is excluded.\n\nThe outputs are a deterministic function of `shape` and `seed`."
 }
@@ -30321,7 +31383,7 @@ op {
   input_arg {
     name: "seed"
     description: "2 seeds (shape [2])."
-    type: DT_INT64
+    type_attr: "Tseed"
   }
   output_arg {
     name: "output"
@@ -30348,6 +31410,19 @@ op {
     type: "type"
     default_value {
       type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    default_value {
+      type: DT_INT64
     }
     allowed_values {
       list {
@@ -30839,6 +31914,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -30936,6 +32012,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -31253,6 +32330,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
@@ -31280,6 +32358,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -31309,6 +32388,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -32714,6 +33794,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -32770,6 +33851,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -32830,6 +33912,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
@@ -32867,6 +33950,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -32910,6 +33994,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -33035,6 +34120,72 @@ op {
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
 }
 op {
+  name: "UniqueDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the unique elements of `input_dataset`."
+}
+op {
+  name: "UniqueV2"
+  input_arg {
+    name: "x"
+    description: "A `Tensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    description: "A `Tensor` of type `int64` (default: 0). The axis of the Tensor to\nfind the unique elements."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "y"
+    description: "A `Tensor`. Unique elements along the `axis` of `Tensor` x."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "idx"
+    description: "A 1-D Tensor. Has the same type as x that contains the index of each\nvalue of x in the output y."
+    type_attr: "out_idx"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Finds unique elements in a 1-D tensor."
+  description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
+}
+op {
   name: "UniqueWithCounts"
   input_arg {
     name: "x"
@@ -33122,7 +34273,7 @@ op {
   }
   input_arg {
     name: "num_segments"
-    type: DT_INT32
+    type_attr: "Tnumsegments"
   }
   output_arg {
     name: "output"
@@ -33145,12 +34296,26 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
   attr {
     name: "Tindices"
     type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
     allowed_values {
       list {
         type: DT_INT32
@@ -33174,7 +34339,7 @@ op {
   }
   input_arg {
     name: "num_segments"
-    type: DT_INT32
+    type_attr: "Tnumsegments"
   }
   output_arg {
     name: "output"
@@ -33202,6 +34367,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
       }
     }
   }
@@ -33215,8 +34381,21 @@ op {
       }
     }
   }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentSum.png\" alt>\n</div>"
+  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\nIf the given segment ID `i` is negative, the value is dropped and will not be\nadded to the sum of the segment.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Unstage"
@@ -33445,6 +34624,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BFLOAT16
         type: DT_BOOL
       }
     }

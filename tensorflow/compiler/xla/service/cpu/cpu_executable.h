@@ -55,21 +55,14 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -110,17 +103,22 @@ class CpuExecutable : public Executable {
   // arguments using the supplied buffers.
   Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Create a ShapedBuffer for holding the result of the computation. The
+  // addresses (DeviceMemoryBases) are set according to buffer assignment.
+  // 'buffers_in_result' should point to a vector of the same size as
+  // 'allocated_buffers'. An element in buffers_in_result is set to true if the
+  // corresponding buffer is live out of the computation (and thus contained in
+  // the returned ShapedBuffer).
+  StatusOr<std::unique_ptr<ShapedBuffer>> CreateResultShapedBuffer(
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          allocated_buffers,
+      std::vector<bool>* buffers_in_result);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.

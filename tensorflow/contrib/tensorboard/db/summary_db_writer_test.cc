@@ -101,6 +101,7 @@ TEST_F(SummaryDbWriterTest, NothingWritten_NoRowsCreated) {
   TF_ASSERT_OK(writer_->Flush());
   writer_->Unref();
   writer_ = nullptr;
+  EXPECT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Ids"));
   EXPECT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Users"));
   EXPECT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
   EXPECT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Runs"));
@@ -109,13 +110,24 @@ TEST_F(SummaryDbWriterTest, NothingWritten_NoRowsCreated) {
 }
 
 TEST_F(SummaryDbWriterTest, TensorsWritten_RowsGetInitialized) {
+  SummaryMetadata metadata;
+  metadata.set_display_name("display_name");
+  metadata.set_summary_description("description");
+  metadata.mutable_plugin_data()->set_plugin_name("plugin_name");
+  metadata.mutable_plugin_data()->set_content("plugin_data");
+  SummaryMetadata metadata_nope;
+  metadata_nope.set_display_name("nope");
+  metadata_nope.set_summary_description("nope");
+  metadata_nope.mutable_plugin_data()->set_plugin_name("nope");
+  metadata_nope.mutable_plugin_data()->set_content("nope");
   TF_ASSERT_OK(CreateSummaryDbWriter(db_, "mad-science", "train", "jart", &env_,
                                      &writer_));
   env_.AdvanceByMillis(23);
   TF_ASSERT_OK(writer_->WriteTensor(1, MakeScalarInt64(123LL), "taggy",
-                                    "this-is-metaaa"));
+                                    metadata.SerializeAsString()));
   env_.AdvanceByMillis(23);
-  TF_ASSERT_OK(writer_->WriteTensor(2, MakeScalarInt64(314LL), "taggy", ""));
+  TF_ASSERT_OK(writer_->WriteTensor(2, MakeScalarInt64(314LL), "taggy",
+                                    metadata_nope.SerializeAsString()));
   TF_ASSERT_OK(writer_->Flush());
 
   ASSERT_EQ(1LL, QueryInt("SELECT COUNT(*) FROM Users"));
@@ -148,27 +160,28 @@ TEST_F(SummaryDbWriterTest, TensorsWritten_RowsGetInitialized) {
   EXPECT_EQ(run_id, QueryInt("SELECT run_id FROM Tags"));
   EXPECT_EQ("taggy", QueryString("SELECT tag_name FROM Tags"));
   EXPECT_EQ(0.023, QueryDouble("SELECT inserted_time FROM Tags"));
-  EXPECT_EQ("this-is-metaaa", QueryString("SELECT metadata FROM Tags"));
+
+  EXPECT_EQ("display_name", QueryString("SELECT display_name FROM Tags"));
+  EXPECT_EQ("plugin_name", QueryString("SELECT plugin_name FROM Tags"));
+  EXPECT_EQ("plugin_data", QueryString("SELECT plugin_data FROM Tags"));
+  EXPECT_EQ("description", QueryString("SELECT description FROM Descriptions"));
 
   EXPECT_EQ(tag_id, QueryInt("SELECT tag_id FROM Tensors WHERE step = 1"));
   EXPECT_EQ(0.023,
             QueryDouble("SELECT computed_time FROM Tensors WHERE step = 1"));
-  EXPECT_EQ("this-is-metaaa", QueryString("SELECT metadata FROM Tags"));
   EXPECT_FALSE(
       QueryString("SELECT tensor FROM Tensors WHERE step = 1").empty());
 
   EXPECT_EQ(tag_id, QueryInt("SELECT tag_id FROM Tensors WHERE step = 2"));
   EXPECT_EQ(0.046,
             QueryDouble("SELECT computed_time FROM Tensors WHERE step = 2"));
-  EXPECT_EQ("this-is-metaaa", QueryString("SELECT metadata FROM Tags"));
   EXPECT_FALSE(
       QueryString("SELECT tensor FROM Tensors WHERE step = 2").empty());
 }
 
 TEST_F(SummaryDbWriterTest, EmptyParentNames_NoParentsCreated) {
   TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "", "", &env_, &writer_));
-  TF_ASSERT_OK(writer_->WriteTensor(1, MakeScalarInt64(123LL), "taggy",
-                                    "this-is-metaaa"));
+  TF_ASSERT_OK(writer_->WriteTensor(1, MakeScalarInt64(123LL), "taggy", ""));
   TF_ASSERT_OK(writer_->Flush());
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Users"));
   ASSERT_EQ(0LL, QueryInt("SELECT COUNT(*) FROM Experiments"));
@@ -315,6 +328,40 @@ TEST_F(SummaryDbWriterTest, WriteScalarUint8_CoercesToInt64) {
   TF_ASSERT_OK(writer_->WriteScalar(1, t, "t"));
   TF_ASSERT_OK(writer_->Flush());
   ASSERT_EQ(254LL, QueryInt("SELECT tensor FROM Tensors"));
+}
+
+TEST_F(SummaryDbWriterTest, UsesIdsTable) {
+  SummaryMetadata metadata;
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "mad-science", "train", "jart", &env_,
+                                     &writer_));
+  env_.AdvanceByMillis(23);
+  TF_ASSERT_OK(writer_->WriteTensor(1, MakeScalarInt64(123LL), "taggy",
+                                    metadata.SerializeAsString()));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(4LL, QueryInt("SELECT COUNT(*) FROM Ids"));
+  EXPECT_EQ(4LL, QueryInt(strings::StrCat(
+                     "SELECT COUNT(*) FROM Ids WHERE id IN (",
+                     QueryInt("SELECT user_id FROM Users"), ", ",
+                     QueryInt("SELECT experiment_id FROM Experiments"), ", ",
+                     QueryInt("SELECT run_id FROM Runs"), ", ",
+                     QueryInt("SELECT tag_id FROM Tags"), ")")));
+}
+
+TEST_F(SummaryDbWriterTest, SetsRunFinishedTime) {
+  SummaryMetadata metadata;
+  TF_ASSERT_OK(CreateSummaryDbWriter(db_, "mad-science", "train", "jart", &env_,
+                                     &writer_));
+  env_.AdvanceByMillis(23);
+  TF_ASSERT_OK(writer_->WriteTensor(1, MakeScalarInt64(123LL), "taggy",
+                                    metadata.SerializeAsString()));
+  TF_ASSERT_OK(writer_->Flush());
+  ASSERT_EQ(0.023, QueryDouble("SELECT started_time FROM Runs"));
+  ASSERT_EQ(0.0, QueryDouble("SELECT finished_time FROM Runs"));
+  env_.AdvanceByMillis(23);
+  writer_->Unref();
+  writer_ = nullptr;
+  ASSERT_EQ(0.023, QueryDouble("SELECT started_time FROM Runs"));
+  ASSERT_EQ(0.046, QueryDouble("SELECT finished_time FROM Runs"));
 }
 
 }  // namespace

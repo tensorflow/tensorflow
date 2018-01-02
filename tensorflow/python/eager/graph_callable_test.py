@@ -152,7 +152,6 @@ class GraphCallableTest(test.TestCase):
     self.assertAllEqual(5, f(constant_op.constant(2)))
 
   def testNestedFunction(self):
-
     # TensorFlow function (which is what would be used in TensorFlow graph
     # construction).
     @function.Defun(dtypes.int32, dtypes.int32)

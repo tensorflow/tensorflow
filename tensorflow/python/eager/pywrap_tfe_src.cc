@@ -472,9 +472,19 @@ class GradientTape
   explicit GradientTape(bool persistent)
       : tensorflow::eager::GradientTape<PyObject, PyObject>(persistent) {}
 
+  virtual ~GradientTape() {
+    for (PyObject* v : watched_variables_) {
+      Py_DECREF(v);
+    }
+  }
+
   void WatchVariable(PyObject* v) {
-    watched_variables_.insert(v);
-    Py_INCREF(v);
+    auto insert_result = watched_variables_.insert(v);
+    if (insert_result.second) {
+      // Only increment the reference count if we aren't already watching this
+      // variable.
+      Py_INCREF(v);
+    }
     PyObject* handle = PyObject_GetAttrString(v, "handle");
     if (handle == nullptr) {
       return;
@@ -531,12 +541,9 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
-thread_local std::vector<TFE_Py_Tape*>* tape_stack = nullptr;
 std::vector<TFE_Py_Tape*>* GetTapeStack() {
-  if (tape_stack == nullptr) {
-    tape_stack = new std::vector<TFE_Py_Tape*>;
-  }
-  return tape_stack;
+  thread_local std::vector<TFE_Py_Tape*> tape_stack;
+  return &tape_stack;
 }
 #else
 static tensorflow::mutex stack_mu(tensorflow::LINKER_INITIALIZED);
@@ -725,7 +732,6 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   PyObject* result = PySet_New(nullptr);
   for (PyObject* variable : watched_variables) {
     PySet_Add(result, variable);
-    Py_DECREF(variable);
   }
   return result;
 }

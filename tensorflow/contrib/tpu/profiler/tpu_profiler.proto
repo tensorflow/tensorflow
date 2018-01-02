@@ -40,7 +40,7 @@ message ProfileToolData {
 }
 
 message ProfileResponse {
-  uint64 xprof_response_size = 1;  // Placeholder: return something meaningful.
+  reserved 1;  // was uint64 placeholder for returning something meaningful.
   // Graphs of programs executed on TPUs during the profiling period.
   repeated GraphDef computation_graph = 2;
 

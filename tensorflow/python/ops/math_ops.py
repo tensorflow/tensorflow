@@ -252,7 +252,7 @@ def abs(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
-    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+    Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
@@ -950,6 +950,7 @@ _TRUEDIV_TABLE = {
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
+    dtypes.bfloat16: None,
     dtypes.float16: None,
     dtypes.float32: None,
     dtypes.float64: None,
@@ -1436,7 +1437,7 @@ def reduce_mean(input_tensor,
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+      `[-rank(input_tensor), rank(input_tensor)]`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -2492,6 +2493,159 @@ def reduced_shape(input_shape, axes):
           input_shape,  # [2, 3, 5, 7]
           array_ops.fill(axes_shape, 1)
       ])  # [1, 1]
+
+
+def sparse_segment_sum(data, indices, segment_ids, name=None,
+                       num_segments=None):
+  r"""Computes the sum along sparse segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  For example:
+
+  ```python
+  c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+  # Select two rows, one segment.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+  # => [[0 0 0 0]]
+
+  # Select two rows, two segment.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+  # => [[ 1  2  3  4]
+  #     [-1 -2 -3 -4]]
+
+  # With missing segment ids.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 2]),
+                        num_segments=4)
+  # => [[ 1  2  3  4]
+  #     [ 0  0  0  0]
+  #     [-1 -2 -3 -4]
+  #     [ 0  0  0  0]]
+
+  # Select all rows, two segments.
+  tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+  # => [[0 0 0 0]
+  #     [5 6 7 8]]
+
+  # Which is equivalent to:
+  tf.segment_sum(c, tf.constant([0, 0, 1]))
+  ```
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_sum_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_sum(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
+
+
+def sparse_segment_mean(data, indices, segment_ids, name=None,
+                        num_segments=None):
+  r"""Computes the mean along sparse segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_mean_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_mean(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
+
+
+def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
+                          num_segments=None):
+  r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
+
+  `N` is the size of the segment being reduced.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_sqrt_n_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_sqrt_n(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
 
 
 def tensordot(a, b, axes, name=None):

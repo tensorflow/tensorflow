@@ -188,7 +188,7 @@ LocalClientTestBase::ExecuteLocally(
     const ExecutableRunOptions& run_options) {
   std::vector<const Shape*> argument_layouts(arguments.size());
   for (int i = 0; i < arguments.size(); ++i) {
-    argument_layouts[i] = &arguments[i]->shape();
+    argument_layouts[i] = &arguments[i]->on_host_shape();
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> executable,

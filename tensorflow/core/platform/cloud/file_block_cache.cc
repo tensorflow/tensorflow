@@ -123,8 +123,12 @@ Status FileBlockCache::MaybeFetch(const Key& key,
       case FetchState::CREATED:
         block->state = FetchState::FETCHING;
         block->mu.unlock();  // Release the lock while making the API call.
-        status.Update(
-            block_fetcher_(key.first, key.second, block_size_, &block->data));
+        block->data.clear();
+        block->data.resize(block_size_, 0);
+        size_t bytes_transferred;
+        status.Update(block_fetcher_(key.first, key.second, block_size_,
+                                     block->data.data(), &bytes_transferred));
+        block->data.resize(bytes_transferred, 0);
         block->mu.lock();  // Reacquire the lock immediately afterwards
         if (status.ok()) {
           downloaded_block = true;
@@ -150,15 +154,15 @@ Status FileBlockCache::MaybeFetch(const Key& key,
 }
 
 Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
-                            std::vector<char>* out) {
-  out->clear();
+                            char* buffer, size_t* bytes_transferred) {
+  *bytes_transferred = 0;
   if (n == 0) {
     return Status::OK();
   }
   if (block_size_ == 0 || max_bytes_ == 0) {
     // The cache is effectively disabled, so we pass the read through to the
     // fetcher without breaking it up into blocks.
-    return block_fetcher_(filename, offset, n, out);
+    return block_fetcher_(filename, offset, n, buffer, bytes_transferred);
   }
   // Calculate the block-aligned start and end of the read.
   size_t start = block_size_ * (offset / block_size_);
@@ -166,6 +170,7 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
   if (finish < offset + n) {
     finish += block_size_;
   }
+  size_t total_bytes_transferred = 0;
   // Now iterate through the blocks, reading them one at a time.
   for (size_t pos = start; pos < finish; pos += block_size_) {
     Key key = std::make_pair(filename, pos);
@@ -181,7 +186,10 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
       // The requested offset is at or beyond the end of the file. This can
       // happen if `offset` is not block-aligned, and the read returns the last
       // block in the file, which does not extend all the way out to `offset`.
-      return errors::OutOfRange("EOF at offset ", offset);
+      *bytes_transferred = total_bytes_transferred;
+      return errors::OutOfRange("EOF at offset ", offset, " in file ", filename,
+                                " at position ", pos, "with data size ",
+                                data.size());
     }
     auto begin = data.begin();
     if (offset > pos) {
@@ -194,13 +202,16 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
       end -= (pos + data.size()) - (offset + n);
     }
     if (begin < end) {
-      out->insert(out->end(), begin, end);
+      size_t bytes_to_copy = end - begin;
+      memcpy(&buffer[total_bytes_transferred], &*begin, bytes_to_copy);
+      total_bytes_transferred += bytes_to_copy;
     }
     if (data.size() < block_size_) {
       // The block was a partial block and thus signals EOF at its upper bound.
       break;
     }
   }
+  *bytes_transferred = total_bytes_transferred;
   return Status::OK();
 }
 

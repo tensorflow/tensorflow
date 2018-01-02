@@ -353,7 +353,10 @@ def implicit_val_and_grad(f):
                              f.__name__))
     finally:
       popped_tape = tape.pop_tape()
-      variables = popped_tape.watched_variables()
+    # Sorting variables by id, which is monotonically increasing in construction
+    # order. This ensures unique order across executions.
+    variables = list(sorted(popped_tape.watched_variables(),
+                            key=lambda v: v.handle._id))  # pylint: disable=protected-access
     sources = [x.handle for x in variables]
 
     if not sources:
@@ -540,7 +543,7 @@ def _ensure_unique_tensor_objects(parameter_positions, args):
     if i in parameter_positions:
       tid = ops.tensor_id(t)
       if tid in s:
-        args[i] = args[i]._dup()  # pylint: disable=protected-access
+        args[i] = gen_array_ops.identity(args[i])
       else:
         s.add(tid)
   return args

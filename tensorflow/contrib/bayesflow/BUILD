@@ -100,6 +100,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "layers_conv_variational_test",
+    size = "small",
+    srcs = ["python/kernel_tests/layers_conv_variational_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
     name = "layers_dense_variational_test",
     size = "small",
     srcs = ["python/kernel_tests/layers_dense_variational_test.py"],
@@ -198,6 +217,28 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+)
+
+cuda_py_test(
+    name = "variational_sgd_optimizer_test",
+    size = "small",
+    srcs = ["python/kernel_tests/variational_sgd_optimizer_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_seed",
+    ],
+    tags = ["notsan"],
 )
 
 filegroup(

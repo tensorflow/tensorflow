@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
 from tensorflow.python.client import session as tf_session
@@ -78,7 +78,7 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
           default_graph_signature=default_graph_signature,
           named_graph_signatures=named_graph_signatures,
           assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
-      return export.export(export_dir, contrib_variables.get_global_step(),
+      return export.export(export_dir, training_util.get_global_step(),
                            session, exports_to_keep=exports_to_keep)
 
 
@@ -295,7 +295,7 @@ def _export_estimator(estimator,
   checkpoint_path = (checkpoint_path or
                      tf_saver.latest_checkpoint(estimator._model_dir))
   with ops.Graph().as_default() as g:
-    contrib_variables.create_global_step(g)
+    training_util.create_global_step(g)
 
     if use_deprecated_input_fn:
       examples = array_ops.placeholder(dtype=dtypes.string,

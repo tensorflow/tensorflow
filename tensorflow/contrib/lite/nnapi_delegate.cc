@@ -208,6 +208,11 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       add_scalar_float32(builtin->beta);
     };
 
+    auto add_space_to_depth_params = [&add_scalar_int32](void* data) {
+      auto builtin = reinterpret_cast<TfLiteSpaceToDepthParams*>(data);
+      add_scalar_int32(builtin->block_size);
+    };
+
 #if 0
     auto add_reshape_params = [&](void* data) {
       auto builtin = reinterpret_cast<TfLiteReshapeParams*>(data);
@@ -280,22 +285,29 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         nn_op_type = ANEURALNETWORKS_RESHAPE;
         // add_reshape_params(node.builtin_data);
         break;
+      case tflite::BuiltinOperator_SPACE_TO_DEPTH:
+        add_space_to_depth_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_SPACE_TO_DEPTH;
+        break;
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
       case tflite::BuiltinOperator_SVDF:
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
       case tflite::BuiltinOperator_RNN:
+      case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
       case tflite::BuiltinOperator_LSTM:
       case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
       case tflite::BuiltinOperator_MUL:
+      case tflite::BuiltinOperator_PAD:
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_CALL:
       case tflite::BuiltinOperator_SKIP_GRAM:
       case tflite::BuiltinOperator_RELU1:
-      case tflite::BuiltinOperator_SPACE_TO_DEPTH:
+      case tflite::BuiltinOperator_GATHER:
+      case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

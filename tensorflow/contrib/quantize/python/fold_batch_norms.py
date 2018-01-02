@@ -23,11 +23,14 @@ from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.util import compat
 
 
 def FoldBatchNorms(graph):
@@ -66,23 +69,26 @@ def _FoldFusedBatchNorms(graph):
     # `scope`.
     with graph.as_default(), graph.name_scope(scope + sep), ops.device(
         match.bn_op.device):
-      # new weights = old weights * gamma / sqrt(variance + epsilon)
-      # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
-      multiplier_tensor = match.gamma_tensor * math_ops.rsqrt(
-          match.variance_tensor + match.bn_op.get_attr('epsilon'))
-      bias_tensor = math_ops.subtract(
-          match.beta_tensor, match.mean_tensor * multiplier_tensor, name='bias')
+      with graph.name_scope(scope + sep + 'BatchNorm_Fold' + sep):
+        # new weights = old weights * gamma / sqrt(variance + epsilon)
+        # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
+        multiplier_tensor = match.gamma_tensor * math_ops.rsqrt(
+            match.variance_tensor + match.bn_op.get_attr('epsilon'))
+        bias_tensor = math_ops.subtract(
+            match.beta_tensor,
+            match.mean_tensor * multiplier_tensor,
+            name='bias')
 
-      # The shape of depthwise weights is different, so we need to reshape the
-      # multiplier_tensor to ensure that the scaled_weight_tensor has the
-      # expected shape.
-      if match.layer_op.type == 'DepthwiseConv2dNative':
-        new_shape = [
-            match.weight_tensor.get_shape().as_list()[2],
-            match.weight_tensor.get_shape().as_list()[3]
-        ]
-        multiplier_tensor = array_ops.reshape(
-            multiplier_tensor, new_shape, name='scale_reshape')
+        # The shape of depthwise weights is different, so we need to reshape the
+        # multiplier_tensor to ensure that the scaled_weight_tensor has the
+        # expected shape.
+        if match.layer_op.type == 'DepthwiseConv2dNative':
+          new_shape = [
+              match.weight_tensor.get_shape().as_list()[2],
+              match.weight_tensor.get_shape().as_list()[3]
+          ]
+          multiplier_tensor = array_ops.reshape(
+              multiplier_tensor, new_shape, name='scale_reshape')
 
       # TODO(suharshs): This naming of the following ops needs to carefully
       # follow the naming expected by quantize.py. Generalize the quantize code
@@ -133,6 +139,16 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
     raise ValueError('Cannot handle operation of type: %s' % layer_op.type)
 
 
+@ops.RegisterGradient('FoldFusedBatchNormGrad')
+def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
+                            unused_2):
+  x = op.inputs[0]
+  n = x.get_shape().num_elements() / grad_mean.get_shape().num_elements()
+  dmean_dx = grad_mean / n
+  dvar_dx = 2 * grad_var * (x - op.outputs[1]) / (n - 1)
+  return (dmean_dx + dvar_dx), None, None, None, None
+
+
 def _FindFusedBatchNorms(graph):
   """Finds all ops and tensors related to found FusedBatchNorms.
 
@@ -178,7 +194,7 @@ def _FindFusedBatchNorms(graph):
   conv_matcher = graph_matcher.GraphMatcher(conv_batch_norm_pattern)
   matmul_matcher = graph_matcher.GraphMatcher(matmul_bn_output_reshape_pattern)
 
-  def _GetCommonTensors(match_result):
+  def _GetCommonTensors(match_result, bn_op, bn_input_tensor):
     """Gets tensors needed for FusedBatchNormMatch from match_result."""
     input_tensor = match_result.get_tensor(input_pattern)
     weight_tensor = match_result.get_tensor(weight_pattern)
@@ -191,8 +207,25 @@ def _FindFusedBatchNorms(graph):
     # respectively; when is_training is false, they point to bn_op's inputs.
     is_training = bn_op.get_attr('is_training')
     if is_training:
+      # FusedBatchNormGrad doesn't compute gradients of the batch_mean and
+      # batch_variance outputs, so we need to substitute our own custom
+      # gradient.
+      # TODO(suharshs, raghuramank): Find a way to avoid needing this hack.
+      # pylint: disable=protected-access
+      bn_op._set_attr(
+          '_gradient_op_type',
+          attr_value_pb2.AttrValue(s=compat.as_bytes('FoldFusedBatchNormGrad')))
+      # pylint: enable=protected-access
       mean_tensor = bn_op.outputs[1]
-      variance_tensor = bn_op.outputs[2]
+      # The batch variance used during forward and backward prop is biased,
+      # i.e it is calculated as: V=sum(x(k)-mu)^2/N. For the moving average
+      # calculation, the variance is corrected by the term N/N-1 (Bessel's
+      # correction). The variance tensor read from FuseBatchNorm has bessel's
+      # correction applied, so we undo it here.
+      n = math_ops.cast(
+          array_ops.size(bn_input_tensor) / array_ops.size(mean_tensor),
+          dtypes.float32)
+      variance_tensor = bn_op.outputs[2] * (n - 1) / n
     else:
       mean_tensor = match_result.get_tensor(mean_pattern)
       variance_tensor = match_result.get_tensor(variance_pattern)
@@ -201,12 +234,13 @@ def _FindFusedBatchNorms(graph):
 
   for match_result in conv_matcher.match_graph(graph):
     layer_op = match_result.get_op(conv_pattern)
+    layer_tensor = match_result.get_tensor(conv_pattern)
     bn_op = match_result.get_op(conv_batch_norm_pattern)
     # In the case of convolution the output_tensor is the output of bn_op.
     output_tensor = bn_op.outputs[0]
 
     (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-     variance_tensor) = _GetCommonTensors(match_result)
+     variance_tensor) = _GetCommonTensors(match_result, bn_op, layer_tensor)
     yield _FusedBatchNormMatch(
         layer_op=layer_op,
         bn_op=bn_op,
@@ -220,6 +254,7 @@ def _FindFusedBatchNorms(graph):
 
   for match_result in matmul_matcher.match_graph(graph):
     layer_op = match_result.get_op(matmul_pattern)
+    layer_tensor = match_result.get_tensor(matmul_pattern)
     bn_op = match_result.get_op(matmul_batch_norm_pattern)
     # In the MatMul case, the output of batch norm is reshaped back into a
     # 2D tensor, so the output_tensor is the output of the Reshape op.
@@ -227,7 +262,7 @@ def _FindFusedBatchNorms(graph):
     output_tensor = output_reshape_op.outputs[0]
 
     (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-     variance_tensor) = _GetCommonTensors(match_result)
+     variance_tensor) = _GetCommonTensors(match_result, bn_op, layer_tensor)
     yield _FusedBatchNormMatch(
         layer_op=layer_op,
         bn_op=bn_op,

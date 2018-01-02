@@ -25,10 +25,10 @@ namespace tflite {
 //
 // Usage:
 //  ErrorReporter foo;
-//  foo.Report("test %d\n", 5);
+//  foo.Report("test %d", 5);
 // or
 //  va_list args;
-//  foo.Report("test %d\n", args); // where args is va_list
+//  foo.Report("test %d", args); // where args is va_list
 //
 // Sublclass ErrorReporter to provide another reporting destination.
 // For example, if you have a GUI program, you might redirect to a buffer

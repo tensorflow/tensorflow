@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -51,23 +51,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_parallelization_preparation.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -84,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -149,11 +152,6 @@ CpuCompiler::CpuCompiler() {
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
   LLVMInitializeAArch64Disassembler();
-  LLVMInitializePowerPCTarget();
-  LLVMInitializePowerPCTargetInfo();
-  LLVMInitializePowerPCTargetMC();
-  LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializePowerPCDisassembler();
 }
 
 namespace {
@@ -272,14 +270,14 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
-
+  pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<ConvCanonicalization>();
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
 
-    pass.AddPass<BatchNormRewriter>(
+    pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
@@ -288,6 +286,11 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_strength_reduction=*/false);
+
+    // BatchNormExpander can create zero-sized ops, so zero-sized HLO
+    // elimination has to come after that pass.
+    pipeline.AddPass<ZeroSizedHloElimination>();
+
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
@@ -318,6 +321,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
       [](const Shape&, const Shape&) { return true; },
       /*enable_dot_strength_reduction=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
       module->config().intra_op_parallelism_threads() > 0
@@ -528,9 +532,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // uses data dependencies for determining order.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(module.get(),
-                            xla::MakeUnique<DependencyHloOrdering>(module.get()),
-                            BufferSizeBytesFunction(), memory_alignment));
+        BufferAssigner::Run(
+            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()),
+            BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -600,7 +604,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           llvm::Function * ir_function,
           ir_emitter.EmitComputation(
               embedded_computation, embedded_computation->name(),
-              /*is_entry_computation=*/computation_is_parallel,
+              /*is_top_level_computation=*/computation_is_parallel,
               /*instruction_order=*/nullptr));
       // If this computation is parallel, remember it in the function name map.
       // This way we know what function to execute when we try to run code for
@@ -642,10 +646,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(
-            module.get(),
-            xla::MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-            BufferSizeBytesFunction(), memory_alignment));
+        BufferAssigner::Run(module.get(),
+                            xla::MakeUnique<SequentialHloOrdering>(
+                                module.get(), module_sequence),
+                            BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -682,7 +686,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -691,7 +695,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, function_name_prefix,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     string function_name = llvm_ir::AsString(entry_function->getName());
@@ -824,7 +828,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
-            module, xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
+            module,
+            xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
@@ -855,7 +860,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
           ir_emitter
               .EmitComputation(embedded_computation,
                                embedded_computation->name(),
-                               /*is_entry_computation=*/false,
+                               /*is_top_level_computation=*/false,
                                &module_sequence.at(embedded_computation))
               .status());
     }
@@ -863,7 +868,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_entry_computation=*/true,
+                                   /*is_top_level_computation=*/true,
                                    &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));

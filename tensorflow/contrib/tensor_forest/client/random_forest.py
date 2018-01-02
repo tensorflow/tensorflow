@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -190,7 +189,7 @@ def get_model_fn(params,
                 features, labels, input_weights=weights,
                 num_trainers=num_trainers,
                 trainer_id=trainer_id),
-            state_ops.assign_add(contrib_framework.get_global_step(), 1))
+            state_ops.assign_add(training_util.get_global_step(), 1))
 
     # Put weights back in
     if weights is not None:

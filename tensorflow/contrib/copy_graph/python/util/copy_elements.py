@@ -225,6 +225,7 @@ def copy_op_to_graph(org_instance, to_graph, variables,
                            new_original_op,
                            op_def)
     #Use Graph's hidden methods to add the op
+    to_graph._add_op(new_op)  # pylint: disable=protected-access
     to_graph._record_op_seen_by_control_dependencies(new_op)
     for device_function in reversed(to_graph._device_function_stack):
       new_op._set_device(device_function(new_op))

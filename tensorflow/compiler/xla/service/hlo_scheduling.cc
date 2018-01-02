@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
+using ::tensorflow::strings::HumanReadableNumBytes;
+
 namespace xla {
 
 StatusOr<int64> MinimumMemoryForSequence(
@@ -367,7 +369,17 @@ StatusOr<int64> MinimumMemoryForComputation(
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm == SchedulerAlgorithm::kListSchedule) {
+    return ListScheduler::Run(computation, points_to_analysis, size_function);
+  }
+  if (algorithm == SchedulerAlgorithm::kDfsSchedule) {
+    return RunDFSMemoryScheduler(computation, points_to_analysis,
+                                 size_function);
+  }
+
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -382,7 +394,7 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
       const int64 list_memory,
       MinimumMemoryForComputation(computation, list_sequence,
                                   points_to_analysis, size_function));
-  VLOG(2) << "Min-memory list sequence: " << list_memory << " bytes";
+  VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> dfs_sequence,
@@ -391,13 +403,15 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
       const int64 dfs_memory,
       MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
                                   size_function));
-  VLOG(2) << "Min-memory dfs sequence: " << dfs_memory << " bytes";
+  VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   if (list_memory <= dfs_memory) {
-    VLOG(2) << "Chose min-memory list sequence: " << list_memory << " bytes";
+    VLOG(2) << "Chose min-memory list sequence: "
+            << HumanReadableNumBytes(list_memory);
     return list_sequence;
   } else {
-    VLOG(2) << "Chose min-memory dfs sequence: " << dfs_memory << " bytes";
+    VLOG(2) << "Chose min-memory dfs sequence: "
+            << HumanReadableNumBytes(dfs_memory);
     return dfs_sequence;
   }
 }
@@ -405,27 +419,30 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 }  // namespace
 
 StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function) {
+CreateMemoryMinimizingSequence(const HloModule& module,
+                               const LogicalBuffer::SizeFunction& size_function,
+                               SchedulerAlgorithm algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
   for (const auto* computation : module.MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(sequence[computation],
-                        CreateMemoryMinimizingSequence(
-                            *computation, *points_to_analysis, size_function));
+    TF_ASSIGN_OR_RETURN(
+        sequence[computation],
+        CreateMemoryMinimizingSequence(*computation, *points_to_analysis,
+                                       size_function, algorithm));
   }
   return sequence;
 }
 
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
-                                        size_function);
+                                        size_function, algorithm);
 }
 
 }  // namespace xla

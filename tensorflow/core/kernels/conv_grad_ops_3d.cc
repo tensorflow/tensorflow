@@ -645,6 +645,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         {{input_size[0], input_size[1], input_size[2]}},
         out_depth,
         {{filter_size[0], filter_size[1], filter_size[2]}},
+        // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+        // conv is supported.
+        /*dilation=*/{{1, 1, 1}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
@@ -1011,6 +1014,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         {{input_size[0], input_size[1], input_size[2]}},
         out_depth,
         {{filter_size[0], filter_size[1], filter_size[2]}},
+        {{1, 1, 1}},
         {{strides[0], strides[1], strides[2]}},
         {{padding_planes, padding_rows, padding_cols}},
         dtype,

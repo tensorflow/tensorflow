@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -90,8 +91,6 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_ATAN2;
     case HloOpcode::kComplex:
       return BINOP_COMPLEX;
-    case HloOpcode::kDot:
-      return BINOP_DOT;
     case HloOpcode::kMultiply:
       return BINOP_MUL;
     case HloOpcode::kAdd:
@@ -549,8 +548,113 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(operand_shape.element_type(), dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(const Shape& lhs,
-                                                             const Shape& rhs) {
+// Current DotDimensionNumbers Requirements:
+//
+// Contracting Dimensions:
+// *) Exactly one contracting dimension on both lhs and rhs.
+// *) Contracting dimension size must be the same on both lhs and rhs.
+// *) Contracting dimension numbers do not need to be the same (i.e. transposes
+//    are passed on to emitter implementations).
+//
+// Batch Dimensions:
+// *) Same number of batch dimensions on both lhs and rhs.
+// *) Same batch dimension numbers (and sizes) on both lhs and rhs.
+// *) Batch dimension numbers must be ordered before contracting and
+//    non-contracting/non-batch dimension numbers.
+//
+// Non-Contracting-Non-Batch Dimensions:
+// *) Can be 0 (matrix-vector) or 1 (matrix-matrix).
+//
+
+namespace {
+
+Status ValidateDotDimensionNumbers(
+    const Shape& lhs, const Shape& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  // Check that dimension numbers are in range.
+  auto dims_in_range =
+      [](const int64 rank, tensorflow::gtl::ArraySlice<int64> contracting_dims,
+         tensorflow::gtl::ArraySlice<int64> batch_dims) -> bool {
+    auto in_range = [&rank](int64 i) -> bool { return 0 <= i && i < rank; };
+    return std::all_of(contracting_dims.begin(), contracting_dims.end(),
+                       in_range) &&
+           std::all_of(batch_dims.begin(), batch_dims.end(), in_range);
+  };
+
+  tensorflow::gtl::ArraySlice<int64> lhs_contracting_dimensions =
+      AsInt64Slice(dimension_numbers.lhs_contracting_dimensions());
+  tensorflow::gtl::ArraySlice<int64> rhs_contracting_dimensions =
+      AsInt64Slice(dimension_numbers.rhs_contracting_dimensions());
+  tensorflow::gtl::ArraySlice<int64> lhs_batch_dimensions =
+      AsInt64Slice(dimension_numbers.lhs_batch_dimensions());
+  tensorflow::gtl::ArraySlice<int64> rhs_batch_dimensions =
+      AsInt64Slice(dimension_numbers.rhs_batch_dimensions());
+
+  if (!dims_in_range(ShapeUtil::Rank(lhs), lhs_contracting_dimensions,
+                     lhs_batch_dimensions) ||
+      !dims_in_range(ShapeUtil::Rank(rhs), rhs_contracting_dimensions,
+                     rhs_batch_dimensions)) {
+    return InvalidArgument("A dimension number is out of range in dot: %s",
+                           dimension_numbers.DebugString().c_str());
+  }
+
+  // Check that dimension numbers are unique.
+  auto dims_unique = [](tensorflow::gtl::ArraySlice<int64> contracting_dims,
+                        tensorflow::gtl::ArraySlice<int64> batch_dims) -> bool {
+    tensorflow::gtl::FlatSet<int64> dim_set;
+    auto is_unique = [&dim_set](int64 i) -> bool {
+      return dim_set.insert(i).second;
+    };
+    return std::all_of(contracting_dims.begin(), contracting_dims.end(),
+                       is_unique) &&
+           std::all_of(batch_dims.begin(), batch_dims.end(), is_unique);
+  };
+
+  if (!dims_unique(lhs_contracting_dimensions, lhs_batch_dimensions) ||
+      !dims_unique(rhs_contracting_dimensions, rhs_batch_dimensions)) {
+    return InvalidArgument("A dimension number is not unique in dot: %s",
+                           dimension_numbers.DebugString().c_str());
+  }
+
+  // Check that the count of non-contracting-non-batch dimensions is in {0, 1}.
+  const int64 lhs_non_contracting_non_batch_dims =
+      ShapeUtil::Rank(lhs) -
+      dimension_numbers.lhs_contracting_dimensions_size() -
+      dimension_numbers.lhs_batch_dimensions_size();
+  const int64 rhs_non_contracting_non_batch_dims =
+      ShapeUtil::Rank(rhs) -
+      dimension_numbers.rhs_contracting_dimensions_size() -
+      dimension_numbers.rhs_batch_dimensions_size();
+  if (lhs_non_contracting_non_batch_dims < 0 ||
+      lhs_non_contracting_non_batch_dims > 1 ||
+      rhs_non_contracting_non_batch_dims < 0 ||
+      rhs_non_contracting_non_batch_dims > 1) {
+    return InvalidArgument(
+        "batch and contracting dimension number mismatch "
+        "with rank ");
+  }
+
+  // Check that batch dimension numbers are ordered before all others, and
+  // that they are monotonically increasing.
+  std::vector<int64> batch_dim_numbers(lhs_batch_dimensions.size());
+  std::iota(batch_dim_numbers.begin(), batch_dim_numbers.end(), 0);
+  if (!std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  lhs_batch_dimensions.begin()) ||
+      !std::equal(batch_dim_numbers.begin(), batch_dim_numbers.end(),
+                  rhs_batch_dimensions.begin())) {
+    return InvalidArgument(
+        "batch dimension numbers must precede non-batch dimensions and be"
+        "monotonically increasing.");
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+/* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(
+    const Shape& lhs, const Shape& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of dot"));
 
@@ -570,37 +674,62 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return fail("element types do not match");
   }
 
-  if (ShapeUtil::Rank(lhs) < 1 || ShapeUtil::Rank(lhs) > 2 ||
-      ShapeUtil::Rank(rhs) < 1 || ShapeUtil::Rank(rhs) > 2) {
-    return fail("dot only supports rank 1 or 2");
+  if ((ShapeUtil::Rank(lhs) < 1) || (ShapeUtil::Rank(rhs) < 1)) {
+    return fail("dot only supports rank 1 or above.");
   }
 
-  // Determine the index of the contracted dimensions for input tensors.
-  // dimensions -1 of lhs and dimension 0 of rhs are contracted.
-  int64 lhs_contracted_dimension = ShapeUtil::GetDimensionNumber(lhs, -1);
-  int64 rhs_contracted_dimension = 0;
+  // Validate basic properties of dot dimension numbers.
+  TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
-  // Check if the contracted dimension sizes are the same.
-  if ((lhs_contracted_dimension < ShapeUtil::Rank(lhs) &&
-       rhs_contracted_dimension < ShapeUtil::Rank(rhs)) &&
-      lhs.dimensions(lhs_contracted_dimension) !=
-          rhs.dimensions(rhs_contracted_dimension)) {
-    return fail("contracted dimensions mismatch");
+  // Check that there is only one contracting dimension for both lhs and rhs.
+  if (dimension_numbers.lhs_contracting_dimensions_size() !=
+          dimension_numbers.rhs_contracting_dimensions_size() ||
+      dimension_numbers.lhs_contracting_dimensions_size() != 1) {
+    return fail("must specify one contracting dimension for both lhs and rhs.");
+  }
+
+  // Check that contracting dimension sizes match.
+  const int64 lhs_contracting_dimension =
+      dimension_numbers.lhs_contracting_dimensions(0);
+  const int64 rhs_contracting_dimension =
+      dimension_numbers.rhs_contracting_dimensions(0);
+  if (lhs.dimensions(lhs_contracting_dimension) !=
+      rhs.dimensions(rhs_contracting_dimension)) {
+    return fail("contracting dimension sizes do not match.");
+  }
+
+  // Check that number of batch dimensions match.
+  if (dimension_numbers.lhs_batch_dimensions_size() !=
+      dimension_numbers.rhs_batch_dimensions_size()) {
+    return fail("must the same number of batch dimensions for lhs and rhs.");
+  }
+
+  // Check that batch dimension numbers and sizes match.
+  for (int64 i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
+    if (dimension_numbers.lhs_batch_dimensions(i) !=
+            dimension_numbers.rhs_batch_dimensions(i) ||
+        lhs.dimensions(dimension_numbers.lhs_batch_dimensions(i)) !=
+            rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i))) {
+      return fail("batch dimension numbers and sizes must match for lhs/rhs.");
+    }
   }
 
   // The ranks of lhs and rhs are decremented by 1 respectively due to the
   // contraction, and added for the rank of the result. When an input tensor is
   // a scalar, its contribution to the rank of the result is 0.
   // Generate the result dimensions in order, rhs dimensions followed by lhs
-  // dimensions except the contracted dimensions.
+  // dimensions except the contracted and batch dimensions.
   std::vector<int64> dimensions;
+  std::unordered_set<int64> rhs_batch_dims(
+      dimension_numbers.rhs_batch_dimensions().begin(),
+      dimension_numbers.rhs_batch_dimensions().end());
   for (int64 i = 0; i < ShapeUtil::Rank(lhs); i++) {
-    if (i != lhs_contracted_dimension) {
+    if (i != lhs_contracting_dimension) {
       dimensions.push_back(lhs.dimensions(i));
     }
   }
   for (int64 i = 0; i < ShapeUtil::Rank(rhs); i++) {
-    if (i != rhs_contracted_dimension) {
+    if (i != rhs_contracting_dimension && rhs_batch_dims.count(i) == 0) {
       dimensions.push_back(rhs.dimensions(i));
     }
   }
@@ -816,8 +945,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       rhs, tensorflow::strings::StrCat("rhs of binary operation ",
                                        BinaryOperation_Name(operation))));
   switch (operation) {
-    case BINOP_DOT:
-      return InferDotOpShape(lhs, rhs);
     case BINOP_MAX:
     case BINOP_MIN:
     case BINOP_SUB:
@@ -1589,10 +1716,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
-    const Shape& operand) {
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand, "operand of cross replica sum"));
-  return operand;
+    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
+  for (const Shape* operand_shape : operand_shapes) {
+    TF_RETURN_IF_ERROR(
+        ExpectNotTupleOrOpaque(*operand_shape, "operand of cross replica sum"));
+  }
+  if (operand_shapes.size() == 1) {
+    return *operand_shapes[0];
+  }
+  std::vector<Shape> operand_shape_values;
+  for (const Shape* operand_shape : operand_shapes) {
+    operand_shape_values.push_back(*operand_shape);
+  }
+  return ShapeUtil::MakeTupleShape(operand_shape_values);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReduceShape(
@@ -1956,6 +2092,64 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
 
   return init;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferConditionalShape(
+    const Shape& predicate, const Shape& true_operand,
+    const Shape& false_operand, const ProgramShape& true_computation,
+    const ProgramShape& false_computation) {
+  if (!ShapeUtil::ShapeIs(predicate, PRED, {})) {
+    return InvalidArgument("predicate must be a boolean; got %s.",
+                           ShapeUtil::HumanString(predicate).c_str());
+  }
+
+  if (true_computation.parameters_size() != 1) {
+    return InvalidArgument("true_computation must take 1 argument; got %d.",
+                           true_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(true_computation.parameters(0), true_operand)) {
+    auto true_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_operand: %s; true_computation: %s",
+          ShapeUtil::HumanString(true_operand).c_str(),
+          ShapeUtil::HumanString(true_computation).c_str());
+    };
+    return InvalidArgument(
+        "true_operand must match the shape of the only parameter of "
+        "true_computation: got %s.",
+        true_shape_string().c_str());
+  }
+
+  if (false_computation.parameters_size() != 1) {
+    return InvalidArgument("false_computation must take 1 argument; got %d.",
+                           false_computation.parameters_size());
+  }
+  if (!ShapeUtil::Compatible(false_computation.parameters(0), false_operand)) {
+    auto false_shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "false_operand: %s; false_computation: %s",
+          ShapeUtil::HumanString(false_operand).c_str(),
+          ShapeUtil::HumanString(false_computation).c_str());
+    };
+    return InvalidArgument(
+        "false_operand must match the shape of the only parameter of "
+        "false_computation: got %s.",
+        false_shape_string().c_str());
+  }
+  if (!ShapeUtil::Compatible(true_computation.result(),
+                             false_computation.result())) {
+    auto shape_string = [&]() {
+      return tensorflow::strings::Printf(
+          "true_computation result: %s; false_computation result: %s.",
+          ShapeUtil::HumanString(true_computation.result()).c_str(),
+          ShapeUtil::HumanString(false_computation.result()).c_str());
+    };
+    return InvalidArgument(
+        "the result of true_computation and false_computation must have the "
+        "same shape: got %s.",
+        shape_string().c_str());
+  }
+  return true_computation.result();
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(

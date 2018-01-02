@@ -168,7 +168,7 @@ class SparseTest(test.TestCase):
         {
             "types": dtypes.int32,
             "classes": sparse_tensor.SparseTensor,
-            "expected": dtypes.string
+            "expected": dtypes.variant
         },
         {
             "types": (dtypes.int32),
@@ -178,7 +178,7 @@ class SparseTest(test.TestCase):
         {
             "types": (dtypes.int32),
             "classes": (sparse_tensor.SparseTensor),
-            "expected": (dtypes.string)
+            "expected": (dtypes.variant)
         },
         {
             "types": (dtypes.int32, ()),
@@ -193,12 +193,12 @@ class SparseTest(test.TestCase):
         {
             "types": (dtypes.int32, ()),
             "classes": (sparse_tensor.SparseTensor, ()),
-            "expected": (dtypes.string, ())
+            "expected": (dtypes.variant, ())
         },
         {
             "types": ((), dtypes.int32),
             "classes": ((), sparse_tensor.SparseTensor),
-            "expected": ((), dtypes.string)
+            "expected": ((), dtypes.variant)
         },
         {
             "types": (dtypes.int32, (), dtypes.int32),
@@ -209,7 +209,7 @@ class SparseTest(test.TestCase):
             "types": (dtypes.int32, (), dtypes.int32),
             "classes": (sparse_tensor.SparseTensor, (),
                         sparse_tensor.SparseTensor),
-            "expected": (dtypes.string, (), dtypes.string)
+            "expected": (dtypes.variant, (), dtypes.variant)
         },
         {
             "types": ((), dtypes.int32, ()),
@@ -219,52 +219,13 @@ class SparseTest(test.TestCase):
         {
             "types": ((), dtypes.int32, ()),
             "classes": ((), sparse_tensor.SparseTensor, ()),
-            "expected": ((), dtypes.string, ())
+            "expected": ((), dtypes.variant, ())
         },
     )
     for test_case in test_cases:
       self.assertEqual(
           sparse.as_dense_types(test_case["types"], test_case["classes"]),
           test_case["expected"])
-
-  def assertSparseValuesEqual(self, a, b):
-    if not isinstance(a, sparse_tensor.SparseTensor):
-      self.assertFalse(isinstance(b, sparse_tensor.SparseTensor))
-      self.assertEqual(a, b)
-      return
-    self.assertTrue(isinstance(b, sparse_tensor.SparseTensor))
-    with self.test_session():
-      self.assertAllEqual(a.eval().indices, b.eval().indices)
-      self.assertAllEqual(a.eval().values, b.eval().values)
-      self.assertAllEqual(a.eval().dense_shape, b.eval().dense_shape)
-
-  def testSerializeDeserialize(self):
-    test_cases = (
-        (),
-        sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
-        sparse_tensor.SparseTensor(
-            indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-        sparse_tensor.SparseTensor(
-            indices=[[0, 0], [3, 4]], values=[1, -1], dense_shape=[4, 5]),
-        (sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
-        (sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ()),
-        ((), sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
-    )
-    for expected in test_cases:
-      classes = sparse.get_classes(expected)
-      shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
-                                  classes)
-      types = nest.map_structure(lambda _: dtypes.int32, classes)
-      actual = sparse.deserialize_sparse_tensors(
-          sparse.serialize_sparse_tensors(expected), types, shapes,
-          sparse.get_classes(expected))
-      nest.assert_same_structure(expected, actual)
-      for a, e in zip(nest.flatten(actual), nest.flatten(expected)):
-        self.assertSparseValuesEqual(a, e)
 
   def testGetClasses(self):
     s = sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1])
@@ -323,6 +284,75 @@ class SparseTest(test.TestCase):
     for test_case in test_cases:
       self.assertEqual(
           sparse.get_classes(test_case["classes"]), test_case["expected"])
+
+  def assertSparseValuesEqual(self, a, b):
+    if not isinstance(a, sparse_tensor.SparseTensor):
+      self.assertFalse(isinstance(b, sparse_tensor.SparseTensor))
+      self.assertEqual(a, b)
+      return
+    self.assertTrue(isinstance(b, sparse_tensor.SparseTensor))
+    with self.test_session():
+      self.assertAllEqual(a.eval().indices, b.eval().indices)
+      self.assertAllEqual(a.eval().values, b.eval().values)
+      self.assertAllEqual(a.eval().dense_shape, b.eval().dense_shape)
+
+  def testSerializeDeserialize(self):
+    test_cases = (
+        (),
+        sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+        sparse_tensor.SparseTensor(
+            indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+        sparse_tensor.SparseTensor(
+            indices=[[0, 0], [3, 4]], values=[1, -1], dense_shape=[4, 5]),
+        (sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+        (sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ()),
+        ((),
+         sparse_tensor.SparseTensor(
+             indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+    )
+    for expected in test_cases:
+      classes = sparse.get_classes(expected)
+      shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
+                                  classes)
+      types = nest.map_structure(lambda _: dtypes.int32, classes)
+      actual = sparse.deserialize_sparse_tensors(
+          sparse.serialize_sparse_tensors(expected), types, shapes,
+          sparse.get_classes(expected))
+      nest.assert_same_structure(expected, actual)
+      for a, e in zip(nest.flatten(actual), nest.flatten(expected)):
+        self.assertSparseValuesEqual(a, e)
+
+  def testSerializeManyDeserialize(self):
+    test_cases = (
+        (),
+        sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
+        sparse_tensor.SparseTensor(
+            indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+        sparse_tensor.SparseTensor(
+            indices=[[0, 0], [3, 4]], values=[1, -1], dense_shape=[4, 5]),
+        (sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+        (sparse_tensor.SparseTensor(
+            indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ()),
+        ((),
+         sparse_tensor.SparseTensor(
+             indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+    )
+    for expected in test_cases:
+      classes = sparse.get_classes(expected)
+      shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
+                                  classes)
+      types = nest.map_structure(lambda _: dtypes.int32, classes)
+      actual = sparse.deserialize_sparse_tensors(
+          sparse.serialize_many_sparse_tensors(expected), types, shapes,
+          sparse.get_classes(expected))
+      nest.assert_same_structure(expected, actual)
+      for a, e in zip(nest.flatten(actual), nest.flatten(expected)):
+        self.assertSparseValuesEqual(a, e)
 
 
 if __name__ == "__main__":

@@ -72,7 +72,7 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
         num_units, forget_bias=0, cell_clip=None, use_peephole=False,
-        reuse=reuse)
+        reuse=reuse, name="cudnn_compatible_lstm_cell")
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
 
@@ -303,16 +303,17 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       2 list for weights and biases respectively.
     """
-    weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        params=self._variables,
-        num_params=self._num_params,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
-    return (weights, biases)
+    with ops.device("/gpu:0"):
+      weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          params=self._variables,
+          num_params=self._num_params,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
+      return (weights, biases)
 
   def _CanonicalToOpaqueParams(self, cu_weights, cu_biases):
     """Converts from Cudnn canonical format to opaque params.
@@ -323,15 +324,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       a single opaque tensor.
     """
-    return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        weights=cu_weights,
-        biases=cu_biases,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
+    with ops.device("/gpu:0"):
+      return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          weights=cu_weights,
+          biases=cu_biases,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
 
   def _TransformCanonical(self, cu_weights, cu_biases):
     r"""Transform from Cudnn canonical to tf canonical.

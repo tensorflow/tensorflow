@@ -118,10 +118,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));
 
-  std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
-      argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         argument_buffers, execute_backend_.get(), executor);
+                         execute_backend_.get(), executor);
 }
 
 }  // namespace xla

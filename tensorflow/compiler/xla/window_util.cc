@@ -88,6 +88,11 @@ string ToString(const Window& window) {
       return StrCat(dim.window_dilation());
     });
   }
+  if (HasWindowReversal(window)) {
+    add_field(" rhs_reversal", [](const WindowDimension& dim) {
+      return StrCat(dim.window_reversal() ? 1 : 0);
+    });
+  }
   return str;
 }
 
@@ -135,6 +140,15 @@ bool HasBaseDilation(const Window& window) {
 bool HasWindowDilation(const Window& window) {
   for (const auto& dim : window.dimensions()) {
     if (dim.window_dilation() != 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasWindowReversal(const Window& window) {
+  for (const auto& dim : window.dimensions()) {
+    if (dim.window_reversal()) {
       return true;
     }
   }

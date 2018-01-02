@@ -38,6 +38,7 @@ from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -541,6 +542,23 @@ class SaverTest(test.TestCase):
       save = saver_module.Saver({"v0": v0_2})
       variables.global_variables_initializer().run()
 
+  def testSharedServerOnGPU(self):
+    if not test.is_gpu_available():
+      return
+    save_path = os.path.join(self.get_temp_dir(), "gpu")
+    with session.Session("", graph=ops_lib.Graph()) as sess:
+      with sess.graph.device(test.gpu_device_name()):
+        v0_1 = variables.Variable(123.45)
+      save = saver_module.Saver({"v0": v0_1}, sharded=True, allow_empty=True)
+      variables.global_variables_initializer().run()
+      save.save(sess, save_path)
+
+    with session.Session("", graph=ops_lib.Graph()) as sess:
+      with sess.graph.device(test.gpu_device_name()):
+        v0_2 = variables.Variable(543.21)
+      save = saver_module.Saver({"v0": v0_2}, sharded=True, allow_empty=True)
+      variables.global_variables_initializer().run()
+
   def testVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "variables")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -774,9 +792,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v0 = variables.Variable(111, name="v0")
           t0 = saver_test_utils.CheckpointedOp(name="t0")
-        save = saver_module.Saver({"v0": v0, "t0": t0.saveable},
-                                  write_version=self._WRITE_VERSION,
-                                  sharded=True)
+        save = saver_module.Saver(
+            {
+                "v0": v0,
+                "t0": t0.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t0.insert("k11", 33.0).run()
         self.assertEqual(111, v0.eval())
@@ -794,9 +816,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v1 = variables.Variable(222)
           t1 = saver_test_utils.CheckpointedOp(name="t1")
-        save = saver_module.Saver({"v1": v1, "t1": t1.saveable},
-                                  write_version=self._WRITE_VERSION,
-                                  sharded=True)
+        save = saver_module.Saver(
+            {
+                "v1": v1,
+                "t1": t1.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t1.insert("k22", 44.0).run()
         self.assertEqual(222, v1.eval())
@@ -2128,6 +2154,31 @@ class MetaGraphTest(test.TestCase):
           "new_model/label:0": np.random.randint(
               10, size=[1, 10])
       })
+
+  def testPreserveDatasetAndFunctions(self):
+    with ops_lib.Graph().as_default() as g:
+      dataset = dataset_ops.Dataset.range(10).map(lambda x: x * x)
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+      _ = array_ops.identity(next_element, name="output")
+
+      # Generate three MetaGraphDef protos using different code paths.
+      meta_graph_def_simple = saver_module.export_meta_graph()
+      meta_graph_def_devices_cleared = saver_module.export_meta_graph(
+          clear_devices=True)
+      meta_graph_def_from_graph_def = saver_module.export_meta_graph(
+          clear_devices=True, graph_def=g.as_graph_def())
+
+    for meta_graph_def in [meta_graph_def_simple,
+                           meta_graph_def_devices_cleared,
+                           meta_graph_def_from_graph_def]:
+      with session.Session(graph=ops_lib.Graph()) as sess:
+        saver_module.import_meta_graph(meta_graph_def, import_scope="new_model")
+        sess.run(variables.global_variables_initializer())
+        for i in range(10):
+          self.assertEqual(i * i, sess.run("new_model/output:0"))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run("new_model/output:0")
 
 
 class CheckpointReaderTest(test.TestCase):
