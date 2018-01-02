@@ -838,7 +838,7 @@ class DropoutWrapper(RNNCell):
 
   def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
                state_keep_prob=1.0, variational_recurrent=False,
-               input_size=None, dtype=None, seed=None, training=False,
+               input_size=None, dtype=None, seed=None, training=True,
                dropout_state_filter_visitor=None):
     """Create a cell with added input, state, and/or output dropout.
 
