@@ -508,6 +508,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     };
 
     HloCostAnalysis cost_analysis(shape_size_bytes);
+    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     hlo_profile_printer =
         CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
   }
