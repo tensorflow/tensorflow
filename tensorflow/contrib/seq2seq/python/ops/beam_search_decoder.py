@@ -544,8 +544,14 @@ class BeamSearchDecoder(decoder.Decoder):
       A `TensorArray` where beams are sorted in each `Tensor` or `t` itself if it
       is not a `TensorArray` or does not meet shape requirements.
     """
-    if (not isinstance(t, tensor_array_ops.TensorArray)
-        or not t._infer_shape or not t._element_shape):  # pylint: disable=protected-access
+    if not isinstance(t, tensor_array_ops.TensorArray):
+      return t
+    if (not t._infer_shape or not t._element_shape
+        or t._element_shape[0].ndims is None or t._element_shape[0].ndims < 1):  # pylint: disable=protected-access
+      tf.logging.warn("The cell state contains a TensorArray that is not "
+                      "amenable to sorting based on the beam search result. "
+                      "For a TensorArray to be sorted, its elements shape "
+                      "must be defined and have at least a rank of 1.")
       return t
     shape = t._element_shape[0]  # pylint: disable=protected-access
     batch_size = tensor_util.constant_value(self._batch_size)
