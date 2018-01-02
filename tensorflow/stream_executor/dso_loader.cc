@@ -97,7 +97,7 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "cupti", GetCudaVersion()),
+                                      "cupti", ""),
                                   GetCudaCuptiLibraryPath()),
                       dso_handle);
 }
