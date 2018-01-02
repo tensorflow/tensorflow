@@ -70,8 +70,8 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() const {
-  return static_cast<LLVMCompiler*>(backend_->compiler());
+LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() {
+  return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
 Status LLVMIRGenTestBase::IrHook(const llvm::Module& module) {

@@ -59,9 +59,9 @@ class FixedLengthRecordReader : public ReaderBase {
           encoding_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
                               : io::ZlibCompressionOptions::GZIP();
       file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
-      buffered_inputstream_.reset(
-          new io::ZlibInputStream(file_stream_.get(), (size_t)kBufferSize,
-                                  (size_t)kBufferSize, zlib_options));
+      buffered_inputstream_.reset(new io::ZlibInputStream(
+          file_stream_.get(), static_cast<size_t>(kBufferSize),
+          static_cast<size_t>(kBufferSize), zlib_options));
     } else {
       buffered_inputstream_.reset(
           new io::BufferedInputStream(file_.get(), kBufferSize));

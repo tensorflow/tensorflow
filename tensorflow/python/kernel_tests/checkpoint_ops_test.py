@@ -87,6 +87,21 @@ class GenerateVocabRemappingTest(test.TestCase):
       self.assertAllEqual(expected_remapping, remapping.eval())
       self.assertAllEqual(expected_num_present, num_present.eval())
 
+  def test_generate_remapping_with_old_vocab_size(self):
+    """Tests where old_vocab_size is specified."""
+    remapping, num_present = gen_checkpoint_ops._generate_vocab_remapping(
+        new_vocab_file=self.new_vocab_file,
+        old_vocab_file=self.old_vocab_file,
+        num_new_vocab=3,
+        new_vocab_offset=0,
+        # Old vocabulary becomes ['knitting', 'eminem'].
+        old_vocab_size=2)
+    expected_remapping = [-1, 0, 1]
+    expected_num_present = 2
+    with self.test_session():
+      self.assertAllEqual(expected_remapping, remapping.eval())
+      self.assertAllEqual(expected_num_present, num_present.eval())
+
 
 class LoadAndRemapMatrixTest(test.TestCase):
   """Tests for the load_and_remap_matrix() op."""

@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import sqlite3
 
-from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import readers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
@@ -31,9 +31,8 @@ from tensorflow.python.platform import test
 class SqlDatasetTest(test.TestCase):
 
   def _createSqlDataset(self, output_types, num_repeats=1):
-    dataset = dataset_ops.SqlDataset(self.driver_name, self.data_source_name,
-                                     self.query,
-                                     output_types).repeat(num_repeats)
+    dataset = readers.SqlDataset(self.driver_name, self.data_source_name,
+                                 self.query, output_types).repeat(num_repeats)
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()

@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -834,6 +835,58 @@ class ReluTest(test_lib.TestCase):
         self.assertTrue(np.isnan(z).all())
 
 
+class LeakyReluTest(test_lib.TestCase):
+
+  def testRange(self):
+    batch_size = 3
+    height, width = 4, 4
+    np.random.seed(1)  # Make it reproducible.
+    inputs = np.random.uniform(
+        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = constant_op.constant(inputs)
+
+    outputs = nn_ops.leaky_relu(inputs)
+    self.assertEquals(inputs.shape, outputs.shape)
+    with self.test_session() as sess:
+      inputs, outputs = sess.run([inputs, outputs])
+    self.assertGreaterEqual(outputs.min(), 0.0)
+    self.assertLessEqual(outputs.max(), 1.0)
+    self.assertAllClose(inputs, outputs)
+
+  def testValues(self):
+    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
+    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+    with self.test_session() as sess:
+      outputs = sess.run(outputs)
+    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+
+
+class SwishTest(test_lib.TestCase):
+
+  def testValues(self):
+    np_values = np.array(
+        [np.linspace(-10.0, 0.0, 100),
+         np.linspace(0.0, 10.0, 100)],
+        dtype=np.float32)
+    tf_values = constant_op.constant(np_values)
+    actual_tf_outputs = nn_impl.swish(tf_values)
+    expected_tf_outputs = tf_values * math_ops.sigmoid(tf_values)
+    with self.test_session() as sess:
+      actual_outputs, expected_outputs = sess.run(
+          [actual_tf_outputs, expected_tf_outputs])
+    self.assertAllClose(actual_outputs, expected_outputs)
+
+  def testGradients(self):
+    shape = [5, 3, 4]
+    sigma = 5
+    input_values = np.random.randn(*shape) * sigma
+    x_tf = constant_op.constant(input_values)
+    y_tf = nn_impl.swish(x_tf)
+    with self.test_session():
+      err = gradient_checker.compute_gradient_error(x_tf, shape, y_tf, shape)
+    self.assertLess(err, 1e-4)
+
+
 class MomentsTest(test_lib.TestCase):
 
   def doOutputTest(self, input_shape, moments_axes, tol=1e-4,
@@ -898,6 +951,65 @@ class MomentsTest(test_lib.TestCase):
 
   def testOutput4DInput123(self):
     self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
+
+
+class DataFormatDimMapTest(test_lib.TestCase):
+
+  def _test(self, x_val, y_val_expected):
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def test(self):
+    self._test(0, 0)
+    self._test(1, 2)
+    self._test(2, 3)
+    self._test(3, 1)
+    self._test(-1, 1)
+    self._test(-2, 3)
+    self._test(-3, 2)
+    self._test(-4, 0)
+    self._test([1, 3], [2, 1])
+    self._test([1, 3, -2], [2, 1, 3])
+    self._test([1, -3, -2], [2, 2, 3])
+    self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
+
+
+class DataFormatVectorPermuteTest(test_lib.TestCase):
+
+  def testNHWCToNCHW(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 3, 4, 9])
+
+  def testNCHWToNHWC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNHWCToNCHW2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
+
+  def testNCHWToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
 
 if __name__ == "__main__":

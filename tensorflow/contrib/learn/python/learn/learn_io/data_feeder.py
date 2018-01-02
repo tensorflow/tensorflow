@@ -28,13 +28,13 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 # pylint: disable=g-multiple-import,g-bad-import-order
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
 from .dask_io import HAS_DASK, extract_dask_data, extract_dask_labels
-
 # pylint: enable=g-multiple-import,g-bad-import-order
 
 
@@ -365,8 +365,14 @@ class DataFeeder(object):
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
 
-    num_samples = list(self._x.values())[0].shape[
-        0] if x_is_dict else self._x.shape[0]
+    if x_is_dict:
+      num_samples = list(self._x.values())[0].shape[0]
+    elif tensor_util.is_tensor(self._x):
+      num_samples = self._x.shape[
+          0].value  # shape will be a Dimension, extract an int
+    else:
+      num_samples = self._x.shape[0]
+
     if self._shuffle:
       self.indices = self.random_state.permutation(num_samples)
     else:
@@ -851,8 +857,8 @@ class DaskDataFeeder(object):
     """Returns a function, that will sample data and provide it to placeholders.
 
     Args:
-      input_placeholder: tf.Placeholder for input features mini batch.
-      output_placeholder: tf.Placeholder for output labels.
+      input_placeholder: tf.placeholder for input features mini batch.
+      output_placeholder: tf.placeholder for output labels.
 
     Returns:
       A function that when called samples a random subset of batch size

@@ -83,6 +83,10 @@ class InstructionFusion : public HloPassInterface {
     return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
   }
 
+  bool is_expensive(const HloInstruction& instruction) {
+    return is_expensive_(instruction);
+  }
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
   HloModule* module_;

@@ -240,8 +240,12 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                       ProtoShortDebugString(v),
                       " that can't be converted to a Tensor");
                 })
-
+DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
+
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
+  return node_def.attr().find(attr_name.ToString()) != node_def.attr().end();
+}
 
 static const string& kEmptyString = *new string();
 
@@ -283,17 +287,6 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
-  return Status::OK();
-}
-
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   std::vector<NameAttrList>* value) {
-  const AttrValue* attr_value;
-  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
-  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
-  for (const auto& v : attr_value->list().func()) {
-    value->emplace_back(v);
-  }
   return Status::OK();
 }
 

@@ -1526,7 +1526,7 @@ class BaseLinearClassifierPredictTest(object):
     if self._model_dir:
       shutil.rmtree(self._model_dir)
 
-  def _testPredications(self, n_classes, label_vocabulary, label_output_fn):
+  def _testPredictions(self, n_classes, label_vocabulary, label_output_fn):
     """Tests predict when all variables are one-dimensional."""
     age = 1.
 
@@ -1594,13 +1594,13 @@ class BaseLinearClassifierPredictTest(object):
 
   def testBinaryClassesWithoutLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(n_classes,
-                           label_vocabulary=None,
-                           label_output_fn=lambda x: ('%s' % x).encode())
+    self._testPredictions(n_classes,
+                          label_vocabulary=None,
+                          label_output_fn=lambda x: ('%s' % x).encode())
 
   def testBinaryClassesWithLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],
@@ -1608,14 +1608,14 @@ class BaseLinearClassifierPredictTest(object):
 
   def testMultiClassesWithoutLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=None,
         label_output_fn=lambda x: ('%s' % x).encode())
 
   def testMultiClassesWithLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],

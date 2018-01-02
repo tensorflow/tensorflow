@@ -44,7 +44,15 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
   Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def());
+                                              request->server_def(),
+                                              request->isolate_session_state());
+  done(s);
+}
+
+void Worker::DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+                                      DeleteWorkerSessionResponse* response,
+                                      StatusCallback done) {
+  Status s = env_->session_mgr->DeleteSession(request->session_handle());
   done(s);
 }
 
@@ -55,7 +63,8 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      request->debug_options(), response->mutable_graph_handle());
+      request->debug_options(), session->cluster_flr.get(),
+      response->mutable_graph_handle());
   done(s);
 }
 
@@ -100,6 +109,12 @@ Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
 void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
                            MutableRunGraphResponseWrapper* response,
                            StatusCallback done) {
+  if (request->store_errors_in_response_body()) {
+    done = [response, done](const Status& status) {
+      response->set_status(status);
+      done(Status::OK());
+    };
+  }
   if (request->is_partial()) {
     DoPartialRunGraph(opts, request, response, std::move(done));
   } else {
@@ -131,7 +146,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   StepStatsCollector* collector = nullptr;
-  if (request->exec_opts().record_timeline() ||
+  if (request->exec_opts().report_tensor_allocations_upon_oom() ||
+      request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
     // TODO(mrry,pbar): GPU tracing for distributed steps.
@@ -178,6 +194,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+        if (collector) collector->Finalize();
         delete collector;
         delete out;
         done(s);

@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LIVENESS_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LIVENESS_UTIL_H_
 
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -29,21 +30,34 @@ namespace xla {
 // 'operand'. Returns false otherwise.
 //
 // REQUIRES: 'operand' is an operand of 'user'.
+//
+// TODO(b/65835246): Remove TuplePointsToAnalysis overload when all users have
+// moved over to the dataflow overload.
 bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                              const ShapeIndex& index,
                              const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis);
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user,
+                             const HloDataflowAnalysis& dataflow);
 
 // Returns true if 'user' (at 'user_index') can share a buffer with its operand
-// 'operand' (at 'operand_index'). Returns false otherwise. Optionally takes a
-// points-to analysis argument. Without the analysis, the result is more
-// conservative (returns false more often).
+// 'operand' (at 'operand_index'). Returns false otherwise.
 //
 // REQUIRES: 'operand' is an operand of 'user'.
+//
+// TODO(b/65835246): Remove TuplePointsToAnalysis overload when all users have
+// moved over to the dataflow overload.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
-    const TuplePointsToAnalysis* points_to_analysis = nullptr);
+    const TuplePointsToAnalysis& points_to_analysis);
+bool CanShareOperandBufferWithUser(HloInstruction* operand,
+                                   const ShapeIndex& operand_index,
+                                   HloInstruction* user,
+                                   const ShapeIndex& user_index,
+                                   const HloDataflowAnalysis& dataflow);
 
 }  // namespace xla
 

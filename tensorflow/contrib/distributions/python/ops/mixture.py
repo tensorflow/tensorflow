@@ -49,13 +49,13 @@ class Mixture(distribution.Distribution):
 
   ```python
   # Create a mixture of two Gaussians:
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
   mix = 0.3
-  bimix_gauss = ds.Mixture(
-    cat=ds.Categorical(probs=[mix, 1.-mix]),
+  bimix_gauss = tfd.Mixture(
+    cat=tfd.Categorical(probs=[mix, 1.-mix]),
     components=[
-      ds.Normal(loc=-1., scale=0.1),
-      ds.Normal(loc=+1., scale=0.5),
+      tfd.Normal(loc=-1., scale=0.1),
+      tfd.Normal(loc=+1., scale=0.5),
   ])
 
   # Plot the PDF.
@@ -290,9 +290,6 @@ class Mixture(distribution.Distribution):
       concatted_log_cdfs = array_ops.stack(final_log_cdfs, axis=0)
       mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
       return mixture_log_cdf
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _sample_n(self, n, seed=None):
     with ops.control_dependencies(self._assertions):

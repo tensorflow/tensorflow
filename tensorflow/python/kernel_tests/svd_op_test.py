@@ -22,9 +22,18 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+
+
+def _AddTest(test_class, op_name, testcase_name, fn):
+  test_name = "_".join(["test", op_name, testcase_name])
+  if hasattr(test_class, test_name):
+    raise RuntimeError("Test %s defined more than once" % test_name)
+  setattr(test_class, test_name, fn)
 
 
 class SvdOpTest(test.TestCase):
@@ -40,20 +49,43 @@ class SvdOpTest(test.TestCase):
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.svd(vector)
 
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for compute_uv_ in True, False:
+        for full_matrices_ in True, False:
+          matrix1 = random_ops.random_normal([5, 5], seed=42)
+          matrix2 = random_ops.random_normal([5, 5], seed=42)
+          if compute_uv_:
+            s1, u1, v1 = linalg_ops.svd(
+                matrix1, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            s2, u2, v2 = linalg_ops.svd(
+                matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            all_ops += [s1, u1, v1, s2, u2, v2]
+          else:
+            s1 = linalg_ops.svd(
+                matrix1, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            s2 = linalg_ops.svd(
+                matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            all_ops += [s1, s2]
+      val = sess.run(all_ops)
+      for i in range(2):
+        s = 6 * i
+        self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
+        self.assertAllEqual(val[s + 1], val[s + 4])  # u1 == u2
+        self.assertAllEqual(val[s + 2], val[s + 5])  # v1 == v2
+      for i in range(2):
+        s = 12 + 2 * i
+        self.assertAllEqual(val[s], val[s + 1])  # s1 == s2
 
-def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
 
-  is_complex = dtype_ in (np.complex64, np.complex128)
-  is_single = dtype_ in (np.float32, np.complex64)
-  
-  # The gpu version returns results that are much less precise
-  precision_factor = 100 if use_gpu_ else 1
-  tol = precision_factor * (1e-4 if is_single else 1e-12)
+def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
+                  full_matrices_):
 
-  def CompareSingularValues(self, x, y):
+  def CompareSingularValues(self, x, y, tol):
     self.assertAllClose(x, y, atol=(x[0] + y[0]) * tol)
 
-  def CompareSingularVectors(self, x, y, rank):
+  def CompareSingularVectors(self, x, y, rank, tol):
     # We only compare the first 'rank' singular vectors since the
     # remainder form an arbitrary orthonormal basis for the
     # (row- or column-) null space, whose exact value depends on
@@ -68,15 +100,15 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
     sum_of_ratios = np.sum(np.divide(y, x), -2, keepdims=True)
     phases = np.divide(sum_of_ratios, np.abs(sum_of_ratios))
     x *= phases
-    self.assertAllClose(x, y, atol=tol)
+    self.assertAllClose(x, y, atol=2 * tol)
 
-  def CheckApproximation(self, a, u, s, v, full_matrices):
+  def CheckApproximation(self, a, u, s, v, full_matrices_, tol):
     # Tests that a ~= u*diag(s)*transpose(v).
     batch_shape = a.shape[:-2]
     m = a.shape[-2]
     n = a.shape[-1]
     diag_s = math_ops.cast(array_ops.matrix_diag(s), dtype=dtype_)
-    if full_matrices:
+    if full_matrices_:
       if m > n:
         zeros = array_ops.zeros(batch_shape + (m - n, n), dtype=dtype_)
         diag_s = array_ops.concat([diag_s, zeros], a.ndim - 2)
@@ -87,14 +119,20 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
     a_recon = math_ops.matmul(a_recon, v, adjoint_b=True)
     self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
 
-  def CheckUnitary(self, x):
+  def CheckUnitary(self, x, tol):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
 
   def Test(self):
-    np.random.seed(1)
+    is_complex = dtype_ in (np.complex64, np.complex128)
+    is_single = dtype_ in (np.float32, np.complex64)
+    tol = 3e-4 if is_single else 1e-12
+    if test.is_gpu_available():
+      # The gpu version returns results that are much less accurate.
+      tol *= 100
+    np.random.seed(42)
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(dtype_)
     if is_complex:
@@ -102,68 +140,151 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    for compute_uv in False, True:
-      for full_matrices in False, True:
-        with self.test_session(use_gpu = use_gpu_) as sess:
-          if use_static_shape_:
-            x_tf = constant_op.constant(x_np)
-          else:
-            x_tf = array_ops.placeholder(dtype_)
+    with self.test_session(use_gpu=True) as sess:
+      if use_static_shape_:
+        x_tf = constant_op.constant(x_np)
+      else:
+        x_tf = array_ops.placeholder(dtype_)
 
-          if compute_uv:
-            s_tf, u_tf, v_tf = linalg_ops.svd(x_tf,
-                                              compute_uv=compute_uv,
-                                              full_matrices=full_matrices)
-            if use_static_shape_:
-              s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
-            else:
-              s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf],
-                                                      feed_dict={x_tf: x_np})
-          else:
-            s_tf = linalg_ops.svd(x_tf,
-                                  compute_uv=compute_uv,
-                                  full_matrices=full_matrices)
-            if use_static_shape_:
-              s_tf_val = sess.run(s_tf)
-            else:
-              s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
+      if compute_uv_:
+        s_tf, u_tf, v_tf = linalg_ops.svd(
+            x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
+        if use_static_shape_:
+          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+        else:
+          s_tf_val, u_tf_val, v_tf_val = sess.run(
+              [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
+      else:
+        s_tf = linalg_ops.svd(
+            x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
+        if use_static_shape_:
+          s_tf_val = sess.run(s_tf)
+        else:
+          s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
-          if compute_uv:
-            u_np, s_np, v_np = np.linalg.svd(x_np,
-                                             compute_uv=compute_uv,
-                                             full_matrices=full_matrices)
-          else:
-            s_np = np.linalg.svd(x_np,
-                                 compute_uv=compute_uv,
-                                 full_matrices=full_matrices)
-          # We explicitly avoid the situation where numpy eliminates a first
-          # dimension that is equal to one
-          s_np = np.reshape(s_np, s_tf_val.shape)
+      if compute_uv_:
+        u_np, s_np, v_np = np.linalg.svd(
+            x_np, compute_uv=compute_uv_, full_matrices=full_matrices_)
+      else:
+        s_np = np.linalg.svd(
+            x_np, compute_uv=compute_uv_, full_matrices=full_matrices_)
+      # We explicitly avoid the situation where numpy eliminates a first
+      # dimension that is equal to one.
+      s_np = np.reshape(s_np, s_tf_val.shape)
 
-          CompareSingularValues(self, s_np, s_tf_val)
-          if compute_uv:
-            CompareSingularVectors(self, u_np, u_tf_val, min(shape_[-2:]))
-            CompareSingularVectors(self,
-                                   np.conj(np.swapaxes(v_np, -2, -1)), v_tf_val,
-                                   min(shape_[-2:]))
-            CheckApproximation(self, x_np, u_tf_val, s_tf_val, v_tf_val,
-                               full_matrices)
-            CheckUnitary(self, u_tf_val)
-            CheckUnitary(self, v_tf_val)
+      CompareSingularValues(self, s_np, s_tf_val, tol)
+      if compute_uv_:
+        CompareSingularVectors(self, u_np, u_tf_val, min(shape_[-2:]), tol)
+        CompareSingularVectors(self,
+                               np.conj(np.swapaxes(v_np, -2, -1)), v_tf_val,
+                               min(shape_[-2:]), tol)
+        CheckApproximation(self, x_np, u_tf_val, s_tf_val, v_tf_val,
+                           full_matrices_, tol)
+        CheckUnitary(self, u_tf_val, tol)
+        CheckUnitary(self, v_tf_val, tol)
+
+  return Test
+
+
+class SvdGradOpTest(test.TestCase):
+  pass  # Filled in below
+
+
+def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
+
+  def _NormalizingSvd(tf_a):
+    tf_s, tf_u, tf_v = linalg_ops.svd(
+        tf_a, compute_uv=True, full_matrices=full_matrices_)
+    # Singular vectors are only unique up to an arbitrary phase. We normalize
+    # the vectors such that the first component of u (if m >=n) or v (if n > m)
+    # have phase 0.
+    m = tf_a.shape[-2]
+    n = tf_a.shape[-1]
+    if m >= n:
+      top_rows = tf_u[..., 0:1, :]
+    else:
+      top_rows = tf_v[..., 0:1, :]
+    if tf_u.dtype.is_complex:
+      angle = -math_ops.angle(top_rows)
+      phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+    else:
+      phase = math_ops.sign(top_rows)
+    tf_u *= phase[..., :m]
+    tf_v *= phase[..., :n]
+    return tf_s, tf_u, tf_v
+
+  def Test(self):
+    np.random.seed(42)
+    a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    if dtype_ in [np.complex64, np.complex128]:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    # See Equation (21) in:
+    # http://www.karenkopecky.net/Teaching/eco613614/Notes_NumericalDifferentiation.pdf
+    # TODO(rmlarsen): Move step size control to gradient checker.
+    epsilon = np.finfo(dtype_).eps
+    delta = 0.1 * epsilon**(1.0 / 3.0)
+    if dtype_ in [np.float32, np.complex64]:
+      tol = 3e-2
+    else:
+      tol = 1e-6
+    with self.test_session(use_gpu=True):
+      tf_a = constant_op.constant(a)
+      if compute_uv_:
+        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a)
+        outputs = [tf_s, tf_u, tf_v]
+      else:
+        tf_s = linalg_ops.svd(tf_a, compute_uv=False)
+        outputs = [tf_s]
+      for b in outputs:
+        x_init = np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        if dtype_ in [np.complex64, np.complex128]:
+          x_init += 1j * np.random.uniform(
+              low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        theoretical, numerical = gradient_checker.compute_gradient(
+            tf_a,
+            tf_a.get_shape().as_list(),
+            b,
+            b.get_shape().as_list(),
+            x_init_value=x_init,
+            delta=delta)
+        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
 
 if __name__ == "__main__":
-  for use_gpu in False, True:
-    for dtype in np.float32, np.float64, np.complex64, np.complex128:
-      for rows in 1, 2, 5, 10, 32, 100:
-        for cols in 1, 2, 5, 10, 32, 100:
-          for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
-            shape = batch_dims + (rows, cols)
-            for use_static_shape in True, False:
-              name = "%s_%s_%s_%s" % (dtype.__name__, "_".join(map(str, shape)),
-                                   use_static_shape, use_gpu)
-              setattr(SvdOpTest, "testSvd_" + name,
-                      _GetSvdOpTest(dtype, shape, use_static_shape, use_gpu))
+  for compute_uv in False, True:
+    for full_matrices in False, True:
+      for dtype in np.float32, np.float64, np.complex64, np.complex128:
+        for rows in 1, 2, 5, 10, 32, 100:
+          for cols in 1, 2, 5, 10, 32, 100:
+            for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
+              shape = batch_dims + (rows, cols)
+              for use_static_shape in True, False:
+                name = "%s_%s_static_shape_%s__compute_uv_%s_full_%s" % (
+                    dtype.__name__, "_".join(map(str, shape)), use_static_shape,
+                    compute_uv, full_matrices)
+                _AddTest(SvdOpTest, "Svd", name,
+                         _GetSvdOpTest(dtype, shape, use_static_shape,
+                                       compute_uv, full_matrices))
+  for compute_uv in False, True:
+    for full_matrices in False, True:
+      dtypes = ([np.float32, np.float64]
+                + [np.complex64, np.complex128] * (not compute_uv))
+      for dtype in dtypes:
+        mat_shapes = [(10, 11), (11, 10), (11, 11)]
+        if not full_matrices or not compute_uv:
+          mat_shapes += [(5, 11), (11, 5)]
+        for mat_shape in mat_shapes:
+          for batch_dims in [(), (3,)]:
+            shape = batch_dims + mat_shape
+            name = "%s_%s_compute_uv_%s_full_%s" % (
+                dtype.__name__, "_".join(map(str, shape)), compute_uv,
+                full_matrices)
+            _AddTest(SvdGradOpTest, "SvdGrad", name,
+                     _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
+
   test.main()

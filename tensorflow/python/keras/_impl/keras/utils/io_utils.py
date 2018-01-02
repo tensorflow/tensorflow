@@ -63,11 +63,11 @@ class HDF5Matrix(object):
                         'HDF5 and h5py installed.')
 
     if datapath not in list(self.refs.keys()):
-      f = h5py.File(datapath)
-      self.refs[datapath] = f
+      self._f = h5py.File(datapath)
+      self.refs[datapath] = self._f
     else:
-      f = self.refs[datapath]
-    self.data = f[dataset]
+      self._f = self.refs[datapath]
+    self.data = self._f[dataset]
     self.start = start
     if end is None:
       self.end = self.data.shape[0]
@@ -78,13 +78,16 @@ class HDF5Matrix(object):
   def __len__(self):
     return self.end - self.start
 
+  def __del__(self):
+    self._f.close()
+
   def __getitem__(self, key):
     if isinstance(key, slice):
       start, stop = key.start, key.stop
       if start is None:
         start = 0
       if stop is None:
-        stop = self.data.shape[0]
+        stop = self.shape[0]
       if stop + self.start <= self.end:
         idx = slice(start + self.start, stop + self.start)
       else:

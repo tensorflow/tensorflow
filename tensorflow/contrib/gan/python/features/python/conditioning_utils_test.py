@@ -45,7 +45,7 @@ class ConditioningUtilsTest(test.TestCase):
           array_ops.placeholder(dtypes.float32, (5, None)),
           array_ops.placeholder(dtypes.float32, (5, 1)))
 
-    with self.assertRaisesRegexp(ValueError, 'must have a least 2 dimensions.'):
+    with self.assertRaisesRegexp(ValueError, 'expected min_ndim=2'):
       conditioning_utils.condition_tensor(
           array_ops.placeholder(dtypes.float32, (5, 2)),
           array_ops.placeholder(dtypes.float32, (5)))

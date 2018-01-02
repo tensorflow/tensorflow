@@ -36,7 +36,7 @@ bazel-bin/tensorflow/core/profiler/profiler \
 tfprof> op -select micros,bytes,occurrence -order_by micros
 
 # To be open sourced...
-bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
+bazel-bin/tensorflow/python/profiler/profiler_ui \
     --profile_path=/tmp/profiles/profile_1
 ```
 ![ProfilerUI](g3doc/profiler_ui.jpg)
@@ -48,7 +48,7 @@ bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
 # Create options to profile the time and memory information.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
-# Create a profiling context, set contructor argument `trace_steps`, 
+# Create a profiling context, set constructor argument `trace_steps`,
 # `dump_steps` to empty for explicit control.
 with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
                                       trace_steps=[],

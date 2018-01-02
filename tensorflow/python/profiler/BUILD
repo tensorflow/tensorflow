@@ -53,10 +53,14 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "oss_serial",
+    ],
 )
 
 cuda_py_test(
@@ -82,6 +86,7 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:flops_registry",
         "@six_archive//:six",
     ],
 )

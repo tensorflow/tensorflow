@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -56,7 +56,7 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
         VLOG(3) << "The cached generated value is reused.";
         return generated_value;
       }
-      VLOG(3) << "The cached generated value can't be reuse, because it is at "
+      VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
               << llvm_ir::AsString(generated_value_bb->getName())
               << ") from the current insertion block ("
@@ -72,10 +72,10 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
-                                      const Literal& literal) {
+Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+  const Literal& literal = constant->literal();
   llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, ir_builder_);
+      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
   llvm::GlobalVariable* global = new llvm::GlobalVariable(
       *ir_builder_->GetInsertBlock()->getModule(), initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
@@ -88,9 +88,10 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                             HloInstruction* operand) {
+Status FusedIrEmitter::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   // Lookup ir value for 'operand'.
+  auto operand = get_tuple_element->operand(0);
   auto it = gte_values_.find(operand);
   if (it == gte_values_.end()) {
     return Unimplemented(
@@ -101,7 +102,7 @@ Status FusedIrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
   // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
   llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(
       get_tuple_element->shape(), get_tuple_element->tuple_index(),
-      /*alignment=*/1, it->second, ir_builder_);
+      /*alignment=*/1, it->second, ir_builder_, module_);
   gte_values_.insert(std::make_pair(get_tuple_element, tuple_element_ptr));
   // Emit code to read base tuple element array (if non-tuple shaped).
   if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
@@ -128,13 +129,12 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
+  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
     operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
-        operand->shape().element_type(), ir_builder_));
+        operand->shape().element_type(), module_));
   }
   generators_[tuple] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {

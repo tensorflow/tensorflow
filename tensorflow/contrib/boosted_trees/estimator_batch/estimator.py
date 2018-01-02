@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.boosted_trees.estimator_batch import model
+from tensorflow.contrib.boosted_trees.python.utils import losses
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.python.ops import math_ops
 
 
 class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
@@ -65,10 +67,21 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
     Raises:
       ValueError: If learner_config is not valid.
     """
+    if n_classes > 2:
+      # For multi-class classification, use our loss implementation that
+      # supports second order derivative.
+      def loss_fn(labels, logits, weights=None):
+        result = losses.per_example_maxent_loss(
+            labels=labels, logits=logits, weights=weights,
+            num_classes=n_classes)
+        return math_ops.reduce_mean(result[0])
+    else:
+      loss_fn = None
     head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
-        enable_centered_bias=False)
+        enable_centered_bias=False,
+        loss_fn=loss_fn)
     if learner_config.num_classes == 0:
       learner_config.num_classes = n_classes
     elif learner_config.num_classes != n_classes:

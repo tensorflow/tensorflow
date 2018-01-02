@@ -69,11 +69,15 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s);
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name = "neg");
 
 TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
 
-// Split `input` along the first dimention into 3 tensors
+TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
+                            TF_Graph* graph, TF_Status* s);
+
+// Split `input` along the first dimension into 3 tensors
 TF_Operation* Split3(TF_Operation* input, TF_Graph* graph, TF_Status* s,
                      const char* name = "split3");
 
@@ -93,6 +97,14 @@ bool GetFunctionDef(TF_Function* func, tensorflow::FunctionDef* func_def);
 
 bool GetAttrValue(TF_Operation* oper, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s);
+
+// Returns a sorted vector of std::pair<function_name, gradient_func> from
+// graph_def.library().gradient()
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def);
+
+// Returns a sorted vector of names contained in `grad_def`
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:

@@ -22,8 +22,8 @@ import numpy as np
 
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
-from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import core as tf_core_layers
+from tensorflow.python.layers import network as tf_network_layers
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
@@ -93,7 +93,7 @@ class KerasIntegrationTest(test.TestCase):
       y_test = keras.utils.to_categorical(y_test)
 
       model = keras.models.Sequential()
-      model.add(keras.layers.LSTM(3, return_sequences=True,
+      model.add(keras.layers.LSTM(5, return_sequences=True,
                                   input_shape=x_train.shape[1:]))
       model.add(keras.layers.GRU(y_train.shape[-1], activation='softmax'))
       model.compile(loss='categorical_crossentropy',
@@ -192,10 +192,12 @@ class KerasIntegrationTest(test.TestCase):
       model.compile(loss='categorical_crossentropy',
                     optimizer='rmsprop',
                     metrics=['accuracy'])
+      self.assertEqual(len(model.losses), 2)
+      self.assertEqual(len(model.updates), 2)
       history = model.fit(x_train, y_train, epochs=10, batch_size=16,
                           validation_data=(x_test, y_test),
                           verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.85)
+      self.assertGreater(history.history['val_acc'][-1], 0.84)
 
   def test_vector_classification_shared_model(self):
     # Test that functional models that feature internal updates
@@ -273,7 +275,7 @@ class KerasIntegrationTest(test.TestCase):
       y_train = keras.utils.to_categorical(y_train)
       y_test = keras.utils.to_categorical(y_test)
 
-      inputs = tf_base_layers.Input(shape=(10,))
+      inputs = tf_network_layers.Input(shape=(10,))
       x = tf_core_layers.Dense(32, activation=nn.relu)(inputs)
       outputs = tf_core_layers.Dense(2, activation=nn.softmax)(x)
       model = keras.models.Model(inputs, outputs)

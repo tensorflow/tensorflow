@@ -63,7 +63,6 @@ public final class OperationBuilder {
     }
   }
 
-
   /**
    * Returns the builder to create an operation.
    *
@@ -73,7 +72,7 @@ public final class OperationBuilder {
    * @param input {@link Output} supposed to be the input of the OperationBuilder.
    * @return the OperationBuilder instance for chaining.
    */
-  public OperationBuilder addInput(Output input) {
+  public OperationBuilder addInput(Output<?> input) {
     Graph.Reference r = graph.ref();
     try {
       addInput(unsafeNativeHandle, input.op().getUnsafeNativeHandle(), input.index());
@@ -106,7 +105,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder addInputList(Output[] inputs) {
+  public OperationBuilder addInputList(Output<?>[] inputs) {
     Graph.Reference r = graph.ref();
     try {
       long[] opHandles = new long[inputs.length];
@@ -231,7 +230,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor value) {
+  public OperationBuilder setAttr(String name, Tensor<?> value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
@@ -241,10 +240,10 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor[] value) {
+  public OperationBuilder setAttr(String name, Tensor<?>[] value) {
     long[] handles = new long[value.length];
     int idx = 0;
-    for (Tensor t : value) {
+    for (Tensor<?> t : value) {
       handles[idx++] = t.getNativeHandle();
     }
     Graph.Reference r = graph.ref();
@@ -266,7 +265,37 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name,  String[] value) {
+  public OperationBuilder setAttr(String name, Shape[] value) {
+    int[] numDimensions = new int[value.length];
+    int totalNumDimensions = 0;
+    for (int idx = 0; idx < value.length; ++idx) {
+      int n = value[idx].numDimensions();
+      numDimensions[idx] = n;
+      if (n > 0) {
+        totalNumDimensions += n;
+      }
+    }
+    // Flatten the shapes into a single array to avoid too much overhead in the
+    // native part
+    long[] shapes = new long[totalNumDimensions];
+    int shapeIdx = 0;
+    for (Shape shape : value) {
+      if (shape.numDimensions() > 0) {
+        for (long dim : shape.asArray()) {
+          shapes[shapeIdx++] = dim;
+        }
+      }
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrShapeList(unsafeNativeHandle, name, shapes, numDimensions);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
+  public OperationBuilder setAttr(String name, String[] value) {
     Charset utf8 = Charset.forName("UTF-8");
     Object[] objects = new Object[value.length];
     for (int i = 0; i < value.length; ++i) {
@@ -298,8 +327,6 @@ public final class OperationBuilder {
 
   // The names of all the setAttr* family functions below correspond to the C library types, not the
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
-  // TODO(ashankar):
-  // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
 
@@ -325,6 +352,8 @@ public final class OperationBuilder {
 
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
 
-  private static native void setAttrStringList(long handle, String name, Object[] value);
+  private static native void setAttrShapeList(
+      long handle, String name, long[] shapes, int[] numDims);
 
+  private static native void setAttrStringList(long handle, String name, Object[] value);
 }

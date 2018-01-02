@@ -29,6 +29,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import datasets
+from tensorflow.python.keras import estimator
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import losses
@@ -41,6 +42,8 @@ from tensorflow.python.keras import utils
 from tensorflow.python.keras import wrappers
 from tensorflow.python.keras._impl.keras import __version__
 from tensorflow.python.keras.layers import Input
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.models import Sequential
 
 del absolute_import
 del division

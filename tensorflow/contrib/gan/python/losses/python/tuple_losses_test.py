@@ -79,6 +79,21 @@ class ArgsToGanModelTest(test.TestCase):
     # If `arg3` were not set properly, this value would be different.
     self.assertEqual(-1 + 2 * 2 + 3 * 4, loss)
 
+  def test_works_with_child_classes(self):
+    """`args_to_gan_model` should work with classes derived from namedtuple."""
+    tuple_type = collections.namedtuple('fake_type', ['arg1', 'arg2'])
+
+    class InheritedType(tuple_type):
+      pass
+    def args_loss(arg1, arg2, arg3=3):
+      return arg1 + 2 * arg2 + 3 * arg3
+
+    loss_fn = tfgan_losses._args_to_gan_model(args_loss)
+    loss = loss_fn(InheritedType(arg1=-1, arg2=2), arg3=4)
+
+    # If `arg3` were not set properly, this value would be different.
+    self.assertEqual(-1 + 2 * 2 + 3 * 4, loss)
+
 
 class ConsistentLossesTest(test.TestCase):
 

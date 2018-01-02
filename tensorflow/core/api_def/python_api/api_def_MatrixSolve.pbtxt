@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "MatrixSolve"
+  endpoint {
+    name: "linalg.solve"
+  }
+  endpoint {
+    name: "matrix_solve"
+  }
+}

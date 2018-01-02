@@ -39,7 +39,6 @@ class SessionListDevicesTestMethods(object):
       devices = sess.list_devices()
       self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
 
   def testInvalidDeviceNumber(self):
     opts = tf_session.TF_NewSessionOptions()
@@ -65,7 +64,6 @@ class SessionListDevicesTestMethods(object):
       devices = sess.list_devices()
       self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
 
   def testListDevicesClusterSpecPropagation(self):
     server1 = server_lib.Server.create_local_server()
@@ -84,7 +82,6 @@ class SessionListDevicesTestMethods(object):
           '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
       self.assertTrue(
           '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
-      self.assertGreaterEqual(2, len(devices), devices)
 
 
 class SessionListDevicesTest(SessionListDevicesTestMethods,

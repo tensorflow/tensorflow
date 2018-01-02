@@ -35,18 +35,48 @@ namespace xla {
 HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle) {}
 
-HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name)
+    : name_(NameUniquer::GetSanitizedName(name)) {}
+HloModule::HloModule(const string& name, const HloModuleConfig& config)
+    : name_(NameUniquer::GetSanitizedName(name)), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
-    std::unique_ptr<HloComputation> computation) {
-  computation->UniquifyName(&computation_name_uniquer_);
-  for (auto& instruction : computation->instructions()) {
-    instruction->UniquifyName(&instruction_name_uniquer_);
+    std::unique_ptr<HloComputation> computation, bool is_entry,
+    bool uniquify_names) {
+  if (is_entry) {
+    CHECK_EQ(nullptr, entry_computation_);
+    entry_computation_ = computation.get();
+
+    // If the module configuration has no entry layout computation set, create a
+    // default one based on the program shape.
+    if (!config_.has_entry_computation_layout()) {
+      config_.SetDefaultComputationLayout(
+          entry_computation_->ComputeProgramShape());
+    }
+  }
+
+  if (uniquify_names) {
+    computation->UniquifyName(&computation_name_uniquer_);
+    for (auto* instruction : computation->instructions()) {
+      instruction->UniquifyName(&instruction_name_uniquer_);
+    }
+  } else {
+    // Don't uniquify the names of the computation or instruction, but we must
+    // run the names through the uniquifiers to prevent future name collisions
+    // for computations and instructions created later.
+    computation_name_uniquer_.GetUniqueName(computation->name());
+    for (auto* instruction : computation->instructions()) {
+      instruction_name_uniquer_.GetUniqueName(instruction->name());
+    }
+  }
+
+  // Pick unique IDs for each instruction.
+  for (auto* instruction : computation->instructions()) {
     instruction->SetUniqueId(NewUniqueInstructionId());
   }
   computation->set_parent(this);
@@ -56,16 +86,8 @@ HloComputation* HloModule::AddComputationInternal(
 
 HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
-  CHECK_EQ(nullptr, entry_computation_);
-  entry_computation_ = computation.get();
-
-  // If the module configuration has no entry layout computation set, create a
-  // default one based on the program shape.
-  if (!config_.has_entry_computation_layout()) {
-    config_.SetDefaultComputationLayout(
-        entry_computation_->ComputeProgramShape());
-  }
-  return AddComputationInternal(std::move(computation));
+  return AddComputationInternal(std::move(computation), /*is_entry=*/true,
+                                /*uniquify_names=*/true);
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
@@ -81,7 +103,8 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
 
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
-  return AddComputationInternal(std::move(computation));
+  return AddComputationInternal(std::move(computation), /*is_entry=*/false,
+                                /*uniquify_names=*/true);
 }
 
 void HloModule::ReplaceComputations(
@@ -92,7 +115,7 @@ void HloModule::ReplaceComputations(
   new_computations.reserve(computations_.size());
 
   for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCall:
         case HloOpcode::kMap:
@@ -148,14 +171,14 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString() const {
+string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name() << ":\n\n";
-  s << "ENTRY " << entry_computation()->ToString() << "\n\n";
-  for (const std::unique_ptr<HloComputation>& computation : computations_) {
-    if (computation.get() != entry_computation()) {
-      s << computation->ToString() << "\n\n";
+  s << "HloModule " << name() << "\n\n";
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    if (computation == entry_computation()) {
+      s << "ENTRY ";
     }
+    s << computation->ToString(options) << "\n\n";
   }
   return s.str();
 }
@@ -165,10 +188,171 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
+    // Fusion computations are added when the fusion instructions are created by
+    // HloInstruction::CreateFromProto.
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     HloComputationProto computation_proto = computation->ToProto();
     proto.add_computations()->Swap(&computation_proto);
   }
   return proto;
+}
+
+namespace {
+
+// Construct a ProgramShape matching the shape of the parameters and root of the
+// given module's entry computation.
+StatusOr<ProgramShape> ProgramShapeFromProto(const HloModuleProto& module) {
+  const HloComputationProto* entry_computation = nullptr;
+  for (const HloComputationProto& computation : module.computations()) {
+    if (computation.name() == module.entry_computation_name()) {
+      entry_computation = &computation;
+      break;
+    }
+  }
+  TF_RET_CHECK(entry_computation != nullptr)
+      << "No computation with entry computation name"
+      << module.entry_computation_name();
+
+  tensorflow::gtl::FlatMap<int64, std::pair<string, const Shape*>> parameters;
+  const HloInstructionProto* root = nullptr;
+  for (const HloInstructionProto& instruction :
+       entry_computation->instructions()) {
+    if (instruction.name() == entry_computation->root_name()) {
+      TF_RET_CHECK(root == nullptr) << "Entry computation has more than "
+                                       "one instruction with (root) name "
+                                    << instruction.name();
+      root = &instruction;
+    }
+    if (instruction.opcode() == HloOpcodeString(HloOpcode::kParameter)) {
+      TF_RET_CHECK(!ContainsKey(parameters, instruction.parameter_number()))
+          << "Entry computation has more than one parameter instruction "
+             "with parameter number "
+          << instruction.parameter_number();
+      parameters[instruction.parameter_number()] = {instruction.name(),
+                                                    &instruction.shape()};
+    }
+  }
+  TF_RET_CHECK(root != nullptr)
+      << "Entry computation is missing root instruction named "
+      << entry_computation->root_name();
+
+  ProgramShape program_shape;
+  *program_shape.mutable_result() = root->shape();
+  for (int64 i = 0; i < parameters.size(); ++i) {
+    TF_RET_CHECK(ContainsKey(parameters, i))
+        << "Entry computation missing parameter number " << i;
+    const string& name = parameters.at(i).first;
+    const Shape& shape = *parameters.at(i).second;
+    *program_shape.add_parameters() = shape;
+    program_shape.add_parameter_names(name);
+  }
+
+  return std::move(program_shape);
+}
+
+}  // namespace
+
+/* static */
+StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    const VersionedComputationHandle& entry_computation_handle) {
+  // The ProgramShape in the passed in module config must match the shapes of
+  // the entry parameters and root.
+  TF_ASSIGN_OR_RETURN(ProgramShape expected_program_shape,
+                      ProgramShapeFromProto(proto));
+  TF_RET_CHECK(expected_program_shape.parameters_size() ==
+               module_config.entry_computation_layout().parameter_count());
+  for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
+    const Shape& parameter_shape =
+        module_config.entry_computation_layout().parameter_layout(i).shape();
+    TF_RET_CHECK(
+        ShapeUtil::Equal(expected_program_shape.parameters(i), parameter_shape))
+        << "HloModuleConfig has different shape for parameter " << i
+        << " than the HLO module. Expected: "
+        << ShapeUtil::HumanStringWithLayout(
+               expected_program_shape.parameters(i))
+        << ", actual: " << ShapeUtil::HumanStringWithLayout(parameter_shape);
+  }
+  const Shape& result_shape =
+      module_config.entry_computation_layout().result_layout().shape();
+  TF_RET_CHECK(ShapeUtil::Equal(expected_program_shape.result(), result_shape))
+      << "HloModuleConfig has different result shape than the HLO module. "
+         "Expected: "
+      << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
+      << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
+
+  auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
+                                      module_config);
+
+  tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
+  for (const HloComputationProto& computation_proto : proto.computations()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloComputation> computation,
+        HloComputation::CreateFromProto(
+            module.get(), computation_proto, computation_map,
+            /*add_fused_computation=*/
+            [&module](std::unique_ptr<HloComputation> fused_computation) {
+              module->AddComputationInternal(std::move(fused_computation),
+                                             /*is_entry=*/false,
+                                             /*uniquify_names=*/false);
+            }));
+    CHECK_NE(computation.get(), nullptr);
+    TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
+    string computation_name = computation->name();
+    // Don't uniquify names because we want names to be stable across
+    // serialization and deserialization.
+    computation_map[computation_name] = module->AddComputationInternal(
+        std::move(computation),
+        /*is_entry=*/proto.entry_computation_name() == computation_name,
+        /*uniquify_names=*/false);
+  }
+  TF_RET_CHECK(module->entry_computation_ != nullptr);
+
+  // Because we didn't uniquify the names, double-check that the instruction and
+  // computation names are unique from the proto.
+  tensorflow::gtl::FlatSet<string> computation_names;
+  tensorflow::gtl::FlatSet<string> instruction_names;
+  for (HloComputation* computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+
+    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
+        << "Computation name is not unique: " << computation->name();
+    computation_names.insert(computation->name());
+    for (HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
+          << "Instruction name is not unique: " << instruction->name();
+      instruction_names.insert(instruction->name());
+    }
+  }
+
+  return std::move(module);
+}
+
+/* static */
+StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+    const HloModuleProto& module) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      ProgramShapeFromProto(module));
+
+  HloModuleConfig module_config(program_shape);
+
+  // The module config is constructed with default layouts regardless of what is
+  // passed in via the ProgramShape. Set the layouts to the appropriate values.
+  ComputationLayout* entry_layout =
+      module_config.mutable_entry_computation_layout();
+  for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
+    TF_RETURN_IF_ERROR(
+        entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+            program_shape.parameters(i)));
+  }
+  TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
+      program_shape.result()));
+
+  return module_config;
 }
 
 namespace {
@@ -264,7 +448,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(computation->ReplaceUsesOfInstruction(output, call));
+  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
     TF_CHECK_OK(computation->RemoveInstruction(*i));
@@ -279,7 +463,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // module).
   std::set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
            instruction->called_computations()) {
         nonroot_computations.insert(called_computation);
@@ -311,7 +495,18 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
+  std::vector<HloComputation*> result;
+  for (auto* c : computations()) {
+    if (c->IsFusionComputation()) {
+      continue;
+    }
+    result.push_back(c);
+  }
+  return result;
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
   module->config_ = config_;
@@ -331,7 +526,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
   }
 
   for (auto& cloned_computation : module->computations_) {
-    for (auto& instruction : cloned_computation->instructions()) {
+    for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
       instruction->ReplaceCalledComputations(

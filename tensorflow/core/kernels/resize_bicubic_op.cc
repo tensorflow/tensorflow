@@ -20,7 +20,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -180,6 +180,21 @@ static void ComputeXWeightsAndIndices(const ImageResizerState& resizer_state,
   }
 }
 
+static void ComputeGradientXWeightsAndIndices(
+    const ImageResizerGradientState& resizer_state,
+    std::vector<WeightsAndIndices>* x_wais) {
+  CachedInterpolationCalculator calc;
+  for (int64 x = 0; x < resizer_state.resized_width; ++x) {
+    GetWeightsAndIndices(resizer_state.width_scale, x,
+                         resizer_state.original_width, &(*x_wais)[x]);
+    auto& x_wai = (*x_wais)[x];
+    x_wai.advance = calc.Advance(x_wai.index_0, x_wai.index_1, x_wai.index_2,
+                                 x_wai.index_3);
+  }
+  // Do not scale, as we will be using these directly as tensor indices on the
+  // gradient pass.
+}
+
 template <typename T>
 static EIGEN_ALWAYS_INLINE float ComputeYInterpolation(
     int which, int channel_num, const WeightsAndIndices& y_wai,
@@ -220,6 +235,7 @@ inline void interpolate_with_caching(
 
   const T* input_b_ptr = input_data.data();
   float* output_y_ptr = output_data.data();
+  std::vector<float> cached_value(num_channels == 3 ? 0 : 4 * num_channels, 0);
 
   for (int64 b = 0; b < resizer_state.batch_size;
        ++b, input_b_ptr += in_batch_width) {
@@ -233,6 +249,7 @@ inline void interpolate_with_caching(
       const T* y_ptr_1 = input_b_ptr + y_wai.index_1 * in_row_width;
       const T* y_ptr_2 = input_b_ptr + y_wai.index_2 * in_row_width;
       const T* y_ptr_3 = input_b_ptr + y_wai.index_3 * in_row_width;
+
       if (num_channels == 3) {
         // Manually unroll case of 3 channels.
         float cached_value_0[4] = {0};
@@ -315,50 +332,130 @@ inline void interpolate_with_caching(
                       x_wai.weight_2, x_wai.weight_3);
         }
       } else {
-        for (int64 c = 0; c < num_channels; ++c) {
-          float cached_value[4] = {0};
-          for (int64 x = 0; x < resizer_state.out_width; ++x) {
-            const WeightsAndIndices& x_wai = x_wais[x];
-            // Shift values in cached_value to fill first 'advance' values.
-            switch (x_wai.advance) {
-              case 3:
-                cached_value[0] = cached_value[1];
-                cached_value[1] = cached_value[2];
-                cached_value[2] = cached_value[3];
-                break;
-              case 2:
-                cached_value[0] = cached_value[2];
-                cached_value[1] = cached_value[3];
-                break;
-              case 1: {
-                cached_value[0] = cached_value[3];
-                break;
+        for (int64 x = 0; x < resizer_state.out_width; ++x) {
+          const WeightsAndIndices& x_wai = x_wais[x];
+          // Shift values in cached_value to fill first 'advance' values.
+          switch (x_wai.advance) {
+            case 3:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 0] = cached_value[4 * c + 1];
+                cached_value[4 * c + 1] = cached_value[4 * c + 2];
+                cached_value[4 * c + 2] = cached_value[4 * c + 3];
               }
+              break;
+            case 2:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 0] = cached_value[4 * c + 2];
+                cached_value[4 * c + 1] = cached_value[4 * c + 3];
+              }
+              break;
+            case 1: {
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 0] = cached_value[4 * c + 3];
+              }
+              break;
             }
+          }
 
-            // Set the remaining '4-advance' values by computing.
-            switch (x_wai.advance) {
-              case 0:
-                cached_value[0] = ComputeYInterpolation(
+          // Set the remaining '4-advance' values by computing.
+          switch (x_wai.advance) {
+            case 0:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 0] = ComputeYInterpolation(
                     0, c, y_wai, y_ptr_0, y_ptr_1, y_ptr_2, y_ptr_3, x_wai);
-                TF_FALLTHROUGH_INTENDED;
-              case 1:
-                cached_value[1] = ComputeYInterpolation(
+              }
+              TF_FALLTHROUGH_INTENDED;
+            case 1:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 1] = ComputeYInterpolation(
                     1, c, y_wai, y_ptr_0, y_ptr_1, y_ptr_2, y_ptr_3, x_wai);
-                TF_FALLTHROUGH_INTENDED;
-              case 2:
-                cached_value[2] = ComputeYInterpolation(
+              }
+              TF_FALLTHROUGH_INTENDED;
+            case 2:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 2] = ComputeYInterpolation(
                     2, c, y_wai, y_ptr_0, y_ptr_1, y_ptr_2, y_ptr_3, x_wai);
-                TF_FALLTHROUGH_INTENDED;
-              case 3:
-                cached_value[3] = ComputeYInterpolation(
+              }
+              TF_FALLTHROUGH_INTENDED;
+            case 3:
+              for (int64 c = 0; c < num_channels; ++c) {
+                cached_value[4 * c + 3] = ComputeYInterpolation(
                     3, c, y_wai, y_ptr_0, y_ptr_1, y_ptr_2, y_ptr_3, x_wai);
-                break;
-            }
+              }
+              break;
+          }
+          for (int64 c = 0; c < num_channels; ++c) {
             output_y_ptr[x * num_channels + c] =
-                Compute(cached_value, x_wai.weight_0, x_wai.weight_1,
+                Compute(&cached_value[4 * c], x_wai.weight_0, x_wai.weight_1,
                         x_wai.weight_2, x_wai.weight_3);
           }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void ResizeBicubicGrad(typename TTypes<float, 4>::ConstTensor input_grad,
+                              const ImageResizerGradientState& resizer_state,
+                              typename TTypes<T, 4>::Tensor output_grad) {
+  // This function computes gradients for the ResizeBicubic op by iterating over
+  // the input_grad Tensor and using WeightsAndIndices to appropriately update
+  // the output gradient.
+  const float height_scale = resizer_state.height_scale;
+  const int64 original_height = resizer_state.original_height;
+  const int channels = resizer_state.channels;
+  const int64 resized_width = resizer_state.resized_width;
+  const int64 resized_height = resizer_state.resized_height;
+
+  output_grad.setZero();
+
+  std::vector<WeightsAndIndices> x_wais(resizer_state.resized_width);
+  ComputeGradientXWeightsAndIndices(resizer_state, &x_wais);
+  for (int64 b = 0; b < resizer_state.batch_size; ++b) {
+    for (int64 y = 0; y < resized_height; ++y) {
+      WeightsAndIndices y_wai;
+      GetWeightsAndIndices(height_scale, y, original_height, &y_wai);
+      for (int64 x = 0; x < resized_width; ++x) {
+        const WeightsAndIndices& x_wai = x_wais[x];
+        for (int64 c = 0; c < channels; ++c) {
+          T curr_input_grad = input_grad(b, y, x, c);
+          // row 0 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_0, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_0);
+          output_grad(b, y_wai.index_0, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_1);
+          output_grad(b, y_wai.index_0, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_2);
+          output_grad(b, y_wai.index_0, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_0 * x_wai.weight_3);
+          // row 1 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_1, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_0);
+          output_grad(b, y_wai.index_1, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_1);
+          output_grad(b, y_wai.index_1, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_2);
+          output_grad(b, y_wai.index_1, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_1 * x_wai.weight_3);
+          // row 2 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_2, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_0);
+          output_grad(b, y_wai.index_2, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_1);
+          output_grad(b, y_wai.index_2, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_2);
+          output_grad(b, y_wai.index_2, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_2 * x_wai.weight_3);
+          // row 3 of 0, 1, 2, 3
+          output_grad(b, y_wai.index_3, x_wai.index_0, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_0);
+          output_grad(b, y_wai.index_3, x_wai.index_1, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_1);
+          output_grad(b, y_wai.index_3, x_wai.index_2, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_2);
+          output_grad(b, y_wai.index_3, x_wai.index_3, c) +=
+              T(curr_input_grad * y_wai.weight_3 * x_wai.weight_3);
         }
       }
     }
@@ -394,6 +491,36 @@ class ResizeBicubicOp : public OpKernel {
   bool align_corners_;
 };
 
+template <typename Device, typename T>
+class ResizeBicubicOpGrad : public OpKernel {
+ public:
+  explicit ResizeBicubicOpGrad(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Validate input.
+    // First argument is gradient with respect to resized image.
+    const Tensor& input = context->input(0);
+    const Tensor& original_image = context->input(1);
+
+    ImageResizerGradientState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input, original_image);
+
+    if (!context->status().ok()) return;
+
+    typename TTypes<float, 4>::ConstTensor input_grad =
+        input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
+
+    ResizeBicubicGrad<T>(input_grad, st, output_grad);
+  }
+
+ private:
+  bool align_corners_;
+};
+
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBicubic")       \
                               .Device(DEVICE_CPU)     \
@@ -404,5 +531,15 @@ class ResizeBicubicOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
+
+#define REGISTER_GRAD_KERNEL(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("ResizeBicubicGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ResizeBicubicOpGrad<CPUDevice, T>);
+
+TF_CALL_float(REGISTER_GRAD_KERNEL);
+TF_CALL_double(REGISTER_GRAD_KERNEL);
+
+#undef REGISTER_GRAD_KERNEL
 
 }  // namespace tensorflow

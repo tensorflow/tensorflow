@@ -1,4 +1,4 @@
-## Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -214,6 +214,13 @@ class SavedModelTest(test.TestCase):
       self._init_and_validate_variable(sess, "v", 45)
       builder.add_meta_graph([tag_constants.SERVING, tag_constants.GPU])
 
+    # Graph that updates the single variable. SavedModel invoked to:
+    # - simply add the model (weights are not updated).
+    # - multiple tags (from predefined constants for serving on TPU).
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 45)
+      builder.add_meta_graph([tag_constants.SERVING, tag_constants.TPU])
+
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple custom tags.
@@ -241,6 +248,13 @@ class SavedModelTest(test.TestCase):
     # saved.
     with self.test_session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.SERVING, tag_constants.GPU], export_dir)
+      self.assertEqual(
+          42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+    # Restore the graph with multiple predefined tags (for serving on TPU)
+    # whose variables were not saved.
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, [tag_constants.SERVING, tag_constants.TPU], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
@@ -636,6 +650,34 @@ class SavedModelTest(test.TestCase):
       # Evaluates to the sum of the first two variables and assigned as part of
       # the legacy_init_op, following a restore.
       self.assertEqual(3, ops.get_collection("v")[2].eval())
+
+  def testLegacyInitOpWithNonEmptyCollection(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_legacy_init_op_with_non_empty_collection")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Initialize variable `v1` to 1.
+      v1 = variables.Variable(1, name="v1")
+      ops.add_to_collection("v", v1)
+
+      # Initialize another variable `v2` to 42.
+      v2 = variables.Variable(42, name="v2", trainable=False, collections=[])
+      ops.add_to_collection("v", v2)
+
+      # Set up an assignment op to be run as part of the legacy_init_op.
+      assign_v2 = state_ops.assign(v2, v1)
+      legacy_init_op = control_flow_ops.group(assign_v2, name="legacy_init_op")
+
+      sess.run(variables.global_variables_initializer())
+
+      ops.add_to_collection(constants.LEGACY_INIT_OP_KEY,
+                            control_flow_ops.no_op())
+      # AssertionError should be raised since the LEGACY_INIT_OP_KEY collection
+      # is not empty and we don't support multiple init ops.
+      with self.assertRaises(AssertionError):
+        builder.add_meta_graph_and_variables(
+            sess, ["foo"], legacy_init_op=legacy_init_op)
 
   def testMultipleAssets(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_multiple_assets")

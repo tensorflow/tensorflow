@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "StackPushV2"
+  visibility: SKIP
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a stack.
+END
+  }
+  in_arg {
+    name: "elem"
+    description: <<END
+The tensor to be pushed onto the stack.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The same tensor as the input 'elem'.
+END
+  }
+  attr {
+    name: "swap_memory"
+    description: <<END
+Swap `elem` to CPU. Default to false.
+END
+  }
+  summary: "Push an element onto the stack."
+}

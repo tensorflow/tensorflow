@@ -65,6 +65,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
   OutfeedRequest outfeed_request;
   *outfeed_request.mutable_operand() = constant_handle;
+  *outfeed_request.mutable_shape() = kVectorShape;
   outfeed_request.set_outfeed_config("abc");
   TF_ASSERT_OK(computation.AddOutfeedInstruction(outfeed_request));
 
@@ -224,6 +225,14 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
                           computation.AddParameterInstruction(b_request));
 
+  const int64 kDevice = 7;
+  OpSharding sharding;
+  sharding.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+  sharding.add_tile_assignment_dimensions(1);
+  sharding.add_tile_assignment_devices(kDevice);
+
+  TF_EXPECT_OK(computation.SetOpSharding(b_handle, sharding));
+
   BinaryOpRequest add;
   add.set_binop(BINOP_ADD);
   *add.mutable_lhs() = a_handle;
@@ -249,11 +258,16 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
   //     \       /
   //        add
   EXPECT_EQ(5, hlo_computation->instruction_count());
-  EXPECT_THAT(hlo_computation->root_instruction(), op::Add());
-  const auto& operands = hlo_computation->root_instruction()->operands();
-  ASSERT_EQ(2, operands.size());
-  EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kParameter &&
-              operands[1]->opcode() == HloOpcode::kBroadcast);
+  ASSERT_THAT(
+      hlo_computation->root_instruction(),
+      op::Add(op::Parameter(), op::Broadcast(op::Reshape(op::Parameter()))));
+
+  const HloInstruction* broadcast =
+      hlo_computation->root_instruction()->operand(1);
+  EXPECT_TRUE(broadcast->has_sharding());
+
+  const HloInstruction* reshape = broadcast->operand(0);
+  EXPECT_TRUE(reshape->has_sharding());
 }
 
 TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
@@ -319,51 +333,6 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
   ASSERT_EQ(2, operands.size());
   EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kBroadcast &&
               operands[1]->opcode() == HloOpcode::kBroadcast);
-}
-
-TEST_F(UserComputationTest, SkipDotInEliminatingImplicitBroadcast) {
-  auto debug_options = DebugOptions();
-  debug_options.set_xla_eliminate_hlo_implicit_broadcast(true);
-
-  //  %a = Param({1, 3});
-  //  %b = Param({3, 1});
-  //  %dot = Dot(%a, %b);
-  ComputationHandle handle;
-  handle.set_handle(123);
-  UserComputation computation("TheComputation", handle);
-
-  ParameterRequest a_request;
-  *a_request.mutable_shape() = ShapeUtil::MakeShape(F32, {1, 3});
-  a_request.set_name("a");
-  a_request.set_parameter(0);
-  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle a_handle,
-                          computation.AddParameterInstruction(a_request));
-
-  ParameterRequest b_request;
-  *b_request.mutable_shape() = ShapeUtil::MakeShape(F32, {3, 1});
-  b_request.set_name("b");
-  b_request.set_parameter(1);
-  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
-                          computation.AddParameterInstruction(b_request));
-
-  BinaryOpRequest dot;
-  dot.set_binop(BINOP_DOT);
-  *dot.mutable_lhs() = a_handle;
-  *dot.mutable_rhs() = b_handle;
-  TF_ASSERT_OK(computation.AddBinaryInstruction(dot).status());
-
-  auto hlo_resolver = [](const VersionedComputationHandle& handle) {
-    return nullptr;
-  };
-  VersionedComputationHandle latest_version = computation.GetVersionedHandle();
-
-  // Build the HLO computation.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloComputation> hlo_computation,
-      computation.BuildHloComputation(latest_version.version, hlo_resolver,
-                                      debug_options));
-
-  EXPECT_EQ(3, hlo_computation->instruction_count());
 }
 
 }  // namespace

@@ -72,6 +72,7 @@ Disabling these as a starting point.
 */
 // TODO(b/64227304) Creating a custom pass pipeline will replace this.
 
+namespace {
 class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
  public:
   FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
@@ -102,6 +103,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
  private:
   bool disable_expensive_passes_;
 };
+}  // anonymous namespace
 
 llvm::object::OwningBinary<llvm::object::ObjectFile> CompilerFunctor::
 operator()(llvm::Module& module) const {

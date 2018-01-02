@@ -151,7 +151,6 @@ py_library(
     srcs = ["optimize_for_inference_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":strip_unused",
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -221,7 +220,6 @@ py_binary(
 
 py_test(
     name = "print_selective_registration_header_test",
-    size = "small",
     srcs = ["print_selective_registration_header_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -245,7 +243,6 @@ py_binary(
 
 py_test(
     name = "saved_model_cli_test",
-    size = "small",
     srcs = ["saved_model_cli_test.py"],
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
@@ -254,6 +251,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":saved_model_cli",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 

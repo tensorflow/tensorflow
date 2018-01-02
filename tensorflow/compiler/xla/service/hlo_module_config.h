@@ -67,11 +67,6 @@ class HloModuleConfig {
   bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
   void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
-  }
-
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
@@ -108,16 +103,6 @@ class HloModuleConfig {
 
   // Whether to enable HLO-level profiling.
   bool hlo_profiling_enabled_ = false;
-
-  // If this flag is true, the generated executable will return a ShapedBuffer
-  // holding the result of the computation. In a ShapedBuffer, tuples have their
-  // structure held in host memory and the element arrays (leaves of the tuple
-  // structure) stored in device memory. The ShapedBuffer is considered "hybrid"
-  // because its leaves are on device but its structure is stored on
-  // host. Otherwise, if this flag is false, the generated executable will
-  // return a DeviceMemoryBase where the result is held entirely in device
-  // memory.
-  bool has_hybrid_result_ = false;
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;

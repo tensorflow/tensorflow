@@ -38,6 +38,9 @@ class Cluster {
   explicit Cluster(int timeout_s);
   virtual ~Cluster();
 
+  // Returns a string that represent the type of cluster that was instantiated.
+  virtual string type() const = 0;
+
   // Provision the hardware resources needed to run TensorFlow and start a
   // TensorFlow session that can take advantage of these resources.
   // The actual resources that are leveraged depend on the type of cluster
@@ -64,9 +67,15 @@ class Cluster {
   // before Provision().
   void SetNumWarmupSteps(int num_steps);
 
+  // Returns the number of warmup steps.
+  int NumWarmupSteps() const;
+
   // Disable the collection of detailed statistics. Must be called
   // before Provision().
   void DisableDetailedStats(bool disable);
+
+  // Returns true iff the collection of detailed statistics is enabled.
+  bool DetailedStatsEnabled() const;
 
   // Disable the TensorFlow optimizer. This ensures that the graph that TF
   // executes is similar to the input graph. Must be called before Provision().
