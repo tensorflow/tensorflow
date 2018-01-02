@@ -120,18 +120,21 @@ cc_library(
 cc_library(
     name = "xla_compiler",
     srcs = [
+        "const_analysis.cc",
+        "graph_compiler.cc",
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
-        "graph_compiler.cc",
+        "xla_resource.cc",
         "xla_cpu_backend.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]),
     hdrs = [
+        "const_analysis.h",
         "graph_compiler.h",
         "xla_compilation_device.h",
         "xla_compiler.h",
@@ -139,11 +142,11 @@ cc_library(
         "xla_helpers.h",
         "xla_op_kernel.h",
         "xla_op_registry.h",
+        "xla_resource.h",
     ],
     visibility = [":friends"],
     deps = [
         ":common",
-        ":const_analysis",
         ":dump_graph",
         ":functionalize_control_flow",
         ":sharding_util",
@@ -203,6 +206,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -352,28 +356,16 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "const_analysis",
-    srcs = ["const_analysis.cc"],
-    hdrs = ["const_analysis.h"],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
 tf_cc_test(
     name = "const_analysis_test",
     size = "small",
     srcs = ["const_analysis_test.cc"],
     deps = [
-        ":const_analysis",
+        ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",

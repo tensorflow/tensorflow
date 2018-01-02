@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
@@ -82,6 +83,11 @@ class LocalComputationBuilder {
                                 tensorflow::gtl::ArraySlice<int64> dimensions,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);
 
+  ComputationDataHandle Collapse(const ComputationDataHandle& operand,
+                                 tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  ComputationDataHandle CrossReplicaSum(const ComputationDataHandle& operand);
+
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
                               tensorflow::gtl::ArraySlice<int64> limit_indices,
@@ -113,6 +119,14 @@ class LocalComputationBuilder {
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
 
+  ComputationDataHandle ConvGeneralDilated(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
+      tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+      tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+      const ConvolutionDimensionNumbers& dimension_numbers);
+
   ComputationDataHandle ConvertElementType(const ComputationDataHandle& operand,
                                            PrimitiveType new_element_type);
 
@@ -123,6 +137,9 @@ class LocalComputationBuilder {
   ComputationDataHandle Transpose(
       const ComputationDataHandle& operand,
       tensorflow::gtl::ArraySlice<int64> permutation);
+
+  ComputationDataHandle Rev(const ComputationDataHandle& operand,
+                            tensorflow::gtl::ArraySlice<int64> dimensions);
 
   ComputationDataHandle Map(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,

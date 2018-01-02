@@ -372,7 +372,6 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/tensor_coding_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_rewriter_transform_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
-    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
   )
 
   if (NOT tensorflow_ENABLE_GPU)

@@ -136,7 +136,9 @@ bool GraphTransformationsPass(int increment, Model* model,
                               const GraphTransformationsSet& transformations) {
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
-  CHECK(!model->operators.empty());
+  if (model->operators.empty()) {
+    return false;
+  }
   int op_index = increment == 1 ? 0 : model->operators.size() - 1;
   while (true) {
     bool changed_now = false;

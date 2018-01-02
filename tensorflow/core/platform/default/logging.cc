@@ -114,6 +114,8 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
   return level;
 }
 
+}  // namespace
+
 int64 MinLogLevelFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
@@ -123,8 +125,6 @@ int64 MinVLogLevelFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
 }
-
-}  // namespace
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.

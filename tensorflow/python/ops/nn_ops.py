@@ -452,6 +452,7 @@ class _WithSpaceToBatch(object):
     self.input_shape = input_shape
     self.spatial_dims = spatial_dims
     self.dilation_rate = dilation_rate
+    self.data_format = data_format
     self.op = build_op(num_spatial_dims, "VALID")
     self.call = self._with_space_to_batch_call
 
@@ -496,6 +497,14 @@ class _WithSpaceToBatch(object):
 
     result_converted = array_ops.batch_to_space_nd(
         input=result, block_shape=dilation_rate, crops=crops)
+
+    # Recover channel information for output shape if channels are not last.
+    if self.data_format is not None and self.data_format.startswith("NC"):
+      if not result_converted.shape[1].value:
+        output_shape = result_converted.shape.as_list()
+        output_shape[1] = filter.shape[-1]
+        result_converted.set_shape(output_shape)
+
     return result_converted
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -823,7 +832,8 @@ class Convolution(object):
         padding=padding,
         build_op=self._build_op,
         filter_shape=filter_shape,
-        spatial_dims=spatial_dims)
+        spatial_dims=spatial_dims,
+        data_format=data_format)
 
   def _build_op(self, _, padding):
     return _NonAtrousConvolution(
@@ -2254,10 +2264,10 @@ def nth_element(input, n, reverse=False, name=None):
 
 
 @deprecation.deprecated_arg_values(
-    None, '`NCHW` for data_format is deprecated, use `NCW` instead',
+    None, "`NCHW` for data_format is deprecated, use `NCW` instead",
     warn_once=True, data_format="NCHW")
 @deprecation.deprecated_arg_values(
-    None, '`NHWC` for data_format is deprecated, use `NWC` instead',
+    None, "`NHWC` for data_format is deprecated, use `NWC` instead",
     warn_once=True, data_format="NHWC")
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,

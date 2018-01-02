@@ -128,6 +128,11 @@ class XlaOpRegistry {
       const string& compilation_device_name,
       bool include_compilation_only_kernels);
 
+  // Returns the set of compile-time constant inputs to 'op'. Returns nullptr
+  // if the op is not registered.
+  static const std::unordered_set<string>* CompileTimeConstantInputs(
+      const string& op);
+
  private:
   friend class XlaBackendRegistrar;
   friend class XlaOpRegistrar;
@@ -180,6 +185,9 @@ class XlaOpRegistry {
     // are permitted.
     bool has_device_whitelist = false;
     std::unordered_set<string> device_whitelist;
+
+    // Names of arguments that must be compile-time constants.
+    std::unordered_set<string> compile_time_constant_inputs;
 
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
@@ -241,6 +249,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_RESOURCE types for type parameters.
   XlaOpRegistrationBuilder& AllowResourceTypes();
+
+  // Mark 'input_name' as an argument whose value must be known at compile-time.
+  XlaOpRegistrationBuilder& CompileTimeConstInput(StringPiece input_name);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);

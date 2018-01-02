@@ -93,6 +93,15 @@ const RunOptions& InMemoryRunStepRequest::options() const { return options_; }
 
 RunOptions* InMemoryRunStepRequest::mutable_options() { return &options_; }
 
+bool InMemoryRunStepRequest::store_errors_in_response_body() const {
+  return store_errors_in_response_body_;
+}
+
+void InMemoryRunStepRequest::set_store_errors_in_response_body(
+    bool store_errors) {
+  store_errors_in_response_body_ = store_errors;
+}
+
 string InMemoryRunStepRequest::DebugString() const {
   return ToProto().DebugString();
 }
@@ -192,6 +201,15 @@ RunOptions* MutableProtoRunStepRequest::mutable_options() {
   return request_.mutable_options();
 }
 
+bool MutableProtoRunStepRequest::store_errors_in_response_body() const {
+  return request_.store_errors_in_response_body();
+}
+
+void MutableProtoRunStepRequest::set_store_errors_in_response_body(
+    bool store_errors) {
+  request_.set_store_errors_in_response_body(store_errors);
+}
+
 string MutableProtoRunStepRequest::DebugString() const {
   return request_.DebugString();
 }
@@ -248,6 +266,10 @@ const string& ProtoRunStepRequest::target_name(size_t i) const {
 
 const RunOptions& ProtoRunStepRequest::options() const {
   return request_->options();
+}
+
+bool ProtoRunStepRequest::store_errors_in_response_body() const {
+  return request_->store_errors_in_response_body();
 }
 
 string ProtoRunStepRequest::DebugString() const {
@@ -327,6 +349,15 @@ bool InMemoryRunGraphRequest::is_last_partial_run() const {
 void InMemoryRunGraphRequest::set_is_last_partial_run(
     bool is_last_partial_run) {
   is_last_partial_run_ = is_last_partial_run;
+}
+
+bool InMemoryRunGraphRequest::store_errors_in_response_body() const {
+  return store_errors_in_response_body_;
+}
+
+void InMemoryRunGraphRequest::set_store_errors_in_response_body(
+    bool store_errors) {
+  store_errors_in_response_body_ = store_errors;
 }
 
 const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
@@ -437,6 +468,15 @@ void MutableProtoRunGraphRequest::set_is_last_partial_run(
   request_.set_is_last_partial_run(is_last_partial_run);
 }
 
+bool MutableProtoRunGraphRequest::store_errors_in_response_body() const {
+  return request_.store_errors_in_response_body();
+}
+
+void MutableProtoRunGraphRequest::set_store_errors_in_response_body(
+    bool store_errors) {
+  request_.set_store_errors_in_response_body(store_errors);
+}
+
 const RunGraphRequest& MutableProtoRunGraphRequest::ToProto() const {
   return request_;
 }
@@ -486,6 +526,10 @@ bool ProtoRunGraphRequest::is_last_partial_run() const {
   return request_->is_last_partial_run();
 }
 
+bool ProtoRunGraphRequest::store_errors_in_response_body() const {
+  return request_->store_errors_in_response_body();
+}
+
 const RunGraphRequest& ProtoRunGraphRequest::ToProto() const {
   return *request_;
 }
@@ -516,6 +560,18 @@ StepStats* InMemoryRunGraphResponse::mutable_step_stats() {
 
 CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
   return &cost_graph_;
+}
+
+errors::Code InMemoryRunGraphResponse::status_code() const {
+  return status_.code();
+}
+
+const string& InMemoryRunGraphResponse::status_error_message() const {
+  return status_.error_message();
+}
+
+void InMemoryRunGraphResponse::set_status(const Status& status) {
+  status_ = status;
 }
 
 RunGraphResponse* InMemoryRunGraphResponse::get_proto() {
@@ -572,6 +628,19 @@ StepStats* OwnedProtoRunGraphResponse::mutable_step_stats() {
 
 CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_.mutable_cost_graph();
+}
+
+errors::Code OwnedProtoRunGraphResponse::status_code() const {
+  return response_.status_code();
+}
+
+const string& OwnedProtoRunGraphResponse::status_error_message() const {
+  return response_.status_error_message();
+}
+
+void OwnedProtoRunGraphResponse::set_status(const Status& status) {
+  response_.set_status_code(status.code());
+  response_.set_status_error_message(status.error_message());
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
@@ -632,6 +701,19 @@ CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_->mutable_cost_graph();
 }
 
+errors::Code NonOwnedProtoRunGraphResponse::status_code() const {
+  return response_->status_code();
+}
+
+const string& NonOwnedProtoRunGraphResponse::status_error_message() const {
+  return response_->status_error_message();
+}
+
+void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
+  response_->set_status_code(status.code());
+  response_->set_status_error_message(status.error_message());
+}
+
 RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
   return response_;
 }
@@ -678,6 +760,18 @@ Status InMemoryRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
+errors::Code InMemoryRunStepResponse::status_code() const {
+  return status_.code();
+}
+
+const string& InMemoryRunStepResponse::status_error_message() const {
+  return status_.error_message();
+}
+
+void InMemoryRunStepResponse::set_status(const Status& status) {
+  status_ = status;
+}
+
 RunStepResponse* InMemoryRunStepResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunStepResponse";
   return nullptr;
@@ -714,6 +808,19 @@ Status OwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
   return response_.mutable_metadata();
+}
+
+errors::Code OwnedProtoRunStepResponse::status_code() const {
+  return response_.status_code();
+}
+
+const string& OwnedProtoRunStepResponse::status_error_message() const {
+  return response_.status_error_message();
+}
+
+void OwnedProtoRunStepResponse::set_status(const Status& status) {
+  response_.set_status_code(status.code());
+  response_.set_status_error_message(status.error_message());
 }
 
 RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
@@ -753,6 +860,19 @@ Status NonOwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
   return response_->mutable_metadata();
+}
+
+errors::Code NonOwnedProtoRunStepResponse::status_code() const {
+  return response_->status_code();
+}
+
+const string& NonOwnedProtoRunStepResponse::status_error_message() const {
+  return response_->status_error_message();
+}
+
+void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
+  response_->set_status_code(status.code());
+  response_->set_status_error_message(status.error_message());
 }
 
 RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }

@@ -19,11 +19,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/contrib/mpi_collectives/ring.h"
+#include "tensorflow/contrib/mpi_collectives/kernels/ring.h"
 
 namespace tensorflow {
 namespace contrib {
-namespace mpi {
+namespace mpi_collectives {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
@@ -109,7 +109,7 @@ GENERATE_ACCUMULATE(long long);
 GENERATE_ACCUMULATE(float);
 #undef GENERATE_ACCUMULATE
 
-}  // namespace mpi
+}  // namespace mpi_collectives
 }  // namespace contrib
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA

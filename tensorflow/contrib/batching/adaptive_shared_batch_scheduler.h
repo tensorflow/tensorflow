@@ -93,6 +93,11 @@ class AdaptiveSharedBatchScheduler
     : public std::enable_shared_from_this<
           AdaptiveSharedBatchScheduler<TaskType>> {
  public:
+  ~AdaptiveSharedBatchScheduler() {
+    // Finish processing batches before destorying other class members.
+    batch_thread_pool_.reset();
+  }
+
   struct Options {
     // The name to use for the pool of batch threads.
     string thread_pool_name = {"batch_threads"};

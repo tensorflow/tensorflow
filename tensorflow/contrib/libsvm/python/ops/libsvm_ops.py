@@ -19,15 +19,14 @@ from __future__ import print_function
 
 from tensorflow.contrib.libsvm.ops import gen_libsvm_ops
 from tensorflow.contrib.util import loader
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import resource_loader
 
 
 _libsvm_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_libsvm_ops.so"))
+
 
 def decode_libsvm(content, num_features, dtype=None, label_dtype=None):
   """Convert Libsvm records to a tensor of label and a tensor of feature.
@@ -48,4 +47,4 @@ def decode_libsvm(content, num_features, dtype=None, label_dtype=None):
   return sparse_tensor.SparseTensor(indices, values, shape), labels
 
 
-ops.NotDifferentiable('DecodeLibSVM')
+ops.NotDifferentiable("DecodeLibSVM")

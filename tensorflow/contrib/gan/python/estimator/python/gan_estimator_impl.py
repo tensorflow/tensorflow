@@ -96,7 +96,7 @@ class GANEstimator(estimator.Estimator):
       # Generate samples from generator.
       predictions = np.array([
           x for x in gan_estimator.predict(predict_input_fn)])
-    ```
+  ```
   """
 
   def __init__(self,

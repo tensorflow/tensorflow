@@ -26,6 +26,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.grappler import item
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -103,6 +106,22 @@ class ItemTest(test.TestCase):
       node.device = '/cpu:0'
     newest_tf_item = grappler_item.tf_item
     self.assertEqual(new_tf_item, newest_tf_item)
+
+  def testColocationContraints(self):
+    with ops.Graph().as_default() as g:
+      c = constant_op.constant([10])
+      v = variables.Variable([3], dtype=dtypes.int32)
+      i = gen_array_ops._ref_identity(v)
+      a = state_ops.assign(i, c)
+      train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+      train_op.append(a)
+      mg = meta_graph.create_meta_graph_def(graph=g)
+      grappler_item = item.Item(mg)
+      groups = grappler_item.GetColocationGroups()
+      self.assertEqual(len(groups), 1)
+      self.assertEqual(
+          sorted(groups[0]),
+          ['Assign', 'RefIdentity', 'Variable', 'Variable/Assign'])
 
 
 if __name__ == '__main__':

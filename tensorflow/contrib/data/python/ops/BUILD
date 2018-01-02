@@ -105,6 +105,7 @@ py_library(
         "resampling.py",
         "scan_ops.py",
         "stats_ops.py",
+        "unique.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -121,6 +122,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",

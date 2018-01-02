@@ -144,6 +144,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":predictor_factories",
+        ":testing_common",
     ],
 )
 

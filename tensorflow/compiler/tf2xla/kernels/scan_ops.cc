@@ -129,13 +129,19 @@ class CumsumOp : public ScanOp {
  public:
   explicit CumsumOp(OpKernelConstruction* ctx) : ScanOp(ctx, /*sum=*/true) {}
 };
-REGISTER_XLA_OP(Name("Cumsum").TypeConstraint("T", kScanOpTypes), CumsumOp);
+REGISTER_XLA_OP(Name("Cumsum")
+                    .TypeConstraint("T", kScanOpTypes)
+                    .CompileTimeConstInput("axis"),
+                CumsumOp);
 
 class CumprodOp : public ScanOp {
  public:
   explicit CumprodOp(OpKernelConstruction* ctx) : ScanOp(ctx, /*sum=*/false) {}
 };
-REGISTER_XLA_OP(Name("Cumprod").TypeConstraint("T", kScanOpTypes), CumprodOp);
+REGISTER_XLA_OP(Name("Cumprod")
+                    .TypeConstraint("T", kScanOpTypes)
+                    .CompileTimeConstInput("axis"),
+                CumprodOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

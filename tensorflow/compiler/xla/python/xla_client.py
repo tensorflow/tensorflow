@@ -18,12 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum  # pylint: disable=g-bad-import-order
 import itertools
 
 import numpy as np
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
+
+
+class PaddingType(enum.Enum):
+  VALID = 1
+  SAME = 2
+
 
 _UNARY_OPS = [
     'Not',
@@ -384,6 +391,23 @@ class ComputationBuilder(object):
         self._client.Reshape(
             _unwrap_data_handle(operand), dimensions, new_sizes))
 
+  def CrossReplicaSum(self, operand):
+    """CrossReplicaSum op.
+
+    Args:
+      operand: the operand to sum across replica instances.
+
+    Returns:
+      A ComputationDataHandle that has the sum of the value among all replicas.
+    """
+    return _wrap_data_handle(
+        self._client.CrossReplicaSum(_unwrap_data_handle(operand)))
+
+  def Collapse(self, operand, dimensions):
+    """Collapse op."""
+    return _wrap_data_handle(
+        self._client.Collapse(_unwrap_data_handle(operand), dimensions))
+
   def Trans(self, operand):
     """Specialized matrix transpose op."""
     return _wrap_data_handle(
@@ -393,6 +417,11 @@ class ComputationBuilder(object):
     """Transpose op."""
     return _wrap_data_handle(
         self._client.Transpose(_unwrap_data_handle(operand), permutation))
+
+  def Rev(self, operand, dimensions):
+    """Rev op."""
+    return _wrap_data_handle(
+        self._client.Rev(_unwrap_data_handle(operand), dimensions))
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.
@@ -563,6 +592,79 @@ class ComputationBuilder(object):
     """Matrix multiplication between lhs and rhs."""
     return _wrap_data_handle(
         self._client.Dot(_unwrap_data_handle(lhs), _unwrap_data_handle(rhs)))
+
+  def Conv(self, lhs, rhs, window_strides, padding):
+    """Enqueues a Conv operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the rank N+2 array of inputs.
+      rhs: ComputationDataHandle for the rank N+2 array of kernel weights.
+      window_strides: length-N array-like of integer kernel strides.
+      padding: PaddingType representing either 'SAME' or 'VALID' padding.
+
+    Returns: a ComputationDataHandle representing the Conv operation.
+    """
+    if padding == PaddingType.SAME:
+      lhs_dims = self.GetShape(lhs).dimensions()
+      rhs_dims = self.GetShape(rhs).dimensions()
+      in_shape, filter_shape = lhs_dims[2:], rhs_dims[2:]
+      out_shape = np.ceil(np.true_divide(in_shape, window_strides)).astype(int)
+      pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
+                   for out_size, stride, filter_size, in_size
+                   in zip(out_shape, window_strides, filter_shape, in_shape)]
+      pads = [(pad_size // 2, pad_size - pad_size // 2)
+              for pad_size in pad_sizes]
+    else:
+      pads = [(0, 0)] * len(window_strides)
+    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
+    return _wrap_data_handle(
+        self._client.ConvGeneralDilated(_unwrap_data_handle(lhs),
+                                        _unwrap_data_handle(rhs),
+                                        window_strides,
+                                        pads,
+                                        (),
+                                        (),
+                                        dimension_numbers))
+
+  def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
+                             lhs_dilation, rhs_dilation):
+    """Enqueues a ConvWithGeneralPadding operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the rank N+2 array of inputs.
+      rhs: ComputationDataHandle for the rank N+2 array of kernel weights.
+      window_strides: length-N array-like of kernel strides.
+      padding: length-N array-like of pairs of integers of (low, high) padding.
+      lhs_dilation: length-N array-like of dilation factors.
+      rhs_dilation: length-N array-like of dilation factors.
+
+    Returns:
+      A ComputationdataHandle representing the added ConvWithGeneralPadding op.
+    """
+    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
+    return _wrap_data_handle(
+        self._client.ConvGeneralDilated(_unwrap_data_handle(lhs),
+                                        _unwrap_data_handle(rhs),
+                                        window_strides,
+                                        padding,
+                                        lhs_dilation,
+                                        rhs_dilation,
+                                        dimension_numbers))
+
+  def _GetConvDimensionNumbers(self, num_spatial_dims):
+    """Create ConvolutionDimensionNumbers proto for convolutions."""
+    nd = num_spatial_dims
+    dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
+    dimension_numbers.input_batch_dimension = 0
+    dimension_numbers.input_feature_dimension = 1
+    dimension_numbers.output_batch_dimension = 0
+    dimension_numbers.output_feature_dimension = 1
+    dimension_numbers.kernel_output_feature_dimension = 0
+    dimension_numbers.kernel_input_feature_dimension = 1
+    dimension_numbers.input_spatial_dimensions.extend(range(2, 2 + nd))
+    dimension_numbers.kernel_spatial_dimensions.extend(range(2, 2 + nd))
+    dimension_numbers.output_spatial_dimensions.extend(range(2, 2 + nd))
+    return dimension_numbers
 
 
 def _forward_methods_to_local_builder():

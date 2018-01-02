@@ -650,10 +650,8 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   std::unique_ptr<ShapedBuffer> result;
   if (options_.number_of_replicas() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        result,
-        executable->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
-            &run_options[0], profile, arguments));
+    TF_ASSIGN_OR_RETURN(result, executable->ExecuteOnStreamWrapper(
+                                    &run_options[0], profile, arguments));
   } else {
     // TODO(b/69985541): Support profiling also on this path.
     std::vector<tensorflow::gtl::ArraySlice<const ShapedBuffer*>>

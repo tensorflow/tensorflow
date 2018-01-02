@@ -46,10 +46,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:lib",
     ],
 )
@@ -66,6 +66,7 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
 )
 

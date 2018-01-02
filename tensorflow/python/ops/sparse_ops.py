@@ -557,6 +557,7 @@ def sparse_reshape(sp_input, shape, name=None):
     TypeError: If `sp_input` is not a `SparseTensor`.
     ValueError:  If argument `shape` requests a `SparseTensor` with a different
       number of elements than `sp_input`.
+    ValueError:  If `shape` has more than one inferred (== -1) dimension.
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
   shape = math_ops.cast(shape, dtype=dtypes.int64)
@@ -568,16 +569,26 @@ def sparse_reshape(sp_input, shape, name=None):
     reshaped_shape_const = tensor_util.constant_value(shape)
     if (reshaped_shape_const is not None
         and sp_input.get_shape().is_fully_defined()):
-      # Don't deal with inferred dimensions. That would add significant code.
-      if all(n >= 0 for n in reshaped_shape_const):
-        reshaped_size = np.prod(reshaped_shape_const)
-        in_shape_size = np.prod(sp_input.get_shape().as_list())
-        if reshaped_size != in_shape_size:
-          raise ValueError(
-              "Cannot reshape a tensor with %d elements to shape %s "
-              "(%d elements)."
-              % (in_shape_size, reshaped_shape_const, reshaped_size))
-        reshaped_shape = reshaped_shape_const
+      num_implied = sum((dim == -1) for dim in reshaped_shape_const)
+      if num_implied > 1:
+        raise ValueError("At most one dimension can be inferred (-1). Found: %s"
+                         % reshaped_shape_const)
+      original_reshaped_shape = list(reshaped_shape_const)  # Copy.
+      in_shape_size = np.prod(sp_input.get_shape().as_list())
+      if num_implied:
+        implied_idx = original_reshaped_shape.index(-1)
+        non_implied_idx = (
+            original_reshaped_shape[:implied_idx] +
+            original_reshaped_shape[implied_idx + 1:])
+        reshaped_shape_const[implied_idx] = (
+            in_shape_size // np.prod(non_implied_idx))
+      reshaped_size = np.prod(reshaped_shape_const)
+      if reshaped_size != in_shape_size:
+        raise ValueError(
+            "Cannot reshape a tensor with %d elements to shape %s "
+            "(%d elements)."
+            % (in_shape_size, original_reshaped_shape, reshaped_size))
+      reshaped_shape = reshaped_shape_const
 
     return sparse_tensor.SparseTensor(
         reshaped_ind, array_ops.identity(sp_input.values),
@@ -1961,8 +1972,16 @@ def sparse_transpose(sp_input, perm=None, name=None):
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))
-    dense_shape = sp_input.dense_shape
-    transposed_dense_shape = array_ops.gather(dense_shape, perm)
+
+    perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
+    if perm_ is not None and sp_input.get_shape().is_fully_defined():
+      old_shape_ = sp_input.get_shape().as_list()
+      transposed_dense_shape = list(old_shape_)  # Copy.
+      for i, p in enumerate(perm_):
+        transposed_dense_shape[i] = old_shape_[p]
+    else:
+      dense_shape = sp_input.dense_shape
+      transposed_dense_shape = array_ops.gather(dense_shape, perm)
     transposed_st = sparse_tensor.SparseTensor(
         transposed_indices, sp_input.values,
         transposed_dense_shape)

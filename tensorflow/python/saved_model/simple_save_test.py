@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for saved_model utils."""
+"""Tests for SavedModel simple save functionality."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,16 +20,16 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.contrib.saved_model.python.saved_model import utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model import tag_constants
 
 
-class UtilsTest(test.TestCase):
+class SimpleSaveTest(test.TestCase):
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.Variable(variable_value, name=variable_name)
@@ -65,7 +65,7 @@ class UtilsTest(test.TestCase):
       var_y = self._init_and_validate_variable(sess, "var_y", 2)
       inputs = {"x": var_x}
       outputs = {"y": var_y}
-      utils.simple_save(sess, export_dir, inputs, outputs)
+      simple_save.simple_save(sess, export_dir, inputs, outputs)
 
     # Restore the graph with a valid tag and check the global variables and
     # signature def map.

@@ -118,6 +118,17 @@ ComputationDataHandle LocalComputationBuilder::Reshape(
   return builder_.Reshape(operand, dimensions, new_sizes);
 }
 
+ComputationDataHandle LocalComputationBuilder::Collapse(
+    const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return builder_.Collapse(operand, dimensions);
+}
+
+ComputationDataHandle LocalComputationBuilder::CrossReplicaSum(
+    const ComputationDataHandle& operand) {
+  return builder_.CrossReplicaSum(operand);
+}
+
 ComputationDataHandle LocalComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
@@ -166,6 +177,18 @@ ComputationDataHandle LocalComputationBuilder::Dot(
   return builder_.Dot(lhs, rhs);
 }
 
+ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers) {
+  return builder_.ConvGeneralDilated(lhs, rhs, window_strides, padding,
+                                     lhs_dilation, rhs_dilation,
+                                     dimension_numbers);
+}
+
 ComputationDataHandle LocalComputationBuilder::ConvertElementType(
     const ComputationDataHandle& operand, PrimitiveType new_element_type) {
   return builder_.ConvertElementType(operand, new_element_type);
@@ -181,6 +204,12 @@ ComputationDataHandle LocalComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
   return builder_.Transpose(operand, permutation);
+}
+
+ComputationDataHandle LocalComputationBuilder::Rev(
+    const ComputationDataHandle& operand,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return builder_.Rev(operand, dimensions);
 }
 
 ComputationDataHandle LocalComputationBuilder::Map(

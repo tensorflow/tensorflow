@@ -61,7 +61,7 @@ const T& SelectRandomItemUniform(std::default_random_engine* random,
 GcsDnsCache::GcsDnsCache(Env* env, int64 refresh_rate_secs)
     : env_(env), refresh_rate_secs_(refresh_rate_secs) {}
 
-Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
+void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   // TODO(saeta): Blacklist failing IP addresses.
   mutex_lock l(mu_);
   if (!started_) {
@@ -83,15 +83,12 @@ Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
     if (!addresses.empty()) {
       const string& chosen_address =
           SelectRandomItemUniform(&random_, addresses);
-      TF_RETURN_IF_ERROR(
-          request->AddResolveOverride(name, 443, chosen_address));
+      request->AddResolveOverride(name, 443, chosen_address);
       VLOG(1) << "Annotated DNS mapping: " << name << " --> " << chosen_address;
     } else {
       LOG(WARNING) << "No IP addresses available for " << name;
     }
   }
-
-  return Status::OK();
 }
 
 /* static */ std::vector<string> GcsDnsCache::ResolveName(const string& name) {

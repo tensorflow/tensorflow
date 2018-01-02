@@ -63,6 +63,7 @@ class HloPrintOptions {
   // compact operands, no indentation.
   HloPrintOptions()
       : print_large_constants_(false),
+        print_subcomputation_references_(true),
         print_metadata_(true),
         compact_operands_(false),
         print_operand_shape_(true),
@@ -73,6 +74,7 @@ class HloPrintOptions {
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
         .set_print_large_constants(true)
+        .set_print_subcomputation_references(true)
         .set_print_metadata(false)
         .set_print_operand_shape(false)
         .set_print_program_shape(false)
@@ -82,6 +84,17 @@ class HloPrintOptions {
   // If true, large constants will be printed out.
   HloPrintOptions& set_print_large_constants(bool value) {
     print_large_constants_ = value;
+    return *this;
+  }
+
+  // If true, the names of subcomputations (e.g. a fusion node's fused
+  // computation) won't be printed.  This makes the resulting text not parsable.
+  //
+  // A CustomCall's call target is printed even if
+  // print_subcomputation_references is false, because the call target isn't an
+  // HloComputation.
+  HloPrintOptions& set_print_subcomputation_references(bool value) {
+    print_subcomputation_references_ = value;
     return *this;
   }
 
@@ -123,6 +136,9 @@ class HloPrintOptions {
   }
 
   bool print_large_constants() const { return print_large_constants_; }
+  bool print_subcomputation_references() const {
+    return print_subcomputation_references_;
+  }
   bool print_metadata() const { return print_metadata_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
@@ -132,6 +148,7 @@ class HloPrintOptions {
 
  private:
   bool print_large_constants_;
+  bool print_subcomputation_references_;
   bool print_metadata_;
   bool compact_operands_;
   bool print_operand_shape_;
@@ -947,6 +964,17 @@ class HloInstruction {
   }
   const std::vector<int64>& slice_strides() const { return slice_strides_; }
 
+  // Returns the flag that describes whether a slice must be lowered into an
+  // offset into the original operand.
+  bool IsInPlaceSlice() const { return is_in_place_slice_; }
+
+  // Sets and returns the flag that describes whether a slice must be lowered
+  // into an offset into the original operand.
+  bool SetIsInPlaceSlice(bool value) {
+    is_in_place_slice_ = value;
+    return value;
+  }
+
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -1279,6 +1307,9 @@ class HloInstruction {
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
   std::vector<int64> slice_strides_;
+
+  // Describes whether the slice can be lowered to an offset into the operand.
+  bool is_in_place_slice_ = false;
 
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;

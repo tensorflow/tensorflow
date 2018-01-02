@@ -49,6 +49,12 @@ struct InvVarianceToVariance {
                   int channels, T* variance);
 };
 
+// This function sets a GPU tensor to NaNs.
+template <class T>
+struct SetNanFunctor {
+  void operator()(const Eigen::GpuDevice& d, typename TTypes<T>::Flat out);
+};
+
 #endif  // GOOGLE_CUDA
 
 // Functor used by FusedBatchNormGradOp to do the computations when

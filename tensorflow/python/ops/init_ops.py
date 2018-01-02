@@ -34,6 +34,8 @@ from __future__ import print_function
 
 import math
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -136,6 +138,9 @@ class Constant(Initializer):
       `True`, the initializer will throw an error if the shape of `value` is not
       compatible with the shape of the initialized tensor.
 
+  Raises:
+    TypeError: If the input `value` is not one of the expected types.
+
   Examples:
     The following example can be rewritten using a numpy.ndarray instead
     of the `value` list, even reshaped, as shown in the two commented lines
@@ -187,6 +192,11 @@ class Constant(Initializer):
   """
 
   def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
+    if not (np.isscalar(value) or isinstance(value, (list, np.ndarray))):
+      raise TypeError(
+          "Invalid type for initial value: %s (expected Python scalar, list of "
+          "values, or numpy.ndarray)." % type(value))
+
     self.value = value
     self.dtype = dtypes.as_dtype(dtype)
     self._verify_shape = verify_shape

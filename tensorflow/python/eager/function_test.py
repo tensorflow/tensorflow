@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -57,6 +59,20 @@ class FunctionTest(test.TestCase):
     out = sq(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testNestedInputsGraphMode(self):
+    matmul = function.defun(math_ops.matmul)
+
+    pair = collections.namedtuple('pair', ['a', 'b'])
+
+    @function.defun
+    def a_times_b(inputs):
+      return matmul(inputs.a['a'], inputs.b['b'])
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    out = a_times_b(pair({'a': t}, {'b': t}))
+    self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
   def testGraphModeWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
@@ -81,6 +97,22 @@ class FunctionTest(test.TestCase):
 
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
+    self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testNestedInputsDefunOpGraphMode(self):
+    matmul = function.defun(math_ops.matmul)
+
+    pair = collections.namedtuple('pair', ['a', 'b'])
+    def a_times_b(inputs):
+      return matmul(inputs.a['a'], inputs.b['b'])
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+
+    inputs = pair({'a': t}, {'b': t})
+    sq_op = function.make_defun_op(a_times_b, inputs)
+
+    self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
+    out = sq_op(inputs)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputDefunOpGraphMode(self):
@@ -114,7 +146,7 @@ class FunctionTest(test.TestCase):
     step_op = function.make_defun_op(step)
 
     self.assertEqual(step_op.output_dtypes, dtypes.float32)
-    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape(None))
+    self.assertEqual(step_op.output_shapes, tensor_shape.TensorShape([]))
     self.assertAllEqual(step_op(), 2.0)
 
   def testDefunOpGraphModeNoneOutput(self):
@@ -146,6 +178,42 @@ class FunctionTest(test.TestCase):
       return v.read_value()
 
     self.assertEqual(3.0, float(f()))
+
+  def testDefunShapeInferenceWithCapturedResourceVariable(self):
+    v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+
+    def f():
+      x = constant_op.constant([[1, 2], [3, 4]])
+      out = math_ops.matmul(v, x)
+      self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+    compiled = function.defun(f)
+    compiled()
+
+  def testDefunShapeInferenceWithCapturedResourceVariableInGraphMode(self):
+    with context.graph_mode():
+      v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
+
+      def f():
+        x = constant_op.constant([[1, 2], [3, 4]])
+        out = math_ops.matmul(v, x)
+        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+      compiled = function.defun(f)
+      compiled()
+
+  def testDefunShapeInferenceWithCapturedVariableInGraphMode(self):
+    with context.graph_mode():
+      v = variables.Variable([[1, 2], [3, 4]])
+
+      def f():
+        x = constant_op.constant([[1, 2], [3, 4]])
+        out = math_ops.matmul(v, x)
+        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+      # Check that shape inference works while creating the defun
+      compiled = function.defun(f)
+      compiled()
 
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)

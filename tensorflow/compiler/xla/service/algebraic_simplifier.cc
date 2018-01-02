@@ -361,6 +361,39 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     return Status::OK();
   }
 
+  // Canonicalization: Put constants on the right.  This makes the reassociation
+  // rules below simpler.
+  VLOG(10) << "trying transform [Const + A => A + Const]";
+  if (lhs->IsConstant() && !rhs->IsConstant()) {
+    return ReplaceWithNewInstruction(
+        add,
+        HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd, rhs, lhs));
+  }
+
+  // Reassociate to allow constant folding.
+  //
+  // Note: This is not general.  For example, we won't reassociate
+  //
+  //   (A + C1) + (B + C2) =>  A + B + (C1 + C2).
+  //
+  VLOG(10) << "trying transform [(A + C1) + C2 => A + (C1 + C2)]";
+  if (rhs->IsConstant() && lhs->opcode() == HloOpcode::kAdd &&
+      !lhs->operand(0)->IsConstant() && lhs->operand(1)->IsConstant()) {
+    auto* c1 = lhs->mutable_operand(1);
+    auto* c2 = rhs;
+    TF_ASSIGN_OR_RETURN(
+        Shape sum_of_constants_shape,
+        ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, c1, c2));
+
+    auto* sum_of_constants =
+        computation_->AddInstruction(HloInstruction::CreateBinary(
+            sum_of_constants_shape, HloOpcode::kAdd, c1, c2));
+    return ReplaceWithNewInstruction(
+        add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
+                                          lhs->mutable_operand(0),
+                                          sum_of_constants));
+  }
+
   return Status::OK();
 }
 
@@ -494,6 +527,16 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
     return Status::OK();
   }
 
+  // Canonicalize subtraction of a constant to addition.
+  VLOG(10) << "trying transform [A - Const => A + (-Const)]";
+  if (rhs->IsConstant() && !lhs->IsConstant()) {
+    HloInstruction* negative_const = computation_->AddInstruction(
+        HloInstruction::CreateUnary(rhs->shape(), HloOpcode::kNegate, rhs));
+    return ReplaceWithNewInstruction(
+        sub, HloInstruction::CreateBinary(sub->shape(), HloOpcode::kAdd, lhs,
+                                          negative_const));
+  }
+
   return Status::OK();
 }
 
@@ -553,6 +596,23 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   // Simplifying integral division would produce unexpected results.
   if (ShapeUtil::ElementIsIntegral(divide->shape())) {
     return Status::OK();
+  }
+
+  // A / Const => A * (1 / Const)
+  //
+  // (Backends can do this transformation, but generally only if the constant is
+  // a scalar.)
+  if (lhs->opcode() != HloOpcode::kConstant &&
+      rhs->opcode() == HloOpcode::kConstant) {
+    HloInstruction* one =
+        computation_->AddInstruction(HloInstruction::CreateConstant(
+            Literal::One(lhs->shape().element_type()).CloneToUnique()));
+    HloInstruction* inverse =
+        computation_->AddInstruction(HloInstruction::CreateBinary(
+            rhs->shape(), HloOpcode::kDivide, one, rhs));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kMultiply, lhs, inverse));
   }
 
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
@@ -1182,6 +1242,11 @@ Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag) {
 }
 
 Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
+  if (ShapeUtil::HasZeroElements(pad->operand(0)->shape())) {
+    return ReplaceWithNewInstruction(
+        pad, HloInstruction::CreateBroadcast(pad->shape(),
+                                             pad->mutable_operand(1), {}));
+  }
   // Eliminate nop pads (padding all zero), and replace a pad with negative
   // padding with a pad with non-negative padding followed by a slice.
   bool all_zero = true;
@@ -1624,6 +1689,12 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
 
 Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* reduce_window) {
+  if (ShapeUtil::HasZeroElements(reduce_window->operand(0)->shape())) {
+    return ReplaceWithNewInstruction(
+        reduce_window,
+        HloInstruction::CreateBroadcast(reduce_window->shape(),
+                                        reduce_window->mutable_operand(1), {}));
+  }
   auto operand = reduce_window->mutable_operand(0);
   const Window& window = reduce_window->window();
   auto function = reduce_window->to_apply();
@@ -1694,7 +1765,6 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
 
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   auto operand = transpose->mutable_operand(0);
-
   if (std::is_sorted(transpose->dimensions().begin(),
                      transpose->dimensions().end())) {
     VLOG(10) << "deleting no-op transpose";
@@ -1721,6 +1791,18 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution) {
   auto lhs = convolution->mutable_operand(0);
   auto rhs = convolution->mutable_operand(1);
+  if (ShapeUtil::HasZeroElements(lhs->shape()) ||
+      ShapeUtil::HasZeroElements(rhs->shape())) {
+    return ReplaceWithNewInstruction(
+        convolution,
+        HloInstruction::CreateBroadcast(
+            convolution->shape(),
+            computation_->AddInstruction(HloInstruction::CreateConvert(
+                ShapeUtil::MakeShape(convolution->shape().element_type(), {}),
+                computation_->AddInstruction(
+                    HloInstruction::CreateConstant(Literal::CreateR0(0.0f))))),
+            {}));
+  }
   const auto& window = convolution->window();
   if (!enable_conv_simplification_) {
     return Status::OK();
@@ -1813,18 +1895,15 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
 
   // We already checked feature_dimension is most minor, so data in input_shape
   // and row-major {conv_width,input_channels} are bitwise identical.
-  const Shape new_input_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          input_shape.element_type(), {conv_width, input_channels});
+  const Shape new_input_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      input_shape.element_type(), {conv_width, input_channels});
   // We already checked input_feature_dimension is more major than
   // output_feature_dimension, so data in filter_shape and row-major
   // {input_channels,output_channels} are bitwise identical.
-  const Shape new_filter_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          filter_shape.element_type(), {input_channels, output_channels});
-  const Shape dot_output_shape =
-      ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-          convolution_shape.element_type(), {conv_width, output_channels});
+  const Shape new_filter_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      filter_shape.element_type(), {input_channels, output_channels});
+  const Shape dot_output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      convolution_shape.element_type(), {conv_width, output_channels});
 
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be

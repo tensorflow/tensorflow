@@ -367,6 +367,9 @@ class MklConv2DCustomBackpropInputOp :
   ~MklConv2DCustomBackpropInputOp() {}
 
  private:
+  const int kInputIndex_Filter = 1,
+            kInputIndex_InputSizes = 0,
+            kInputIndex_OutBackProp = 2;
   void ValidateMklShapes(const MklDnnShape& input_mkl_shape,
                          const MklDnnShape& filter_mkl_shape,
                          const MklDnnShape& obp_mkl_shape) {
@@ -377,7 +380,7 @@ class MklConv2DCustomBackpropInputOp :
       << "Conv2DBackpropInput: input should not be in MKL Layout";
   }
 
-  size_t GetInputTensorIndexWithSizes() { return 0; /* input index */ }
+  size_t GetInputTensorIndexWithSizes() { return kInputIndex_InputSizes; }
 
   TensorShape MakeInputTfShape(OpKernelContext* context,
                                const Tensor& input_tensor) {
@@ -390,8 +393,7 @@ class MklConv2DCustomBackpropInputOp :
 
   TensorShape MakeFilterTfShape(OpKernelContext* context,
                                 const Tensor& filter_tensor) {
-    size_t filter_idx = 1;
-    return GetTfShape(context, filter_idx);
+    return GetTfShape(context, kInputIndex_Filter);
   }
 
   const memory::dims& GetOutputDims(const memory::dims& fwd_input_dims,

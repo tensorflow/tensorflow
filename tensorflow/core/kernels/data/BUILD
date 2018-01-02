@@ -494,6 +494,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "unique_dataset_op",
+    srcs = ["unique_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         ":batch_dataset_op",
@@ -526,6 +538,7 @@ tf_kernel_library(
         ":take_dataset_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
+        ":unique_dataset_op",
         ":zip_dataset_op",
     ],
 )
