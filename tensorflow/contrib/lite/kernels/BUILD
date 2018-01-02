@@ -158,6 +158,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "transpose_test",
+    size = "small",
+    srcs = ["transpose_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/kernels/internal:reference",
+        "//tensorflow/contrib/lite/kernels/internal:reference_base",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "batch_to_space_nd_test",
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
