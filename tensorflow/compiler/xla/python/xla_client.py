@@ -90,6 +90,38 @@ DTYPE_TO_XLA_ELEMENT_TYPE = {
 }
 
 
+class LocalBuffer(object):
+  """Represents a handle to data owned by XLA.
+
+  The referent is ready for use in executing a local, compiled
+  Computation. On XLA platforms involving a device (e.g. GPU), this
+  means the referent is in device memory.
+  """
+
+  def __init__(self, c_local_shaped_buffer):
+    self.c_local_shaped_buffer = c_local_shaped_buffer
+    self._delete = c_api.DeleteLocalShapedBuffer
+
+  @staticmethod
+  def from_py(npval):
+    npval = require_numpy_array_layout(npval)
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval))
+
+  def to_py(self):
+    return self.c_local_shaped_buffer.ToLiteral()
+
+  def delete(self):
+    if self.c_local_shaped_buffer is not None:
+      self._delete(self.c_local_shaped_buffer)
+      self.c_local_shaped_buffer = None
+
+  def is_deleted(self):
+    return self.c_local_shaped_buffer is None
+
+  def __del__(self):
+    self.delete()
+
+
 class Shape(object):
   """XLA shape.
 
@@ -206,6 +238,17 @@ class LocalComputation(object):
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
     arguments = tuple(map(require_numpy_array_layout, arguments))
     return self.c_local_computation.Execute(arguments)
+
+  def ExecuteWithLocalBuffers(self, arguments=()):
+    """Execute with LocalBuffer arguments and return value."""
+    if not self.is_compiled:
+      raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    arguments = tuple(arguments)
+    if any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    return LocalBuffer(
+        self.c_local_computation.ExecuteWithShapedBuffers(
+            [arg.c_local_shaped_buffer for arg in arguments]))
 
   def __del__(self):
     self._delete(self.c_local_computation)

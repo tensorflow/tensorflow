@@ -19,12 +19,27 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
 namespace swig {
+
+// Wraps a ScopedShapedBuffer produced by copying a literal "to
+// device," i.e. copying a literal to a scoped buffer via the local
+// client.
+class LocalShapedBuffer {
+ public:
+  static LocalShapedBuffer* FromLiteral(const Literal& argument);
+  LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
+  const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
+  std::unique_ptr<Literal> ToLiteral() const;
+
+ private:
+  std::unique_ptr<ScopedShapedBuffer> shaped_buffer_;
+};
 
 // Wraps a LocalExecutable produced by compiling a
 // LocalComputation. The Execute method forwards to that of the
@@ -36,6 +51,8 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
   std::unique_ptr<Literal> Execute(const std::vector<Literal>& arguments);
+  LocalShapedBuffer* ExecuteWithShapedBuffers(
+      tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -211,14 +228,10 @@ class LocalComputationBuilder {
   ComputationBuilder builder_;
 };
 
-static void DeleteLocalComputation(LocalComputation* computation) {
-  delete computation;
-}
-
-static void DeleteCompiledLocalComputation(
-    CompiledLocalComputation* computation) {
-  delete computation;
-}
+// Functions for freeing resources from the Python side.
+void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
+void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
+void DeleteLocalComputation(LocalComputation* computation);
 
 }  // namespace swig
 

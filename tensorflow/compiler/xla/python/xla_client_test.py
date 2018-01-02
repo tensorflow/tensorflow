@@ -34,10 +34,13 @@ class LocalComputationTest(unittest.TestCase):
       name = self.id()
     return xla_client.ComputationBuilder(name)
 
+  def _Execute(self, c, arguments):
+    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    return compiled_c.Execute(arguments)
+
   def _ExecuteAndAssertWith(self, assert_func, c, arguments, expected):
     assert expected is not None
-    compiled_c = c.Build().CompileWithExampleArguments(arguments)
-    result = compiled_c.Execute(arguments)
+    result = self._Execute(c, arguments)
     # Numpy's comparison methods are a bit too lenient by treating inputs as
     # "array-like", meaning that scalar 4 will be happily compared equal to
     # [[4]]. We'd like to be more strict so assert shapes as well.
@@ -307,6 +310,48 @@ class ParametersTest(LocalComputationTest):
         c,
         arguments=[self.f64_scalar_2, self.f64_4vector],
         expected=[-4.3, 1.3, -6.3, 3.3])
+
+
+class LocalBufferTest(LocalComputationTest):
+  """Tests focusing on execution with LocalBuffers."""
+
+  def _Execute(self, c, arguments):
+    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    arg_buffers = [xla_client.LocalBuffer.from_py(arg) for arg in arguments]
+    result_buffer = compiled_c.ExecuteWithLocalBuffers(arg_buffers)
+    return result_buffer.to_py()
+
+  def testConstantSum(self):
+    c = self._NewComputation()
+    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    self._ExecuteAndCompareClose(c, expected=4.25)
+
+  def testOneParameterSum(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
+    self._ExecuteAndCompareClose(
+        c,
+        arguments=[NumpyArrayF32(1.11)],
+        expected=4.25)
+
+  def testTwoParameterSum(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)),
+          c.ParameterFromNumpy(NumpyArrayF32(0.)))
+    self._ExecuteAndCompareClose(
+        c,
+        arguments=[NumpyArrayF32(1.11), NumpyArrayF32(3.14)],
+        expected=4.25)
+
+  def testCannotCallWithDeletedBuffers(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
+    arg = NumpyArrayF32(1.11)
+    compiled_c = c.Build().CompileWithExampleArguments([arg])
+    arg_buffer = xla_client.LocalBuffer.from_py(arg)
+    arg_buffer.delete()
+    with self.assertRaises(ValueError):
+      compiled_c.ExecuteWithLocalBuffers([arg_buffer])
 
 
 class SingleOpTest(LocalComputationTest):

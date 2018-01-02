@@ -221,6 +221,29 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+// LocalShapedBuffer*
+
+%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalShapedBuffer*>
+    (std::vector<LocalShapedBuffer*> temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    return NULL;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    LocalShapedBuffer* lsbp;
+    if ((SWIG_ConvertPtr(o, (void**) &lsbp, $descriptor(xla::swig::LocalShapedBuffer*),
+                         SWIG_POINTER_EXCEPTION)) == -1) {
+      return NULL;
+    }
+    temps.push_back(lsbp);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
 // Literal
 
 %typemap(in) const Literal& (std::unique_ptr<Literal> temp) {
@@ -486,8 +509,12 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
+%unignore xla::swig::LocalShapedBuffer;
+%unignore xla::swig::LocalShapedBuffer::FromLiteral;
+%unignore xla::swig::LocalShapedBuffer::ToLiteral;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
+%unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
 %unignore xla::swig::LocalComputationBuilder;
@@ -549,6 +576,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::ReciprocalF32;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteLocalComputation;
 %unignore xla::swig::DeleteCompiledLocalComputation;
 
