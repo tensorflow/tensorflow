@@ -305,9 +305,9 @@ def get_var(environ_cp,
 
   Raises:
     UserInputError: if an environment variable is set, but it cannot be
-    interpreted as a boolean indicator, assume that the user has made a
-    scripting error, and will continue to provide invalid input.
-    Raise the error to avoid infinitely looping.
+      interpreted as a boolean indicator, assume that the user has made a
+      scripting error, and will continue to provide invalid input.
+      Raise the error to avoid infinitely looping.
   """
   if not question:
     question = 'Do you wish to build TensorFlow with %s support?' % query_item
@@ -326,21 +326,21 @@ def get_var(environ_cp,
 
   var = environ_cp.get(var_name)
   if var is not None:
-    _var_content = var.strip().lower()
-    _true_contents = ('1', 'y', 'yes', 'true')
-    _false_contents = ('0', 'n', 'no', 'false')
-    if _var_content in _true_contents:
+    var_content = var.strip().lower()
+    true_contents = ('1', 'y', 'yes', 'true')
+    false_contents = ('0', 'n', 'no', 'false')
+    if var_content in true_contents:
       var = True
-    elif _var_content in _false_contents:
+    elif var_content in false_contents:
       var = False
     else:
-      raise UserInputError('environment variable %s must be set as a boolean indicator\n'
-                           'the followings are accepted as TRUE : %s\n'
-                           'the followings are accepted as FALSE: %s\n'
-                           'current value is %s' %
+      raise UserInputError('Environment variable %s must be set as a boolean indicator.\n'
+                           'The followings are accepted as TRUE : %s.\n'
+                           'The followings are accepted as FALSE: %s.\n'
+                           'Current value is %s' %
                            (var_name,
-                            ','.join(_true_contents),
-                            ','.join(_false_contents),
+                            ','.join(true_contents),
+                            ','.join(false_contents),
                             var))
 
   while var is None:
@@ -629,8 +629,8 @@ def prompt_loop_or_load_from_env(
 
   Raises:
     UserInputError: if a query has been attempted n_ask_attempts times without
-    success, assume that the user has made a scripting error, and will continue
-    to provide invalid input. Raise the error to avoid infinitely looping.
+      success, assume that the user has made a scripting error, and will continue
+      to provide invalid input. Raise the error to avoid infinitely looping.
   """
   default = environ_cp.get(var_name) or var_default
   full_query = '%s [Default is %s]: ' % (
