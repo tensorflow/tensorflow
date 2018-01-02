@@ -319,6 +319,15 @@ def get_var(environ_cp,
     question += ' [y/N]: '
 
   var = environ_cp.get(var_name)
+  if var is not None:
+    _var_content = var.strip().lower()
+    if _var_content in ['1', 'y', 'true']:
+      var = True
+    elif _var_content in ['0', 'n', 'false']:
+      var = False
+    else:
+      var = None
+
   while var is None:
     user_input_origin = get_input(question)
     user_input = user_input_origin.strip().lower()
