@@ -1005,6 +1005,18 @@ class EmbeddedComputationsTest(LocalComputationTest):
     c.While(cond, body, init)
     self._ExecuteAndCompareClose(c, expected=16.)
 
+  def testInfeedS32Values(self):
+    to_infeed = NumpyArrayS32([1, 2, 3, 4])
+    c = self._NewComputation()
+    c.Infeed(xla_client.Shape.from_numpy(to_infeed[0]))
+    compiled_c = c.Build().CompileWithExampleArguments()
+    for item in to_infeed:
+      xla_client.transfer_to_infeed(item)
+
+    for item in to_infeed:
+      result = compiled_c.Execute()
+      self.assertEqual(result, item)
+
 
 if __name__ == "__main__":
   unittest.main()

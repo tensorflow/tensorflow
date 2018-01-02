@@ -204,6 +204,22 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
+def transfer_to_infeed(value):
+  """Transfers the given value into the XLA infeed queue.
+
+  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
+  a totally ordered stream of values. This is dequeued from XLA computations via
+  the Infeed() operation.
+
+  TODO(leary): this currently implicitly enqueues to device ordinal 0.
+
+  Args:
+    value: the value that the caller would like to enqueue into the XLA infeed
+      queue
+  """
+  c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+
+
 class LocalComputation(object):
   """Python wrapper for a local XLA Computation.
 
@@ -275,6 +291,17 @@ class ComputationBuilder(object):
 
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
+
+  def Infeed(self, shape):
+    """Enqueues an infeed op onto the computation.
+
+    Infeed operations dequeue data of the given shape from the device's infeed
+    queue for subsequent use in the computation.
+
+    Returns:
+      A  ComputationDataHandle message.
+    """
+    return _wrap_data_handle(self._client.Infeed(_unwrap_shape(shape)))
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.

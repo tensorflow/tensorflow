@@ -21,6 +21,11 @@ namespace xla {
 
 namespace swig {
 
+void TransferToInfeedLocal(const Literal& literal) {
+  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  TF_CHECK_OK(client->TransferToInfeedLocal(literal, /*device_ordinal=*/0));
+}
+
 LocalShapedBuffer::LocalShapedBuffer(
     std::unique_ptr<ScopedShapedBuffer> shaped_buffer)
     : shaped_buffer_(std::move(shaped_buffer)) {}
@@ -146,6 +151,10 @@ ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
 std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
     const ComputationDataHandle& operand) {
   return builder_.GetShape(operand).ConsumeValueOrDie();
+}
+
+ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
+  return builder_.Infeed(shape);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConstantLiteral(

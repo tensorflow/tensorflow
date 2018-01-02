@@ -509,6 +509,7 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
+%unignore xla::swig::TransferToInfeedLocal;
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
@@ -522,6 +523,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Build;
 %unignore xla::swig::LocalComputationBuilder::Parameter;
 %unignore xla::swig::LocalComputationBuilder::GetShape;
+%unignore xla::swig::LocalComputationBuilder::Infeed;
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;
 %unignore xla::swig::LocalComputationBuilder::ConstantR0;
 %unignore xla::swig::LocalComputationBuilder::Broadcast;

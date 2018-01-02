@@ -27,6 +27,12 @@ namespace xla {
 
 namespace swig {
 
+// Wraps the local client's infeed-transfer function, aborting on error.
+//
+// TODO(leary) ideally we could return a value that would permit an appropriate
+// Python exception to be raised.
+void TransferToInfeedLocal(const Literal& literal);
+
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
 // client.
@@ -89,6 +95,8 @@ class LocalComputationBuilder {
                                   const string& name);
 
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
+
+  ComputationDataHandle Infeed(const Shape& shape);
 
   ComputationDataHandle ConstantLiteral(const Literal& literal);
 
