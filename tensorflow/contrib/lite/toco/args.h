@@ -21,7 +21,6 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
-#include "strings/split.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
