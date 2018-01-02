@@ -92,6 +92,14 @@ class ShapeVerifier : public DfsHloVisitor {
     return CheckShape(convolution, expected);
   }
 
+  Status HandleFft(HloInstruction* fft) override {
+    TF_ASSIGN_OR_RETURN(
+        const Shape expected,
+        ShapeInference::InferFftShape(fft->operand(0)->shape(), fft->fft_type(),
+                                      fft->fft_length()));
+    return CheckShape(fft, expected);
+  }
+
   Status HandleCrossReplicaSum(HloInstruction* crs) override {
     std::vector<const Shape*> operand_shapes;
     for (const HloInstruction* operand : crs->operands()) {

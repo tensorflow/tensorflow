@@ -1135,6 +1135,55 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       });
 }
 
+Status IrEmitter::HandleFft(HloInstruction* fft) {
+  auto operand = fft->operand(0);
+  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+      /*instruction=*/*fft, /*operands=*/{operand},
+      /*supported_types=*/{F32, C64}));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(operand->shape().layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
+  VLOG(3) << "operand=" << ShapeUtil::HumanStringWithLayout(operand->shape());
+  VLOG(3) << "fft=" << ShapeUtil::HumanStringWithLayout(fft->shape());
+
+  llvm::Value* operand_address = GetEmittedValueFor(operand);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fft));
+
+  const std::vector<int64>& fft_length = fft->fft_length();
+  int64 input_batch = 1;
+  for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
+    input_batch *= fft->shape().dimensions(i);
+  }
+
+  // Args have been computed, make the call.
+  llvm::Type* int8_ptr_type = ir_builder_.getInt8Ty()->getPointerTo();
+  llvm::Type* int32_type = ir_builder_.getInt32Ty();
+  llvm::Type* int64_type = ir_builder_.getInt64Ty();
+  llvm::FunctionType* fft_type = llvm::FunctionType::get(
+      ir_builder_.getVoidTy(),
+      {int8_ptr_type, int8_ptr_type, int8_ptr_type, int32_type, int32_type,
+       int64_type, int64_type, int64_type, int64_type},
+      /*isVarArg=*/false);
+  const char* fn_name = runtime::kEigenFftSymbolName;
+  llvm::Function* fft_func = llvm::cast<llvm::Function>(
+      module_->getOrInsertFunction(fn_name, fft_type));
+  fft_func->setCallingConv(llvm::CallingConv::C);
+  fft_func->setDoesNotThrow();
+  fft_func->setOnlyAccessesInaccessibleMemOrArgMem();
+  const int fft_rank = fft_length.size();
+  ir_builder_.CreateCall(
+      fft_func,
+      {GetExecutableRunOptionsArgument(),
+       ir_builder_.CreateBitCast(GetEmittedValueFor(fft), int8_ptr_type),
+       ir_builder_.CreateBitCast(operand_address, int8_ptr_type),
+       ir_builder_.getInt32(fft->fft_type()), ir_builder_.getInt32(fft_rank),
+       ir_builder_.getInt64(input_batch),
+       ir_builder_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
+       ir_builder_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
+       ir_builder_.getInt64(fft_rank > 2 ? fft_length[2] : 0)});
+
+  return Status::OK();
+}
+
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() == 1) {
     // When there is a single replica, a cross replica sum is the identity

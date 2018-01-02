@@ -705,6 +705,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
 
+    XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
+
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new CpuExecutable(

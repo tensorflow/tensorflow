@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
@@ -371,6 +372,14 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
   }
 
   return IrEmitter::HandleCustomCall(custom_call);
+}
+
+Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
+  TF_RET_CHECK(
+      LayoutUtil::IsMonotonicWithDim0Major(fft->operand(0)->shape().layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
+  thunk_sequence_->emplace_back(BuildFftThunk(fft));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
@@ -1853,6 +1862,16 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConvolutionThunk(
     default:
       LOG(FATAL) << "Not a convolution-fusion";
   }
+}
+
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
+    const HloInstruction* inst) {
+  const HloInstruction* operand = inst->operand(0);
+  return MakeUnique<FftThunk>(inst->fft_type(), inst->fft_length(),
+                              /*input_buffer=*/GetAllocationSlice(*operand),
+                              /*output_buffer=*/GetAllocationSlice(*inst),
+                              /*input_shape=*/operand->shape(),
+                              /*output_shape=*/inst->shape(), inst);
 }
 
 Status IrEmitterUnnested::EmitInitializer(const HloInstruction* hlo,
