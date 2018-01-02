@@ -327,8 +327,8 @@ def get_var(environ_cp,
   var = environ_cp.get(var_name)
   if var is not None:
     _var_content = var.strip().lower()
-    _true_contents = ['1', 'y', 'yes', 'true']
-    _false_contents = ['0', 'n', 'no', 'false']
+    _true_contents = ('1', 'y', 'yes', 'true')
+    _false_contents = ('0', 'n', 'no', 'false')
     if _var_content in _true_contents:
       var = True
     elif _var_content in _false_contents:
