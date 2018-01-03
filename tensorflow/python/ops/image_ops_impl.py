@@ -1000,9 +1000,9 @@ def adjust_gamma(image, gamma=1, gain=1):
   """
 
   with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
-    # Convert pixel value to DT_FLOAT for computing adjusted image..
+    # Convert pixel value to DT_FLOAT for computing adjusted image.
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
-    # Keep image dtype for computing the scale of corresponding dtype
+    # Keep image dtype for computing the scale of corresponding dtype.
     image = ops.convert_to_tensor(image, name='image')
 
     assert_op = _assert(gamma >= 0, ValueError,
