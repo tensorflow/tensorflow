@@ -539,12 +539,13 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
                        graph_op_def.deprecation().explanation(), ".\n");
   } else if (api_def.summary().empty()) {
     comment = "TODO: add doc.\n";
-  } else if (!api_def.description().empty()) {
-    strings::StrAppend(&comment, "\n", api_def.description(), "\n");
   } else {
     comment = strings::StrCat(api_def.summary(), "\n");
   }
   
+  if (!api_def.description().empty()) {
+    strings::StrAppend(&comment, "\n", api_def.description(), "\n");
+  }
   strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
 
   // Process inputs
