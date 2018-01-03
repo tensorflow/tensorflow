@@ -623,7 +623,7 @@ Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
                              const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
-  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
+  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db.get()));
   *result = new SummaryDbWriter(env, std::move(db), experiment_name, run_name,
                                 user_name);
   return Status::OK();
