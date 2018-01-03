@@ -542,7 +542,6 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
   } else {
     comment = strings::StrCat(api_def.summary(), "\n");
   }
-  
   if (!api_def.description().empty()) {
     strings::StrAppend(&comment, "\n", api_def.description(), "\n");
   }
