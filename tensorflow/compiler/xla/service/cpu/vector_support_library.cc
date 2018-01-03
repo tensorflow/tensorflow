@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/llvm_ir/vector_support_library.h"
+#include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
+namespace cpu {
 VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
                                            int64 vector_size,
                                            llvm::IRBuilder<>* ir_builder,
@@ -206,9 +208,10 @@ llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
 
 std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
-  // TODO(sanjoy): Move this magic constant to TargetMachineFeatures.
-  const int kAvxVectorWidth = 8;
-  if (vector_size() == kAvxVectorWidth && vectors.size() == kAvxVectorWidth) {
+  const int x86_avx_vector_elements =
+      TargetMachineFeatures::kX86AvxVectorByteSize / scalar_byte_size();
+  if (vector_size() == x86_avx_vector_elements &&
+      vectors.size() == x86_avx_vector_elements) {
     return ComputeAvxOptimizedHorizontalSums(std::move(vectors), init_values);
   }
 
@@ -277,4 +280,5 @@ llvm::Value* LlvmVariable::Get() const {
 void LlvmVariable::Set(llvm::Value* new_value) {
   ir_builder_->CreateStore(new_value, alloca_);
 }
+}  // namespace cpu
 }  // namespace xla
