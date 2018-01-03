@@ -1369,3 +1369,21 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc",
   ]
 
   return workers, ps_servers
+
+
+def get_node_def_from_graph(node_name, graph_def):
+  """Returns the `NodeDef` instance for given node name in the graph def.
+
+  This method explores only the NodeDefs in `graph_def.node`.
+
+  Args:
+    node_name: Name of the NodeDef to search for.
+    graph_def: An instance of `GraphDef` proto.
+
+  Returns:
+    the `NodeDef` instance whose name field matches the given node_name or None.
+  """
+  for node_def in graph_def.node:
+    if node_def.name == node_name:
+      return node_def
+  return None

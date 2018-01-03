@@ -349,6 +349,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(expected, self.evaluate(nested))
 
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 

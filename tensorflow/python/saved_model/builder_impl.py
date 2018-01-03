@@ -239,7 +239,9 @@ class SavedModelBuilder(object):
                      assets_collection=None,
                      legacy_init_op=None,
                      clear_devices=False,
-                     main_op=None):
+                     main_op=None,
+                     strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -260,11 +262,15 @@ class SavedModelBuilder(object):
       main_op: Op or group of ops to execute when the graph is loaded. Note
           that when the main_op is specified it is run after the restore op at
           load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
           yet, or if the graph already contains one or more legacy init ops.
     """
+    # pylint: enable=line-too-long
     if not self._has_saved_variables:
       raise AssertionError(
           "Graph state including variables and assets has not been saved yet. "
@@ -299,7 +305,8 @@ class SavedModelBuilder(object):
     # there are edge cases where that option breaks the graph.  Until that is
     # resolved, we just leave the option set to False for now.
     # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -311,7 +318,9 @@ class SavedModelBuilder(object):
                                    assets_collection=None,
                                    legacy_init_op=None,
                                    clear_devices=False,
-                                   main_op=None):
+                                   main_op=None,
+                                   strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -334,7 +343,11 @@ class SavedModelBuilder(object):
       main_op: Op or group of ops to execute when the graph is loaded. Note
           that when the main_op is specified it is run after the restore op at
           load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     """
+    # pylint: enable=line-too-long
     if self._has_saved_variables:
       raise AssertionError("Graph state including variables and assets has "
                            "already been saved. Please invoke "
@@ -388,7 +401,8 @@ class SavedModelBuilder(object):
     # there are edge cases where that option breaks the graph.  Until that is
     # resolved, we just leave the option set to False for now.
     # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)

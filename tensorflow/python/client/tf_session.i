@@ -485,6 +485,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %unignore tensorflow;
 %unignore TF_Run;
 %unignore EqualGraphDefWrapper;
+%unignore EqualAttrValueWrapper;
 
 // Include the wrapper for TF_PRunSetup from tf_session_helper.h.
 
