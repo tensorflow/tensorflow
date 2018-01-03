@@ -27,8 +27,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dnn",
+        ":dnn_linear_combined",
         ":extenders",
         ":head",
+        ":linear",
         ":logit_fns",
         ":multi_head",
         ":replicate_model_fn",
@@ -65,6 +67,46 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python/estimator:dnn_testing_utils",
         "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "dnn_linear_combined",
+    srcs = ["python/estimator/dnn_linear_combined.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:nn",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:dnn_linear_combined",
+    ],
+)
+
+py_test(
+    name = "dnn_linear_combined_test",
+    size = "medium",
+    srcs = ["python/estimator/dnn_linear_combined_test.py"],
+    shard_count = 3,
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":dnn_linear_combined",
+        ":head",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:dnn_testing_utils",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:linear_testing_utils",
         "//tensorflow/python/estimator:numpy_io",
         "//tensorflow/python/estimator:prediction_keys",
         "//tensorflow/python/feature_column",
@@ -170,6 +212,42 @@ py_test(
 )
 
 py_library(
+    name = "linear",
+    srcs = ["python/estimator/linear.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:linear",
+    ],
+)
+
+py_test(
+    name = "linear_test",
+    size = "small",
+    srcs = ["python/estimator/linear_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
+    deps = [
+        ":head",
+        ":linear",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:linear_testing_utils",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "logit_fns",
     srcs = [
         "python/estimator/logit_fns.py",
@@ -253,23 +331,24 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
 
 cuda_py_test(
     name = "replicate_model_fn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
         "//tensorflow/python/estimator",
@@ -297,5 +376,5 @@ cuda_py_test(
         "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
-    tags = ["requires-gpu-sm35"],
+    tags = ["multi_gpu"],
 )

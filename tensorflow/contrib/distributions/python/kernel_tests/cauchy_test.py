@@ -41,6 +41,7 @@ def try_import(name):  # pylint: disable=invalid-name
     tf_logging.warning("Could not import %s: %s" % (name, str(e)))
   return module
 
+
 stats = try_import("scipy.stats")
 
 
@@ -62,9 +63,9 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual(expected, scale_shape.eval())
       loc = array_ops.zeros(loc_shape)
       scale = array_ops.ones(scale_shape)
-      self.assertAllEqual(
-          expected,
-          array_ops.shape(cauchy_lib.Cauchy(loc, scale).sample()).eval())
+      self.assertAllEqual(expected,
+                          array_ops.shape(
+                              cauchy_lib.Cauchy(loc, scale).sample()).eval())
 
   def _testParamStaticShapes(self, sample_shape, expected):
     param_shapes = cauchy_lib.Cauchy.param_static_shapes(sample_shape)
@@ -92,8 +93,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       log_pdf = cauchy.log_prob(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          log_pdf.shape)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           log_pdf.eval().shape)
       self.assertAllEqual(cauchy.batch_shape, log_pdf.shape)
@@ -115,16 +115,15 @@ class CauchyTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       loc = constant_op.constant([[3.0, -3.0]] * batch_size)
-      scale = constant_op.constant([[np.sqrt(10.0), np.sqrt(15.0)]] *
-                                   batch_size)
+      scale = constant_op.constant(
+          [[np.sqrt(10.0), np.sqrt(15.0)]] * batch_size)
       x = np.array([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=np.float32).T
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       log_pdf = cauchy.log_prob(x)
       log_pdf_values = log_pdf.eval()
       self.assertEqual(log_pdf.shape, (6, 2))
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          log_pdf.shape)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           log_pdf.eval().shape)
       self.assertAllEqual(cauchy.batch_shape, log_pdf.shape)
@@ -248,8 +247,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       entropy = cauchy.entropy()
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          entropy.shape)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), entropy.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           entropy.eval().shape)
       self.assertAllEqual(cauchy.batch_shape, entropy.shape)
@@ -257,7 +255,7 @@ class CauchyTest(test.TestCase):
 
       if not stats:
         return
-      expected_entropy = stats.cauchy(loc, scale).entropy()
+      expected_entropy = stats.cauchy(loc, scale[0]).entropy().reshape((1, 3))
       self.assertAllClose(expected_entropy, entropy.eval())
 
   def testCauchyMode(self):
@@ -368,8 +366,8 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
-      expected_shape = (tensor_shape.TensorShape(
-          [n.eval()]).concatenate(cauchy.batch_shape))
+      expected_shape = (
+          tensor_shape.TensorShape([n.eval()]).concatenate(cauchy.batch_shape))
 
       self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
@@ -385,18 +383,18 @@ class CauchyTest(test.TestCase):
       samples = cauchy.sample(n)
       sample_values = samples.eval()
       self.assertEqual(samples.shape, (100000, batch_size, 2))
-      self.assertAllClose(np.median(sample_values[:, 0, 0]),
-                          loc_v[0], atol=1e-1)
-      self.assertAllClose(np.median(sample_values[:, 0, 1]),
-                          loc_v[1], atol=1e-1)
+      self.assertAllClose(
+          np.median(sample_values[:, 0, 0]), loc_v[0], atol=1e-1)
+      self.assertAllClose(
+          np.median(sample_values[:, 0, 1]), loc_v[1], atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
       self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
-      expected_shape = (tensor_shape.TensorShape(
-          [n.eval()]).concatenate(cauchy.batch_shape))
+      expected_shape = (
+          tensor_shape.TensorShape([n.eval()]).concatenate(cauchy.batch_shape))
       self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
@@ -428,9 +426,12 @@ class CauchyTest(test.TestCase):
       self.assertEqual(cauchy.event_shape, ())
       self.assertAllEqual(cauchy.event_shape_tensor().eval(), [])
       self.assertAllEqual(
-          sess.run(cauchy.batch_shape_tensor(),
-                   feed_dict={loc: 5.0,
-                              scale: [1.0, 2.0]}), [2])
+          sess.run(
+              cauchy.batch_shape_tensor(),
+              feed_dict={
+                  loc: 5.0,
+                  scale: [1.0, 2.0]
+              }), [2])
 
 
 if __name__ == "__main__":

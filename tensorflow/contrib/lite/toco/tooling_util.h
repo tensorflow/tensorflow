@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/contrib/lite/toco/types.pb.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -286,6 +287,8 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
 bool IsDiscardableArray(const Model& model, const string& array_name);
 
 void CheckFinalDataTypesSatisfied(const Model& model);
+
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 }  // namespace toco
 

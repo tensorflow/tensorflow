@@ -13,10 +13,7 @@ load(
 tf_gen_op_wrapper_py(
     name = "gen_summary_ops",
     out = "gen_summary_ops.py",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:summary_ops_op_lib",
-    ],
+    deps = ["//tensorflow/core:summary_ops_op_lib"],
 )
 
 py_test(
@@ -25,7 +22,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":summary_ops",
-        ":summary_test_internal",
         ":summary_test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
@@ -46,11 +42,16 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":summary_ops",
-        ":summary_test_internal",
+        ":summary_test_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
+        "@six_archive//:six",
     ],
 )
 
@@ -61,6 +62,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_summary_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -73,6 +75,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "@six_archive//:six",
     ],
 )
 
@@ -107,18 +110,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_library(
-    name = "summary_test_internal",
-    testonly = 1,
-    srcs = ["summary_test_internal.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
-    deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
     ],

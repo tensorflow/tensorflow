@@ -441,7 +441,8 @@ module. Consider the simple case where we want to train the VGG network:
 
 ```python
 import tensorflow as tf
-vgg = tf.contrib.slim.nets.vgg
+import tensorflow.contrib.slim.nets as nets
+vgg = nets.vgg
 
 # Load the images and labels.
 images, labels = ...
@@ -559,9 +560,10 @@ examine the following sample of training the VGG network:
 
 ```python
 import tensorflow as tf
+import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = tf.contrib.slim.nets.vgg
+vgg = nets.vgg
 
 ...
 
@@ -674,7 +676,7 @@ file were implicitly obtained from each provided variable's `var.op.name`.
 
 This works well when the variable names in the checkpoint file match those in
 the graph. However, sometimes, we want to restore a model from a checkpoint
-whose variables have different names those in the current graph. In this case,
+whose variables have different names to those in the current graph. In this case,
 we must provide the `Saver` a dictionary that maps from each checkpoint variable
 name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:
@@ -809,9 +811,10 @@ Putting it all together:
 
 ```python
 import tensorflow as tf
+import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = tf.contrib.slim.nets.vgg
+vgg = nets.vgg
 
 
 # Load the data

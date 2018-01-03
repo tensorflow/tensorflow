@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/simple_memory_arena.h"
-#include "tensorflow/core/platform/platform.h"
 
 namespace tflite {
 
@@ -232,7 +231,6 @@ class Interpreter {
   // If you know that your sizes are not changing, you need not call this.
 
   // Returns status of success or failure.
-  // TODO(aselle): Madde
   TfLiteStatus AllocateTensors();
 
   // Invoke the interpreter (run the whole graph in dependency order).

@@ -27,8 +27,10 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
           "Model partitioning not implemented for the CPU/GPU compilers!");
     }
 
+    TF_ASSIGN_OR_RETURN(
+        modules[i], RunHloPasses(std::move(modules[i]), stream_execs[i][0]));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        Compile(std::move(modules[i]), stream_execs[i][0]));
+                        RunBackend(std::move(modules[i]), stream_execs[i][0]));
     result.push_back(std::move(executable));
   }
 

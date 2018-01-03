@@ -530,7 +530,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
@@ -555,6 +554,7 @@ py_test(
     tags = [
         "no_windows",
         "nomac",  # b/63258195
+        "notsan",
     ],
     deps = [
         ":random_forest",

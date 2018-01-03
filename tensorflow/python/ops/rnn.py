@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -148,7 +149,7 @@ def _rnn_step(
     zero_output, state, call_cell, state_size, skip_conditionals=False):
   """Calculate one step of a dynamic RNN minibatch.
 
-  Returns an (output, state) pair conditioned on the sequence_lengths.
+  Returns an (output, state) pair conditioned on `sequence_length`.
   When skip_conditionals=False, the pseudocode is something like:
 
   if t >= max_sequence_length:
@@ -157,14 +158,14 @@ def _rnn_step(
     return call_cell()
 
   # Selectively output zeros or output, old state or new state depending
-  # on if we've finished calculating each row.
+  # on whether we've finished calculating each row.
   new_output, new_state = call_cell()
   final_output = np.vstack([
-    zero_output if time >= sequence_lengths[r] else new_output_r
+    zero_output if time >= sequence_length[r] else new_output_r
     for r, new_output_r in enumerate(new_output)
   ])
   final_state = np.vstack([
-    state[r] if time >= sequence_lengths[r] else new_state_r
+    state[r] if time >= sequence_length[r] else new_state_r
     for r, new_state_r in enumerate(new_state)
   ])
   return (final_output, final_state)
@@ -202,9 +203,12 @@ def _rnn_step(
   flat_zero_output = nest.flatten(zero_output)
 
   def _copy_one_through(output, new_output):
-    # If the state contains a scalar value we simply pass it through.
+    # TensorArray and scalar get passed through.
+    if isinstance(output, tensor_array_ops.TensorArray):
+      return new_output
     if output.shape.ndims == 0:
       return new_output
+    # Otherwise propagate the old or the new value.
     copy_cond = (time >= sequence_length)
     with ops.colocate_with(new_output):
       return array_ops.where(copy_cond, output, new_output)
@@ -264,7 +268,8 @@ def _rnn_step(
   for output, flat_output in zip(final_output, flat_zero_output):
     output.set_shape(flat_output.get_shape())
   for substate, flat_substate in zip(final_state, flat_state):
-    substate.set_shape(flat_substate.get_shape())
+    if not isinstance(substate, tensor_array_ops.TensorArray):
+      substate.set_shape(flat_substate.get_shape())
 
   final_output = nest.pack_sequence_as(
       structure=zero_output, flat_sequence=final_output)
@@ -561,33 +566,34 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
 
-  # By default, time_major==False and inputs are batch-major: shaped
-  #   [batch, time, depth]
-  # For internal calculations, we transpose to [time, batch, depth]
-  flat_input = nest.flatten(inputs)
-
-  if not time_major:
-    # (B,T,D) => (T,B,D)
-    flat_input = [ops.convert_to_tensor(input_) for input_ in flat_input]
-    flat_input = tuple(_transpose_batch_time(input_) for input_ in flat_input)
-
-  parallel_iterations = parallel_iterations or 32
-  if sequence_length is not None:
-    sequence_length = math_ops.to_int32(sequence_length)
-    if sequence_length.get_shape().ndims not in (None, 1):
-      raise ValueError(
-          "sequence_length must be a vector of length batch_size, "
-          "but saw shape: %s" % sequence_length.get_shape())
-    sequence_length = array_ops.identity(  # Just to find it in the graph.
-        sequence_length, name="sequence_length")
-
-  # Create a new scope in which the caching device is either
-  # determined by the parent scope, or is set to place the cached
-  # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
+    # Create a new scope in which the caching device is either
+    # determined by the parent scope, or is set to place the cached
+    # Variable using the same placement as for the rest of the RNN.
     if context.in_graph_mode():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
+
+    # By default, time_major==False and inputs are batch-major: shaped
+    #   [batch, time, depth]
+    # For internal calculations, we transpose to [time, batch, depth]
+    flat_input = nest.flatten(inputs)
+
+    if not time_major:
+      # (B,T,D) => (T,B,D)
+      flat_input = [ops.convert_to_tensor(input_) for input_ in flat_input]
+      flat_input = tuple(_transpose_batch_time(input_) for input_ in flat_input)
+
+    parallel_iterations = parallel_iterations or 32
+    if sequence_length is not None:
+      sequence_length = math_ops.to_int32(sequence_length)
+      if sequence_length.get_shape().ndims not in (None, 1):
+        raise ValueError(
+            "sequence_length must be a vector of length batch_size, "
+            "but saw shape: %s" % sequence_length.get_shape())
+      sequence_length = array_ops.identity(  # Just to find it in the graph.
+          sequence_length, name="sequence_length")
+
     batch_size = _best_effort_input_batch_size(flat_input)
 
     if initial_state is not None:
@@ -660,7 +666,7 @@ def _dynamic_rnn_loop(cell,
     final_outputs:
       A `Tensor` of shape `[time, batch_size, cell.output_size]`.  If
       `cell.output_size` is a (possibly nested) tuple of ints or `TensorShape`
-      objects, then this returns a (possibly nsted) tuple of Tensors matching
+      objects, then this returns a (possibly nested) tuple of Tensors matching
       the corresponding shapes.
     final_state:
       A `Tensor`, or possibly nested tuple of Tensors, matching in length
@@ -801,11 +807,28 @@ def _dynamic_rnn_loop(cell,
 
     return (time + 1, output_ta_t, new_state)
 
+  # TODO(pbar) `loop_bound` can be reduced to `max_sequence_length` once
+  # TensorArray shape inference is working.  When sequence lengths are highly
+  # variable, this will reduce the performance overheads of padding to a fixed
+  # maximum length.
+  loop_bound = time_steps
+
+  # This is a workaround since we cannot currently use maximum_iterations if
+  # time_steps is defined inside control flow, see the comment in
+  # control_flow_ops.py.
+  if (context.in_eager_mode() or
+      not (control_flow_util.IsInWhileLoop(time_steps.op) or
+           control_flow_util.IsInCond(time_steps.op))):
+    maximum_iterations = time_steps
+  else:
+    maximum_iterations = None
+
   _, output_final_ta, final_state = control_flow_ops.while_loop(
-      cond=lambda time, *_: time < time_steps,
+      cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
+      maximum_iterations=maximum_iterations,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.

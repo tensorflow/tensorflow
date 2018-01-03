@@ -38,8 +38,10 @@ py_library(
     deps = [
         ":nest",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
     ],
@@ -56,6 +58,31 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
+    name = "convert",
+    srcs = ["convert.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_test(
+    name = "convert_test",
+    size = "small",
+    srcs = ["convert_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convert",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:util",
     ],
 )
 

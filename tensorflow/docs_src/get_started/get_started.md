@@ -330,8 +330,8 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
-Notice that the loss is a very small number (very close to zero). If you run 
-this program, your loss may not be exactly the same as the aforementioned loss 
+Notice that the loss is a very small number (very close to zero). If you run
+this program, your loss may not be exactly the same as the aforementioned loss
 because the model is initialized with pseudorandom values.
 
 This more complicated program can still be visualized in TensorBoard
@@ -375,7 +375,7 @@ estimator = tf.estimator.LinearRegressor(feature_columns=feature_columns)
 x_train = np.array([1., 2., 3., 4.])
 y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
-y_eval = np.array([-1.01, -4.1, -7, 0.])
+y_eval = np.array([-1.01, -4.1, -7., 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(

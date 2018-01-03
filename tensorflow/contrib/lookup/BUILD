@@ -7,7 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # TODO(yleon): Refactor after one we switching to the V2 kernels.
 py_library(
@@ -26,13 +26,14 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "lookup_ops_test",
     size = "small",
     srcs = ["lookup_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":lookup_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -43,9 +44,8 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
+    grpc_enabled = True,
 )
 
 filegroup(

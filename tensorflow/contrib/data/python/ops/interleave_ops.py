@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
@@ -31,22 +32,26 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
-               sloppy):
+               sloppy, buffer_output_elements, prefetch_input_elements):
     """See `tf.contrib.data.parallel_interleave()` for details."""
     super(ParallelInterleaveDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(
-        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
+    @function.Defun(*nest.flatten(
+        sparse.as_dense_types(input_dataset.output_types,
+                              input_dataset.output_classes)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
-      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
+      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
+                                            input_dataset.output_classes)
+      for arg, shape in zip(args, nest.flatten(dense_shapes)):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
       nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types)
+          nested_args, input_dataset.output_types, input_dataset.output_shapes,
+          input_dataset.output_classes)
       if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
         dataset = map_func(*nested_args)
       else:
@@ -55,6 +60,7 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
       if not isinstance(dataset, dataset_ops.Dataset):
         raise TypeError("`map_func` must return a `Dataset` object.")
 
+      self._output_classes = dataset.output_classes
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
@@ -69,6 +75,14 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
         block_length, dtype=dtypes.int64, name="block_length")
     self._sloppy = ops.convert_to_tensor(
         sloppy, dtype=dtypes.bool, name="sloppy")
+    self._buffer_output_elements = convert.optional_param_to_tensor(
+        "buffer_output_elements",
+        buffer_output_elements,
+        argument_default=2 * block_length)
+    self._prefetch_input_elements = convert.optional_param_to_tensor(
+        "prefetch_input_elements",
+        prefetch_input_elements,
+        argument_default=2 * cycle_length)
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.parallel_interleave_dataset(
@@ -77,10 +91,17 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
         self._cycle_length,
         self._block_length,
         self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
         f=self._map_func,
         output_types=nest.flatten(
-            sparse.unwrap_sparse_types(self.output_types)),
-        output_shapes=nest.flatten(self.output_shapes))
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_shapes(self):
@@ -91,7 +112,12 @@ class ParallelInterleaveDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
+def parallel_interleave(map_func,
+                        cycle_length,
+                        block_length=1,
+                        sloppy=False,
+                        buffer_output_elements=None,
+                        prefetch_input_elements=None):
   """A parallel version of the `Dataset.interleave()` transformation.
 
   `parallel_interleave()` maps `map_func` across its input to produce nested
@@ -119,12 +145,17 @@ def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
 
   Args:
     map_func: A function mapping a nested structure of tensors to a `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`.
     sloppy: If false, elements are produced in deterministic order. Otherwise,
       the implementation is allowed, for the sake of expediency, to produce
       elements in a non-deterministic order.
+    buffer_output_elements: The number of elements each iterator being
+      interleaved should buffer (similar to the `.prefetch()` transformation for
+      each interleaved iterator).
+    prefetch_input_elements: The number of input elements to transform to
+      iterators before they are needed for interleaving.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -132,7 +163,9 @@ def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
   """
   def _apply_fn(dataset):
     return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy)
+        dataset, map_func, cycle_length, block_length, sloppy,
+        buffer_output_elements, prefetch_input_elements)
+
   return _apply_fn
 
 
@@ -177,11 +210,11 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
     map_func: A function mapping a nested structure of tensors (having shapes
       and types defined by `self.output_shapes` and `self.output_types`) to a
       `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread. Note: sloppy_interleave will
-      skip the remainder of elements in the block_length in order to avoid
-      blocking.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`. Note:
+      `sloppy_interleave` will skip the remainder of elements in the
+      `block_length` in order to avoid blocking.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -189,5 +222,12 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
   """
   def _apply_fn(dataset):
     return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy=True)
+        dataset,
+        map_func,
+        cycle_length,
+        block_length,
+        sloppy=True,
+        buffer_output_elements=None,
+        prefetch_input_elements=None)
+
   return _apply_fn

@@ -21,10 +21,10 @@ limitations under the License.
 #include <random>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 namespace tensorflow {
-
 namespace sdca {
 
 using UnalignedFloatVector = TTypes<const float>::UnalignedConstVec;
@@ -278,7 +278,7 @@ Status Examples::SampleAdaptativeProbabilities(
   int num_retries = 0;
   while (id < num_examples() && num_retries < num_examples()) {
     int picked_id = sampler.Sample(&random);
-    if (dis(gen) > std::pow(0.1, sampled_count_[picked_id])) {
+    if (dis(gen) > MathUtil::IPow(0.1, sampled_count_[picked_id])) {
       num_retries++;
       continue;
     }
@@ -520,5 +520,4 @@ void Examples::ComputeSquaredNormPerExample(
 }
 
 }  // namespace sdca
-
 }  // namespace tensorflow

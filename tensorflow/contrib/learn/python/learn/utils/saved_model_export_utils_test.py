@@ -766,10 +766,11 @@ class SavedModelExportUtilsTest(test.TestCase):
 
     test_estimator = TestEstimator()
     tmpdir = tempfile.mkdtemp()
-    final_path = final_export_strategy.export(test_estimator, tmpdir,
-                                              os.path.join(
-                                                  tmpdir, "checkpoint"))
-    self.assertEqual(os.path.join(tmpdir, "rewrite"), final_path)
+    export_model_dir = os.path.join(tmpdir, "model")
+    checkpoint_path = os.path.join(tmpdir, "checkpoint")
+    final_path = final_export_strategy.export(test_estimator, export_model_dir,
+                                              checkpoint_path)
+    self.assertEqual(os.path.join(export_model_dir, "rewrite"), final_path)
 
   def test_extend_export_strategy_same_name(self):
 
@@ -795,10 +796,11 @@ class SavedModelExportUtilsTest(test.TestCase):
 
     test_estimator = TestEstimator()
     tmpdir = tempfile.mkdtemp()
-    final_path = final_export_strategy.export(test_estimator, tmpdir,
-                                              os.path.join(
-                                                  tmpdir, "checkpoint"))
-    self.assertEqual(os.path.join(tmpdir, "rewrite"), final_path)
+    export_model_dir = os.path.join(tmpdir, "model")
+    checkpoint_path = os.path.join(tmpdir, "checkpoint")
+    final_path = final_export_strategy.export(test_estimator, export_model_dir,
+                                              checkpoint_path)
+    self.assertEqual(os.path.join(export_model_dir, "rewrite"), final_path)
 
   def test_extend_export_strategy_raises_error(self):
 

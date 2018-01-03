@@ -119,5 +119,7 @@ extern const char* tf_compiler_version();
 extern const char* tf_git_version();
 // Value of the _GLIBCXX_USE_CXX11_ABI flag, or 0 if it's not set.
 extern const int tf_cxx11_abi_flag();
+// Returns 1 if build is monolithic, or 0 otherwise.
+extern const int tf_monolithic_build();
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

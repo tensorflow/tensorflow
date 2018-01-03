@@ -64,12 +64,12 @@ Literal::StrideConfig::StrideConfig(
   if (!dimensions.empty()) {
     // Selects the shape with the largest minor dimension as the one upon
     // which to run the tight stride loop.
-    if (dimensions[source_shape.layout().minor_to_major()[0]] >=
-        dimensions[dest_shape.layout().minor_to_major()[0]]) {
-      minor_dimension = source_shape.layout().minor_to_major()[0];
+    if (dimensions[LayoutUtil::Minor(source_shape.layout(), 0)] >=
+        dimensions[LayoutUtil::Minor(dest_shape.layout(), 0)]) {
+      minor_dimension = LayoutUtil::Minor(source_shape.layout(), 0);
       dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
     } else {
-      minor_dimension = dest_shape.layout().minor_to_major()[0];
+      minor_dimension = LayoutUtil::Minor(dest_shape.layout(), 0);
       source_stride =
           IndexUtil::GetDimensionStride(source_shape, minor_dimension);
     }
@@ -252,6 +252,10 @@ Status Literal::Copy(const Literal& src_literal,
       return *Literal::CreateR0<int32>(1);
     case S64:
       return *Literal::CreateR0<int64>(1);
+    case F16:
+      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
+    case BF16:
+      return *Literal::CreateR0<bfloat16>(static_cast<bfloat16>(1.0f));
     case F32:
       return *Literal::CreateR0<float>(1);
     case F64:
@@ -263,8 +267,6 @@ Status Literal::Copy(const Literal& src_literal,
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -402,6 +404,27 @@ std::unique_ptr<Literal> Literal::Relayout(
   return outer_result;
 }
 
+std::unique_ptr<Literal> Literal::Relayout(
+    const Shape& shape_with_layout) const {
+  CHECK(ShapeUtil::Compatible(shape_with_layout, shape()))
+      << "Given shape_with_layout " << ShapeUtil::HumanString(shape_with_layout)
+      << " not compatible with literal shape "
+      << ShapeUtil::HumanString(shape());
+  std::unique_ptr<Literal> result = CreateFromShape(shape_with_layout);
+  ShapeUtil::ForEachSubshape(
+      result->shape(),
+      [this, &result](const Shape& subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsArray(subshape)) {
+          DimensionVector base(ShapeUtil::Rank(subshape), 0);
+          DimensionVector copy_size(subshape.dimensions().begin(),
+                                    subshape.dimensions().end());
+          TF_CHECK_OK(result->GetSubliteral(index).Copy(GetSubliteral(index),
+                                                        base, base, copy_size));
+        }
+      });
+  return result;
+}
+
 StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
     tensorflow::gtl::ArraySlice<int64> dimensions) const {
   if (ShapeUtil::IsTuple(shape())) {
@@ -409,10 +432,8 @@ StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
   }
   std::unique_ptr<Literal> output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
-    std::vector<int64> minor_to_major(ShapeUtil::Rank(shape()));
-    std::iota(minor_to_major.rbegin(), minor_to_major.rend(),
-              static_cast<int64>(0));
-    output = Relayout(LayoutUtil::MakeLayout(minor_to_major));
+    output =
+        Relayout(LayoutUtil::GetDefaultLayoutForRank(ShapeUtil::Rank(shape())));
   } else {
     output = CloneToUnique();
   }
@@ -458,9 +479,10 @@ std::unique_ptr<Literal> Literal::Transpose(
   // dimension has within the transposed array, a layout is affine if
   // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
   // vector of the affine layout.
+  CHECK(LayoutUtil::IsDense(permuted_shape));
   Layout* layout = permuted_shape.mutable_layout();
   layout->clear_minor_to_major();
-  for (auto index : shape().layout().minor_to_major()) {
+  for (auto index : LayoutUtil::MinorToMajor(shape())) {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
   std::unique_ptr<Literal> new_literal = CreateFromShape(permuted_shape);
@@ -484,9 +506,9 @@ std::unique_ptr<Literal> Literal::Slice(
     CHECK_GT(dimension, 0);
     result_dimensions.push_back(dimension);
   }
-  const auto result_shape = ShapeUtil::MakeShapeWithLayout(
-      shape().element_type(), result_dimensions,
-      AsInt64Slice(shape().layout().minor_to_major()));
+  const auto result_shape =
+      ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
+                                     LayoutUtil::MinorToMajor(shape()));
 
   auto result_literal = MakeUnique<Literal>();
   *result_literal->mutable_shape() = result_shape;
@@ -713,7 +735,13 @@ string Literal::ToString(bool print_layout) const {
     pieces.push_back("}");
   } else {
     pieces.push_back(shape_to_string(shape()));
-    pieces.push_back(" {...}");
+    pieces.push_back(" {");
+    EachCellAsString(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+          pieces.push_back(" ");
+          pieces.push_back(value);
+        });
+    pieces.push_back("}");
   }
 
   return tensorflow::str_util::Join(pieces, "");

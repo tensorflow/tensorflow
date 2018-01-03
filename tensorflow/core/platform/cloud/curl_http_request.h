@@ -57,28 +57,26 @@ class CurlHttpRequest : public HttpRequest {
   CurlHttpRequest(LibCurl* libcurl, Env* env);
   ~CurlHttpRequest() override;
 
-  Status Init() override;
-
   /// Sets the request URI.
-  Status SetUri(const string& uri) override;
+  void SetUri(const string& uri) override;
 
   /// \brief Sets the Range header.
   ///
   /// Used for random seeks, for example "0-999" returns the first 1000 bytes
   /// (note that the right border is included).
-  Status SetRange(uint64 start, uint64 end) override;
+  void SetRange(uint64 start, uint64 end) override;
 
   /// Sets a request header.
-  Status AddHeader(const string& name, const string& value) override;
+  void AddHeader(const string& name, const string& value) override;
 
-  Status AddResolveOverride(const string& hostname, int64 port,
-                            const string& ip_addr) override;
+  void AddResolveOverride(const string& hostname, int64 port,
+                          const string& ip_addr) override;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
-  Status AddAuthBearerHeader(const string& auth_token) override;
+  void AddAuthBearerHeader(const string& auth_token) override;
 
   /// Makes the request a DELETE request.
-  Status SetDeleteRequest() override;
+  void SetDeleteRequest() override;
 
   /// \brief Makes the request a PUT request.
   ///
@@ -87,21 +85,41 @@ class CurlHttpRequest : public HttpRequest {
   Status SetPutFromFile(const string& body_filepath, size_t offset) override;
 
   /// Makes the request a PUT request with an empty body.
-  Status SetPutEmptyBody() override;
+  void SetPutEmptyBody() override;
 
   /// \brief Makes the request a POST request.
   ///
   /// The request body will be taken from the specified buffer.
-  Status SetPostFromBuffer(const char* buffer, size_t size) override;
+  void SetPostFromBuffer(const char* buffer, size_t size) override;
 
   /// Makes the request a POST request with an empty body.
-  Status SetPostEmptyBody() override;
+  void SetPostEmptyBody() override;
 
   /// \brief Specifies the buffer for receiving the response body.
   ///
   /// Size of out_buffer after an access will be exactly the number of bytes
   /// read. Existing content of the vector will be cleared.
-  Status SetResultBuffer(std::vector<char>* out_buffer) override;
+  void SetResultBuffer(std::vector<char>* out_buffer) override;
+
+  /// \brief Specifies the buffer for receiving the response body, when the
+  /// caller knows the maximum size of the response body.
+  ///
+  /// This method allows the caller to receive the response body without an
+  /// additional intermediate buffer allocation and copy.  This method should
+  /// be called before calling Send(). After Send() has succeeded, the caller
+  /// should use the GetResultBufferDirectBytesTransferred() method in order
+  /// to learn how many bytes were transferred.
+  ///
+  /// Using this method is mutually exclusive with using SetResultBuffer().
+  void SetResultBufferDirect(char* buffer, size_t size) override;
+
+  /// \brief Returns the number of bytes (of the response body) that were
+  /// transferred, when using the SetResultBufferDirect() method. The returned
+  /// value will always be less than or equal to the 'size' parameter that
+  /// was passed to SetResultBufferDirect(). If the actual HTTP response body
+  /// was greater than 'size' bytes, then this transfer method will only copy
+  /// the first 'size' bytes, and the rest will be ignored.
+  size_t GetResultBufferDirectBytesTransferred() override;
 
   /// \brief Returns the response headers of a completed request.
   ///
@@ -120,10 +138,16 @@ class CurlHttpRequest : public HttpRequest {
   // Url encodes str and returns a new string.
   string EscapeString(const string& str) override;
 
+  void SetTimeouts(uint32 connection, uint32 inactivity, uint32 total) override;
+
  private:
   /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,
                               void* userdata);
+
+  /// Processes response body content received when using SetResultBufferDirect.
+  static size_t WriteCallbackDirect(const void* ptr, size_t size, size_t nmemb,
+                                    void* userdata);
   /// A read callback in the form which can be accepted by libcurl.
   static size_t ReadCallback(void* ptr, size_t size, size_t nmemb,
                              FILE* userdata);
@@ -134,9 +158,8 @@ class CurlHttpRequest : public HttpRequest {
   static int ProgressCallback(void* this_object, curl_off_t dltotal,
                               curl_off_t dlnow, curl_off_t ultotal,
                               curl_off_t ulnow);
-  Status CheckInitialized() const;
-  Status CheckMethodNotSet() const;
-  Status CheckNotSent() const;
+  void CheckMethodNotSet() const;
+  void CheckNotSent() const;
 
   LibCurl* libcurl_;
   Env* env_;
@@ -147,6 +170,14 @@ class CurlHttpRequest : public HttpRequest {
   size_t post_body_read_ = 0;
 
   std::vector<char>* response_buffer_ = nullptr;
+
+  struct DirectResponseState {
+    char* buffer_;
+    size_t buffer_size_;
+    size_t bytes_transferred_;
+  };
+  DirectResponseState direct_response_ = {};
+
   CURL* curl_ = nullptr;
   curl_slist* curl_headers_ = nullptr;
   curl_slist* resolve_list_ = nullptr;
@@ -162,11 +193,22 @@ class CurlHttpRequest : public HttpRequest {
   // The last progress in terms of bytes transmitted.
   curl_off_t last_progress_bytes_ = 0;
 
+  // The maximum period of request inactivity.
+  uint32 inactivity_timeout_secs_ = 60;  // 1 minute
+
+  // Timeout for the connection phase.
+  uint32 connect_timeout_secs_ = 120;  // 2 minutes
+
+  // Tiemout for the whole request. Set only to prevent hanging indefinitely.
+  uint32 request_timeout_secs_ = 3600;  // 1 hour
+
   // Members to enforce the usage flow.
-  bool is_initialized_ = false;
   bool is_uri_set_ = false;
   bool is_method_set_ = false;
   bool is_sent_ = false;
+
+  // Store the URI to help disambiguate requests when errors occur.
+  string uri_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);
 };
@@ -205,6 +247,8 @@ class LibCurl {
   virtual void curl_slist_free_all(curl_slist* list) = 0;
   virtual char* curl_easy_escape(CURL* curl, const char* str, int length) = 0;
   virtual void curl_free(void* p) = 0;
+
+  virtual const char* curl_easy_strerror(CURLcode errornum) = 0;
 };
 
 }  // namespace tensorflow

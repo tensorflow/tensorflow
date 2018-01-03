@@ -22,6 +22,7 @@ namespace tensorflow {
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
+  RecordMutation(graph, *op, "adding control input");
 }
 
 void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
@@ -36,11 +37,13 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 
   mutex_lock l(graph->mu);
   op->node.AddAttr(attr_name, attr_val);
+  RecordMutation(graph, *op, "setting attribute");
 }
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);
+  RecordMutation(graph, *op, "setting device");
 }
 
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
@@ -75,6 +78,25 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
   }
   status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
                                            &dst.oper->node, dst.index);
+
+  if (status->status.ok()) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst.oper, "updating input tensor");
+  }
+}
+
+void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  std::vector<const Edge*> control_edges;
+  for (const Edge* edge : op->node.in_edges()) {
+    if (!edge->IsControlEdge()) continue;
+    control_edges.push_back(edge);
+  }
+  for (const Edge* edge : control_edges) {
+    graph->graph.RemoveControlEdge(edge);
+  }
 }
 
 }  // namespace tensorflow

@@ -238,7 +238,7 @@ class ShapeTree {
   //           (or compatible).
   //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
   //           for definition of index.
-  //   data : The data value at this elemnt.
+  //   data : The data value at this element.
   template <typename Fn>
   void ForEachElement(const Fn& func) const;
 

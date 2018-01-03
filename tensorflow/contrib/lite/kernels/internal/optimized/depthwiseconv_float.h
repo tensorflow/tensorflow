@@ -311,6 +311,9 @@ struct FloatDepthwiseConvKernel<true, 0, 8> {
   }
 };
 
+// Note this implementation is very slow for input_depths < 8
+// (e.g. comparable to reference implementation) see, specializations for
+// input_depth=3 below.
 template <>
 struct FloatDepthwiseConvKernel<true, 0, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
@@ -412,6 +415,74 @@ struct FloatDepthwiseConvKernel<true, 0, 2> {
         local_filter_ptr += 2;
         acc_buffer_ptr += 2;
       }
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 3, 2> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x2_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1_f32(filter_ptr + 2 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x2_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1_f32(acc_buffer_ptr + 2 * i);
+      }
+      // Multiply-accumulate for each input channel there 2 outputs
+      acc[0] = vmla_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmla_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmla_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1_f32(acc_buffer_ptr + 2 * i, acc[i]);
+      }
+      acc_buffer_ptr += 6;
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 3, 4> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1q_f32(filter_ptr + 4 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // NOTE: we only want 3 values, so we read it as two ops where
+      // the second op just duplicates the lane
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x4_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1q_f32(acc_buffer_ptr + 4 * i);
+      }
+      // Multiply-accumulate all outputs.
+      acc[0] = vmlaq_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmlaq_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmlaq_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1q_f32(acc_buffer_ptr + 4 * i, acc[i]);
+      }
+      acc_buffer_ptr += 12;
       input_ptr += input_ptr_increment;
     }
   }
@@ -857,6 +928,8 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 8)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 32)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 2, 1)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 2)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 4)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 4, 1)
 
   // Finally, the kernels allowing a variable input depth,

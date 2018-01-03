@@ -200,6 +200,26 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunctionDef(TFE_Context* ctx,
                                                      const char* serialized_function_def,
                                                      size_t size, TF_Status* status);
 
+// Adds a function (created from TF_GraphToFunction or
+// TF_FunctionImportFunctionDef) to the context, allowing it to be executed with
+// TFE_Execute by creating an op with the same name as the function.
+TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
+                                                  TF_Function* function,
+                                                  TF_Status* status);
+
+// Enables tracing of RunMetadata on the ops executed from this context.
+TF_CAPI_EXPORT extern void TFE_ContextEnableRunMetadata(TFE_Context* ctx);
+
+// Disables tracing of RunMetadata on the ops executed from this context.
+TF_CAPI_EXPORT extern void TFE_ContextDisableRunMetadata(TFE_Context* ctx);
+
+// Populates the passed-in buffer with a serialized RunMetadata protocol buffer
+// containing any run metadata information accumulated so far and clears this
+// information.
+TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
+                                                        TF_Buffer* buf,
+                                                        TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

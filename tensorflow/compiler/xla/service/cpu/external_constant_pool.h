@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace xla {
 namespace cpu {
@@ -49,10 +50,10 @@ class ExternalConstantPool {
   const uint8* Find(const string& name);
 
  private:
-  // We need to `free()` pointers allocated into `entries_` since we allocate
-  // them with `posix_memalign`.
+  // We need to `AlignedFree` pointers allocated into `entries_` since we
+  // allocate them with `AlignedMalloc`.
   struct FreeDeleter {
-    void operator()(void* ptr) { free(ptr); }
+    void operator()(void* ptr) { tensorflow::port::AlignedFree(ptr); }
   };
 
   tensorflow::gtl::FlatMap<string, std::unique_ptr<uint8, FreeDeleter>>

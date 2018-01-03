@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -688,19 +689,22 @@ class IdTableWithHashBuckets(LookupInterface):
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
+
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
 
   The `IdTableWithHashBuckets` object will performs the following mapping:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
-  - <other term> -> bucket id between 3 and 3 + num_oov_buckets - 1, calculated
-    by: hash(<term>) % num_oov_buckets + vocab_size
 
-  If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
-  the lookup result is [0, 1, 2, 4, 7]
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
+  * `<other term> -> bucket_id`, where bucket_id will be between `3` and
+  `3 + num_oov_buckets - 1`, calculated by:
+  `hash(<term>) % num_oov_buckets + vocab_size`
+
+  If input_tensor is `["emerson", "lake", "palmer", "king", "crimson"]`,
+  the lookup result is `[0, 1, 2, 4, 7]`.
 
   If `table` is None, only out-of-vocabulary buckets are used.
 
@@ -788,6 +792,25 @@ class IdTableWithHashBuckets(LookupInterface):
       return self._table.init
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
+
+  @property
+  def table_ref(self):
+    """Returns the table_ref of the underlying table, if one exists.
+
+    Only use the table_ref directly if you know what you are doing. The
+    table_ref does not have the "hash bucket" functionality, as that is provided
+    by this class.
+
+    One possible use of the table_ref is subtokenization, i.e. ops which
+    dynamically decompose tokens into subtokens based on the contents of the
+    table_ref.
+
+    Returns:
+      the underlying table_ref, or None if there is no underlying table
+    """
+    if self._table is not None:
+      return self._table.table_ref
+    return None
 
   def size(self, name=None):
     """Compute the number of elements in this table."""
@@ -940,7 +963,7 @@ def index_table_from_file(vocabulary_file=None,
       than zero.
   """
   if vocabulary_file is None or (
-      isinstance(vocabulary_file, str) and not vocabulary_file):
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
     raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
@@ -1144,7 +1167,7 @@ def index_to_string_table_from_file(vocabulary_file,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
@@ -1162,8 +1185,10 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
+
   if vocab_size is not None and vocab_size < 1:
     raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
 

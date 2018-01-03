@@ -79,22 +79,23 @@ Take the following steps to install TensorFlow with Virtualenv:
   4. Activate the Virtualenv environment by issuing one of the
      following commands:
 
-     <pre>$ <b>source ~/tensorflow/bin/activate</b>      # If using bash, sh, ksh, or zsh
-    $ <b>source ~/tensorflow/bin/activate.csh</b>  # If using csh or tcsh </pre>
+     <pre>$ <b>cd <i>targetDirectory</i></b>
+    $ <b>source ./bin/activate</b>      # If using bash, sh, ksh, or zsh
+    $ <b>source ./bin/activate.csh</b>  # If using csh or tcsh </pre>
 
      The preceding `source` command should change your prompt to the following:
 
-     <pre> (tensorflow)$ </pre>
+     <pre> (<i>targetDirectory</i>)$ </pre>
 
   5. Ensure pip ≥8.1 is installed:
 
-     <pre> (tensorflow)$ <b>easy_install -U pip</b></pre>
+     <pre> (<i>targetDirectory</i>)$ <b>easy_install -U pip</b></pre>
 
   6. Issue one of the following commands to install TensorFlow and all the
      packages that TensorFlow requires into the active Virtualenv environment:
 
-     <pre> (tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
-     (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
+     <pre> (<i>targetDirectory</i>)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
+     (<i>targetDirectory</i>)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
 
   7. Optional. If Step 6 failed (typically because you invoked a pip version
      lower than 8.1), install TensorFlow in the active
@@ -128,16 +129,18 @@ to confirm that the installation worked properly.
 
 Note that you must activate the Virtualenv environment each time you
 use TensorFlow in a new shell.  If the Virtualenv environment is not
-currently active (that is, the prompt is not `(tensorflow)`, invoke
+currently active (that is, the prompt is not `(<i>targetDirectory</i>)`, invoke
 one of the following commands:
 
-<pre>$ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
-$ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh </pre>
+<pre>$ <b>cd <i>targetDirectory</i></b>
+$ <b>source ./bin/activate</b>      # If using bash, sh, ksh, or zsh
+$ <b>source ./bin/activate.csh</b>  # If using csh or tcsh </pre>
+
 
 Your prompt will transform to the following to indicate that your
 tensorflow environment is active:
 
-<pre> (tensorflow)$ </pre>
+<pre> (<i>targetDirectory</i>)$ </pre>
 
 When the Virtualenv environment is active, you may run
 TensorFlow programs from this shell.
@@ -145,7 +148,7 @@ TensorFlow programs from this shell.
 When you are done using TensorFlow, you may deactivate the
 environment by issuing the following command:
 
-<pre> (tensorflow)$ <b>deactivate</b> </pre>
+<pre> (<i>targetDirectory</i>)$ <b>deactivate</b> </pre>
 
 The prompt will revert back to your default prompt (as defined by `PS1`).
 
@@ -331,19 +334,19 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   3. Activate the conda environment by issuing the following command:
 
      <pre>$ <b>source activate tensorflow</b>
-     (tensorflow)$  # Your prompt should change</pre>
+     (<i>targetDirectory</i>)$  # Your prompt should change</pre>
 
   4. Issue a command of the following format to install
      TensorFlow inside your conda environment:
 
-     <pre>(tensorflow)<b>$ pip install --ignore-installed --upgrade</b> <i>TF_PYTHON_URL</i></pre>
+     <pre>(<i>targetDirectory</i>)<b>$ pip install --ignore-installed --upgrade</b> <i>TF_PYTHON_URL</i></pre>
 
      where <i>TF_PYTHON_URL</i> is the
      [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
      For example, the following command installs the CPU-only version of
      TensorFlow for Python 2.7:
 
-     <pre> (tensorflow)$ <b>pip install --ignore-installed --upgrade \
+     <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.whl</b></pre>
 
 
@@ -527,44 +530,3 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.
 <pre>
 https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py3-none-any.whl
 </pre>
-
-
-
-<a name="Protobuf31"></a>
-## Protobuf pip package 3.1
-
-You can skip this section unless you are seeing problems related
-to the protobuf pip package.
-
-**NOTE:** If your TensorFlow programs are running slowly, you might
-have a problem related to the protobuf pip package.
-
-The TensorFlow pip package depends on protobuf pip package version 3.1. The
-protobuf pip package downloaded from PyPI (when invoking
-<tt>pip install protobuf</tt>) is a Python-only library containing
-Python implementations of proto serialization/deserialization that can run
-**10x-50x slower** than the C++ implementation. Protobuf also supports a
-binary extension for the Python package that contains fast
-C++ based proto parsing.  This extension is not available in the
-standard Python-only pip package.  We have created a custom binary
-pip package for protobuf that contains the binary extension. To install
-the custom binary protobuf pip package, invoke one of the following commands:
-
-  * for Python 2.7:
-
-    <pre>$ <b>pip install --upgrade \
-    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp27-none-macosx_10_11_x86_64.whl</b></pre>
-
-  * for Python 3.n:
-
-    <pre>$ <b>pip3 install --upgrade \
-    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp35-none-macosx_10_11_x86_64.whl</b></pre>
-
-Installing this protobuf package will overwrite the existing protobuf package.
-Note that the binary pip package already has support for protobufs
-larger than 64MB, which should fix errors such as these:
-
-<pre>[libprotobuf ERROR google/protobuf/src/google/protobuf/io/coded_stream.cc:207]
-A protocol message was rejected because it was too big (more than 67108864 bytes).
-To increase the limit (or to disable these warnings), see
-CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.</pre>
