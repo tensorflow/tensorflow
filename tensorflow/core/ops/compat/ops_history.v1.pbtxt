@@ -12692,6 +12692,14 @@ op {
   }
 }
 op {
+  name: "DeleteSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "DenseToDenseSetOperation"
   input_arg {
     name: "set1"
@@ -18008,6 +18016,22 @@ op {
   }
 }
 op {
+  name: "GetSessionHandle"
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
   name: "GetSessionHandleV2"
   input_arg {
     name: "value"
@@ -18037,6 +18061,22 @@ op {
     name: "dtype"
     type: "type"
   }
+}
+op {
+  name: "GetSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
 }
 op {
   name: "Greater"

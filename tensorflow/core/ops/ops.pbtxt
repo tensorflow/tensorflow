@@ -7102,6 +7102,7 @@ op {
     type: DT_STRING
   }
   summary: "Delete the tensor specified by its handle in the session."
+  is_stateful: true
 }
 op {
   name: "DenseToDenseSetOperation"
@@ -10695,6 +10696,7 @@ op {
     type: "type"
   }
   summary: "Store the input tensor in the state of the current session."
+  is_stateful: true
 }
 op {
   name: "GetSessionHandleV2"
@@ -10733,6 +10735,7 @@ op {
     description: "The type of the output value."
   }
   summary: "Get the value of the tensor specified by its handle."
+  is_stateful: true
 }
 op {
   name: "Greater"
