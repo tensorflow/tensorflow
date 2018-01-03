@@ -261,6 +261,14 @@ def set_verbosity(v):
   _get_logger().setLevel(v)
 
 
+def add_log_handler(handler):
+  """Add extra log handler for logging messages."""
+  if not isinstance(handler, _logging.Handler):
+    warn("log handler is not valid. It is ignored")
+  else:
+    _get_logger().addHandler(handler)
+
+
 def _get_thread_id():
   """Get id of current thread, suitable for logging as an unsigned quantity."""
   # pylint: disable=protected-access
@@ -291,9 +299,11 @@ _allowed_symbols = [
     'log_every_n',
     'log_first_n',
     'set_verbosity',
+    'add_log_handler',
     'vlog',
     'warn',
     'warning',
 ]
+
 
 remove_undocumented(__name__, _allowed_symbols)
