@@ -2633,6 +2633,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     new_state = (rnn_cell_impl.LSTMStateTuple(c, m))
     return m, new_state
 
+
 class SRUCell(rnn_cell_impl._LayerRNNCell):
   """SRU, Simple Recurrent Unit
      Implementation based on
@@ -2723,6 +2724,7 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
     h = r * self._activation(c) + (1.0 - r) * inputs
 
     return h, c
+
 
 class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
   """Weight normalized LSTM Cell. Adapted from `rnn_cell_impl.LSTMCell`.
