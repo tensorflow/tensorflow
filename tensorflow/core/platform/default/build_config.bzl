@@ -72,9 +72,7 @@ def pyx_library(
       name = name + "_cython_translation",
       srcs = pyx_srcs,
       outs = cpp_outs,
-      cmd = ("PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)"
-             # Rename outputs to expected location.
-             + """ && python -c 'import shutil, sys; n = len(sys.argv); [shutil.copyfile(src.split(".")[0] + ".cpp", dst) for src, dst in zip(sys.argv[1:], sys.argv[1+n//2:])]' $(SRCS) $(OUTS)"""),
+      cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)",
       tools = ["@cython//:cython_binary"] + pxd_srcs,
   )
 
