@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/test.h"
 
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
@@ -34,6 +35,13 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
 }
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
+void RunFileRelocator::Init() { src_root = testing::TensorFlowSrcRoot(); }
+
+std::unique_ptr<RunFileRelocator> RunFileRelocator::m_instance;
+std::once_flag RunFileRelocator::once;
+std::string RunFileRelocator::Relocate(const string& runfile) const {
+  return io::JoinPath(src_root, runfile);
+}
 
 string TensorFlowSrcRoot() {
   // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new

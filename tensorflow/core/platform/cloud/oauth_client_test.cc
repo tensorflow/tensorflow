@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
-#include <fstream>
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <fstream>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
@@ -90,9 +90,9 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
 }
 
 TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
-  std::ifstream credentials(
-      io::JoinPath(io::JoinPath(testing::TensorFlowSrcRoot(), kTestData),
-                   "service_account_credentials.json"));
+  string filename = testing::RunFileRelocator::GetInstance().Relocate(
+      io::JoinPath(kTestData, "service_account_credentials.json"));
+  std::ifstream credentials(filename);
   ASSERT_TRUE(credentials.is_open());
   Json::Value json;
   Json::Reader reader;
@@ -133,9 +133,10 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   // Check that 'signature' signs 'header_dot_claim'.
 
   // Read the serialized public key.
-  std::ifstream public_key_stream(
-      io::JoinPath(io::JoinPath(testing::TensorFlowSrcRoot(), kTestData),
-                   "service_account_public_key.txt"));
+  string public_key_filename =
+      testing::RunFileRelocator::GetInstance().Relocate(
+          io::JoinPath(kTestData, "service_account_public_key.txt"));
+  std::ifstream public_key_stream(public_key_filename);
   string public_key_serialized(
       (std::istreambuf_iterator<char>(public_key_stream)),
       (std::istreambuf_iterator<char>()));

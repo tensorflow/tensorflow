@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_TEST_H_
 
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
-
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/subprocess.h"
@@ -37,6 +39,26 @@ limitations under the License.
 
 namespace tensorflow {
 namespace testing {
+
+class RunFileRelocator {
+ private:
+  static std::unique_ptr<RunFileRelocator> m_instance;
+  static std::once_flag once;
+  string src_root;
+  std::unordered_map<string, string> manifest;
+  void Init();
+
+ public:
+  // Returns the absolute path to a runfile.
+  std::string Relocate(const string& runfile) const;
+  static const RunFileRelocator& GetInstance() {
+    std::call_once(once, [] {
+      m_instance.reset(new RunFileRelocator());
+      m_instance->Init();
+    });
+    return *m_instance;
+  }
+};
 
 // Return a temporary directory suitable for temporary testing files.
 string TmpDir();
