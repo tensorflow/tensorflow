@@ -114,7 +114,7 @@ class CrfTest(test.TestCase):
         np.array([[4, 5, -3], [3, -1, 3], [-1, 2, 1], [0, 0, 0]],
                  dtype=np.float32),
         np.array([[3, -1, 3]],
-                 dtype=np.float32),
+                 dtype=np.float32)
     ]
     tag_indices_list = [
         np.array([1, 2, 1, 0], dtype=np.int32),

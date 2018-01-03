@@ -156,6 +156,8 @@ public class TensorFlowInferenceInterface {
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // initializeTensorFlow.
       }
+
+      is.close();
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
@@ -264,6 +266,7 @@ public class TensorFlowInferenceInterface {
     closeFeeds();
     closeFetches();
     sess.close();
+    runner.close();
     g.close();
     if (runStats != null) {
       runStats.close();
