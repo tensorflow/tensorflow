@@ -3449,7 +3449,6 @@ tf_cc_test(
         ":ops",
         ":protos_all_cc",
         ":test",
-        ":test_main",
     ],
 )
 
