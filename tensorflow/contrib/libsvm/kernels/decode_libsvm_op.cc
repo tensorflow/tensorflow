@@ -48,8 +48,8 @@ class DecodeLibsvmOp : public OpKernel {
     for (int i = 0; i < input_flat.size(); ++i) {
       StringPiece line(input_flat(i));
       str_util::RemoveWhitespaceContext(&line);
+
       StringPiece piece;
-      ;
       OP_REQUIRES(ctx, str_util::ConsumeNonWhitespace(&line, &piece),
                   errors::InvalidArgument("No label found for input[", i,
                                           "]: \"", input_flat(i), "\""));
