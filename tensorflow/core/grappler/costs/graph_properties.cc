@@ -372,7 +372,7 @@ class TopoQueue {
   // use their id to ensure they're sorted topologically.
   struct CompareNodes {
     bool operator()(const Node* lhs, const Node* rhs) const {
-      return lhs->id() > rhs->id();
+      return lhs->id() < rhs->id();
     }
   };
   std::set<const Node*, CompareNodes> queue_;
