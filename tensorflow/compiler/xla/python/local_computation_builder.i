@@ -99,6 +99,11 @@ limitations under the License.
 // wrapped by xla_client in order to set up a custom destructor that
 // triggers memory deallocation on the C++ side.
 
+%module(threads="1") local_computation_builder
+
+// Keep the GIL except where explicitly specified.
+%nothread;
+
 %include "tensorflow/python/platform/base.i"
 
 %{
@@ -582,6 +587,8 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::DeleteLocalComputation;
 %unignore xla::swig::DeleteCompiledLocalComputation;
 
+%thread;
 %include "tensorflow/compiler/xla/python/local_computation_builder.h"
+%nothread;
 
 %unignoreall
