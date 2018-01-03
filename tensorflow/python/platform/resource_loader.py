@@ -52,25 +52,33 @@ def load_resource(path):
 
 
 # pylint: disable=protected-access
-def get_data_files_path():
+def get_data_files_path(frame=0):
   """Get a direct path to the data files colocated with the script.
+
+  Args:
+    frame: an integer indicating the number of stack elements between the
+        calling script and the script in 'runfiles'.
 
   Returns:
     The directory where files specified in data attribute of py_test
     and py_binary are stored.
   """
-  return _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
+  return _os.path.dirname(_inspect.getfile(_sys._getframe(1 + frame)))
 
 
-def get_root_dir_with_all_resources():
+def get_root_dir_with_all_resources(frame=0):
   """Get a root directory containing all the data attributes in the build rule.
+
+  Args:
+    frame: an integer indicating the number of stack elements between the
+        calling script and a script in 'runfiles'.
 
   Returns:
     The path to the specified file present in the data attribute of py_test
     or py_binary. Falls back to returning the same as get_data_files_path if it
     fails to detect a bazel runfiles directory.
   """
-  script_dir = get_data_files_path()
+  script_dir = get_data_files_path(1 + frame)
 
   # Create a history of the paths, because the data files are located relative
   # to the repository root directory, which is directly under runfiles
@@ -101,13 +109,15 @@ def get_root_dir_with_all_resources():
   return data_files_dir or script_dir
 
 
-def get_path_to_datafile(path):
+def get_path_to_datafile(path, frame=0):
   """Get the path to the specified file in the data dependencies.
 
   The path is relative to tensorflow/
 
   Args:
     path: a string resource path relative to tensorflow/
+    frame: an integer indicating the number of stack elements between the
+        calling script and a script in 'runfiles'.
 
   Returns:
     The path to the specified file present in the data attribute of py_test
@@ -116,8 +126,8 @@ def get_path_to_datafile(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  data_files_path = _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
-  return _os.path.join(data_files_path, path)
+  root = get_data_files_path(1 + frame)
+  return _os.path.join(root, path)
 
 
 def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
