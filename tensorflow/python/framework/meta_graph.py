@@ -728,12 +728,13 @@ def import_scoped_meta_graph(meta_graph_or_file,
     if clear_devices:
       for node in input_graph_def.node:
         node.device = ""
+
+    scope_to_prepend_to_names = graph.unique_name(
+        import_scope or "", mark_as_used=False)
+
     importer.import_graph_def(
         input_graph_def, name=(import_scope or ""), input_map=input_map,
         producer_op_list=producer_op_list)
-
-    scope_to_prepend_to_names = "/".join(
-        [part for part in [graph.get_name_scope(), import_scope] if part])
 
     # Restores all the other collections.
     for key, col_def in sorted(meta_graph_def.collection_def.items()):
@@ -876,7 +877,7 @@ def export_scoped_meta_graph(filename=None,
                                 export_scope,
                                 exclude_nodes):
           value = graph._nodes_by_id[key]
-      # pylint: enable=protected-access
+          # pylint: enable=protected-access
           node_def = _node_def(value.node_def, export_scope, unbound_inputs,
                                clear_devices=clear_devices)
           graph_def.node.extend([node_def])
