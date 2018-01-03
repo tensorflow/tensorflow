@@ -214,7 +214,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.array(x_data, dtype=np.float32)
     
       x = constant_op.constant(x_np, shape=x_np.shape)
-      y = constant_op.constant(-1.0, dtype=np.float32)
+      y = constant_op.constant(-1.0, dtype=tf.float32)
       
       image = image_ops.adjust_gamma(x, gamma=y)
       
