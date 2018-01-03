@@ -145,7 +145,6 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
-        TF_RET_CHECK(ShapeUtil::Equal(param.shape(), use->operand(0)->shape()));
         if (needs_index != nullptr &&
             !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
           return Unimplemented(
@@ -173,7 +172,8 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
         needs_index->ToString().c_str(), needs_zero->ToString().c_str());
   }
   if (needs_index != nullptr) {
-    return MakeRandomNonwrappingSliceIndex(param.shape(), needs_index->shape());
+    return MakeRandomNonwrappingSliceIndex(needs_index->operand(0)->shape(),
+                                           needs_index->shape());
   } else if (needs_zero != nullptr) {
     return Literal::CreateFromShape(param.shape());
   } else {
