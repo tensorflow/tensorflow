@@ -275,6 +275,12 @@ bool IsStopGradient(const NodeDef& node) {
   return op == "StopGradient" || op == "PreventGradient";
 }
 
+bool IsStridedSlice(const NodeDef& node) { return node.op() == "StridedSlice"; }
+
+bool IsStridedSliceGrad(const NodeDef& node) {
+  return node.op() == "StridedSliceGrad";
+}
+
 bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }
 
 bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }

@@ -179,6 +179,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SoftplusGrad",
                                           "Split",
                                           "SplitV",
+                                          "StridedSlice",
+                                          "StridedSliceGrad",
                                           "Switch",
                                           "Tile",
                                           "TruncateDiv",
@@ -343,6 +345,9 @@ std::vector<int> DataInputPosConcat(const NodeDef& node) {
 std::vector<int> DataInputPos(const NodeDef& node) {
   if (IsSplit(node)) {
     return {1};
+  }
+  if (IsStridedSliceGrad(node)) {
+    return {4};
   }
   if (IsBinaryOp(node) || IsUnaryGrad(node)) {
     return {0, 1};
@@ -1106,7 +1111,7 @@ class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
 
  protected:
   Status CustomizedProcessing() override {
-    for (int i = 3; i < node_->input_size(); i++) {
+    for (int i = 3; i <= 4; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1132,7 +1137,7 @@ class MaxPoolV2Processor : public NodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    for (int i = 1; i < node_->input_size(); i++) {
+    for (int i = 1; i <= 2; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1437,8 +1442,9 @@ class MergeProcessor : public AgnosticNodeProcessor {
 
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
-    input_pos.reserve(node_->input_size());
-    for (int i = 0; i < node_->input_size(); i++) {
+    int n = node_->attr().at("N").i();
+    input_pos.reserve(n);
+    for (int i = 0; i < n; i++) {
       input_pos.push_back(i);
     }
     return input_pos;
@@ -1542,18 +1548,37 @@ class UnaryGradProcessor : public AgnosticNodeProcessor {
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
   explicit SliceProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+      : AgnosticNodeProcessor(opt_cxt) {
+    // Skip the first input, which is the data to be sliced.
+    start_ = 1;
+    // For StridedSlice, the last param is at index 3. Note that we can't use
+    // node_->input_size() here because there could be control inputs.
+    end_ = IsSlice(*node_) ? 2 : 3;
+  }
 
  protected:
   Status CustomizedProcessing() override {
-    // Skip the first input, which is the data to be sliced.
-    for (int i = 1; i < node_->input_size(); i++) {
+    for (int i = start_; i <= end_; i++) {
       DataType dtype = node_->attr().at("Index").type();
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", dtype));
     }
     return Status::OK();
   }
+  int start_;
+  int end_;
+};
+
+class StridedSliceGradProcessor : public SliceProcessor {
+ public:
+  explicit StridedSliceGradProcessor(const OptimizeContext& opt_cxt)
+      : SliceProcessor(opt_cxt) {
+    start_ = 0;
+    end_ = 3;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {4}; }
 };
 
 class SqueezeProcessor : public AgnosticNodeProcessor {
@@ -1769,7 +1794,7 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new PadProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
-          } else if (IsSlice(*node)) {
+          } else if (IsSlice(*node) || IsStridedSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
             node_processor.reset(new ShapeProcessor(opt_cxt));
@@ -1779,6 +1804,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
+          } else if (IsStridedSliceGrad(*node)) {
+            node_processor.reset(new StridedSliceGradProcessor(opt_cxt));
           } else if (IsSum(*node)) {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {

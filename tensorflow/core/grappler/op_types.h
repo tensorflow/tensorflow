@@ -109,6 +109,8 @@ bool IsSqrtGrad(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
+bool IsStridedSlice(const NodeDef& node);
+bool IsStridedSliceGrad(const NodeDef& node);
 bool IsSub(const NodeDef& node);
 bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
