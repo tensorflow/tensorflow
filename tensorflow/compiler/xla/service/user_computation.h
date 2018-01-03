@@ -321,6 +321,15 @@ class UserComputation {
   SessionComputation CloneSessionComputation(
       VersionedComputationHandle::Version version) const;
 
+  // Warning: typically we don't want to look up computation data handles until
+  // the computation is finished being built, for consistency purposes. We
+  // expose this routine for error reporting purposes so that we can provide
+  // more meaningful error messages from the XLA service layer.
+  //
+  // Returns the operation request that the handle comes from.
+  StatusOr<const OperationRequest*> LookUpRequestForErrorReporting(
+      const ComputationDataHandle& handle) const;
+
  private:
   // Warning: dangerous mutating operation that doesn't respect versioning.
   // This is only used at initialization time when constructing from a

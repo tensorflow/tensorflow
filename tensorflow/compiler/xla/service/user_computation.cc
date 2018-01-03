@@ -2154,6 +2154,13 @@ UserComputation::GetEmbeddedComputations(
   return computations;
 }
 
+StatusOr<const OperationRequest*>
+UserComputation::LookUpRequestForErrorReporting(
+    const ComputationDataHandle& handle) const {
+  tensorflow::mutex_lock lock(mutex_);
+  return LookUpRequest(handle);
+}
+
 Status UserComputation::RemapEmbeddedComputations(
     const std::map<int64, ComputationHandle>& old_to_new) {
   auto update = [&old_to_new](ComputationHandle* to_update) -> Status {
