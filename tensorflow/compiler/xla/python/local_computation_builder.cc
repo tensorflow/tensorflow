@@ -299,11 +299,6 @@ ComputationDataHandle LocalComputationBuilder::RngUniform(
   return builder_.RngUniform(a, b, shape);
 }
 
-ComputationDataHandle LocalComputationBuilder::RngBernoulli(
-    const ComputationDataHandle& mean, const Shape& shape) {
-  return builder_.RngBernoulli(mean, shape);
-}
-
 ComputationDataHandle LocalComputationBuilder::While(
     const LocalComputation& condition, const LocalComputation& body,
     const ComputationDataHandle& init) {

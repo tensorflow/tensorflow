@@ -186,9 +186,6 @@ class LocalComputationBuilder {
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
 
-  ComputationDataHandle RngBernoulli(const ComputationDataHandle& mean,
-                                     const Shape& shape);
-
   ComputationDataHandle While(const LocalComputation& condition,
                               const LocalComputation& body,
                               const ComputationDataHandle& init);

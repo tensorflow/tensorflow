@@ -684,11 +684,6 @@ class ComputationBuilder {
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
 
-  // Enqueues a B(1, p) random number generation instruction onto the
-  // computation.
-  ComputationDataHandle RngBernoulli(const ComputationDataHandle& mean,
-                                     const Shape& shape);
-
   // Enqueues a while node onto the computation.
   ComputationDataHandle While(const Computation& condition,
                               const Computation& body,

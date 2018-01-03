@@ -345,7 +345,7 @@ TEST_F(HloRematerializationTest, RngNotRematerialized) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param"));
   auto rng = builder.AddInstruction(HloInstruction::CreateRng(
-      vec1024_shape_, RandomDistribution::RNG_BERNOULLI, {param}));
+      vec1024_shape_, RandomDistribution::RNG_UNIFORM, {param, param}));
   auto tanh = builder.AddInstruction(
       HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kTanh, rng));
   auto exp = builder.AddInstruction(

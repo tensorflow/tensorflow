@@ -1502,11 +1502,6 @@ ComputationDataHandle ComputationBuilder::RngUniform(
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
-ComputationDataHandle ComputationBuilder::RngBernoulli(
-    const ComputationDataHandle& mean, const Shape& shape) {
-  return RngOp(RandomDistribution::RNG_BERNOULLI, {mean}, shape);
-}
-
 ComputationDataHandle ComputationBuilder::While(
     const Computation& condition, const Computation& body,
     const ComputationDataHandle& init) {

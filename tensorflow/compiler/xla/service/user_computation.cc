@@ -369,14 +369,6 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
 
   // Check the number of parameters per RNG distribution.
   switch (rng_request.distribution()) {
-    case RandomDistribution::RNG_BERNOULLI:
-      if (rng_request.parameter_size() != 1) {
-        return InvalidArgument(
-            "RNG distribution (%s) expects 1 parameters, but got %d",
-            RandomDistribution_Name(rng_request.distribution()).c_str(),
-            rng_request.parameter_size());
-      }
-      break;
     case RandomDistribution::RNG_NORMAL:
     case RandomDistribution::RNG_UNIFORM:
       if (rng_request.parameter_size() != 2) {
