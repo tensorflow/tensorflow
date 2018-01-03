@@ -41,6 +41,10 @@ bool HasDilation(const Window& window);
 
 bool HasWindowReversal(const Window& window);
 
+// Returns true if the given logical dimension is inactive in the sense that it
+// has window bound 1, no striding and no padding.
+bool IsInactiveWindowDimension(const Window& window, int64 logical_dim);
+
 // Returns the new bound after dilation.
 //
 // If a window with the given bound in some dimension is dilated with the given
