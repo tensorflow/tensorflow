@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
+#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_VECTOR_SUPPORT_LIBRARY_H_
+#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_VECTOR_SUPPORT_LIBRARY_H_
 
 #include <string>
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-namespace cpu {
 // A thin wrapper around llvm_util.h to make code generating vector math flow
 // more readable.
 class VectorSupportLibrary {
@@ -129,9 +127,6 @@ class VectorSupportLibrary {
   llvm::Type* vector_pointer_type() const { return vector_pointer_type_; }
   llvm::Type* scalar_type() const { return scalar_type_; }
   llvm::Type* scalar_pointer_type() const { return scalar_pointer_type_; }
-  int64 scalar_byte_size() const {
-    return primitive_util::BitWidth(primitive_type_) / 8;
-  }
 
   const std::string& name() const { return name_; }
 
@@ -206,7 +201,6 @@ class ScalarVariable : public LlvmVariable {
     Set(initial_value);
   }
 };
-}  // namespace cpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
+#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_VECTOR_SUPPORT_LIBRARY_H_

@@ -839,8 +839,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   return DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
       lhs_array, rhs_array, /*addend_array=*/nullptr,
-      GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_,
-      target_machine_features_);
+      GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -2240,7 +2239,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         *root, root->operand(0)->IsRank2Transpose(),
         root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
         rhs_array, /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
+        &ir_builder_, hlo_module_config_));
     return Status::OK();
   } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
                                                             assignment_)) {
@@ -2288,7 +2287,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
         *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
         lhs_array, rhs_array, &addend_array, GetExecutableRunOptionsArgument(),
-        &ir_builder_, hlo_module_config_, target_machine_features_));
+        &ir_builder_, hlo_module_config_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
@@ -3111,5 +3110,19 @@ StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
                                  ShapeUtil::MakeShape(return_type, {}),
                                  argument_addrs, name);
 }
+
+llvm::TargetTransformInfo* TargetMachineFeatures::GetTargetTransformInfoFor(
+    const llvm::Function& function) {
+  auto it = target_transform_infos_.find(&function);
+  if (it == target_transform_infos_.end()) {
+    auto emplace_result = target_transform_infos_.emplace(
+        &function, target_machine_->getTargetTransformInfo(function));
+    CHECK(emplace_result.second);
+    it = emplace_result.first;
+  }
+
+  return &it->second;
+}
+
 }  // namespace cpu
 }  // namespace xla
