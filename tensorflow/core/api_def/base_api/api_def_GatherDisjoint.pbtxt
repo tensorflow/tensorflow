@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "GatherDisjoint"
+  summary: "Gather disjoint slices from `params` according to `indices`."
+  description: <<END
+`indices` must be a list of integer tensors of possibly different dimensions.
+Produces a list of output tensors of the same length, with tensor `i`
+having shape `indices[i].shape + params.shape[1:]`.
+
+This operation is similar to @{tf.gather}, except that once a slice of
+params is taken, it is never used again. For any other reference,
+the output will be filled with `0` instead. The list of indices
+is traversed in order, hence if an index appears in both `indices[m][i]` and
+`indices[n][j]` for `(m, i) < (n, j)`, the slice `output[n][j]` will be filled
+with `0`.
+
+Here is an example:
+
+```python
+    indices[0] = [0, 1, 0]
+    indices[1] = [[2, 3], [0, 1]]
+    indices[2] = 2
+    params = [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0], [6.0, 7.0]]
+    output[0] = [[0.0, 1.0], [2.0, 3.0], [0.0, 0.0]]
+    output[1] = [[[4.0, 5.0], [6.0, 7.0]], [[0.0, 0.0], [0.0, 0.0]]]
+    output[2] = [0.0, 0.0]
+```
+
+Setting `reverse_order` to `True` inverses the order in which indices are
+considered.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+END
+}
