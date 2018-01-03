@@ -67,14 +67,14 @@ def pyx_library(
       pxd_srcs.append(src)
 
   # Invoke cython to produce the shared object libraries.
-  cpp_outs = [src.split(".")[0] + ".cpp" for src in pyx_srcs]
-  native.genrule(
-      name = name + "_cython_translation",
-      srcs = pyx_srcs,
-      outs = cpp_outs,
-      cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)",
-      tools = ["@cython//:cython_binary"] + pxd_srcs,
-  )
+  for filename in pyx_srcs:
+    native.genrule(
+        name = filename + "_cython_translation",
+        srcs = [filename],
+        outs = [filename.split(".")[0] + ".cpp"],
+        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        tools = ["@cython//:cython_binary"] + pxd_srcs,
+    )
 
   shared_objects = []
   for src in pyx_srcs:
