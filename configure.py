@@ -302,6 +302,12 @@ def get_var(environ_cp,
 
   Returns:
     boolean value of the variable.
+
+  Raises:
+    UserInputError: if an environment variable is set, but it cannot be
+      interpreted as a boolean indicator, assume that the user has made a
+      scripting error, and will continue to provide invalid input.
+      Raise the error to avoid infinitely looping.
   """
   if not question:
     question = 'Do you wish to build TensorFlow with %s support?' % query_item
@@ -319,6 +325,22 @@ def get_var(environ_cp,
     question += ' [y/N]: '
 
   var = environ_cp.get(var_name)
+  if var is not None:
+    var_content = var.strip().lower()
+    if var_content in ('1', 't', 'true', 'y', 'yes'):
+      var = True
+    elif var_content in ('0', 'f', 'false', 'n', 'no'):
+      var = False
+    else:
+      raise UserInputError('Environment variable %s must be set as a boolean indicator.\n'
+                           'The followings are accepted as TRUE : %s.\n'
+                           'The followings are accepted as FALSE: %s.\n'
+                           'Current value is %s' %
+                           (var_name,
+                            ','.join(true_contents),
+                            ','.join(false_contents),
+                            var))
+
   while var is None:
     user_input_origin = get_input(question)
     user_input = user_input_origin.strip().lower()
@@ -605,8 +627,8 @@ def prompt_loop_or_load_from_env(
 
   Raises:
     UserInputError: if a query has been attempted n_ask_attempts times without
-    success, assume that the user has made a scripting error, and will continue
-    to provide invalid input. Raise the error to avoid infinitely looping.
+      success, assume that the user has made a scripting error, and will continue
+      to provide invalid input. Raise the error to avoid infinitely looping.
   """
   default = environ_cp.get(var_name) or var_default
   full_query = '%s [Default is %s]: ' % (
