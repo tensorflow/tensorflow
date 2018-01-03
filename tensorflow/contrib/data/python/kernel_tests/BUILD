@@ -467,6 +467,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "@org_sqlite//:python",
     ],
 )
 

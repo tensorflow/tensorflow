@@ -219,7 +219,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
-      name = "sqlite_archive",
+      name = "org_sqlite",
       urls = [
           "https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
           "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",

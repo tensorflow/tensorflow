@@ -112,5 +112,6 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
+        "@org_sqlite//:python",
     ],
 )
