@@ -333,8 +333,8 @@ def get_var(environ_cp,
       var = False
     else:
       raise UserInputError('Environment variable %s must be set as a boolean indicator.\n'
-                           'The followings are accepted as TRUE : %s.\n'
-                           'The followings are accepted as FALSE: %s.\n'
+                           'The following are accepted as TRUE : %s.\n'
+                           'The following are accepted as FALSE: %s.\n'
                            'Current value is %s' %
                            (var_name,
                             ','.join(true_contents),
