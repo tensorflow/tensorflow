@@ -178,6 +178,17 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
+  ComputationDataHandle RngNormal(const ComputationDataHandle& mu,
+                                  const ComputationDataHandle& sigma,
+                                  const Shape& shape);
+
+  ComputationDataHandle RngUniform(const ComputationDataHandle& a,
+                                   const ComputationDataHandle& b,
+                                   const Shape& shape);
+
+  ComputationDataHandle RngBernoulli(const ComputationDataHandle& mean,
+                                     const Shape& shape);
+
   ComputationDataHandle While(const LocalComputation& condition,
                               const LocalComputation& body,
                               const ComputationDataHandle& init);

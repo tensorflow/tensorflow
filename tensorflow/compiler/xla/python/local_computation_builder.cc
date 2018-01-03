@@ -287,6 +287,23 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
                          dimensions_to_reduce);
 }
 
+ComputationDataHandle LocalComputationBuilder::RngNormal(
+    const ComputationDataHandle& mu, const ComputationDataHandle& sigma,
+    const Shape& shape) {
+  return builder_.RngNormal(mu, sigma, shape);
+}
+
+ComputationDataHandle LocalComputationBuilder::RngUniform(
+    const ComputationDataHandle& a, const ComputationDataHandle& b,
+    const Shape& shape) {
+  return builder_.RngUniform(a, b, shape);
+}
+
+ComputationDataHandle LocalComputationBuilder::RngBernoulli(
+    const ComputationDataHandle& mean, const Shape& shape) {
+  return builder_.RngBernoulli(mean, shape);
+}
+
 ComputationDataHandle LocalComputationBuilder::While(
     const LocalComputation& condition, const LocalComputation& body,
     const ComputationDataHandle& init) {

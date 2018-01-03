@@ -721,6 +721,53 @@ class SingleOpTest(LocalComputationTest):
     self._ExecuteAndCompareExact(
         c, expected=[[10, 20, 30, 40], [10, 20, 30, 40], [10, 20, 30, 40]])
 
+  def testRngBernoulli(self):
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngBernoulli(c.Constant(NumpyArrayF32(0.5)), dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape, range, and integrality
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(result.dtype, np.uint32)
+    self.assertTrue(np.all(0 <= result))
+    self.assertTrue(np.all(result <= 1))
+
+  def testRngNormal(self):
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngNormal(c.Constant(NumpyArrayF32(0.)), c.Constant(NumpyArrayF32(1.)),
+                dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape and uniqueness
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(len(np.unique(result)), np.prod(shape))
+
+  def testRngUniformF32(self):
+    lo, hi = 2., 4.
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngUniform(c.Constant(NumpyArrayF32(lo)), c.Constant(NumpyArrayF32(hi)),
+                 dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape, uniqueness, and range
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(len(np.unique(result)), np.prod(shape))
+    self.assertTrue(np.all(lo <= result))
+    self.assertTrue(np.all(result < hi))
+
+  def testRngUniformS32(self):
+    lo, hi = 2, 4
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngUniform(c.Constant(NumpyArrayS32(lo)), c.Constant(NumpyArrayS32(hi)),
+                 dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape, integrality, and range
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(result.dtype, np.int32)
+    self.assertTrue(np.all(lo <= result))
+    self.assertTrue(np.all(result < hi))
+
 
 class EmbeddedComputationsTest(LocalComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""

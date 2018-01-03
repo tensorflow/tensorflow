@@ -80,10 +80,15 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F64: np.dtype(np.float64),
     xla_data_pb2.S32: np.dtype(np.int32),
     xla_data_pb2.S64: np.dtype(np.int64),
+    xla_data_pb2.U32: np.dtype(np.uint32),
+    xla_data_pb2.U64: np.dtype(np.uint64),
     xla_data_pb2.PRED: np.dtype(np.bool),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
+# Note the conversion on the key. Numpy has a known issue wherein dtype hashing
+# doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
+# when keying by dtype in this dict, we use the string form of dtypes.
 DTYPE_TO_XLA_ELEMENT_TYPE = {
     str(v): k
     for k, v in XLA_ELEMENT_TYPE_TO_DTYPE.items()
@@ -642,6 +647,58 @@ class ComputationBuilder(object):
             _unwrap_data_handle(init_value),
             computation_to_apply.c_local_computation,
             dimensions))
+
+  def RngNormal(self, mu, sigma, dims):
+    """Enqueues an RngNormal operation onto the computation.
+
+    Args:
+      mu: A ComputationDataHandle to an F32 scalar specifying the mean.
+      sigma: A ComputationDataHandle to an F32 scalar specifying the standard
+        deviation.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of F32 values.
+    """
+    shape = Shape(self.GetShape(mu).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngNormal(
+            _unwrap_data_handle(mu), _unwrap_data_handle(sigma),
+            _unwrap_shape(shape)))
+
+  def RngUniform(self, a, b, dims):
+    """Enqueues an RngUniform operation onto the computation.
+
+    Args:
+      a: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of b) specifying the low end of the interval [a, b) over which
+        values are generated.
+      b: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of a) specifying the high end of the interval [a, b) over which
+        values are generated.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of values with the
+      same numeric type (F32, S32, or U32) as the arguments a and b.
+    """
+    shape = Shape(self.GetShape(a).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngUniform(
+            _unwrap_data_handle(a), _unwrap_data_handle(b),
+            _unwrap_shape(shape)))
+
+  def RngBernoulli(self, mean, dims):
+    """Enqueues an RngBernoulli operation onto the computation.
+
+    Args:
+      mean: A ComputationDataHandle to an F32 scalar specifying the mean.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of U32 values.
+    """
+    shape = Shape(np.dtype(np.uint32), dims)
+    return _wrap_data_handle(
+        self._client.RngBernoulli(
+            _unwrap_data_handle(mean), _unwrap_shape(shape)))
 
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
