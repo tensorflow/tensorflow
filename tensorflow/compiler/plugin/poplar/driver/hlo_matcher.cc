@@ -59,16 +59,31 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     }
 
     for (unsigned int i=0; i<node.operands.size(); i++) {
+      HloInstruction* operand = inst->mutable_operand(i);
       int n = node.operands[i];
-      if (n == -1) continue;
+      if (n < 0) {
+        if (input_map_.count(n) > 0) {
+          if (input_map_[n] != operand) {
+            return false;
+          }
+        } else {
+          if (input_set_.count(operand) > 0) {
+            return false;
+          } else {
+            input_map_[n] = operand;
+            input_set_.insert(operand);
+            continue;
+          }
+        }
+      }
       if (n <= node_num) return false;
 
       if (match.instructions[n] != nullptr &&
-          match.instructions[n] != inst->mutable_operand(i)) {
+          match.instructions[n] != operand) {
         return false;
       }
 
-      match.instructions[n] = inst->mutable_operand(i);
+      match.instructions[n] = operand;
     }
   }
 
@@ -104,6 +119,9 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
       match.ok = true;
       match.computation = computation;
       match.instructions.resize(patterns_[i].size());
+
+      input_map_.clear();
+      input_set_.clear();
 
       if (MatchPattern(instruction, patterns_[i], match)) {
         AddMatch(i, match);
@@ -161,6 +179,8 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   visited_.clear();
   matches_.clear();
   match_map_.clear();
+  input_set_.clear();
+  input_map_.clear();
 
   return replacement_count != 0;
 }

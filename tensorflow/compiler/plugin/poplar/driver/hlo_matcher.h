@@ -70,6 +70,8 @@ private:
   std::set<HloInstruction*> visited_;
   std::vector<std::list<HloMatcherMatched>> matches_;
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
+  std::map<int, const HloInstruction*> input_map_;
+  std::set<const HloInstruction*> input_set_;
 };
 
 }

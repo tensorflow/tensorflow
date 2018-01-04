@@ -63,7 +63,7 @@ static const char* names[] = {
 
 static const std::vector<HloMatcherPattern> patterns = {
   // dynamic update slice with constant coordinate
-  {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -1, 1}},
+  {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
   // dynamic slice with constant coordinate
@@ -105,11 +105,11 @@ static const std::vector<HloMatcherPattern> patterns = {
   // BiasAdd on convolution (explicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kBroadcast, true, nullptr, {-1}},
-   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
 
   // BiasAdd on convolution (implicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},
-   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
 
   // External padding with constant zero
   {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
@@ -192,12 +192,12 @@ static const std::vector<HloMatcherPattern> patterns = {
   // Depthwise convolution (forward pass)
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
    {HloOpcode::kReshape, true, nullptr, {2}},
-   {HloOpcode::kPad, true, IsDepthwisePadding, {-1, 3}},
+   {HloOpcode::kPad, true, IsDepthwisePadding, {-2, 3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Backprop input convolution
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kReverse, true, IsConvFilterSpatialReverse, {-1}}},
+   {HloOpcode::kReverse, true, IsConvFilterSpatialReverse, {-2}}},
 
   // Bias reduction and application
   {{HloOpcode::kSubtract, true, IsOutputFeed, {1, 2}},

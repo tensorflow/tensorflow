@@ -77,7 +77,7 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
 
 
   std::vector<HloMatcherPattern> patterns = {
-    {{HloOpcode::kAdd, true, nullptr, {-1, -1}}}
+    {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
   };
   TestMatcher matcher(patterns, false);
 
@@ -87,7 +87,37 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
 }
 
 
+TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
 
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "in1"));
+  auto i2 = builder.AddInstruction(
+          HloInstruction::CreateParameter(1, shape, "in2"));
+  auto add1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i1));
+  auto add2 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({add1, add2}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+
+  std::vector<HloMatcherPattern> patterns = {
+          {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
+  };
+  TestMatcher matcher(patterns, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(5, hlo_module->entry_computation()->instruction_count());
+}
 
 
 TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
@@ -119,9 +149,9 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
-     {HloOpcode::kBroadcast, true, nullptr, {-1}}},
+     {HloOpcode::kBroadcast, true, nullptr, {-2}}},
 
-    {{HloOpcode::kAdd, true, nullptr, {-1, -1}}}
+    {{HloOpcode::kAdd, true, nullptr, {-1, -2}}}
   };
   TestMatcher matcher(patterns, false);
 
@@ -165,7 +195,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
 
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
-     {HloOpcode::kBroadcast, true, nullptr, {-1}}}
+     {HloOpcode::kBroadcast, true, nullptr, {-2}}}
   };
   TestMatcher matcher(patterns, false);
 
@@ -210,7 +240,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
 
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kAdd, true, nullptr, {-1, 1}},
-     {HloOpcode::kBroadcast, true, nullptr, {-1}}}
+     {HloOpcode::kBroadcast, true, nullptr, {-2}}}
   };
   TestMatcher matcher(patterns, false);
 
@@ -255,8 +285,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
 
   std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kSubtract, true, nullptr, {1, -1}},
-     {HloOpcode::kAdd, true, nullptr, {-1, 2}},
-     {HloOpcode::kBroadcast, false, nullptr, {-1}}}
+     {HloOpcode::kAdd, true, nullptr, {-2, 2}},
+     {HloOpcode::kBroadcast, false, nullptr, {-3}}}
   };
   TestMatcher matcher(patterns, false);
 
