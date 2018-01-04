@@ -10,6 +10,8 @@ ConvertTest.ConvertR1F64ToR1F32 POPLAR // F64
 SliceR1Test.DoIt_F64 POPLAR // F64
 MultiOutputFusionTest.DiffentTypesNoFusion POPLAR // F64
 MultiOutputFusionTest.DiffentTypesFusion POPLAR // F64
+PrngTest.HundredValuesB10p5F64 POPLAR // F64
+PrngTest.HundredValuesB10p1F64 POPLAR // F64
 
 Bfloat16Test POPLAR // No bfloat16
 
@@ -62,6 +64,8 @@ ArrayElementwiseOpTest.ShiftRightLogicalU32      POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
 PrngTest.HundredValuesB10p5      POPLAR // U32
 PrngTest.HundredValuesB10p1      POPLAR // U32
+PrngTest.HundredValuesB10p5U32 POPLAR // U32
+PrngTest.HundredValuesB10p1U32 POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values POPLAR // U32
 
 ScalarComputationsTest.AddTwoScalarsS64      POPLAR // S64
