@@ -107,8 +107,7 @@ public:
                uint64 num_parameters)
           : FullVisitor(graph, resources),
             parameter_shapes(num_parameters),
-            all_outputs_are_parameters(false),
-            standard_parameter_layouts(true) {}
+            all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
@@ -135,7 +134,7 @@ public:
       if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
         // Host tensor needs to be host layout
         out = ConvertFromDeviceLayout(module_shapes[i], out);
-        standard_parameter_layouts = false;
+        non_standard_parameter_layout.insert(inst);
       }
 
       graph_->createHostWrite(
@@ -152,20 +151,21 @@ public:
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
-    auto res_shape =
-            comp->parent()->mutable_entry_computation_layout()->result_shape();
-    std::vector<Shape> shapes = FlattenedXlaShape(res_shape);
+    auto* layout = comp->parent()->mutable_entry_computation_layout();
+    std::vector<Shape> shapes = FlattenedXlaShape(layout->result_shape());
 
     for (size_t o=0; o<outputs.size(); o++) {
 
       // For each output, if there is an identical input, put it into the map
       for (int64 i=0; i<comp->num_parameters(); i++) {
         HloInstruction* param = comp->parameter_instruction(i);
-        auto in = FindInstructionOutputs(tensor_map, param);
+        if (non_standard_parameter_layout.count(inst) == 0) {
+          auto in = FindInstructionOutputs(tensor_map, param);
 
-        // Only non-tuple inputs are considered for input<->output mapping
-        if (in.size() == 1 && in[0] == outputs[o]) {
-          output_map[o] = i;
+          // Only non-tuple inputs are considered for input<->output mapping
+          if (in.size() == 1 && in[0] == outputs[o]) {
+            output_map[o] = i;
+          }
         }
       }
 
@@ -182,7 +182,7 @@ public:
       }
     }
 
-    all_outputs_are_parameters &= standard_parameter_layouts;
+    all_outputs_are_parameters &= (non_standard_parameter_layout.size() == 0);
 
     tensor_map.clear();
 
@@ -193,7 +193,7 @@ public:
   std::vector<Shape> parameter_shapes;
 
   bool all_outputs_are_parameters;
-  bool standard_parameter_layouts;
+  std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
 class CallTargetFinder : public DfsHloVisitorWithDefault {
