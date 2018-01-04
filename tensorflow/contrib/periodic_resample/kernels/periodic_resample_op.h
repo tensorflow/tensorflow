@@ -25,6 +25,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace {
 
@@ -230,6 +231,9 @@ std::vector<tensorflow::int64> compute_cumulative_dimensions(
   return cumulative_dimensions;
 }
 
+// Heuristic number based on measurements on development machine.
+const tensorflow::int64 costPerFillIndex = 75;
+
 template <class InputDataT,
           class IndexVecT>  // both types are needed here b/c IndexVecT and
                             // InputDataT are not related
@@ -294,12 +298,21 @@ template <class InputDataT,
                             cumulative_dimensions,
                             rank);
 
-  input_indexer.MoveToOutputIndex(0);
-  for (tensorflow::int64 output_index = 0; output_index < new_size;
-       ++output_index) {
-    output(output_index) = input(input_indexer.current_input_index());
-    input_indexer.IncrementOutputIndex();
-  }
+
+  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  auto fill_output_tensor = [&input_indexer, &output, &input](
+      tensorflow::int64 start, tensorflow::int64 limit) {
+    InputIndexer local_indexer(input_indexer);
+    local_indexer.MoveToOutputIndex(start);
+    for (tensorflow::int64 output_index = start; output_index < limit;
+         ++output_index) {
+      output(output_index) = input(local_indexer.current_input_index());
+      local_indexer.IncrementOutputIndex();
+    }
+  };
+
+  ::tensorflow::Shard(worker_threads.num_threads, worker_threads.workers,
+                      new_size, costPerFillIndex, fill_output_tensor);
 }
 
 template <class InputDataT>
@@ -358,12 +371,23 @@ void fill_grad_tensor(tensorflow::OpKernelContext* context,
                              dimension_ceiling,
                              cumulative_dimensions,
                              rank);
-  input_indexer.MoveToOutputIndex(0);
-  for (tensorflow::int64 input_grad_index = 0; input_grad_index < new_size;
-       ++input_grad_index) {
-    output(input_indexer.current_input_index()) = input_grad_data(input_grad_index);
-    input_indexer.IncrementOutputIndex();
-  }
+
+
+  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  auto fill_output_tensor = [&input_indexer, &output, &input_grad_data](
+      tensorflow::int64 start, tensorflow::int64 limit) {
+    InputIndexer local_indexer(input_indexer);
+    local_indexer.MoveToOutputIndex(start);
+    for (tensorflow::int64 input_grad_index = start; input_grad_index < limit;
+         ++input_grad_index) {
+      output(local_indexer.current_input_index()) =
+          input_grad_data(input_grad_index);
+      local_indexer.IncrementOutputIndex();
+    }
+  };
+
+  ::tensorflow::Shard(worker_threads.num_threads, worker_threads.workers,
+                      new_size, costPerFillIndex, fill_output_tensor);
 }
 
 void create_output_tensor(
