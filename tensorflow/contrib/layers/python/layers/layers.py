@@ -479,11 +479,11 @@ def batch_norm(inputs,
 
     Sergey Ioffe, Christian Szegedy
 
-  Can be used as a normalizer function for conv2d and fully_connected. The 
-  dimensions on which the normalization is calculated depend on the tensor-shape. 
-  In case of a 2D tensor the normalization is calculated over the first dimension 
-  (batch) and in case of a 4D tensor the normalization is calculated over the 
-  first three dimensions (batch and feature-map).
+  Can be used as a normalizer function for conv2d and fully_connected. The
+  normalization is over all but the last dimension if `data_format` is `NHWC`
+  and all but the second dimension if `data_format` is `NCHW`.  In case of a 2D
+  tensor this corresponds to the batch dimension, while in case of a 4D tensor this
+  corresponds to the batch and space dimensions.
   
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
