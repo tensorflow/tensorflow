@@ -814,8 +814,7 @@ enum RandomDistribution {
   // parameter[0] and standard deviation parameter[1].
   RNG_NORMAL = 2;
 
-  reserved 3;
-  reserved "RNG_BERNOULLI";
+  // Next: 4
 }
 
 message RngRequest {
