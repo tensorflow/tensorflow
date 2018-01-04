@@ -28,44 +28,122 @@
 
 namespace {
 
-template <class IndexVecT, class IndexT>
-IndexT compute_input_index(
-    IndexVecT* target_dimensions, const IndexT& output_index,
-    const IndexVecT& original_dimensions, const int& adjustable_dimension,
-    const std::vector<tensorflow::int64>& dimension_ceiling,
-    const std::vector<tensorflow::int64>& cumulative_dimensions, IndexT* result,
-    std::vector<IndexT>* output_indices, const int& rank) {
-  *result = 0;
-  output_indices->clear();
+class InputIndexer {
+ public:
+  InputIndexer(const std::vector<tensorflow::int64>& target_dimensions,
+               const std::vector<tensorflow::int64>& original_dimensions,
+               int adjustable_dimension,
+               const std::vector<tensorflow::int64>& dimension_ceiling,
+               const std::vector<tensorflow::int64>& cumulative_dimensions,
+               int rank)
+
+    : target_dimensions_(target_dimensions),
+      adjustable_dimension_(adjustable_dimension),
+      dimension_ceiling_(dimension_ceiling),
+      cumulative_dimensions_(cumulative_dimensions),
+      rank_(rank),
+      current_output_index_(0),
+      current_input_index_(0),
+      adjustable_dimension_carriage_sum_(0) {
+    output_indices_.resize(target_dimensions_.size());
+    clamped_output_indices_.resize(target_dimensions_.size());
+
+    // Compute index_factors
+    index_factors_.resize(rank);
+    tensorflow::int64 last_index_factor = 1;
+    for (auto r = rank_ - 1; r >= 0; --r) {
+      index_factors_[r] = last_index_factor;
+      last_index_factor *= original_dimensions[r];
+    }
+  }
+
+  tensorflow::int64 current_input_index() const {
+    return current_input_index_;
+  }
+
+  void MoveToOutputIndex(tensorflow::int64 output_index);
+  void IncrementOutputIndex();
+
+ private:
+  void RecomputeClampedAdjustableDimensionIndex() {
+    tensorflow::int64 index = adjustable_dimension_carriage_sum_;
+    index *= target_dimensions_[adjustable_dimension_];
+    index += output_indices_[adjustable_dimension_];
+    clamped_output_indices_[adjustable_dimension_] = index;
+  }
+
+  const std::vector<tensorflow::int64> target_dimensions_;
+  const int adjustable_dimension_;
+  const std::vector<tensorflow::int64> dimension_ceiling_;
+  std::vector<tensorflow::int64> index_factors_;
+  const std::vector<tensorflow::int64> cumulative_dimensions_;
+  const int rank_;
+  tensorflow::int64 current_output_index_;
+  tensorflow::int64 current_input_index_;
+  tensorflow::int64 adjustable_dimension_carriage_sum_;
+  std::vector<tensorflow::int64> output_indices_;
+  std::vector<tensorflow::int64> clamped_output_indices_;
+};
+
+void InputIndexer::MoveToOutputIndex(tensorflow::int64 output_index) {
+  current_output_index_ = output_index;
+  current_input_index_ = 0;
 
   // un-rasterize the output index
   auto last_reduced_i = output_index;
-  for (auto r = rank - 1; r >= 0; --r) {
-    (*output_indices)[r] = last_reduced_i % (*target_dimensions)[r];
+  for (auto r = rank_ - 1; r >= 0; --r) {
+    output_indices_[r] = last_reduced_i % target_dimensions_[r];
     last_reduced_i =
-        (last_reduced_i - (*output_indices)[r]) / (*target_dimensions)[r];
+        (last_reduced_i - output_indices_[r]) / target_dimensions_[r];
   }
+
+  tensorflow::int64 carriage_sum = 0;
+  for (int qi = 0; qi < rank_; ++qi) {
+    if (qi == adjustable_dimension_)
+      continue;
+    carriage_sum += cumulative_dimensions_[qi] *
+             (output_indices_[qi] % dimension_ceiling_[qi]);
+  }
+  adjustable_dimension_carriage_sum_ = carriage_sum;
 
   // rasterize the input index
-  IndexT last_index_factor = 1;
-  for (auto r = rank - 1; r >= 0; --r) {
-    IndexT index = 0;
-    if (r != adjustable_dimension)
-      index = (*output_indices)[r] / dimension_ceiling[r];
+  for (auto r = rank_ - 1; r >= 0; --r) {
+    if (r != adjustable_dimension_)
+      clamped_output_indices_[r] = output_indices_[r] / dimension_ceiling_[r];
     else {
-      for (int qi = 0; qi < rank; ++qi) {
-        if (qi == adjustable_dimension) continue;
-        index += cumulative_dimensions[qi] *
-                 ((*output_indices)[qi] % dimension_ceiling[qi]);
-      }
-      index *= (*target_dimensions)[adjustable_dimension];
-      index += (*output_indices)[r];
+      RecomputeClampedAdjustableDimensionIndex();
     }
-    *result += last_index_factor * index;
-    last_index_factor *= original_dimensions[r];
   }
+  for (auto r = rank_ - 1; r >= 0; --r) {
+    current_input_index_ += index_factors_[r] * clamped_output_indices_[r];
+  }
+}
 
-  return *result;
+void InputIndexer::IncrementOutputIndex() {
+  current_output_index_++;
+  // un-rasterize the output index
+  for (auto r = rank_ - 1; r >= 0; --r) {
+    auto old_carriage_sum_increment = cumulative_dimensions_[r] * (output_indices_[r] % dimension_ceiling_[r]);
+    output_indices_[r] = (output_indices_[r] + 1) % target_dimensions_[r];
+    if (r != adjustable_dimension_) {
+      auto new_output_index = output_indices_[r] / dimension_ceiling_[r];
+      current_input_index_ += (new_output_index - clamped_output_indices_[r]) * index_factors_[r];
+
+      clamped_output_indices_[r] = new_output_index;
+
+      auto new_carriage_sum_increment = cumulative_dimensions_[r] * (output_indices_[r] % dimension_ceiling_[r]);
+
+      adjustable_dimension_carriage_sum_ = adjustable_dimension_carriage_sum_ - old_carriage_sum_increment + new_carriage_sum_increment;
+    }
+
+    if (output_indices_[r] != 0) {
+      // No more carries to higher indices.
+      break;
+    }
+  }
+  auto old_clamped_output_index = clamped_output_indices_[adjustable_dimension_];
+  RecomputeClampedAdjustableDimensionIndex();
+  current_input_index_ += (clamped_output_indices_[adjustable_dimension_] - old_clamped_output_index) * index_factors_[adjustable_dimension_];
 }
 
 template <typename IndexVecT>
@@ -208,19 +286,19 @@ template <class InputDataT,
                  context->allocate_output(0, output_shape, &output_tensor));
   auto output = output_tensor->flat<InputDataT>();
 
-  // memory is allocated for these variables outside the inner loop for
-  // efficiency (although, I could create a separate class scope for
-  // this purpose instead)
-  tensorflow::int64 result = 0;
-  std::vector<tensorflow::int64> output_indices(target_dimensions.size());
-
   // Fill output tensor with periodically resampled input tensor values
+  InputIndexer input_indexer(target_dimensions,
+                            original_dimensions,
+                            adjustable_dimension,
+                            dimension_ceiling,
+                            cumulative_dimensions,
+                            rank);
+
+  input_indexer.MoveToOutputIndex(0);
   for (tensorflow::int64 output_index = 0; output_index < new_size;
        ++output_index) {
-    output(output_index) = input(compute_input_index(
-        &target_dimensions, output_index, original_dimensions,
-        adjustable_dimension, dimension_ceiling, cumulative_dimensions, &result,
-        &output_indices, rank));
+    output(output_index) = input(input_indexer.current_input_index());
+    input_indexer.IncrementOutputIndex();
   }
 }
 
@@ -271,21 +349,20 @@ void fill_grad_tensor(tensorflow::OpKernelContext* context,
                  context->allocate_output(0, original_shape, &output_tensor));
   auto output = output_tensor->flat<InputDataT>();
 
-  // memory is allocated for these variables outside the inner loop for
-  // efficiency (although, I could create a separate class scope for
-  // this purpose instead)
-  tensorflow::int64 result = 0;
-  std::vector<tensorflow::int64> output_indices(target_dimensions.size());
-
   // Fill output tensor with periodically resampled input tensor values
   // input is a strided array (last index is fastest, C-ordered)
   auto input_grad_data = grad_tensor.flat<InputDataT>();
+  InputIndexer input_indexer(target_dimensions,
+                             original_dimensions,
+                             adjustable_dimension,
+                             dimension_ceiling,
+                             cumulative_dimensions,
+                             rank);
+  input_indexer.MoveToOutputIndex(0);
   for (tensorflow::int64 input_grad_index = 0; input_grad_index < new_size;
        ++input_grad_index) {
-    output(compute_input_index(
-        &target_dimensions, input_grad_index, original_dimensions,
-        adjustable_dimension, dimension_ceiling, cumulative_dimensions, &result,
-        &output_indices, rank)) = input_grad_data(input_grad_index);
+    output(input_indexer.current_input_index()) = input_grad_data(input_grad_index);
+    input_indexer.IncrementOutputIndex();
   }
 }
 
