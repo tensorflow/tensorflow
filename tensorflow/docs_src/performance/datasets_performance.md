@@ -177,7 +177,7 @@ dataset = dataset.batch(batch_size=FLAGS.batch_size)
 to:
 
 ```
-dataset = dataset.apply(tf.data.contrib.map_and_batch(
+dataset = dataset.apply(tf.contrib.data.map_and_batch(
     map_func=parse_fn, batch_size=FLAGS.batch_size))
 ```
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,20 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-FROM ubuntu:16.04
 
-LABEL maintainer="Shanqing Cai <cais@google.com>"
+(
+cd "$(dirname "$0")"
+mkdir -p _build
 
-# Copy and run the install scripts.
-COPY install/*.sh /install/
-RUN /install/install_bootstrap_deb_packages.sh
-RUN /install/install_deb_packages.sh
-
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends python-pip
-RUN pip install --upgrade gast
-RUN pip install --upgrade numpy
-
-# Install golang
-RUN add-apt-repository -y ppa:ubuntu-lxc/lxd-stable
-RUN apt-get install -y golang
+(
+cd _build
+rm -rf -- *
+cmake ..
+)
+)

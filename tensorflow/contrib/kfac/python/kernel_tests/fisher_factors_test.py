@@ -35,18 +35,27 @@ from tensorflow.python.platform import test
 
 class MaybeColocateTest(test.TestCase):
 
+  def setUp(self):
+    self._colocate_cov_ops_with_inputs = ff.COLOCATE_COV_OPS_WITH_INPUTS
+
+  def tearDown(self):
+    ff.set_global_constants(
+        colocate_cov_ops_with_inputs=self._colocate_cov_ops_with_inputs)
+
   def testFalse(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=False)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, False):
+      with ff._maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@b'], b.op.colocation_groups())
 
   def testTrue(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=True)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, True):
+      with ff._maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@a'], b.op.colocation_groups())

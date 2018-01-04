@@ -147,6 +147,9 @@ void DnnPoolingOp<T>::Compute(
   Tensor* tensor_out = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_out_shape, &tensor_out));
+  if (tensor_in.shape().num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in.shape()};
@@ -247,6 +250,9 @@ void DnnPoolingGradOp<T>::Compute(
   Tensor* input_backprop = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_in_shape, &input_backprop));
+  if (tensor_in_shape.num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in_shape};
