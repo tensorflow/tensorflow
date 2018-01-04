@@ -21,6 +21,9 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#if defined(PLATFORM_GOOGLE)
+#include "strings/split.h"
+#endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
