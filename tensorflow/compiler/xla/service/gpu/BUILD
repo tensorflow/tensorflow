@@ -220,6 +220,7 @@ cc_library(
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "cudnn_batchnorm_thunk.cc",
+        "fft_thunk.cc",
         "for_thunk.cc",
         "gemm_thunk.cc",
         "gpu_executable.cc",
@@ -234,6 +235,7 @@ cc_library(
         "convolution_thunk.h",
         "copy_thunk.h",
         "cudnn_batchnorm_thunk.h",
+        "fft_thunk.h",
         "for_thunk.h",
         "gemm_thunk.h",
         "gpu_executable.h",
@@ -272,6 +274,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+        "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
     ],
 )

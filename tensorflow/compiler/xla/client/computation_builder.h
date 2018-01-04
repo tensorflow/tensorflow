@@ -410,6 +410,12 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Enqueues an FFT instruction onto the computation, of the given type and
+  // with the given FFT length.
+  ComputationDataHandle Fft(const ComputationDataHandle& operand,
+                            FftType fft_type,
+                            tensorflow::gtl::ArraySlice<int64> fft_length);
+
   // Enqueues an infeed instruction onto the computation, which writes data of
   // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
@@ -677,11 +683,6 @@ class ComputationBuilder {
   ComputationDataHandle RngUniform(const ComputationDataHandle& a,
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
-
-  // Enqueues a B(1, p) random number generation instruction onto the
-  // computation.
-  ComputationDataHandle RngBernoulli(const ComputationDataHandle& mean,
-                                     const Shape& shape);
 
   // Enqueues a while node onto the computation.
   ComputationDataHandle While(const Computation& condition,

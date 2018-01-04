@@ -179,7 +179,10 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SoftplusGrad",
                                           "Split",
                                           "SplitV",
+                                          "StridedSlice",
+                                          "StridedSliceGrad",
                                           "Switch",
+                                          "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
                                           "ReverseV2",
@@ -342,6 +345,9 @@ std::vector<int> DataInputPosConcat(const NodeDef& node) {
 std::vector<int> DataInputPos(const NodeDef& node) {
   if (IsSplit(node)) {
     return {1};
+  }
+  if (IsStridedSliceGrad(node)) {
+    return {4};
   }
   if (IsBinaryOp(node) || IsUnaryGrad(node)) {
     return {0, 1};
@@ -1105,7 +1111,7 @@ class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
 
  protected:
   Status CustomizedProcessing() override {
-    for (int i = 3; i < node_->input_size(); i++) {
+    for (int i = 3; i <= 4; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1131,7 +1137,7 @@ class MaxPoolV2Processor : public NodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    for (int i = 1; i < node_->input_size(); i++) {
+    for (int i = 1; i <= 2; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1351,9 +1357,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     DataType dtype =
         (IsConcatV1(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
-    TF_RETURN_IF_ERROR(
-        UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap", dtype));
-    return Status::OK();
+    return UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap",
+                                       dtype);
   }
 
   int axis_node_pos_;
@@ -1437,8 +1442,9 @@ class MergeProcessor : public AgnosticNodeProcessor {
 
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
-    input_pos.reserve(node_->input_size());
-    for (int i = 0; i < node_->input_size(); i++) {
+    int n = node_->attr().at("N").i();
+    input_pos.reserve(n);
+    for (int i = 0; i < n; i++) {
       input_pos.push_back(i);
     }
     return input_pos;
@@ -1542,18 +1548,87 @@ class UnaryGradProcessor : public AgnosticNodeProcessor {
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
   explicit SliceProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+      : AgnosticNodeProcessor(opt_cxt) {
+    // Skip the first input, which is the data to be sliced.
+    start_ = 1;
+    // Note that we can't use node_->input_size() here because there
+    // could be control inputs.
+    end_ = 2;
+  }
 
  protected:
-  Status CustomizedProcessing() override {
-    // Skip the first input, which is the data to be sliced.
-    for (int i = 1; i < node_->input_size(); i++) {
+  Status ProcessInputs() {
+    for (int i = start_; i <= end_; i++) {
       DataType dtype = node_->attr().at("Index").type();
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", dtype));
     }
     return Status::OK();
   }
+
+  Status CustomizedProcessing() override { return ProcessInputs(); }
+
+  int start_;
+  int end_;
+};
+
+class StridedSliceProcessor : public SliceProcessor {
+ public:
+  explicit StridedSliceProcessor(const OptimizeContext& opt_cxt)
+      : SliceProcessor(opt_cxt) {
+    start_ = 1;
+    end_ = 3;
+  }
+
+ protected:
+  bool ShouldProcess() const override {
+    return AgnosticNodeProcessor::ShouldProcess() && IsOnlyBeginEndMask();
+  }
+
+  Status CustomizedProcessing() override {
+    TF_RETURN_IF_ERROR(UpdateMask("begin_mask"));
+    TF_RETURN_IF_ERROR(UpdateMask("end_mask"));
+    TF_RETURN_IF_ERROR(ProcessInputs());
+    return Status::OK();
+  }
+
+ private:
+  bool IsMaskZero(const string& mask) const {
+    return node_->attr().at(mask).i() == 0;
+  }
+
+  bool IsOnlyBeginEndMask() const {
+    return IsMaskZero("ellipsis_mask") && IsMaskZero("new_axis_mask") &&
+           IsMaskZero("shrink_axis_mask");
+  }
+
+  Status UpdateMask(const string& mask) {
+    int i = node_->attr().at(mask).i();
+    if (i < 0 || i > 15) {
+      return errors::InvalidArgument("invalid mask value: ", i);
+    }
+    if (i == 0 || i == 1 || i == 14 || i == 15) return Status::OK();
+    if (i == 2 || i == 3) i += 2;
+    if (i == 4 || i == 5) i += 4;
+    if (i == 6 || i == 7) i += 6;
+    if (i == 8 || i == 9) i -= 6;
+    if (i == 10 || i == 11) i -= 4;
+    if (i == 12 || i == 13) i -= 2;
+    node_->mutable_attr()->at(mask).set_i(i);
+    return Status::OK();
+  }
+};
+
+class StridedSliceGradProcessor : public StridedSliceProcessor {
+ public:
+  explicit StridedSliceGradProcessor(const OptimizeContext& opt_cxt)
+      : StridedSliceProcessor(opt_cxt) {
+    start_ = 0;
+    end_ = 3;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {4}; }
 };
 
 class SqueezeProcessor : public AgnosticNodeProcessor {
@@ -1638,6 +1713,18 @@ class SwitchProcessor : public AgnosticNodeProcessor {
 
  protected:
   std::set<int> GetOutputPos() const override { return {0, 1}; }
+};
+
+class TileProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TileProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tmultiples").type();
+    return UpdateOrTransformParamInput(1, "DataFormatVecPermute", dtype);
+  }
 };
 
 class DataLayoutOptimizer : GraphProcessor {
@@ -1752,12 +1839,15 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
             node_processor.reset(new MergeProcessor(opt_cxt));
-          } else if (IsPad(*node)) {
+          } else if (IsPad(*node) || IsMirrorPad(*node) ||
+                     IsMirrorPadGrad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
+          } else if (IsStridedSlice(*node)) {
+            node_processor.reset(new StridedSliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
@@ -1766,10 +1856,14 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
+          } else if (IsStridedSliceGrad(*node)) {
+            node_processor.reset(new StridedSliceGradProcessor(opt_cxt));
           } else if (IsSum(*node)) {
             node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsTile(*node)) {
+            node_processor.reset(new TileProcessor(opt_cxt));
           } else if (IsUnaryGrad(*node)) {
             node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {

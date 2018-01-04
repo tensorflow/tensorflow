@@ -21,10 +21,13 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -299,6 +302,27 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   }
   string diff;
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
+}
+
+string EqualAttrValueWrapper(const string& actual, const string& expected) {
+  AttrValue actual_attr_value;
+  if (!actual_attr_value.ParseFromString(actual)) {
+    return "actual is not a valid serialized AttrValue";
+  }
+
+  AttrValue expected_attr_value;
+  if (!expected_attr_value.ParseFromString(expected)) {
+    return "expected is not a valid serialized AttrValue";
+  }
+
+  string diff;
+  if (!AreAttrValuesEqual(actual_attr_value, expected_attr_value)) {
+    diff = strings::Printf(
+        "Actual AttrValue %s does not match Expected AttrValue %s.",
+        SummarizeAttrValue(actual_attr_value).c_str(),
+        SummarizeAttrValue(expected_attr_value).c_str());
+  }
+  return diff;
 }
 
 // Return value set to 6 inlined elements so it fits in a 64-byte cache line.

@@ -195,9 +195,11 @@ void CompositeNodeManager::AddNode(const NodeDef* node) {
 const NodeDef* CompositeNodeManager::GetCurrNode() {
   if (curr_node_) return curr_node_;
 
-  // Locally (normal ops, not _Send / _Recv) LIFO,
+  // Per-device LIFO for normal ops (not _Send / _Recv),
+  // FirstReady for _Send and _Recv (separately),
   // Globally (among the LIFO-selected ops from each device and _Send and
-  // _Recv) FirstReady.
+  // _Recv) FirstReady,
+  // Priorty order: _Send, _Recv, and then the rest, if time_ready is equal.
   std::vector<std::pair<const NodeDef*, Costs::Duration>> candidates;
   for (auto& ops_lifo : ops_lifo_map_) {
     if (!ops_lifo.second.Empty()) {
@@ -214,12 +216,28 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
     candidates.emplace_back(recv, node_state_->at(recv).time_ready);
   }
   CHECK(!candidates.empty());
-  auto first_ready =
-      std::min_element(candidates.begin(), candidates.end(),
-                       [](const std::pair<const NodeDef*, Costs::Duration>& a,
-                          const std::pair<const NodeDef*, Costs::Duration>& b) {
-                         return a.second < b.second;
-                       });
+  auto first_ready = std::min_element(
+      candidates.begin(), candidates.end(),
+      [](const std::pair<const NodeDef*, Costs::Duration>& a,
+         const std::pair<const NodeDef*, Costs::Duration>& b) {
+        if (a.second == b.second) {
+          // Note that there can be only 1 Send and only 1 Recv in candidates,
+          // at most; hence, score is 2 for Send, 1 for Recv, and 0 for a
+          // normap op, and a_score and b_score are equal only if both are
+          // normal ops.
+          int a_score = 2 * IsSend(*a.first) + IsRecv(*a.first);
+          int b_score = 2 * IsSend(*b.first) + IsRecv(*b.first);
+          if (a_score == b_score) {
+            // Both are normal ops; use node name as tie breaker.
+            return a.first->name().compare(b.first->name()) < 0;
+          } else {
+            // Priortize by op type: _Send, _Recv, and normap ops.
+            return a_score > b_score;
+          }
+        } else {
+          return a.second < b.second;
+        }
+      });
   // Next time we call GetCurrNode(), it just returns the cached one,
   // curr_node_ until we call RemovCurrNode().
   curr_node_ = first_ready->first;

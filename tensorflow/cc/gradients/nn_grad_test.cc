@@ -23,9 +23,21 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::BiasAdd;
+using ops::Conv2D;
+using ops::Elu;
+using ops::L2Loss;
+using ops::LogSoftmax;
+using ops::LRN;
+using ops::MaxPool;
+using ops::MaxPoolV2;
+using ops::Placeholder;
+using ops::Relu;
+using ops::Relu6;
+using ops::Selu;
+using ops::Softmax;
 
 class NNGradTest : public ::testing::Test {
  protected:

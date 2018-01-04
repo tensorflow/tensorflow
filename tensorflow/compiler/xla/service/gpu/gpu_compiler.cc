@@ -483,6 +483,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   if (module->config().hlo_profiling_enabled()) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
     profile_printer =
         CreateHloProfilePrinter(*profile_index_map, cost_analysis);

@@ -59,22 +59,6 @@ class NodeMap {
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };
 
-// A utility class to lookup a node's outputs and the number of times it
-// presents in each output.
-class OutputMap {
- public:
-  explicit OutputMap(GraphDef* graph);
-  NodeDef* GetNode(const string& name) const;
-  const std::unordered_map<NodeDef*, int>& GetOutputs(
-      const string& node_name) const;
-
- private:
-  GraphDef* graph_;
-  std::unordered_map<NodeDef*, int> empty_map_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::unordered_map<NodeDef*, int>> outputs_;
-};
-
 // A vector with a set. The set stores the same elements as the vector, and
 // quickly answers whether a value is in the vector. Duplicated elements are not
 // allowed for now.

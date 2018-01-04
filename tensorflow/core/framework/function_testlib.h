@@ -81,6 +81,9 @@ FunctionDef NonZero();
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
 
+// Contains malformed control flow which can't be run by the executor.
+FunctionDef InvalidControlFlow();
+
 void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function

@@ -80,14 +80,51 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F64: np.dtype(np.float64),
     xla_data_pb2.S32: np.dtype(np.int32),
     xla_data_pb2.S64: np.dtype(np.int64),
+    xla_data_pb2.U32: np.dtype(np.uint32),
+    xla_data_pb2.U64: np.dtype(np.uint64),
     xla_data_pb2.PRED: np.dtype(np.bool),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
+# Note the conversion on the key. Numpy has a known issue wherein dtype hashing
+# doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
+# when keying by dtype in this dict, we use the string form of dtypes.
 DTYPE_TO_XLA_ELEMENT_TYPE = {
     str(v): k
     for k, v in XLA_ELEMENT_TYPE_TO_DTYPE.items()
 }
+
+
+class LocalBuffer(object):
+  """Represents a handle to data owned by XLA.
+
+  The referent is ready for use in executing a local, compiled
+  Computation. On XLA platforms involving a device (e.g. GPU), this
+  means the referent is in device memory.
+  """
+
+  def __init__(self, c_local_shaped_buffer):
+    self.c_local_shaped_buffer = c_local_shaped_buffer
+    self._delete = c_api.DeleteLocalShapedBuffer
+
+  @staticmethod
+  def from_py(npval):
+    npval = require_numpy_array_layout(npval)
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval))
+
+  def to_py(self):
+    return self.c_local_shaped_buffer.ToLiteral()
+
+  def delete(self):
+    if self.c_local_shaped_buffer is not None:
+      self._delete(self.c_local_shaped_buffer)
+      self.c_local_shaped_buffer = None
+
+  def is_deleted(self):
+    return self.c_local_shaped_buffer is None
+
+  def __del__(self):
+    self.delete()
 
 
 class Shape(object):
@@ -172,6 +209,22 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
+def transfer_to_infeed(value):
+  """Transfers the given value into the XLA infeed queue.
+
+  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
+  a totally ordered stream of values. This is dequeued from XLA computations via
+  the Infeed() operation.
+
+  TODO(leary): this currently implicitly enqueues to device ordinal 0.
+
+  Args:
+    value: the value that the caller would like to enqueue into the XLA infeed
+      queue
+  """
+  c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+
+
 class LocalComputation(object):
   """Python wrapper for a local XLA Computation.
 
@@ -207,6 +260,17 @@ class LocalComputation(object):
     arguments = tuple(map(require_numpy_array_layout, arguments))
     return self.c_local_computation.Execute(arguments)
 
+  def ExecuteWithLocalBuffers(self, arguments=()):
+    """Execute with LocalBuffer arguments and return value."""
+    if not self.is_compiled:
+      raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    arguments = tuple(arguments)
+    if any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    return LocalBuffer(
+        self.c_local_computation.ExecuteWithShapedBuffers(
+            [arg.c_local_shaped_buffer for arg in arguments]))
+
   def __del__(self):
     self._delete(self.c_local_computation)
 
@@ -232,6 +296,17 @@ class ComputationBuilder(object):
 
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
+
+  def Infeed(self, shape):
+    """Enqueues an infeed op onto the computation.
+
+    Infeed operations dequeue data of the given shape from the device's infeed
+    queue for subsequent use in the computation.
+
+    Returns:
+      A  ComputationDataHandle message.
+    """
+    return _wrap_data_handle(self._client.Infeed(_unwrap_shape(shape)))
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.
@@ -572,6 +647,58 @@ class ComputationBuilder(object):
             _unwrap_data_handle(init_value),
             computation_to_apply.c_local_computation,
             dimensions))
+
+  def RngNormal(self, mu, sigma, dims):
+    """Enqueues an RngNormal operation onto the computation.
+
+    Args:
+      mu: A ComputationDataHandle to an F32 scalar specifying the mean.
+      sigma: A ComputationDataHandle to an F32 scalar specifying the standard
+        deviation.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of F32 values.
+    """
+    shape = Shape(self.GetShape(mu).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngNormal(
+            _unwrap_data_handle(mu), _unwrap_data_handle(sigma),
+            _unwrap_shape(shape)))
+
+  def RngUniform(self, a, b, dims):
+    """Enqueues an RngUniform operation onto the computation.
+
+    Args:
+      a: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of b) specifying the low end of the interval [a, b) over which
+        values are generated.
+      b: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of a) specifying the high end of the interval [a, b) over which
+        values are generated.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of values with the
+      same numeric type (F32, S32, or U32) as the arguments a and b.
+    """
+    shape = Shape(self.GetShape(a).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngUniform(
+            _unwrap_data_handle(a), _unwrap_data_handle(b),
+            _unwrap_shape(shape)))
+
+  def RngBernoulli(self, mean, dims):
+    """Enqueues an RngBernoulli operation onto the computation.
+
+    Args:
+      mean: A ComputationDataHandle to an F32 scalar specifying the mean.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of U32 values.
+    """
+    shape = Shape(np.dtype(np.uint32), dims)
+    return _wrap_data_handle(
+        self._client.RngBernoulli(
+            _unwrap_data_handle(mean), _unwrap_shape(shape)))
 
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.

@@ -508,6 +508,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     };
 
     HloCostAnalysis cost_analysis(shape_size_bytes);
+    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     hlo_profile_printer =
         CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
   }
@@ -703,6 +704,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
+
+    XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
 
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));

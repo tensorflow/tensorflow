@@ -41,6 +41,7 @@ gen_zipped_test_files(
         "resize_bilinear.zip",
         "sigmoid.zip",
         "softmax.zip",
+        "space_to_batch_nd.zip",
         "space_to_depth.zip",
     ],
 )

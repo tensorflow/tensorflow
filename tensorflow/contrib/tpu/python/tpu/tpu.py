@@ -106,7 +106,7 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-class TPUReplicateContext(control_flow_ops.ControlFlowContext):
+class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
   The primary role of `TPUReplicateContext` is to mark operators inside a
@@ -122,7 +122,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   """
 
   def __init__(self, name):
-    control_flow_ops.ControlFlowContext.__init__(self)
+    super(TPUReplicateContext, self).__init__()
     self._name = name
     self._unsupported_ops = []
 

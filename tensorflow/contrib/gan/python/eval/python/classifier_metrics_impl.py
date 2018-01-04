@@ -300,6 +300,11 @@ def classifier_score(images, classifier_fn, num_batches=1):
   which captures how different the network's classification prediction is from
   the prior distribution over classes.
 
+  NOTE: This function consumes images, computes their logits, and then
+  computes the classifier score. If you would like to precompute many logits for
+  large batches, use clasifier_score_from_logits(), which this method also
+  uses.
+
   Args:
     images: Images to calculate the classifier score for.
     classifier_fn: A function that takes images and produces logits based on a
@@ -328,12 +333,15 @@ def classifier_score(images, classifier_fn, num_batches=1):
 
 
 def classifier_score_from_logits(logits):
-  """Classifier score for evaluating a conditional generative model.
+  """Classifier score for evaluating a generative model from logits.
 
-  This is based on the Inception Score, but for an arbitrary classifier.
+  This method computes the classifier score for a set of logits. This can be
+  used independently of the classifier_score() method, especially in the case
+  of using large batches during evaluation where we would like precompute all
+  of the logits before computing the classifier score.
 
   This technique is described in detail in https://arxiv.org/abs/1606.03498. In
-  summary, this function calculates
+  summary, this function calculates:
 
   exp( E[ KL(p(y|x) || p(y)) ] )
 
@@ -341,7 +349,8 @@ def classifier_score_from_logits(logits):
   the prior distribution over classes.
 
   Args:
-    logits: A 2D Tensor of logits.
+    logits: Precomputed 2D tensor of logits that will be used to
+      compute the classifier score.
 
   Returns:
     The classifier score. A floating-point scalar of the same type as the output
@@ -363,6 +372,7 @@ def classifier_score_from_logits(logits):
 
   if logits_dtype != dtypes.float64:
     final_score = math_ops.cast(final_score, logits_dtype)
+
   return final_score
 
 
@@ -441,6 +451,11 @@ def frechet_classifier_distance(real_images,
   sample size to compute frechet classifier distance when comparing two
   generative models.
 
+  NOTE: This function consumes images, computes their activations, and then
+  computes the classifier score. If you would like to precompute many
+  activations for real and generated images for large batches, please use
+  frechet_clasifier_distance_from_activations(), which this method also uses.
+
   Args:
     real_images: Real images to use to compute Frechet Inception distance.
     generated_images: Generated images to use to compute Frechet Inception
@@ -452,7 +467,7 @@ def frechet_classifier_distance(real_images,
 
   Returns:
     The Frechet Inception distance. A floating-point scalar of the same type
-    as the output of `classifier_fn`
+    as the output of `classifier_fn`.
   """
 
   real_images_list = array_ops.split(
@@ -483,10 +498,13 @@ def frechet_classifier_distance(real_images,
 
 def frechet_classifier_distance_from_activations(
     real_activations, generated_activations):
-  """Classifier distance for evaluating a generative model.
+  """Classifier distance for evaluating a generative model from activations.
 
-  This is based on the Frechet Inception distance, but for an arbitrary
-  classifier.
+  This methods computes the Frechet classifier distance from activations of
+  real images and generated images. This can be used independently of the
+  frechet_classifier_distance() method, especially in the case of using large
+  batches during evaluation where we would like precompute all of the
+  activations before computing the classifier distance.
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
@@ -499,21 +517,16 @@ def frechet_classifier_distance_from_activations(
   Inception score, this is a true distance and utilizes information about real
   world images.
 
-  Note that when computed using sample means and sample covariance matrices,
-  Frechet distance is biased. It is more biased for small sample sizes. (e.g.
-  even if the two distributions are the same, for a small sample size, the
-  expected Frechet distance is large). It is important to use the same
-  sample size to compute frechet classifier distance when comparing two
-  generative models.
-
   Args:
-    real_activations: Real images to use to compute Frechet Inception distance.
-    generated_activations: Generated images to use to compute Frechet Inception
-      distance.
+    real_activations: 2D Tensor containing activations of real data. Shape is
+      [batch_size, activation_size].
+    generated_activations: 2D Tensor containing activations of generated data.
+      Shape is [batch_size, activation_size].
 
   Returns:
-    The Frechet Inception distance. A floating-point scalar of the same type
-    as the output of the activations.
+   The Frechet Inception distance. A floating-point scalar of the same type
+   as the output of the activations.
+
   """
   real_activations.shape.assert_has_rank(2)
   generated_activations.shape.assert_has_rank(2)

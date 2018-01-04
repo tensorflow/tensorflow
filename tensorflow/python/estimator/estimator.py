@@ -461,7 +461,8 @@ class Estimator(object):
       self, export_dir_base, serving_input_receiver_fn,
       assets_extra=None,
       as_text=False,
-      checkpoint_path=None):
+      checkpoint_path=None,
+      strip_default_attrs=False):
     # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
 
@@ -503,6 +504,9 @@ class Estimator(object):
       as_text: whether to write the SavedModel proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
@@ -563,7 +567,8 @@ class Estimator(object):
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=local_init_op)
+            legacy_init_op=local_init_op,
+            strip_default_attrs=strip_default_attrs)
         builder.save(as_text)
 
       # Add the extra assets
