@@ -91,7 +91,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
-    self.assertEqual(type(t.get_shape()), tensor_shape.TensorShape)
 
   def testIterable(self):
     op = ops.Operation(
@@ -201,7 +200,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(op.values()))
     self.assertEqual(0, len(op.inputs))
     self.assertEqual("myop", op.name)
-    self.assertEqual(type(op.name), unicode)
 
     float_t, label_str_t = op.values()
     self.assertEqual(dtypes.float32, float_t.dtype)
@@ -272,7 +270,6 @@ class OperationTest(test_util.TensorFlowTestCase):
             job="muu", device_type="CPU", device_index=0))
     self.assertProtoEquals(
         "op:'None' name:'op2' device:'/job:muu/device:CPU:0'", op.node_def)
-    self.assertEquals(unicode, type(op.device))
 
   def testReferenceInput(self):
     g = ops.Graph()
@@ -409,10 +406,7 @@ class OperationTest(test_util.TensorFlowTestCase):
   def testGetAttr(self):
     op = test_ops.default_attrs()
     self.assertEqual(op.get_attr("string_val"), b"abc")
-    self.assertEqual(type(op.get_attr("string_val")), str)
     self.assertEqual(op.get_attr("string_list_val"), [b"abc", b""])
-    self.assertEqual(type(op.get_attr("string_val")[0]), str)
-    self.assertEqual(type(op.get_attr("string_val")[1]), str)
     self.assertEqual(op.get_attr("int_val"), 123)
     self.assertEqual(op.get_attr("int_list_val"), [1, 2, 3])
     self.assertEqual(op.get_attr("float_val"), 10.0)
@@ -478,9 +472,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x, x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, x, x, y, y])
-    self.assertEqual(type(z.control_inputs), list)
-    for elt in z.control_inputs:
-      self.assertEqual(type(elt), ops.Operation)
 
   def testAddControlInputC(self):
     # The C API dedups redundant control edges, pure Python does not
@@ -495,9 +486,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(z.control_inputs, [x])
     z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
     self.assertEqual(z.control_inputs, [x, y])
-    self.assertEqual(type(z.control_inputs), list)
-    for elt in z.control_inputs:
-      self.assertEqual(type(elt), ops.Operation)
 
   def testRemoveAllControlInputs(self):
     a = constant_op.constant(1)
@@ -764,7 +752,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "IntInputIntOutput")
-    self.assertEqual(type(op.type), unicode)
     self.assertEqual(len(op.outputs), 1)
     self.assertEqual(op.outputs[0].shape, tensor_shape.unknown_shape())
     self.assertEqual(list(op.inputs), [x])
@@ -810,13 +797,9 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
       op4 = test_ops.int_output(name="myop_1").op
 
     self.assertEqual(op.name, "myop")
-    self.assertEqual(type(op.name), unicode)
     self.assertEqual(op2.name, "myop_1")
-    self.assertEqual(type(op2.name), unicode)
     self.assertEqual(op3.name, "myop_2")
-    self.assertEqual(type(op3.name), unicode)
     self.assertEqual(op4.name, "myop_1_1")
-    self.assertEqual(type(op4.name), unicode)
 
   def testCond(self):
     g = ops.Graph()
@@ -1057,7 +1040,6 @@ class NameStackTest(test_util.TensorFlowTestCase):
         with variable_scope.variable_scope("l1"):
           with sess.graph.name_scope("l1") as scope:
             self.assertEqual("l0/l1/l1/", scope)
-            self.assertEqual(type(scope), str)
             self.assertEqual(
                 "l0/l1/l1/foo",
                 sess.graph.unique_name(
@@ -2264,7 +2246,6 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertAllEqual(b"My label is: default",
                           test_ops.kernel_label().eval())
-      self.assertEqual(type(test_ops.kernel_label().eval()), str)
 
   def testLabelMap(self):
     with self.test_session() as sess:
@@ -2581,7 +2562,7 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         "hhidden1/hidden1/weights",  # Different prefix. Should keep.
         "hidden1"
     ]  # Not a prefix. Should keep.
-    expected_stripped = [
+    expected_striped = [
         "hidden1/weights", "hidden1/weights", "^hidden1/weights",
         "loc:@hidden1/weights", "hhidden1/hidden1/weights", "hidden1"
     ]
@@ -2592,12 +2573,10 @@ class NameScopeTest(test_util.TensorFlowTestCase):
     ]
     name_scope_to_strip = "hidden1"
     name_scope_to_add = "hidden2"
-    for es, ep, s in zip(expected_stripped, expected_prepended, strs):
-      stripped = ops.strip_name_scope(s, name_scope_to_strip)
-      self.assertEqual(es, stripped)
-      self.assertEqual(ep, ops.prepend_name_scope(stripped, name_scope_to_add))
-      self.assertEqual(type(es), str)
-      self.assertEqual(type(ep), str)
+    for es, ep, s in zip(expected_striped, expected_prepended, strs):
+      striped = ops.strip_name_scope(s, name_scope_to_strip)
+      self.assertEqual(es, striped)
+      self.assertEqual(ep, ops.prepend_name_scope(striped, name_scope_to_add))
 
   def testGetNameScope(self):
     with ops.Graph().as_default() as g:
@@ -2605,7 +2584,6 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         with ops.name_scope("scope2"):
           with ops.name_scope("scope3"):
             self.assertEqual("scope1/scope2/scope3", g.get_name_scope())
-            self.assertEqual(type(g.get_name_scope()), str)
           self.assertEqual("scope1/scope2", g.get_name_scope())
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())

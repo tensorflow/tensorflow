@@ -1767,12 +1767,12 @@ class Operation(object):
     """The name of the device to which this op has been assigned, if any.
 
     Returns:
-      The unicode name of the device to which this op has been
+      The string name of the device to which this op has been
       assigned, or an empty string if it has not been assigned to a
       device.
     """
     if self._c_op:
-      return unicode(c_api.TF_OperationDevice(self._c_op))
+      return c_api.TF_OperationDevice(self._c_op)
     else:
       return self._node_def.device
 
