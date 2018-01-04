@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/rdma.h"
 #include <cstdlib>
 #include <fcntl.h>
-#include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #if GOOGLE_CUDA
