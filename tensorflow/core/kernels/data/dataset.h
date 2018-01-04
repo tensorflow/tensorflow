@@ -112,7 +112,7 @@ class GraphDefBuilderWrapper {
   Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
-      return errors::Internal("AddTesor: Failed to build Const op.");
+      return errors::Internal("AddTensor: Failed to build Const op.");
     }
     return Status::OK();
   }

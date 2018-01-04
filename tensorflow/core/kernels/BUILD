@@ -194,10 +194,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "fill_functor",
-    srcs = ["fill_functor.cc"],
-    hdrs = ["fill_functor.h"],
+    prefix = "fill_functor",
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -3043,6 +3042,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     hdrs = [
+        "fill_functor.h",
         "conv_grad_ops.h",
         "deep_conv2d.h",
         "gemm_functors.h",
@@ -3067,6 +3067,7 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":image_resizer_state",
+        ":fill_functor",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -3173,7 +3174,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        ":fill_functor",
+    ],
 )
 
 tf_kernel_library(

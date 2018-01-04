@@ -420,6 +420,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, model_fn_call_count[0])
 
   def test_callable_input_fn(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -432,8 +433,9 @@ class EstimatorTrainTest(test.TestCase):
 
     class InputFn(object):
 
-      def __call__(self, params, config):
+      def __call__(self, mode, params, config):
         input_fn_call_count[0] += 1
+        test_self.assertEqual(expected_mode, mode)
         test_self.assertEqual(expected_params, params)
         test_self.assertEqual(4321, config.tf_random_seed)
         return dummy_input_fn()
@@ -446,6 +448,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, input_fn_call_count[0])
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -454,8 +457,9 @@ class EstimatorTrainTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -992,6 +996,7 @@ class EstimatorDatasetIntegrationTest(test.TestCase):
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.EVAL
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -1000,8 +1005,9 @@ class EstimatorEvaluateTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -1265,6 +1271,7 @@ class EstimatorEvaluateTest(test.TestCase):
 class EstimatorPredictTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.PREDICT
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -1277,8 +1284,9 @@ class EstimatorPredictTest(test.TestCase):
           train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()

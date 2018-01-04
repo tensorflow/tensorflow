@@ -86,9 +86,7 @@ tensorflow/python/ops/distributions
 tensorflow/python/ops/linalg
 tensorflow/python/ops/losses
 tensorflow/python/platform
-tensorflow/python/platform/default
-tensorflow/python/platform/summary
-tensorflow/python/profiler/
+tensorflow/python/profiler
 tensorflow/python/profiler/internal
 tensorflow/python/saved_model
 tensorflow/python/summary
@@ -115,8 +113,6 @@ tensorflow/contrib/batching/kernels
 tensorflow/contrib/batching/python
 tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow
-tensorflow/contrib/bayesflow/examples
-tensorflow/contrib/bayesflow/examples/reinforce_simple
 tensorflow/contrib/bayesflow/python
 tensorflow/contrib/bayesflow/python/ops
 tensorflow/contrib/boosted_trees
@@ -212,16 +208,6 @@ tensorflow/contrib/input_pipeline/python/ops
 tensorflow/contrib/integrate
 tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
-tensorflow/contrib/ios_examples
-tensorflow/contrib/ios_examples/benchmark
-tensorflow/contrib/ios_examples/benchmark/benchmark.xcodeproj
-tensorflow/contrib/ios_examples/benchmark/data
-tensorflow/contrib/ios_examples/camera
-tensorflow/contrib/ios_examples/camera/camera_example.xcodeproj
-tensorflow/contrib/ios_examples/camera/en.lproj
-tensorflow/contrib/ios_examples/simple
-tensorflow/contrib/ios_examples/simple/data
-tensorflow/contrib/ios_examples/simple/tf_ios_makefile_example.xcodeproj
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras
@@ -276,9 +262,6 @@ tensorflow/contrib/layers/python/ops
 tensorflow/contrib/learn
 tensorflow/contrib/learn/python
 tensorflow/contrib/learn/python/learn
-tensorflow/contrib/learn/python/learn/dataframe
-tensorflow/contrib/learn/python/learn/dataframe/queues
-tensorflow/contrib/learn/python/learn/dataframe/transforms
 tensorflow/contrib/learn/python/learn/datasets
 tensorflow/contrib/learn/python/learn/datasets/data
 tensorflow/contrib/learn/python/learn/estimators
@@ -301,6 +284,9 @@ tensorflow/contrib/linear_optimizer/kernels
 tensorflow/contrib/linear_optimizer/kernels/g3doc
 tensorflow/contrib/linear_optimizer/python
 tensorflow/contrib/linear_optimizer/python/ops
+# TODO(drpngx): Fix failing imports
+# tensorflow/contrib/lite/python
+# tensorflow/contrib/lite/toco/python
 tensorflow/contrib/lookup
 tensorflow/contrib/losses
 tensorflow/contrib/losses/python
@@ -314,7 +300,6 @@ tensorflow/contrib/memory_stats/python
 tensorflow/contrib/memory_stats/python/ops
 tensorflow/contrib/meta_graph_transform
 tensorflow/contrib/metrics
-tensorflow/contrib/metrics/ops
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
@@ -346,7 +331,6 @@ tensorflow/contrib/pi_examples/label_image
 tensorflow/contrib/pi_examples/label_image/data
 tensorflow/contrib/periodic_resample
 tensorflow/contrib/periodic_resample/python
-tensorflow/contrib/periodic_resample/python/kernels
 tensorflow/contrib/periodic_resample/python/ops
 tensorflow/contrib/predictor
 tensorflow/contrib/quantization
@@ -411,13 +395,9 @@ tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
 tensorflow/contrib/tensor_forest
 tensorflow/contrib/tensor_forest/client
-tensorflow/contrib/tensor_forest/core
-tensorflow/contrib/tensor_forest/core/ops
-tensorflow/contrib/tensor_forest/data
 tensorflow/contrib/tensor_forest/hybrid
 tensorflow/contrib/tensor_forest/hybrid/core
 tensorflow/contrib/tensor_forest/hybrid/core/ops
-tensorflow/contrib/tensor_forest/hybrid/ops
 tensorflow/contrib/tensor_forest/hybrid/python
 tensorflow/contrib/tensor_forest/hybrid/python/layers
 tensorflow/contrib/tensor_forest/hybrid/python/models
