@@ -27,6 +27,8 @@ following:
 *   [Bazel on Windows](https://bazel.build/versions/master/docs/windows.html)
 *   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/r0.12/tensorflow/contrib/cmake)
 
+NOTE: Starting from 1.6 release, our prebuilt binaries will use AVX
+instructions. This may break TF on older CPUs.
 
 ## Determine which TensorFlow to install
 
