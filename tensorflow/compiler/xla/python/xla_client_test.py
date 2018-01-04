@@ -1054,5 +1054,19 @@ class EmbeddedComputationsTest(LocalComputationTest):
       self.assertEqual(result, item)
 
 
+class ErrorTest(LocalComputationTest):
+
+  def setUp(self):
+    self.f32_scalar_2 = NumpyArrayF32(2.0)
+    self.s32_scalar_2 = NumpyArrayS32(2)
+
+  def testInvokeWithWrongElementType(self):
+    c = self._NewComputation()
+    c.ParameterFromNumpy(self.s32_scalar_2)
+    self.assertRaisesRegexp(
+        RuntimeError, r"invalid argument shape.*expected s32\[\], got f32\[\]",
+        lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
+
+
 if __name__ == "__main__":
   unittest.main()

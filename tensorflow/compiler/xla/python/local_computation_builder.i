@@ -162,6 +162,32 @@ tensorflow::ImportNumpy();
   $result = numpy::LongToPyIntOrPyLong($1.handle());
 }
 
+%typemap(out) StatusOr<xla::swig::CompiledLocalComputation*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::CompiledLocalComputation*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+}
+
+%typemap(out) StatusOr<xla::swig::LocalComputation*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::LocalComputation*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+}
+
 // ArraySlice<int64>
 
 %typemap(in) tensorflow::gtl::ArraySlice<int64>

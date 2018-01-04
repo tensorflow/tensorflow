@@ -112,10 +112,10 @@ LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
   return new LocalShapedBuffer(std::move(result_buffer));
 }
 
-LocalComputation::LocalComputation(std::unique_ptr<Computation> computation)
+LocalComputation::LocalComputation(Computation computation)
     : computation_(std::move(computation)) {}
 
-CompiledLocalComputation* LocalComputation::Compile(
+StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
     const std::vector<Shape>& argument_shapes) {
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
@@ -125,21 +125,22 @@ CompiledLocalComputation* LocalComputation::Compile(
 
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   ExecutableBuildOptions options;
-  return new CompiledLocalComputation(
-      client->Compile(*computation_, argument_shape_pointers, options)
-          .ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto local_executable,
+      client->Compile(computation_, argument_shape_pointers, options));
+  return new CompiledLocalComputation(std::move(local_executable));
 }
 
 const Computation& LocalComputation::computation() const {
-  return *computation_;
+  return computation_;
 }
 
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(ClientLibrary::LocalClientOrDie(), computation_name) {}
 
-LocalComputation* LocalComputationBuilder::Build() {
-  return new LocalComputation(std::unique_ptr<Computation>(
-      new Computation(builder_.Build().ConsumeValueOrDie())));
+StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
+  TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
+  return new LocalComputation(std::move(computation));
 }
 
 ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,

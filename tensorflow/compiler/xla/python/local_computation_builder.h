@@ -70,12 +70,13 @@ class CompiledLocalComputation {
 // made available to Python via SWIG.
 class LocalComputation {
  public:
-  LocalComputation(std::unique_ptr<Computation> computation);
-  CompiledLocalComputation* Compile(const std::vector<Shape>& argument_shapes);
+  LocalComputation(Computation computation);
+  StatusOr<CompiledLocalComputation*> Compile(
+      const std::vector<Shape>& argument_shapes);
   const Computation& computation() const;
 
  private:
-  std::unique_ptr<Computation> computation_;
+  Computation computation_;
 };
 
 // Wraps the ComputationBuilder API in order to:
@@ -89,7 +90,8 @@ class LocalComputationBuilder {
  public:
   LocalComputationBuilder(const string& computation_name);
 
-  LocalComputation* Build();
+  // Returns an owned LocalComputation to the caller on success.
+  StatusOr<LocalComputation*> Build();
 
   ComputationDataHandle Parameter(int64 parameter_number, const Shape& shape,
                                   const string& name);
