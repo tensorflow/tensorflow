@@ -1454,6 +1454,9 @@ bool RdmaTensorRequest::AllocateTensors() {
       rdma_addr_ = DMAHelper::base(proxy_tensor_);
       mr_ =
           RdmaMemoryMgr::Singleton().FindMemoryRegion(rdma_addr_, tensor_size);
+    } else if (dst_dev_->tensorflow_gpu_device_info() &&
+               !recv_args_.alloc_attrs.on_host()) {
+      GPUUtil::Sync(dst_dev_);
     }
 #endif
   } else {
