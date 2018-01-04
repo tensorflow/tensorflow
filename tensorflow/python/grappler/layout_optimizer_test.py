@@ -562,7 +562,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_ReverseV2_1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
-  def testTernaryOp(self):
+  def testSelectOp(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = random_ops.truncated_normal([1, 784], seed=0)
@@ -570,6 +570,36 @@ class LayoutOptimizerTest(test.TestCase):
       add = math_ops.add(conv, conv)
       mean = math_ops.reduce_mean(conv)
       condition = math_ops.less(conv, mean)
+      select = gen_math_ops._select(condition, conv, add)
+      output = array_ops.identity(select)
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Select-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testSelectOpScalarCondition(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      add = math_ops.add(conv, conv)
+      condition = constant_op.constant(True)
       select = gen_math_ops._select(condition, conv, add)
       output = array_ops.identity(select)
 

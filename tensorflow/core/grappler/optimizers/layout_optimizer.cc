@@ -1566,6 +1566,26 @@ class TernaryOpProcessor : public AgnosticNodeProcessor {
   std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
 };
 
+class SelectProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SelectProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override {
+    auto input0 = node_map_->GetNode(node_->input(0));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    // Input 0 could be a scalar, a vector with size matching the first
+    // dimension of input 1 and 2, or must have the same shape as input 1 and 2.
+    if (IsPortDimsFour(*input0, input0_port)) {
+      return {0, 1, 2};
+    } else {
+      return {1, 2};
+    }
+  }
+};
+
 class UnaryGradProcessor : public AgnosticNodeProcessor {
  public:
   explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
@@ -1874,7 +1894,7 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (IsBetainc(*node) || IsSelect(*node)) {
+          } else if (IsBetainc(*node)) {
             node_processor.reset(new TernaryOpProcessor(opt_cxt));
           } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
@@ -1895,6 +1915,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ReduceProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
+          } else if (IsSelect(*node)) {
+            node_processor.reset(new SelectProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
           } else if (IsStridedSlice(*node)) {
