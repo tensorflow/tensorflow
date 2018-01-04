@@ -317,7 +317,7 @@ def _build_ring_gather(input_tensors, devices, num_subchunks,
   num_devices = len(input_tensors)
   if num_devices == 0:
     return []
-  elif num_devices == 1:
+  if num_devices == 1:
     return input_tensors
   shape = input_tensors[0].shape
   if 1 != len(shape):
