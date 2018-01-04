@@ -182,12 +182,9 @@ tf_py_test(
 
 py_test(
     name = "interleave_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # b/67958761
-    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
