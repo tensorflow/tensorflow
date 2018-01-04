@@ -2,14 +2,14 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
   <modelVersion>4.0.0</modelVersion>
-  <description>Platform-dependent native code for the TensorFlow Java library.</description>
+  <description>Platform-dependent native code with GPU (CUDA) support for the TensorFlow Java library.</description>
   <parent>
     <groupId>org.tensorflow</groupId>
     <artifactId>parentpom</artifactId>
     <version>1.5.0-rc0</version>
     <relativePath>../</relativePath>
   </parent>
-  <artifactId>libtensorflow_jni</artifactId>
+  <artifactId>libtensorflow_jni_gpu</artifactId>
   <packaging>jar</packaging>
 </project>
 
