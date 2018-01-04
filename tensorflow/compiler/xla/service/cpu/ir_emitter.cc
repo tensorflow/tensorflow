@@ -79,16 +79,16 @@ namespace cpu {
 IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
-    std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
-    tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
+    std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
+    std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
     llvm::TargetMachine* target_machine,
     ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
-      hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
-      entry_computation_profile_idx_(std::move(entry_computation_profile_idx)),
+      instruction_to_profile_idx_(std::move(instruction_to_profile_idx)),
+      computation_to_profile_idx_(std::move(computation_to_profile_idx)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       parallel_cpu_backend_(
@@ -120,8 +120,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   // readcyclecounter if it is unavailable.
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
-  profiling_state_ = ProfilingState(is_top_level_computation_, use_rdtscp,
-                                    GetProfileCountersArgument());
+  profiling_state_ = ProfilingState(use_rdtscp, GetProfileCountersArgument());
   if (instruction_order == nullptr) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
   } else {
@@ -2689,54 +2688,49 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   llvm::Value* root_value = GetEmittedValueFor(root);
   VLOG(2) << "  value: " << llvm_ir::DumpToString(*root_value);
 
-  llvm::Value* prof_counter = [&]() {
-    // For the parallel cpu backend, we record the total for each embedded
-    // computation callee with its caller kCall HLO.
-    if (parallel_cpu_backend_ && is_top_level_computation_) {
-      auto* computation = root->parent();
-      auto* entry_computation = computation->parent()->entry_computation();
-      if (computation != entry_computation) {
-        for (HloInstruction* instruction : entry_computation->instructions()) {
-          if (instruction->opcode() == HloOpcode::kCall &&
-              instruction->to_apply()->root_instruction() == root) {
-            return GetProfileCounterFor(*instruction);
-          }
+  auto record_complete_computation = [&](llvm::Value* prof_counter) {
+    if (prof_counter) {
+      profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
+    }
+  };
+
+  // For the parallel cpu backend, we record the total for each embedded
+  // computation callee with its caller kCall HLO.
+  if (parallel_cpu_backend_ && is_top_level_computation_) {
+    auto* computation = root->parent();
+    auto* entry_computation = computation->parent()->entry_computation();
+    if (computation != entry_computation) {
+      for (HloInstruction* instruction : entry_computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCall &&
+            instruction->to_apply()->root_instruction() == root) {
+          record_complete_computation(GetProfileCounterFor(*instruction));
+          return Status::OK();
         }
       }
     }
-
-    // Otherwise we record the total computation cycles in a dedicated slot for
-    // the entry computation.
-    return GetProfileCounterForEntryComputation();
-  }();
-
-  if (prof_counter) {
-    profiling_state_.RecordCompleteComputation(&ir_builder_, prof_counter);
   }
+
+  // For the entry computation this increment is cumulative of embedded
+  // computations since it includes cycles spent in computations invoked by
+  // While, Call etc.
+  record_complete_computation(GetProfileCounterFor(*root->parent()));
   return Status::OK();
 }
 
-llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction& hlo) {
-  auto it = hlo_to_profile_idx_.find(&hlo);
-  if (it == hlo_to_profile_idx_.end()) {
+template <typename T>
+llvm::Value* IrEmitter::GetProfileCounterCommon(
+    const T& hlo,
+    const std::unordered_map<const T*, int64>& profile_index_map) {
+  auto it = profile_index_map.find(&hlo);
+  if (it == profile_index_map.end()) {
     return nullptr;
   }
 
-  size_t prof_counter_idx = it->second;
+  int64 prof_counter_idx = it->second;
   string counter_name = IrName("prof_counter", hlo.name());
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
                                AsStringRef(counter_name));
-}
-
-llvm::Value* IrEmitter::GetProfileCounterForEntryComputation() {
-  if (entry_computation_profile_idx_) {
-    return ir_builder_.CreateGEP(
-        GetProfileCountersArgument(),
-        ir_builder_.getInt64(*entry_computation_profile_idx_),
-        "prof_counter.computation");
-  }
-  return nullptr;
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(
@@ -2801,8 +2795,7 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* ir_builder,
 
 void IrEmitter::ProfilingState::RecordCompleteComputation(
     llvm::IRBuilder<>* ir_builder, llvm::Value* prof_counter) {
-  if (is_top_level_computation_ && last_read_cycle_end_ &&
-      first_read_cycle_start_) {
+  if (last_read_cycle_end_ && first_read_cycle_start_) {
     UpdateProfileCounter(ir_builder, prof_counter, last_read_cycle_end_,
                          first_read_cycle_start_);
   }
@@ -2810,7 +2803,7 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
 
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (hlo_to_profile_idx_.count(hlo)) {
+  if (instruction_to_profile_idx_.count(hlo)) {
     profiling_state_.RecordCycleStart(&ir_builder_, hlo);
   }
   return Status::OK();

@@ -37,6 +37,7 @@ class HloProfileTest : public ClientLibraryTestBase {};
 
 struct ParsedProfileOutputLine {
   int64 cycles;
+  string cycles_percentage;
   double usec;
   string flops;
   string trops;
@@ -49,7 +50,8 @@ StatusOr<ParsedProfileOutputLine> ParseProfileOutputLine(const string& line,
                                                          bool expect_flops,
                                                          bool expect_trops) {
   string separator = "[^:]*:: +";
-  string match_cycles = "(\\d+) cycles";
+  string match_percentage = "\\d+\\.\\d\\d%";
+  string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
   string match_usecs = "([0-9.]+) usec";
   string match_flops = expect_flops ? "([0-9.TGMk]+)FLOP/s" : "(<none>)";
   string match_trops = expect_trops ? "([0-9.TGMk]+)TROP/s" : "(<none>)";
@@ -63,9 +65,10 @@ StatusOr<ParsedProfileOutputLine> ParseProfileOutputLine(const string& line,
   RE2 pattern(regexp_pattern);
   ParsedProfileOutputLine parsed_line;
   bool matched = RE2::FullMatch(
-      line, pattern, &parsed_line.cycles, &parsed_line.usec, &parsed_line.flops,
-      &parsed_line.trops, &parsed_line.bytes_per_sec,
-      &parsed_line.bytes_per_cycle, &parsed_line.name);
+      line, pattern, &parsed_line.cycles, &parsed_line.cycles_percentage,
+      &parsed_line.usec, &parsed_line.flops, &parsed_line.trops,
+      &parsed_line.bytes_per_sec, &parsed_line.bytes_per_cycle,
+      &parsed_line.name);
   if (!matched) {
     return tensorflow::errors::InvalidArgument(
         "Input did not match regexp.  Input: ", line,
@@ -128,6 +131,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
 
   *profile_output =
       hlo_execution_profile.ToString(executor->GetDeviceDescription());
+
+  XLA_VLOG_LINES(4, *profile_output);
 }
 
 // TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
@@ -171,8 +176,97 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_CPU_PARALLEL(ProfileSingleComputation)) {
                              /*expect_trops=*/true));
 
   EXPECT_GT(total_profile.cycles, 0);
+  EXPECT_EQ(total_profile.cycles_percentage, "100.00%");
+
   EXPECT_GT(total_profile.cycles, dot_profile.cycles);
+  EXPECT_NE(dot_profile.cycles_percentage, "0.00%");
+  EXPECT_NE(dot_profile.cycles_percentage, "100.00%");
+
   EXPECT_GT(total_profile.cycles, tanh_profile.cycles);
+  EXPECT_NE(tanh_profile.cycles_percentage, "0.00%");
+  EXPECT_NE(tanh_profile.cycles_percentage, "100.00%");
+}
+
+// TODO(b/71364943): This test exposes a bug in the parallel CPU backend.
+//
+// TODO(b/71544591): The GPU backend does not record cycles spent in on Hlo
+// instructions "interior" to while nodes.
+XLA_TEST_F(HloProfileTest,
+           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(ProfileWhileComputation))) {
+  const int64 size = 256;
+  Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
+  Shape while_result_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {}), matrix_shape});
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetDefaultPlatform());
+  TF_ASSERT_OK_AND_ASSIGN(LocalClient * client,
+                          ClientLibrary::GetOrCreateLocalClient(platform));
+
+  Computation condition;
+  {
+    ComputationBuilder builder(client, "condition");
+    auto state = builder.Parameter(0, while_result_shape, "state");
+    auto iteration = builder.GetTupleElement(state, 0);
+    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+  }
+
+  Computation body;
+  {
+    ComputationBuilder builder(client, "body");
+    auto state = builder.Parameter(0, while_result_shape, "state");
+    auto matrix = builder.GetTupleElement(state, 1);
+    auto next_iteration = builder.Add(builder.GetTupleElement(state, 0),
+                                      builder.ConstantR0<int32>(1));
+    builder.Tuple({next_iteration, builder.Dot(matrix, matrix)});
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+  }
+
+  ComputationBuilder builder(client, TestName());
+  auto initial_while_state =
+      builder.Tuple({builder.ConstantR0<int32>(0),
+                     builder.Parameter(0, matrix_shape, "initial_value")});
+  auto while_result = builder.While(condition, body, initial_while_state);
+  builder.Add(builder.GetTupleElement(while_result, 1),
+              builder.Parameter(1, matrix_shape, "other_value"));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
+
+  string profile_output;
+  ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
+                         matrix_shape);
+
+  std::vector<string> profile_output_lines =
+      tensorflow::str_util::Split(profile_output, '\n');
+
+  auto while_body_profile_start =
+      std::find_if(profile_output_lines.begin(), profile_output_lines.end(),
+                   [](tensorflow::StringPiece s) {
+                     return s.starts_with("Execution profile for body");
+                   });
+
+  ASSERT_NE(while_body_profile_start, profile_output_lines.end());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ParsedProfileOutputLine total_while_body_profile,
+      ParseProfileOutputLine(*std::next(while_body_profile_start, 1),
+                             /*expect_flops=*/false,
+                             /*expect_trops=*/false));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ParsedProfileOutputLine dot_profile,
+      ParseProfileOutputLine(*std::next(while_body_profile_start, 2),
+                             /*expect_flops=*/false,
+                             /*expect_trops=*/false));
+
+  EXPECT_GT(total_while_body_profile.cycles, 0);
+  EXPECT_EQ(total_while_body_profile.name, "[total]");
+  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.00%");
+
+  EXPECT_GT(total_while_body_profile.cycles, dot_profile.cycles);
+  EXPECT_NE(dot_profile.cycles_percentage, "0.00%");
+  EXPECT_NE(dot_profile.cycles_percentage, "100.00%");
 }
 }  // namespace
 }  // namespace xla

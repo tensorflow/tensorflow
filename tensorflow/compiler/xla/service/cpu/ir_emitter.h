@@ -63,20 +63,21 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // assignment: a BufferAssignment from which we know which temporary buffers
   //             are used by the HLO nodes.
   // llvm_module: the LLVM module to emit IR into.
-  // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
-  //                     array.
-  // entry_computation_profile_idx: the index in the profiling array
-  //                                for the entry computation.
+  // instruction_to_profile_idx: the mapping from HLO instructions to their
+  //              index in the profiling array.
+  // computation_to_profile_idx: the mapping from HLO computations to their
+  //              index in the profiling array.
   // external_constant_pool: if non-null, points to an ExternalConstantPool
   //                         instance into which the Ir emitter can spill
   //                         constants.
-  IrEmitter(
-      const HloModule& hlo_module, const BufferAssignment& assignment,
-      llvm::Module* llvm_module,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
-      tensorflow::gtl::optional<size_t> entry_computation_profile_idx,
-      llvm::TargetMachine* target_machine,
-      ExternalConstantPool* external_constant_pool);
+  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
+            llvm::Module* llvm_module,
+            std::unordered_map<const HloInstruction*, int64>
+                instruction_to_profile_idx,
+            std::unordered_map<const HloComputation*, int64>
+                computation_to_profile_idx,
+            llvm::TargetMachine* target_machine,
+            ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -160,14 +161,23 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
-  // Convenience function to generate a GEP into the profile counter parameter
-  // which would correspond to the index for a given HLO.
-  llvm::Value* GetProfileCounterFor(const HloInstruction& hlo);
+  template <typename T>
+  llvm::Value* GetProfileCounterCommon(
+      const T& hlo,
+      const std::unordered_map<const T*, int64>& profile_index_map);
 
-  // Convenience function to generate a GEP into the profile counter parameter
-  // corresponding to the index for the entry computation.  Returns nullptr if
-  // profiling the entry computation is disabled.
-  llvm::Value* GetProfileCounterForEntryComputation();
+  // Convenience functions to generate a GEP into the profile counter parameter
+  // which would correspond to the index for a given HLO instruction or
+  // computation.
+  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction) {
+    return GetProfileCounterCommon<HloInstruction>(instruction,
+                                                   instruction_to_profile_idx_);
+  }
+
+  llvm::Value* GetProfileCounterFor(const HloComputation& computation) {
+    return GetProfileCounterCommon<HloComputation>(computation,
+                                                   computation_to_profile_idx_);
+  }
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -411,9 +421,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> ir_builder_;
 
-  // Maps HLOs to their index into the profile counter array.
-  std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
-  const tensorflow::gtl::optional<size_t> entry_computation_profile_idx_;
+  // Maps HLO instructions to their index into the profile counter array.
+  const std::unordered_map<const HloInstruction*, int64>
+      instruction_to_profile_idx_;
+
+  // Maps HLO computations to their index into the profile counter array.
+  const std::unordered_map<const HloComputation*, int64>
+      computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
   std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
@@ -436,15 +450,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // profiling a computation.
   class ProfilingState {
    public:
-    ProfilingState()
-        : is_top_level_computation_(false),
-          use_rdtscp_(false),
-          prof_counters_(nullptr) {}
-    ProfilingState(bool is_top_level_computation, bool use_rdtscp,
-                   llvm::Value* prof_counters)
-        : is_top_level_computation_(is_top_level_computation),
-          use_rdtscp_(use_rdtscp),
-          prof_counters_(prof_counters) {}
+    ProfilingState() : use_rdtscp_(false), prof_counters_(nullptr) {}
+    ProfilingState(bool use_rdtscp, llvm::Value* prof_counters)
+        : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
 
     // Record the cycle counter before an HLO executes.
     void RecordCycleStart(llvm::IRBuilder<>* ir_builder, HloInstruction* hlo);
@@ -466,9 +474,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                               llvm::Value* cycle_start);
 
    private:
-    // Is this IrEmitter for a top-level computation?
-    bool is_top_level_computation_;
-
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
     bool use_rdtscp_;
