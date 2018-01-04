@@ -1866,6 +1866,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
+        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
@@ -3989,6 +3990,12 @@ tf_kernel_library(
     deps = STATE_DEPS,
 )
 
+tf_kernel_library(
+    name = "critical_section",
+    prefix = "critical_section",
+    deps = STATE_DEPS + [":captured_function"],
+)
+
 tf_cc_test(
     name = "scatter_op_test",
     size = "small",
@@ -4938,6 +4945,7 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
+            "critical_section.*",
         ],
     ),
     visibility = ["//visibility:public"],
