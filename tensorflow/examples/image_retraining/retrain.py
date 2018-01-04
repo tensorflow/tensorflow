@@ -1009,6 +1009,13 @@ def add_jpeg_decoding(input_width, input_height, input_depth, input_mean,
 
 
 def export_model(sess, architecture, saved_model_dir):
+  """Exports model for serving.
+
+  Args:
+    sess: Current active TensorFlow Session.
+    architecture: Model architecture.
+    saved_model_dir: Directory in which to save exported model and variables.
+  """
   if architecture == 'inception_v3':
     input_tensor = 'DecodeJpeg/contents:0'
   elif architecture.startswith('mobilenet_'):
