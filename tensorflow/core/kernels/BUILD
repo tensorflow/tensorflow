@@ -1867,6 +1867,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
+        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
@@ -3984,6 +3985,12 @@ tf_kernel_library(
     name = "variable_ops",
     prefix = "variable_ops",
     deps = STATE_DEPS,
+)
+
+tf_kernel_library(
+    name = "critical_section",
+    prefix = "critical_section",
+    deps = STATE_DEPS + [":captured_function"],
 )
 
 tf_cc_test(

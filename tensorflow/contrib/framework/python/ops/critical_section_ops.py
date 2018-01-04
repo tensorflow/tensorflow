@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A module containing TensorFlow ops whose API may change in the future."""
+"""Critical Section object and execution logic."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# TODO(ptucker): Add these to tf.contrib.variables?
-# pylint: disable=wildcard-import
-from tensorflow.contrib.framework.python.ops.arg_scope import *
-from tensorflow.contrib.framework.python.ops.checkpoint_ops import *
-from tensorflow.contrib.framework.python.ops.critical_section_ops import *
-from tensorflow.contrib.framework.python.ops.ops import *
-from tensorflow.contrib.framework.python.ops.prettyprint_ops import *
-from tensorflow.contrib.framework.python.ops.sort_ops import *
-from tensorflow.contrib.framework.python.ops.variables import *
-# pylint: enable=wildcard-import
+
+from tensorflow.python.ops.gen_resource_variable_ops import *  # pylint: disable=wildcard-import
