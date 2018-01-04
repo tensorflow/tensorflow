@@ -729,6 +729,8 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
 Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
                                         size_t n, char* buffer,
                                         size_t* bytes_transferred) {
+  *bytes_transferred = 0;
+
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
 
