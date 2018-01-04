@@ -266,7 +266,6 @@ public class TensorFlowInferenceInterface {
     closeFeeds();
     closeFetches();
     sess.close();
-    runner.close();
     g.close();
     if (runStats != null) {
       runStats.close();
