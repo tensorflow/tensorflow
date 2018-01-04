@@ -5421,6 +5421,9 @@ The resulting tensor would look like this:
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
+
 indices: Index tensor.
 updates: Updates to scatter into output.
 shape: 1-D. The shape of the resulting tensor.
