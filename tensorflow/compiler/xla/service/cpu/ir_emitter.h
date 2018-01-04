@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,41 +52,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-// Wraps an llvm::TargetMachine and parses out some information that feeds into
-// code LLVM IR generation decisions.
-class TargetMachineFeatures {
- public:
-  TargetMachineFeatures(llvm::TargetMachine* target_machine)
-      : target_machine_(target_machine) {}
-
-  // Return the vectorization factor, which is the number of bytes of data
-  // explicitly vectorized routines will try to process at once.
-  int vectorization_factor_in_bytes() const {
-    // Ideally this should be a function of the cache line size (which we can
-    // get from llvm::TargetTransformInfo::getCacheLineSize) of the target
-    // machine.  Guess a value of 128 bytes for now.
-    return 128;
-  }
-
-  // Return the size of the largest vector size in bytes.  We need to pass in
-  // "function" since llvm functions can contain annotations for specializing
-  // them to specific micro-architectures (though currently XLA does not use
-  // this functionality).
-  int vector_register_byte_size(const llvm::Function& function) {
-    llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
-    return tti->getRegisterBitWidth(/*Vector=*/true) / 8;
-  }
-
- private:
-  llvm::TargetTransformInfo* GetTargetTransformInfoFor(
-      const llvm::Function& function);
-
-  tensorflow::gtl::FlatMap<const llvm::Function*, llvm::TargetTransformInfo>
-      target_transform_infos_;
-  llvm::TargetMachine* target_machine_;
-};
-
 // This class is the top-level API for the XLA HLO --> LLVM IR compiler.  It
 // implements the DfsHloVisitor interface and emits HLO computations as LLVM IR
 // functions.

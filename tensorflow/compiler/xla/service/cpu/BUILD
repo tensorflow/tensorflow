@@ -260,6 +260,7 @@ cc_library(
         ":parallel_loop_emitter",
         ":shape_partition",
         ":simple_orc_jit",
+        ":target_machine_features",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -281,10 +282,23 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ops",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
-        "@llvm//:analysis",
         "@llvm//:code_gen",
         "@llvm//:core",
         "@llvm//:support",
+        "@llvm//:target",
+    ],
+)
+
+cc_library(
+    name = "target_machine_features",
+    srcs = [
+        "target_machine_features.cc",
+    ],
+    hdrs = ["target_machine_features.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core:lib",
+        "@llvm//:analysis",
         "@llvm//:target",
     ],
 )
@@ -330,6 +344,8 @@ cc_library(
     deps = [
         ":cpu_options",
         ":cpu_runtime",
+        ":target_machine_features",
+        ":vector_support_library",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
@@ -341,7 +357,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/compiler/xla/service/llvm_ir:vector_support_library",
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
@@ -821,6 +836,20 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "vector_support_library",
+    srcs = ["vector_support_library.cc"],
+    hdrs = ["vector_support_library.h"],
+    deps = [
+        ":target_machine_features",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "@llvm//:core",
     ],
 )
 
