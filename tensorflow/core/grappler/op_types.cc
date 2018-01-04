@@ -35,7 +35,11 @@ bool IsAdd(const NodeDef& node) {
 
 bool IsAddN(const NodeDef& node) { return node.op() == "AddN"; }
 
+bool IsAll(const NodeDef& node) { return node.op() == "All"; }
+
 bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
+
+bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
   return node.op() == "RealDiv" || node.op() == "Div" ||
@@ -132,6 +136,10 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHistogramSummary(const NodeDef& node) {
+  return node.op() == "HistogramSummary";
+}
+
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Identity" || op == "RefIdentity";
@@ -166,12 +174,18 @@ bool IsMatMul(const NodeDef& node) {
          op == "SparseMatMul";
 }
 
+bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
+
 bool IsMaximum(const NodeDef& node) { return node.op() == "Maximum"; }
+
+bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Merge" || op == "RefMerge";
 }
+
+bool IsMin(const NodeDef& node) { return node.op() == "Min"; }
 
 bool IsMinimum(const NodeDef& node) { return node.op() == "Minimum"; }
 
@@ -208,6 +222,8 @@ bool IsPlaceholder(const NodeDef& node) {
 bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
+
+bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 

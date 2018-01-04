@@ -77,8 +77,6 @@ std::set<string> GetOpsFormatSupported() {
   return ops_format_supported;
 }
 
-// TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
-// because of the worse performance in some cases.
 std::set<string> GetOpsFormatAgnostic() {
   std::set<string> ops_format_agnostic = {"Abs",
                                           "Add",
@@ -86,7 +84,9 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "AddV2",
                                           "Acos",
                                           "Acosh",
+                                          "All",
                                           "Angle",
+                                          "Any",
                                           "ApproximateEqual",
                                           "Asin",
                                           "Asinh",
@@ -123,6 +123,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Greater",
                                           "GreaterEqual",
                                           "GuaranteeConst",
+                                          "HistogramSummary",
                                           "Identity",
                                           "IdentityN",
                                           "Igamma",
@@ -141,8 +142,11 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "LogicalNot",
                                           "LogicalOr",
                                           "Log1p",
+                                          "Max",
                                           "Maximum",
+                                          "Mean",
                                           "Merge",
+                                          "Min",
                                           "Minimum",
                                           "Mod",
                                           "Mul",
@@ -152,6 +156,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "OnesLike",
                                           "Pad",
                                           "PreventGradient",
+                                          "Prod",
                                           "Polygamma",
                                           "Pow",
                                           "Real",
@@ -195,7 +200,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SquaredDifference",
                                           "Squeeze",
                                           "StopGradient",
-                                          /*"Sum",*/ "Sub",
+                                          "Sub",
+                                          "Sum",
                                           "Tan",
                                           "Tanh",
                                           "TanhGrad",
@@ -310,6 +316,11 @@ bool IsLogicalOp(const NodeDef& node) {
   return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
 }
 
+bool IsReduceOp(const NodeDef& node) {
+  return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
+         IsMin(node) || IsAll(node) || IsAny(node);
+}
+
 bool IsBinaryOp(const NodeDef& node) {
   bool is_binary =
       IsAdd(node) || IsAtan2(node) || IsComparisonOp(node) || IsComplex(node) ||
@@ -343,7 +354,7 @@ std::vector<int> DataInputPosConcat(const NodeDef& node) {
 }
 
 std::vector<int> DataInputPos(const NodeDef& node) {
-  if (IsSplit(node)) {
+  if (IsSplit(node) || IsHistogramSummary(node)) {
     return {1};
   }
   if (IsStridedSliceGrad(node)) {
@@ -1378,6 +1389,25 @@ class FillProcessor : public AgnosticNodeProcessor {
   }
 };
 
+class HistogramSummaryProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit HistogramSummaryProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    auto input1 = node_map_->GetNode(node_->input(1));
+    int port;
+    ParseNodeName(node_->input(1), &port);
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsPortDimsFour(*input1, port) && IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override { return {1}; }
+
+  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+};
+
 class IdentityNProcessor : public AgnosticNodeProcessor {
  public:
   explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
@@ -1684,9 +1714,9 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   }
 };
 
-class SumProcessor : public AgnosticNodeProcessor {
+class ReduceProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SumProcessor(const OptimizeContext& opt_cxt)
+  explicit ReduceProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
@@ -1695,14 +1725,31 @@ class SumProcessor : public AgnosticNodeProcessor {
     int port;
     ParseNodeName(node_->input(0), &port);
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsPortDimsFour(*input0, port) && IsOnGPU();
+           IsPortDimsFour(*input0, port) && IsAlongAllFourDims() && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
-  Status CustomizedProcessing() override {
-    DataType dtype = node_->attr().at("Tidx").type();
-    return UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype);
+ private:
+  bool IsAlongAllFourDims() const {
+    auto axis_node = node_map_->GetNode(node_->input(1));
+    if (!IsConstant(*axis_node)) {
+      return false;
+    }
+    if (HasAttribute(*axis_node, "value").ok()) {
+      Tensor tensor;
+      auto success = tensor.FromProto(axis_node->attr().at({"value"}).tensor());
+      if (!success) {
+        LOG(ERROR) << "Failed to parse TensorProto.";
+      }
+      if (tensor.dims() == 1 && tensor.dim_size(0) == 4) {
+        if (tensor.flat<int>()(0) == 0 && tensor.flat<int>()(1) == 1 &&
+            tensor.flat<int>()(2) == 2 && tensor.flat<int>()(3) == 3) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 };
 
@@ -1835,6 +1882,8 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ConcatProcessor(opt_cxt));
           } else if (IsFill(*node)) {
             node_processor.reset(new FillProcessor(opt_cxt));
+          } else if (IsHistogramSummary(*node)) {
+            node_processor.reset(new HistogramSummaryProcessor(opt_cxt));
           } else if (IsIdentityN(*node)) {
             node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
@@ -1842,6 +1891,8 @@ class DataLayoutOptimizer : GraphProcessor {
           } else if (IsPad(*node) || IsMirrorPad(*node) ||
                      IsMirrorPadGrad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
+          } else if (IsReduceOp(*node)) {
+            node_processor.reset(new ReduceProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
@@ -1858,8 +1909,6 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
           } else if (IsStridedSliceGrad(*node)) {
             node_processor.reset(new StridedSliceGradProcessor(opt_cxt));
-          } else if (IsSum(*node)) {
-            node_processor.reset(new SumProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
           } else if (IsTile(*node)) {
