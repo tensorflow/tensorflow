@@ -1551,13 +1551,13 @@ class SliceProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {
     // Skip the first input, which is the data to be sliced.
     start_ = 1;
-    // For StridedSlice, the last param is at index 3. Note that we can't use
-    // node_->input_size() here because there could be control inputs.
-    end_ = IsSlice(*node_) ? 2 : 3;
+    // Note that we can't use node_->input_size() here because there
+    // could be control inputs.
+    end_ = 2;
   }
 
  protected:
-  Status CustomizedProcessing() override {
+  Status ProcessInputs() {
     for (int i = start_; i <= end_; i++) {
       DataType dtype = node_->attr().at("Index").type();
       TF_RETURN_IF_ERROR(
@@ -1565,14 +1565,64 @@ class SliceProcessor : public AgnosticNodeProcessor {
     }
     return Status::OK();
   }
+
+  Status CustomizedProcessing() override { return ProcessInputs(); }
+
   int start_;
   int end_;
 };
 
-class StridedSliceGradProcessor : public SliceProcessor {
+class StridedSliceProcessor : public SliceProcessor {
+ public:
+  explicit StridedSliceProcessor(const OptimizeContext& opt_cxt)
+      : SliceProcessor(opt_cxt) {
+    start_ = 1;
+    end_ = 3;
+  }
+
+ protected:
+  bool ShouldProcess() const override {
+    return AgnosticNodeProcessor::ShouldProcess() && IsOnlyBeginEndMask();
+  }
+
+  Status CustomizedProcessing() override {
+    TF_RETURN_IF_ERROR(UpdateMask("begin_mask"));
+    TF_RETURN_IF_ERROR(UpdateMask("end_mask"));
+    TF_RETURN_IF_ERROR(ProcessInputs());
+    return Status::OK();
+  }
+
+ private:
+  bool IsMaskZero(const string& mask) const {
+    return node_->attr().at(mask).i() == 0;
+  }
+
+  bool IsOnlyBeginEndMask() const {
+    return IsMaskZero("ellipsis_mask") && IsMaskZero("new_axis_mask") &&
+           IsMaskZero("shrink_axis_mask");
+  }
+
+  Status UpdateMask(const string& mask) {
+    int i = node_->attr().at(mask).i();
+    if (i < 0 || i > 15) {
+      return errors::InvalidArgument("invalid mask value: ", i);
+    }
+    if (i == 0 || i == 1 || i == 14 || i == 15) return Status::OK();
+    if (i == 2 || i == 3) i += 2;
+    if (i == 4 || i == 5) i += 4;
+    if (i == 6 || i == 7) i += 6;
+    if (i == 8 || i == 9) i -= 6;
+    if (i == 10 || i == 11) i -= 4;
+    if (i == 12 || i == 13) i -= 2;
+    node_->mutable_attr()->at(mask).set_i(i);
+    return Status::OK();
+  }
+};
+
+class StridedSliceGradProcessor : public StridedSliceProcessor {
  public:
   explicit StridedSliceGradProcessor(const OptimizeContext& opt_cxt)
-      : SliceProcessor(opt_cxt) {
+      : StridedSliceProcessor(opt_cxt) {
     start_ = 0;
     end_ = 3;
   }
@@ -1794,8 +1844,10 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new PadProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
-          } else if (IsSlice(*node) || IsStridedSlice(*node)) {
+          } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
+          } else if (IsStridedSlice(*node)) {
+            node_processor.reset(new StridedSliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {

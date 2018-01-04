@@ -750,6 +750,43 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('LayoutOptimizer-StridedSlice-StridedSlice/strides', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  def testStridedSliceWithMask(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      # This will generate a StridedSlice op with begin mask and end mask.
+      s = conv[:, :, 1:-1, :]
+      output = array_ops.identity(s)
+
+      with session.Session() as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if node.name.startswith('LayoutOptimizerTranspose'):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-strided_slice-0-0',
+                    nodes)
+      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack', nodes)
+      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack_1',
+                    nodes)
+      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack_2',
+                    nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
   def testStridedSliceGradWithNonConstAxis(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
