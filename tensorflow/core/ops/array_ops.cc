@@ -1560,6 +1560,10 @@ params.shape[axis + 1:]` where:
 <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
 </div>
 
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
+
 params: The tensor from which to gather values. Must be at least rank
   `axis + 1`.
 indices: Index tensor. Must be in range `[0, params.shape[axis])`.
