@@ -306,7 +306,7 @@ class TestSequential(test.TestCase):
         def call(self, inputs):
           return [3 * inputs, 2 * inputs]
 
-        def _compute_output_shape(self, input_shape):
+        def compute_output_shape(self, input_shape):
           return [input_shape, input_shape]
 
       with self.assertRaises(ValueError):

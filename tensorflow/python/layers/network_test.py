@@ -333,8 +333,8 @@ class NetworkTest(test.TestCase):
     self.assertEqual(net.get_input_at(0), x)
     self.assertEqual(net.get_output_at(0), y)
 
-    # _compute_output_shape
-    self.assertEqual(net._compute_output_shape((3, 32)).as_list(), [3, 2])
+    # compute_output_shape
+    self.assertEqual(net.compute_output_shape((3, 32)).as_list(), [3, 2])
 
   def testInvalidNetworks(self):
     # redundant inputs
@@ -504,7 +504,7 @@ class DeferredModeTest(test.TestCase):
       def call(self, inputs):
         return inputs[0] + inputs[1]
 
-      def _compute_output_shape(self, input_shape):
+      def compute_output_shape(self, input_shape):
         return input_shape[0]
 
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable

@@ -709,7 +709,7 @@ class GraphNetwork(base.Layer):
     outputs, _ = self._run_internal_graph(inputs, masks)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shapes = []
       for shape in input_shape:
@@ -731,12 +731,12 @@ class GraphNetwork(base.Layer):
     cache_key = layers_util.object_list_uid(input_shapes)
     if cache_key not in self._output_shape_cache:
       # Cache miss. We have to run the network graph manually (recursive calls
-      # to `_compute_output_shape`).
+      # to `compute_output_shape`).
       layers_to_output_shapes = {}
       for i in range(len(input_shapes)):
         layer = self._input_layers[i]
         input_shape = input_shapes[i]
-        # It's an input layer: then `_compute_output_shape` is identity,
+        # It's an input layer: then `compute_output_shape` is identity,
         # and there is only one node and one tensor output.
         shape_key = layer.name + '_0_0'
         layers_to_output_shapes[shape_key] = input_shape
@@ -767,9 +767,9 @@ class GraphNetwork(base.Layer):
               input_shapes.append(input_shape)
 
             if len(input_shapes) == 1:
-              output_shape = layer._compute_output_shape(input_shapes[0])  # pylint: disable=protected-access
+              output_shape = layer.compute_output_shape(input_shapes[0])
             else:
-              output_shape = layer._compute_output_shape(input_shapes)  # pylint: disable=protected-access
+              output_shape = layer.compute_output_shape(input_shapes)
             if isinstance(output_shape, list):
               output_shapes = [
                   tuple(tensor_shape.TensorShape(shape).as_list())

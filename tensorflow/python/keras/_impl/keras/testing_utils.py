@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.util import tf_inspect
 
@@ -109,7 +110,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # check shape inference
   model = keras.models.Model(x, y)
   expected_output_shape = tuple(
-      layer._compute_output_shape(input_shape).as_list())  # pylint: disable=protected-access
+      layer.compute_output_shape(
+          tensor_shape.TensorShape(input_shape)).as_list())
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
   for expected_dim, actual_dim in zip(expected_output_shape,

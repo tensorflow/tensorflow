@@ -166,7 +166,7 @@ class Dense(base.Layer):
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
     if input_shape[-1].value is None:
@@ -310,6 +310,9 @@ class Dropout(base.Layer):
                             dropped_inputs,
                             lambda: array_ops.identity(inputs))
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
 
 def dropout(inputs,
             rate=0.5,
@@ -375,10 +378,10 @@ class Flatten(base.Layer):
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if context.in_graph_mode():
-      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):

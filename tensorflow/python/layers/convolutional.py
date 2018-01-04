@@ -192,7 +192,7 @@ class _Conv(base.Layer):
       return self.activation(outputs)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
       space = input_shape[1:-1]
@@ -1004,7 +1004,7 @@ class SeparableConv2D(Conv2D):
       return self.activation(outputs)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       rows = input_shape[2]
@@ -1325,7 +1325,7 @@ class Conv2DTranspose(Conv2D):
       return self.activation(outputs)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = list(input_shape)
     if self.data_format == 'channels_first':
@@ -1643,7 +1643,7 @@ class Conv3DTranspose(Conv3D):
       return self.activation(outputs)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = list(input_shape)
     if self.data_format == 'channels_first':
