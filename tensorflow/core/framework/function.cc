@@ -795,11 +795,16 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
   return h;
 }
 
-string Canonicalize(const string& funcname, AttrSlice attrs) {
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(attrs.size());
+  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  }
+  if (!options.target.empty()) {
+    entries.push_back(
+        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");

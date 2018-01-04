@@ -26,10 +26,10 @@ namespace tensorflow {
 
 /* static */
 Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
-    const OpDef& sig, AttrSlice attrs, GraphDef* g,
+    const OpDef& sig, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
     std::vector<string>* send_keys, std::vector<string>* recv_keys) {
-  const string& target =
-      ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
+  const string& target = options.target;
   // Construct recv nodes for each input argument.
   int i = 0;
   for (const auto& in : sig.input_arg()) {
@@ -119,16 +119,16 @@ ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
 
 Status ClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
-    AttrSlice attrs, FunctionLibraryRuntime::LocalHandle* handle) {
-  const string& target =
-      ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
-  WorkerInterface* wi = worker_session_->worker_cache->CreateWorker(target);
+    AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
+    FunctionLibraryRuntime::LocalHandle* handle) {
+  WorkerInterface* wi =
+      worker_session_->worker_cache->CreateWorker(options.target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
     worker_session_->worker_cache->ListWorkers(&workers);
     return errors::InvalidArgument(
-        "Could not find worker with target: ", target,
+        "Could not find worker with target: ", options.target,
         " Available workers: ", str_util::Join(workers, ", "));
   }
 
@@ -137,8 +137,8 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   const OpDef& sig = fdef->signature();
   GraphDef gdef;
   std::vector<string> send_keys, recv_keys;
-  TF_RETURN_IF_ERROR(
-      ConstructFunctionGraph(sig, attrs, &gdef, &send_keys, &recv_keys));
+  TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, &gdef,
+                                            &send_keys, &recv_keys));
   *gdef.mutable_library() = lib_def.ToProto();
 
   RegisterGraphRequest req;
@@ -152,8 +152,8 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
 
   mutex_lock l(mu_);
   *handle = function_data_.size();
-  function_data_.push_back(
-      FunctionData(resp.graph_handle(), target, wi, send_keys, recv_keys));
+  function_data_.push_back(FunctionData(resp.graph_handle(), options.target, wi,
+                                        send_keys, recv_keys));
   return Status::OK();
 }
 
