@@ -67,7 +67,8 @@ class FinalBeamSearchDecoderOutput(
 
   Args:
     predicted_ids: The final prediction. A tensor of shape
-      `[T, batch_size, beam_width]`.
+      `[batch_size, T, beam_width]` (or `[T, batch_size, beam_width]` if
+      `output_time_major` is True). Beams are ordered from best to worst.
     beam_search_decoder_output: An instance of `BeamSearchDecoderOutput` that
       describes the state of the beam search.
   """
