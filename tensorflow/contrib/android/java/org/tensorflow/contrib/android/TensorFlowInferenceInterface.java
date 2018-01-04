@@ -158,6 +158,8 @@ public class TensorFlowInferenceInterface {
       }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from the input stream", e);
+    } finally {
+       is.close(); 
     }
   }
 
