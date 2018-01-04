@@ -117,7 +117,7 @@ class AssertEqualTest(test.TestCase):
   def test_error_message_eager(self):
     expected_error_msg_full = r"""big does not equal small
 Condition x == y did not hold.
-Indices of first 6 different values:
+Indices of first 3 different values:
 \[\[0 0\]
  \[1 1\]
  \[2 0\]\]
@@ -129,6 +129,21 @@ First 6 elements of x:
 \[2 2 3 3 6 6\]
 First 6 elements of y:
 \[20  2  3 30 60  6\]
+"""
+    expected_error_msg_default = r"""big does not equal small
+Condition x == y did not hold.
+Indices of first 3 different values:
+\[\[0 0\]
+ \[1 1\]
+ \[2 0\]\]
+Corresponding x values:
+\[2 3 6\]
+Corresponding y values:
+\[20 30 60\]
+First 3 elements of x:
+\[2 2 3\]
+First 3 elements of y:
+\[20  2  3\]
 """
     expected_error_msg_short = r"""big does not equal small
 Condition x == y did not hold.
@@ -151,6 +166,9 @@ First 2 elements of y:
                                    expected_error_msg_full):
         check_ops.assert_equal(big, small, message="big does not equal small",
                                summarize=10)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_default):
+        check_ops.assert_equal(big, small, message="big does not equal small")
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_short):
         check_ops.assert_equal(big, small, message="big does not equal small",

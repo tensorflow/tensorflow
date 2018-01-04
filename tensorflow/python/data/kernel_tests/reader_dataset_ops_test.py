@@ -272,6 +272,24 @@ class FixedLengthRecordReaderTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(iterator.get_next())
 
+  def testFixedLengthRecordDatasetWrongSize(self):
+    test_filenames = self._createFiles()
+    dataset = readers.FixedLengthRecordDataset(
+        test_filenames,
+        self._record_bytes + 1,  # Incorrect record length.
+        self._header_bytes,
+        self._footer_bytes,
+        buffer_size=10)
+    iterator = dataset.make_one_shot_iterator()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r"Excluding the header \(5 bytes\) and footer \(2 bytes\), input "
+          r"file \".*fixed_length_record.0.txt\" has body length 21 bytes, "
+          r"which is not an exact multiple of the record length \(4 bytes\)."):
+        sess.run(iterator.get_next())
+
   def _iterator_checkpoint_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")
 

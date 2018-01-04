@@ -1509,7 +1509,9 @@ class Saver(object):
            latest_filename=None,
            meta_graph_suffix="meta",
            write_meta_graph=True,
-           write_state=True):
+           write_state=True,
+           strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Saves variables.
 
     This method runs the ops added by the constructor for saving variables.
@@ -1535,6 +1537,9 @@ class Saver(object):
         graph file.
       write_state: `Boolean` indicating whether or not to write the
         `CheckpointStateProto`.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       A string: path prefix used for the checkpoint files.  If the saver is
@@ -1548,6 +1553,7 @@ class Saver(object):
         collides with `save_path`.
       RuntimeError: If save and restore ops weren't built.
     """
+    # pylint: enable=line-too-long
     if not self._is_built and context.in_graph_mode():
       raise RuntimeError(
           "`build()` should be called before save if defer_build==True")
@@ -1618,7 +1624,8 @@ class Saver(object):
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       if context.in_graph_mode():
         with sess.graph.as_default():
-          self.export_meta_graph(meta_graph_filename)
+          self.export_meta_graph(
+              meta_graph_filename, strip_default_attrs=strip_default_attrs)
 
     if self._is_empty:
       return None
@@ -1631,7 +1638,9 @@ class Saver(object):
                         as_text=False,
                         export_scope=None,
                         clear_devices=False,
-                        clear_extraneous_savers=False):
+                        clear_extraneous_savers=False,
+                        strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1644,10 +1653,14 @@ class Saver(object):
       clear_extraneous_savers: Remove any Saver-related information from the
         graph (both Save/Restore ops and SaverDefs) that are not associated
         with this Saver.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       A `MetaGraphDef` proto.
     """
+    # pylint: enable=line-too-long
     return export_meta_graph(
         filename=filename,
         graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
@@ -1656,7 +1669,8 @@ class Saver(object):
         as_text=as_text,
         export_scope=export_scope,
         clear_devices=clear_devices,
-        clear_extraneous_savers=clear_extraneous_savers)
+        clear_extraneous_savers=clear_extraneous_savers,
+        strip_default_attrs=strip_default_attrs)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1859,7 +1873,9 @@ def export_meta_graph(filename=None,
                       export_scope=None,
                       clear_devices=False,
                       clear_extraneous_savers=False,
+                      strip_default_attrs=False,
                       **kwargs):
+  # pylint: disable=line-too-long
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
   This function exports the graph, saver, and collection objects into
@@ -1885,6 +1901,9 @@ def export_meta_graph(filename=None,
     clear_extraneous_savers: Remove any Saver-related information from the
         graph (both Save/Restore ops and SaverDefs) that are not associated
         with the provided SaverDef.
+    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+      removed from the NodeDefs. For a detailed guide, see
+      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1899,6 +1918,7 @@ def export_meta_graph(filename=None,
   execution is enabled.
   @end_compatibility
   """
+  # pylint: enable=line-too-long
   if context.in_eager_mode():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
@@ -1914,6 +1934,7 @@ def export_meta_graph(filename=None,
       export_scope=export_scope,
       clear_devices=clear_devices,
       clear_extraneous_savers=clear_extraneous_savers,
+      strip_default_attrs=strip_default_attrs,
       **kwargs)
   return meta_graph_def
 

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -56,21 +55,11 @@ Status Serialize(const protobuf::MessageLite& proto, string* output) {
   return Status::OK();
 }
 
-Status Compress(const string& data, string* output) {
-  output->clear();
-  if (!port::Snappy_Compress(data.data(), data.size(), output)) {
-    return errors::FailedPrecondition("TensorBase needs Snappy");
-  }
-  return Status::OK();
-}
-
 Status BindProto(SqliteStatement* stmt, int parameter,
                  const protobuf::MessageLite& proto) {
   string serialized;
   TF_RETURN_IF_ERROR(Serialize(proto, &serialized));
-  string compressed;
-  TF_RETURN_IF_ERROR(Compress(serialized, &compressed));
-  stmt->BindBlob(parameter, compressed);
+  stmt->BindBlob(parameter, serialized);
   return Status::OK();
 }
 
@@ -78,7 +67,6 @@ Status BindTensor(SqliteStatement* stmt, int parameter, const Tensor& t) {
   // TODO(@jart): Make portable between little and big endian systems.
   // TODO(@jart): Use TensorChunks with minimal copying for big tensors.
   // TODO(@jart): Add field to indicate encoding.
-  // TODO(@jart): Allow crunch tool to re-compress with zlib instead.
   TensorProto p;
   t.AsProtoTensorContent(&p);
   return BindProto(stmt, parameter, p);
@@ -250,7 +238,7 @@ class GraphSaver {
   Status SaveNodes() {
     auto insert = db_->Prepare(R"sql(
       INSERT INTO Nodes (graph_id, node_id, node_name, op, device, node_def)
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, snap(?))
     )sql");
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       NodeDef* node = graph_->mutable_node(node_id);
@@ -276,7 +264,7 @@ class GraphSaver {
   Status SaveGraph() {
     auto insert = db_->Prepare(R"sql(
       INSERT INTO Graphs (graph_id, inserted_time, graph_def)
-      VALUES (?, ?, ?)
+      VALUES (?, ?, snap(?))
     )sql");
     insert.BindInt(1, graph_id_);
     insert.BindDouble(2, GetWallTime(env_));
@@ -305,7 +293,7 @@ class RunWriter {
         user_name_{user_name},
         insert_tensor_{db_->Prepare(R"sql(
           INSERT OR REPLACE INTO Tensors (tag_id, step, computed_time, tensor)
-          VALUES (?, ?, ?, ?)
+          VALUES (?, ?, ?, snap(?))
         )sql")} {}
 
   ~RunWriter() {
@@ -635,7 +623,7 @@ Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
                              const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
-  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
+  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db.get()));
   *result = new SummaryDbWriter(env, std::move(db), experiment_name, run_name,
                                 user_name);
   return Status::OK();

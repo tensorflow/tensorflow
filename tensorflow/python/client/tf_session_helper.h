@@ -97,6 +97,13 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
 // for no difference.
 string EqualGraphDefWrapper(const string& actual, const string& expected);
 
+// Convenience wrapper around AreAttrValuesEqual to make it easier to wrap.
+// The actual and expected strings must correspond to a serialized binary
+// representation of two AttrValue proto instances.
+// Returns an explanation if a difference is found, or the empty string
+// for no difference.
+string EqualAttrValueWrapper(const string& actual, const string& expected);
+
 // Gets shape from C API Graph object.
 //
 // If shape is known, returns shape vector where -1 means "unknown

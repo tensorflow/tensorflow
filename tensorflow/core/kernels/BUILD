@@ -3174,7 +3174,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        ":fill_functor",
+    ],
 )
 
 tf_kernel_library(
@@ -3371,6 +3373,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],

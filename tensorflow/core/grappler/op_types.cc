@@ -175,6 +175,12 @@ bool IsMerge(const NodeDef& node) {
 
 bool IsMinimum(const NodeDef& node) { return node.op() == "Minimum"; }
 
+bool IsMirrorPad(const NodeDef& node) { return node.op() == "MirrorPad"; }
+
+bool IsMirrorPadGrad(const NodeDef& node) {
+  return node.op() == "MirrorPadGrad";
+}
+
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
@@ -188,7 +194,10 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
-bool IsPad(const NodeDef& node) { return node.op() == "Pad"; }
+bool IsPad(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Pad" || op == "PadV2";
+}
 
 bool IsPlaceholder(const NodeDef& node) {
   const auto& op = node.op();
@@ -266,6 +275,12 @@ bool IsStopGradient(const NodeDef& node) {
   return op == "StopGradient" || op == "PreventGradient";
 }
 
+bool IsStridedSlice(const NodeDef& node) { return node.op() == "StridedSlice"; }
+
+bool IsStridedSliceGrad(const NodeDef& node) {
+  return node.op() == "StridedSliceGrad";
+}
+
 bool IsSub(const NodeDef& node) { return node.op() == "Sub"; }
 
 bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
@@ -276,6 +291,8 @@ bool IsSwitch(const NodeDef& node) {
 }
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
+
+bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
 
 bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 

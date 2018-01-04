@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -1509,17 +1510,23 @@ Status FunctionDefToBodyHelper(
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
-  Graph* graph = new Graph(lib_def);
+  std::unique_ptr<Graph> graph(new Graph(lib_def));
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  Status s = ConvertNodeDefsToGraph(opts, result.nodes, graph);
-  if (!s.ok()) {
-    delete graph;
-  } else {
-    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
-  }
-  return s;
+  TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get()));
+
+  // Call BuildControlFlowInfo to validate that this function body has
+  // well-formed control flow.
+  // NOTE(skyewm): this is usually done in Partition(), but we don't partition
+  // function bodies. This should be removed if function bodies ever go through
+  // the Partition() path.
+  std::vector<ControlFlowInfo> dummy;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
+
+  *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types,
+                            graph.release());
+  return Status::OK();
 }
 
 }  // end namespace tensorflow

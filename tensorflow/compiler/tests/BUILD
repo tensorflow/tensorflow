@@ -241,6 +241,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "fft_test",
+    size = "medium",
+    srcs = ["fft_test.py"],
+    shard_count = 3,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:spectral_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
@@ -385,7 +400,6 @@ tf_xla_py_test(
     # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = [
         "gpu",
-        "cpu",
     ],
     tags = [
         "manual",

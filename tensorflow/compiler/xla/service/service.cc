@@ -1187,7 +1187,22 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
       bool is_constant,
       user_computation->IsConstant(arg->operand(), arg->parameters_size()));
   if (!is_constant) {
-    return InvalidArgument("Operand to ComputeConstant depends on parameter.");
+    StatusOr<const OperationRequest*> op_request_status =
+        user_computation->LookUpRequestForErrorReporting(arg->operand());
+    string op_request_string = "<unknown operation>";
+    if (op_request_status.ok()) {
+      op_request_string = op_request_status.ValueOrDie()->ShortDebugString();
+    }
+    return InvalidArgument(
+        "Operand to ComputeConstant depends on a parameter.\n\n"
+        "  op requested for constant evaluation: %s\n\n"
+        "This is an internal error that typically happens when the XLA user "
+        "(e.g. TensorFlow) is attempting to determine a value that must be a "
+        "compile-time constant (e.g. an array dimension) but it is not capable "
+        "of being evaluated at XLA compile time.\n\n"
+        "Please file a usability bug with the framework being used (e.g. "
+        "TensorFlow).",
+        op_request_string.c_str());
   }
 
   // We can't use ComputeProgramShape because it checks that all parameter
@@ -1406,6 +1421,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddDynamicUpdateSliceInstruction(
           arg->dynamic_update_slice_request());
       break;
+    case OpRequest::kFftRequest:
+      handle_status = computation->AddFftInstruction(arg->fft_request());
+      break;
     case OpRequest::kGetTupleElementRequest:
       handle_status = computation->AddGetTupleElementInstruction(
           arg->get_tuple_element_request());
@@ -1518,8 +1536,6 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddRecvInstruction(arg->recv_request());
       break;
     }
-    case OpRequest::kFftRequest:
-      return Unimplemented("FftRequest not implemented in XLA service.");
     case OpRequest::OP_NOT_SET:
       return InvalidArgument("XLA service received OpRequest with OP_NOT_SET");
     default:

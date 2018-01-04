@@ -2067,6 +2067,15 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
+  def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
+    with context.graph_mode():
+      # pylint: disable=protected-access
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with ops.init_scope():
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # pylint: enable=protected-access
+
 
 @test_util.with_c_api
 class GraphTest(test_util.TensorFlowTestCase):

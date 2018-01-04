@@ -2121,6 +2121,7 @@ REGISTER_OP("GetSessionHandle")
     .Input("value: T")
     .Output("handle: string")
     .Attr("T: type")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Store the input tensor in the state of the current session.
@@ -2134,6 +2135,7 @@ REGISTER_OP("GetSessionHandleV2")
     .Input("value: T")
     .Output("handle: resource")
     .Attr("T: type")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Store the input tensor in the state of the current session.
@@ -2147,6 +2149,7 @@ REGISTER_OP("GetSessionTensor")
     .Input("handle: string")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -2162,6 +2165,7 @@ dtype: The type of the output value.
 
 REGISTER_OP("DeleteSessionTensor")
     .Input("handle: string")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));

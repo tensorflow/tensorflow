@@ -133,6 +133,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddConvolveInstruction(
       const ConvolveRequest& convolve_request);
 
+  // Enqueues an FFT instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddFftInstruction(
+      const FftRequest& fft_request);
+
   // Enqueues a cross replica sum instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCrossReplicaSumInstruction(
       const CrossReplicaSumRequest& cross_replica_sum_request);
@@ -316,6 +320,15 @@ class UserComputation {
   // in the serialization / de-serialization process.
   SessionComputation CloneSessionComputation(
       VersionedComputationHandle::Version version) const;
+
+  // Warning: typically we don't want to look up computation data handles until
+  // the computation is finished being built, for consistency purposes. We
+  // expose this routine for error reporting purposes so that we can provide
+  // more meaningful error messages from the XLA service layer.
+  //
+  // Returns the operation request that the handle comes from.
+  StatusOr<const OperationRequest*> LookUpRequestForErrorReporting(
+      const ComputationDataHandle& handle) const;
 
  private:
   // Warning: dangerous mutating operation that doesn't respect versioning.

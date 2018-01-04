@@ -1264,28 +1264,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
                             get_next_uniform_float())));
         return ir_builder_->CreateFAdd(ir_builder_->CreateFMul(r, s), m);
       }
-      case RNG_BERNOULLI: {
-        TF_ASSIGN_OR_RETURN(llvm::Value * p,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        PrimitiveType element_type = hlo->shape().element_type();
-        llvm::Value* zero;
-        llvm::Value* one;
-        llvm::Type* result_ir_type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        if (primitive_util::IsFloatingPointType(element_type)) {
-          zero = llvm::ConstantFP::get(result_ir_type, 0.0);
-          one = llvm::ConstantFP::get(result_ir_type, 1.0);
-        } else if (primitive_util::IsIntegralType(element_type)) {
-          zero = llvm::ConstantInt::get(result_ir_type, 0);
-          one = llvm::ConstantInt::get(result_ir_type, 1);
-        } else {
-          return Unimplemented(
-              "Rng Bernoulli unimplemented for requested type!");
-        }
-
-        return ir_builder_->CreateSelect(
-            ir_builder_->CreateFCmpOLT(get_next_uniform_float(), p), one, zero);
-      }
       default:
         return InvalidArgument(
             "unhandled distribution %s",

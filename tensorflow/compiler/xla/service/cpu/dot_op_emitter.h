@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -59,7 +60,8 @@ class DotOpEmitter {
       const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
       const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
       llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-      const HloModuleConfig& hlo_module_config);
+      const HloModuleConfig& hlo_module_config,
+      const TargetMachineFeatures& target_machine_features);
 
  private:
   DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
@@ -69,7 +71,8 @@ class DotOpEmitter {
                const llvm_ir::IrArray* addend_array,
                llvm::Value* executable_run_options_value,
                llvm::IRBuilder<>* ir_builder,
-               const HloModuleConfig& hlo_module_config);
+               const HloModuleConfig& hlo_module_config,
+               const TargetMachineFeatures& target_machine_features);
 
   // Emits the IR to perform the dot operation.
   tensorflow::Status Emit();
@@ -142,6 +145,7 @@ class DotOpEmitter {
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilder<>* ir_builder_;
   const HloModuleConfig& hlo_module_config_;
+  const TargetMachineFeatures& target_machine_features_;
 };
 
 }  // namespace cpu
