@@ -17,7 +17,7 @@ instructions might also work on other variants, we have only tested
 (and we only support) these instructions on machines meeting the
 following requirements:
 
-  * Ubuntu 14.04 or higher; 64-bit, x86
+  * Ubuntu 16.04 or higher; 64-bit, x86
   * macOS X 10.11 (El Capitan) or higher
   * Windows 7 or higher; 64-bit, x86
 
