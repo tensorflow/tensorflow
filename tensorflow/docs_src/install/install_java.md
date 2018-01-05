@@ -113,6 +113,29 @@ Maven projects. If not, check
 [Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
 for possible solutions.  You can skip reading the rest of this document.
 
+### GPU support
+
+If your Linux system has an NVIDIA® GPU and your TensorFlow Java program
+requires GPU acceleration, then add the following to the project's `pom.xml`
+instead:
+
+```xml
+<dependency>
+  <groupId>org.tensorflow</groupId>
+  <artifactId>libtensorflow</artifactId>
+  <version>1.4.0</version>
+</dependency>
+<dependency>
+  <groupId>org.tensorflow</groupId>
+  <artifactId>libtensorflow_jni_gpu</artifactId>
+  <version>1.4.0</version>
+</dependency>
+```
+
+GPU acceleration is available via Maven only for Linux and only if your system
+meets the
+@{$install_linux#determine_which_tensorflow_to_install$requirements for GPU}.
+
 ## Using TensorFlow with JDK
 
 This section describes how to use TensorFlow using the `java` and `javac`
