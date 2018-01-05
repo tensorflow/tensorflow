@@ -25,6 +25,9 @@ limitations under the License.
 namespace tensorflow {
 namespace java {
 
+/// Path to the directory containing resource files for this generator
+const char kGenResourcePath[] = "tensorflow/java/src/gen/resources/";
+
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
   PUBLIC    = (1 << 0),
@@ -43,6 +46,11 @@ class Annotation;
 // supertypes are only useful when declaring a type.
 class Type {
  public:
+  struct Comparator {
+    bool operator() (const Type& type1, const Type& type2) {
+      return type1.name_ < type2.name_ || type1.package_ < type2.package_;
+    }
+  };
   enum Kind {
     PRIMITIVE, CLASS, INTERFACE, ENUM, GENERIC, ANNOTATION
   };
