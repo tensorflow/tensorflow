@@ -1115,10 +1115,10 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         attention_layer_size must be a list of the same length. If
         attention_layer is set, this must be None.
       attention_layer: A list of `tf.layers.Layer` instances or a
-        single `tf.layers.Layer` taking the context and cell output as inputs
-        to generate attention at each time step. If None (default), use the
-        context as attention at each time step. If attention_mechanism is a list,
-        attention_layer must be a list of the same length. If
+        single `tf.layers.Layer` instance taking the context and cell output as
+        inputs to generate attention at each time step. If None (default), use
+        the context as attention at each time step. If attention_mechanism is a
+        list, attention_layer must be a list of the same length. If
         attention_layers_size is set, this must be None.
       alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
@@ -1144,7 +1144,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       TypeError: `attention_layer_size` is not None and (`attention_mechanism`
         is a list but `attention_layer_size` is not; or vice versa).
       ValueError: if `attention_layer_size` is not None, `attention_mechanism`
-        is a list, and its length does not match that of `attention_layer_size`.
+        is a list, and its length does not match that of `attention_layer_size`;
+        if `attention_layer_size` and `attention_layer` are set simultaneously.
     """
     super(AttentionWrapper, self).__init__(name=name)
     if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
@@ -1210,8 +1211,11 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
             "layer per attention_mechanism, saw: %d vs %d"
             % (len(self._attention_layers), len(attention_mechanisms)))
       self._attention_layer_size = sum(
-          layer.output_shape[-1].value
-        for layer in self._attention_layers)
+          layer._compute_output_shape(
+              [None,
+               cell.output_size + mechanism.values.shape[-1].value])[-1].value
+          for layer, mechanism in zip(
+              self._attention_layers, attention_mechanisms))  # pylint: disable=protected-access
     else:
       self._attention_layers = None
       self._attention_layer_size = sum(
