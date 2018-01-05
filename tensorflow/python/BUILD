@@ -3717,6 +3717,7 @@ cuda_py_test(
     srcs = ["training/session_manager_test.py"],
     additional_deps = [
         ":array_ops",
+        ":control_flow_ops",
         ":client",
         ":client_testlib",
         ":errors",
