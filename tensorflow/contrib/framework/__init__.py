@@ -82,6 +82,8 @@ See the @{$python/contrib.framework} guide.
 @@load_variable_slot_initializer
 
 @@sort
+
+@@CriticalSection
 """
 
 from __future__ import absolute_import

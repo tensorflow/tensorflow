@@ -77,8 +77,6 @@ std::set<string> GetOpsFormatSupported() {
   return ops_format_supported;
 }
 
-// TODO(yaozhang): enable SumProcessor with auto-tuning. Currently disabled
-// because of the worse performance in some cases.
 std::set<string> GetOpsFormatAgnostic() {
   std::set<string> ops_format_agnostic = {"Abs",
                                           "Add",
@@ -86,7 +84,9 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "AddV2",
                                           "Acos",
                                           "Acosh",
+                                          "All",
                                           "Angle",
+                                          "Any",
                                           "ApproximateEqual",
                                           "Asin",
                                           "Asinh",
@@ -123,6 +123,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Greater",
                                           "GreaterEqual",
                                           "GuaranteeConst",
+                                          "HistogramSummary",
                                           "Identity",
                                           "IdentityN",
                                           "Igamma",
@@ -141,8 +142,11 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "LogicalNot",
                                           "LogicalOr",
                                           "Log1p",
+                                          "Max",
                                           "Maximum",
+                                          "Mean",
                                           "Merge",
+                                          "Min",
                                           "Minimum",
                                           "Mod",
                                           "Mul",
@@ -152,6 +156,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "OnesLike",
                                           "Pad",
                                           "PreventGradient",
+                                          "Prod",
                                           "Polygamma",
                                           "Pow",
                                           "Real",
@@ -179,7 +184,10 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SoftplusGrad",
                                           "Split",
                                           "SplitV",
+                                          "StridedSlice",
+                                          "StridedSliceGrad",
                                           "Switch",
+                                          "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
                                           "ReverseV2",
@@ -192,7 +200,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "SquaredDifference",
                                           "Squeeze",
                                           "StopGradient",
-                                          /*"Sum",*/ "Sub",
+                                          "Sub",
+                                          "Sum",
                                           "Tan",
                                           "Tanh",
                                           "TanhGrad",
@@ -307,6 +316,11 @@ bool IsLogicalOp(const NodeDef& node) {
   return IsLogicalAnd(node) || IsLogicalNot(node) || IsLogicalOr(node);
 }
 
+bool IsReduceOp(const NodeDef& node) {
+  return IsSum(node) || IsMean(node) || IsProd(node) || IsMax(node) ||
+         IsMin(node) || IsAll(node) || IsAny(node);
+}
+
 bool IsBinaryOp(const NodeDef& node) {
   bool is_binary =
       IsAdd(node) || IsAtan2(node) || IsComparisonOp(node) || IsComplex(node) ||
@@ -340,8 +354,11 @@ std::vector<int> DataInputPosConcat(const NodeDef& node) {
 }
 
 std::vector<int> DataInputPos(const NodeDef& node) {
-  if (IsSplit(node)) {
+  if (IsSplit(node) || IsHistogramSummary(node)) {
     return {1};
+  }
+  if (IsStridedSliceGrad(node)) {
+    return {4};
   }
   if (IsBinaryOp(node) || IsUnaryGrad(node)) {
     return {0, 1};
@@ -1105,7 +1122,7 @@ class MaxPoolGradV2Processor : public MaxPoolGradProcessor {
 
  protected:
   Status CustomizedProcessing() override {
-    for (int i = 3; i < node_->input_size(); i++) {
+    for (int i = 3; i <= 4; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1131,7 +1148,7 @@ class MaxPoolV2Processor : public NodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    for (int i = 1; i < node_->input_size(); i++) {
+    for (int i = 1; i <= 2; i++) {
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", DT_INT32));
     }
@@ -1351,9 +1368,8 @@ class ConcatProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     DataType dtype =
         (IsConcatV1(*node_)) ? DT_INT32 : node_->attr().at("Tidx").type();
-    TF_RETURN_IF_ERROR(
-        UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap", dtype));
-    return Status::OK();
+    return UpdateOrTransformParamInput(axis_node_pos_, "DataFormatDimMap",
+                                       dtype);
   }
 
   int axis_node_pos_;
@@ -1371,6 +1387,25 @@ class FillProcessor : public AgnosticNodeProcessor {
     DataType dtype = node_->attr().at("index_type").type();
     return UpdateOrTransformParamInput(0, "DataFormatVecPermute", dtype);
   }
+};
+
+class HistogramSummaryProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit HistogramSummaryProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  bool ShouldProcess() const override {
+    auto input1 = node_map_->GetNode(node_->input(1));
+    int port;
+    ParseNodeName(node_->input(1), &port);
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsPortDimsFour(*input1, port) && IsOnGPU();
+  }
+
+  std::vector<int> GetInputPos() const override { return {1}; }
+
+  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 };
 
 class IdentityNProcessor : public AgnosticNodeProcessor {
@@ -1437,8 +1472,9 @@ class MergeProcessor : public AgnosticNodeProcessor {
 
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
-    input_pos.reserve(node_->input_size());
-    for (int i = 0; i < node_->input_size(); i++) {
+    int n = node_->attr().at("N").i();
+    input_pos.reserve(n);
+    for (int i = 0; i < n; i++) {
       input_pos.push_back(i);
     }
     return input_pos;
@@ -1530,6 +1566,26 @@ class TernaryOpProcessor : public AgnosticNodeProcessor {
   std::vector<int> GetInputPos() const override { return {0, 1, 2}; }
 };
 
+class SelectProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit SelectProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  std::vector<int> GetInputPos() const override {
+    auto input0 = node_map_->GetNode(node_->input(0));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    // Input 0 could be a scalar, a vector with size matching the first
+    // dimension of input 1 and 2, or must have the same shape as input 1 and 2.
+    if (IsPortDimsFour(*input0, input0_port)) {
+      return {0, 1, 2};
+    } else {
+      return {1, 2};
+    }
+  }
+};
+
 class UnaryGradProcessor : public AgnosticNodeProcessor {
  public:
   explicit UnaryGradProcessor(const OptimizeContext& opt_cxt)
@@ -1542,18 +1598,87 @@ class UnaryGradProcessor : public AgnosticNodeProcessor {
 class SliceProcessor : public AgnosticNodeProcessor {
  public:
   explicit SliceProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+      : AgnosticNodeProcessor(opt_cxt) {
+    // Skip the first input, which is the data to be sliced.
+    start_ = 1;
+    // Note that we can't use node_->input_size() here because there
+    // could be control inputs.
+    end_ = 2;
+  }
 
  protected:
-  Status CustomizedProcessing() override {
-    // Skip the first input, which is the data to be sliced.
-    for (int i = 1; i < node_->input_size(); i++) {
+  Status ProcessInputs() {
+    for (int i = start_; i <= end_; i++) {
       DataType dtype = node_->attr().at("Index").type();
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(i, "DataFormatVecPermute", dtype));
     }
     return Status::OK();
   }
+
+  Status CustomizedProcessing() override { return ProcessInputs(); }
+
+  int start_;
+  int end_;
+};
+
+class StridedSliceProcessor : public SliceProcessor {
+ public:
+  explicit StridedSliceProcessor(const OptimizeContext& opt_cxt)
+      : SliceProcessor(opt_cxt) {
+    start_ = 1;
+    end_ = 3;
+  }
+
+ protected:
+  bool ShouldProcess() const override {
+    return AgnosticNodeProcessor::ShouldProcess() && IsOnlyBeginEndMask();
+  }
+
+  Status CustomizedProcessing() override {
+    TF_RETURN_IF_ERROR(UpdateMask("begin_mask"));
+    TF_RETURN_IF_ERROR(UpdateMask("end_mask"));
+    TF_RETURN_IF_ERROR(ProcessInputs());
+    return Status::OK();
+  }
+
+ private:
+  bool IsMaskZero(const string& mask) const {
+    return node_->attr().at(mask).i() == 0;
+  }
+
+  bool IsOnlyBeginEndMask() const {
+    return IsMaskZero("ellipsis_mask") && IsMaskZero("new_axis_mask") &&
+           IsMaskZero("shrink_axis_mask");
+  }
+
+  Status UpdateMask(const string& mask) {
+    int i = node_->attr().at(mask).i();
+    if (i < 0 || i > 15) {
+      return errors::InvalidArgument("invalid mask value: ", i);
+    }
+    if (i == 0 || i == 1 || i == 14 || i == 15) return Status::OK();
+    if (i == 2 || i == 3) i += 2;
+    if (i == 4 || i == 5) i += 4;
+    if (i == 6 || i == 7) i += 6;
+    if (i == 8 || i == 9) i -= 6;
+    if (i == 10 || i == 11) i -= 4;
+    if (i == 12 || i == 13) i -= 2;
+    node_->mutable_attr()->at(mask).set_i(i);
+    return Status::OK();
+  }
+};
+
+class StridedSliceGradProcessor : public StridedSliceProcessor {
+ public:
+  explicit StridedSliceGradProcessor(const OptimizeContext& opt_cxt)
+      : StridedSliceProcessor(opt_cxt) {
+    start_ = 0;
+    end_ = 3;
+  }
+
+ protected:
+  std::vector<int> GetInputPos() const override { return {4}; }
 };
 
 class SqueezeProcessor : public AgnosticNodeProcessor {
@@ -1609,9 +1734,9 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   }
 };
 
-class SumProcessor : public AgnosticNodeProcessor {
+class ReduceProcessor : public AgnosticNodeProcessor {
  public:
-  explicit SumProcessor(const OptimizeContext& opt_cxt)
+  explicit ReduceProcessor(const OptimizeContext& opt_cxt)
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
@@ -1620,14 +1745,31 @@ class SumProcessor : public AgnosticNodeProcessor {
     int port;
     ParseNodeName(node_->input(0), &port);
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsPortDimsFour(*input0, port) && IsOnGPU();
+           IsPortDimsFour(*input0, port) && IsAlongAllFourDims() && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
-  Status CustomizedProcessing() override {
-    DataType dtype = node_->attr().at("Tidx").type();
-    return UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype);
+ private:
+  bool IsAlongAllFourDims() const {
+    auto axis_node = node_map_->GetNode(node_->input(1));
+    if (!IsConstant(*axis_node)) {
+      return false;
+    }
+    if (HasAttribute(*axis_node, "value").ok()) {
+      Tensor tensor;
+      auto success = tensor.FromProto(axis_node->attr().at({"value"}).tensor());
+      if (!success) {
+        LOG(ERROR) << "Failed to parse TensorProto.";
+      }
+      if (tensor.dims() == 1 && tensor.dim_size(0) == 4) {
+        if (tensor.flat<int>()(0) == 0 && tensor.flat<int>()(1) == 1 &&
+            tensor.flat<int>()(2) == 2 && tensor.flat<int>()(3) == 3) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 };
 
@@ -1638,6 +1780,18 @@ class SwitchProcessor : public AgnosticNodeProcessor {
 
  protected:
   std::set<int> GetOutputPos() const override { return {0, 1}; }
+};
+
+class TileProcessor : public AgnosticNodeProcessor {
+ public:
+  explicit TileProcessor(const OptimizeContext& opt_cxt)
+      : AgnosticNodeProcessor(opt_cxt) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    DataType dtype = node_->attr().at("Tmultiples").type();
+    return UpdateOrTransformParamInput(1, "DataFormatVecPermute", dtype);
+  }
 };
 
 class DataLayoutOptimizer : GraphProcessor {
@@ -1740,7 +1894,7 @@ class DataLayoutOptimizer : GraphProcessor {
           std::unique_ptr<NodeProcessor> node_processor;
           if (IsAddN(*node)) {
             node_processor.reset(new AddNProcessor(opt_cxt));
-          } else if (IsBetainc(*node) || IsSelect(*node)) {
+          } else if (IsBetainc(*node)) {
             node_processor.reset(new TernaryOpProcessor(opt_cxt));
           } else if (IsBinaryOp(*node)) {
             node_processor.reset(new BinaryOpProcessor(opt_cxt));
@@ -1748,16 +1902,25 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new ConcatProcessor(opt_cxt));
           } else if (IsFill(*node)) {
             node_processor.reset(new FillProcessor(opt_cxt));
+          } else if (IsHistogramSummary(*node)) {
+            node_processor.reset(new HistogramSummaryProcessor(opt_cxt));
           } else if (IsIdentityN(*node)) {
             node_processor.reset(new IdentityNProcessor(opt_cxt));
           } else if (IsMerge(*node)) {
             node_processor.reset(new MergeProcessor(opt_cxt));
-          } else if (IsPad(*node)) {
+          } else if (IsPad(*node) || IsMirrorPad(*node) ||
+                     IsMirrorPadGrad(*node)) {
             node_processor.reset(new PadProcessor(opt_cxt));
+          } else if (IsReduceOp(*node)) {
+            node_processor.reset(new ReduceProcessor(opt_cxt));
           } else if (IsReverseV2(*node)) {
             node_processor.reset(new ReverseProcessor(opt_cxt));
+          } else if (IsSelect(*node)) {
+            node_processor.reset(new SelectProcessor(opt_cxt));
           } else if (IsSlice(*node)) {
             node_processor.reset(new SliceProcessor(opt_cxt));
+          } else if (IsStridedSlice(*node)) {
+            node_processor.reset(new StridedSliceProcessor(opt_cxt));
           } else if (IsShape(*node) || IsShapeN(*node)) {
             node_processor.reset(new ShapeProcessor(opt_cxt));
           } else if (IsSplit(*node)) {
@@ -1766,10 +1929,12 @@ class DataLayoutOptimizer : GraphProcessor {
             node_processor.reset(new SplitVProcessor(opt_cxt));
           } else if (IsSqueeze(*node)) {
             node_processor.reset(new SqueezeProcessor(opt_cxt));
-          } else if (IsSum(*node)) {
-            node_processor.reset(new SumProcessor(opt_cxt));
+          } else if (IsStridedSliceGrad(*node)) {
+            node_processor.reset(new StridedSliceGradProcessor(opt_cxt));
           } else if (IsSwitch(*node)) {
             node_processor.reset(new SwitchProcessor(opt_cxt));
+          } else if (IsTile(*node)) {
+            node_processor.reset(new TileProcessor(opt_cxt));
           } else if (IsUnaryGrad(*node)) {
             node_processor.reset(new UnaryGradProcessor(opt_cxt));
           } else {

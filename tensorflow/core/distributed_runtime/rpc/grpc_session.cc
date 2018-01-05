@@ -330,7 +330,7 @@ Status GrpcSession::Close() {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
+      return Status::OK();
     }
     req.set_session_handle(handle_);
     handle_.clear();

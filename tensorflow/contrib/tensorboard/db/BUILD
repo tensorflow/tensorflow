@@ -19,6 +19,7 @@ cc_library(
 
 tf_cc_test(
     name = "schema_test",
+    size = "small",
     srcs = ["schema_test.cc"],
     deps = [
         ":schema",

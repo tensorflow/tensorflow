@@ -128,9 +128,9 @@ Status FileBlockCache::MaybeFetch(const Key& key,
         size_t bytes_transferred;
         status.Update(block_fetcher_(key.first, key.second, block_size_,
                                      block->data.data(), &bytes_transferred));
-        block->data.resize(bytes_transferred, 0);
         block->mu.lock();  // Reacquire the lock immediately afterwards
         if (status.ok()) {
+          block->data.resize(bytes_transferred, 0);
           downloaded_block = true;
           block->state = FetchState::FINISHED;
         } else {

@@ -11,11 +11,12 @@ package(default_visibility = [
 ])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_py_library(
     name = "framework_py",
@@ -31,6 +32,7 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
+        "python/ops/critical_section_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/sort_ops.py",
@@ -70,6 +72,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -170,6 +173,21 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "critical_section_test",
+    size = "medium",
+    srcs = ["python/ops/critical_section_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        ":framework_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )
 

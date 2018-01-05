@@ -161,7 +161,14 @@ void XlaOpRegistry::RegisterCompilationKernels() {
     const string& op_name = op.first;
     const std::unique_ptr<OpRegistration>& op_registration = op.second;
     const OpDef* op_def;
-    TF_CHECK_OK(op_registry->LookUpOpDef(op_name, &op_def));
+    Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
+    if (!lookup_status.ok()) {
+      LOG(ERROR) << lookup_status.error_message();
+      XLA_LOG_LINES(
+          ERROR, "Ops registered: \n" +
+                     dynamic_cast<OpRegistry*>(op_registry)->DebugString(true));
+    }
+    TF_CHECK_OK(lookup_status);
 
     std::unordered_set<string> type_attrs;
     for (const OpDef::AttrDef& attr_def : op_def->attr()) {

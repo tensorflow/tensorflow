@@ -1535,6 +1535,9 @@ class ControlFlowContext(object):
   def IsCondContext(self):
     return False
 
+  def IsXLAContext(self):
+    return False
+
   def __str__(self):
     return self.name
 
@@ -3377,6 +3380,13 @@ def case(pred_fn_pairs,
         return fn()
     else:
       return fn()
+
+
+class XLAControlFlowContext(ControlFlowContext):
+  """Base class for XLA and TPU control flow contexts."""
+
+  def IsXLAContext(self):
+    return True
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

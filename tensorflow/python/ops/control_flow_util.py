@@ -28,6 +28,16 @@ import traceback
 from tensorflow.python.platform import tf_logging as logging
 
 
+def IsInXLAContext(op):
+  try:
+    xla_compile = op.get_attr("_XlaCompile")
+    if xla_compile: return True
+  except ValueError:
+    pass
+  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingXLAContext(ctxt) is not None
+
+
 def IsInWhileLoop(op):
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingWhileContext(ctxt) is not None
@@ -78,7 +88,10 @@ def GetLoopConstantEnter(value):
 def GetOutputContext(op):
   """Return the control flow context for the output of an op."""
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
-  if IsLoopExit(op):
+  # Exit nodes usually have a control flow context, except in the case where the
+  # exit node was imported via import_graph_def (in which case no nodes have
+  # control flow contexts).
+  if ctxt is not None and IsLoopExit(op):
     ctxt = ctxt.outer_context
   return ctxt
 
@@ -98,6 +111,25 @@ def GetContainingWhileContext(ctxt):
   """
   while ctxt:
     if ctxt.IsWhileContext(): return ctxt
+    ctxt = ctxt.outer_context
+  return None
+
+
+def GetContainingXLAContext(ctxt):
+  """Returns the first ancestor XLAContext of `ctxt`.
+
+  Returns `ctxt` if `ctxt` is a XLAContext, or None if `ctxt` is not in a
+  while loop.
+
+  Args:
+    ctxt: ControlFlowContext
+
+  Returns:
+    `ctxt` if `ctxt` is a XLAContext, the most nested XLAContext containing
+    `ctxt`, or None if `ctxt` is not in a while loop.
+  """
+  while ctxt:
+    if ctxt.IsXLAContext(): return ctxt
     ctxt = ctxt.outer_context
   return None
 

@@ -449,6 +449,11 @@ string AllowedStr(const OpDef::AttrDef& attr) {
   return SummarizeAttrValue(attr.allowed_values());
 }
 
+string DefaultAttrStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_default_value()) return "no default";
+  return SummarizeAttrValue(attr.default_value());
+}
+
 bool HigherMinimum(const OpDef::AttrDef& old_attr,
                    const OpDef::AttrDef& new_attr) {
   // Anything -> no restriction : not more restrictive.
@@ -610,6 +615,16 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
     VALIDATE(!HigherMinimum(old_attr, *new_attr), "Attr '", old_attr.name(),
              "' has a higher minimum; from ", MinStr(old_attr), " to ",
              MinStr(*new_attr));
+    VALIDATE(old_attr.has_default_value() == new_attr->has_default_value(),
+             "Attr '", old_attr.name(), "' has added/removed it's default; ",
+             "from ", DefaultAttrStr(old_attr), " to ",
+             DefaultAttrStr(*new_attr));
+    VALIDATE(!old_attr.has_default_value() ||
+                 AreAttrValuesEqual(old_attr.default_value(),
+                                    new_attr->default_value()),
+             "Attr '", old_attr.name(), "' has changed it's default value; ",
+             "from ", DefaultAttrStr(old_attr), " to ",
+             DefaultAttrStr(*new_attr));
   }
 
   for (const auto& new_attr : new_op.attr()) {

@@ -90,8 +90,9 @@ class DecodeRawOpTest(test.TestCase):
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
 
-      result = decode.eval(feed_dict={in_bytes: [""]})
-      self.assertEqual(len(result), 1)
+      for num_inputs in range(3):
+        result = decode.eval(feed_dict={in_bytes: [""] * num_inputs})
+        self.assertEqual((num_inputs, 0), result.shape)
 
   def testToUInt16(self):
     with self.test_session():

@@ -407,13 +407,8 @@ class Layer(object):
     """Determines op naming for the Layer."""
     return current_variable_scope.original_name_scope
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer given the input shape.
-
-    Assumes that the layer will be built to match that input shape.
-    If this method is not implemented by child classes, the default
-    assumption will be that the layer does not alter the shape of the tensors
-    passing through it.
 
     Args:
       input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
@@ -428,7 +423,7 @@ class Layer(object):
       ValueError: if `input_shape` is incomplete or is incompatible with the
         the layer.
     """
-    return input_shape
+    raise NotImplementedError
 
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
@@ -655,9 +650,9 @@ class Layer(object):
             raise ValueError('A layer\'s `call` method should return a Tensor '
                              'or a list of Tensors, not None.')
         else:
-          # Deferred mode behavior: use `_compute_output_shape` to
+          # Deferred mode behavior: use `compute_output_shape` to
           # infer the number of outputs of the layer and their shapes.
-          output_shapes = self._compute_output_shape(input_shapes)
+          output_shapes = self.compute_output_shape(input_shapes)
           output_shapes = nest.flatten(output_shapes)
           outputs = [
               # TODO(fchollet): name the deferred tensors?

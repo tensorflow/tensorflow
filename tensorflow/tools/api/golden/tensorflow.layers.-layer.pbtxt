@@ -107,6 +107,10 @@ tf_class {
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count_params"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

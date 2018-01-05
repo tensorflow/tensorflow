@@ -353,7 +353,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK(!IsTuple(shape));
+  CHECK(!IsTuple(shape)) << ShapeUtil::HumanString(shape);
   CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,

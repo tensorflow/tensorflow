@@ -1202,6 +1202,50 @@ def make_space_to_depth_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_space_to_batch_nd_tests(zip_path):
+  """Make a set of tests to do space_to_batch_nd."""
+
+  # TODO(nupurgarg): Add test for uint8.
+  test_parameters = [
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 2, 2, 3], [2, 2, 4, 1]],
+          "block_shape": [[1, 3], [2, 2]],
+          "paddings": [[[0, 0], [0, 0]], [[0, 0], [2, 0]], [[1, 1], [1, 1]]],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[2, 3, 7, 3]],
+          "block_shape": [[1, 3], [2, 2]],
+          "paddings": [[[0, 0], [2, 0]], [[1, 0], [1, 0]]],
+      },
+      # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 4, 4, 1, 1]],
+          "block_shape": [[2, 2, 2]],
+          "paddings": [[[0, 0], [0, 0], [0, 0]]],
+      },
+  ]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.space_to_batch_nd(input_tensor, parameters["block_shape"],
+                               parameters["paddings"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_batch_to_space_nd_tests(zip_path):
   """Make a set of tests to do batch_to_space_nd."""
 
@@ -1267,6 +1311,7 @@ def main(unused_args):
     dispatch = {
         "control_dep.zip": make_control_dep_tests,
         "add.zip": make_add_tests,
+        "space_to_batch_nd.zip": make_space_to_batch_nd_tests,
         "batch_to_space_nd.zip": make_batch_to_space_nd_tests,
         "conv.zip": make_conv_tests,
         "constant.zip": make_constant_tests,

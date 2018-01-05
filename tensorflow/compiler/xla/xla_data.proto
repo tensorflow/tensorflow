@@ -814,9 +814,7 @@ enum RandomDistribution {
   // parameter[0] and standard deviation parameter[1].
   RNG_NORMAL = 2;
 
-  // Creates a Bernoulli-distribution-generated random number with mean
-  // parameter[0].
-  RNG_BERNOULLI = 3;
+  // Next: 4
 }
 
 message RngRequest {

@@ -32,7 +32,7 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
     InsertOrDie(&computation_to_profile_idx_, computation,
                 current_profile_index++);
     for (const HloInstruction* instruction : computation->instructions()) {
-      // For simplicity we track all instrutions here, but we could skip
+      // For simplicity we track all instructions here, but we could skip
       // non-executing instructions like constants and parameters.
       InsertOrDie(&instruction_to_profile_idx_, instruction,
                   current_profile_index++);

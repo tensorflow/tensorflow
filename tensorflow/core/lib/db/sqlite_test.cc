@@ -231,5 +231,22 @@ TEST_F(SqliteTest, BindFailed) {
             s.status().error_message().find("INSERT INTO T (a) VALUES (123)"));
 }
 
+TEST_F(SqliteTest, SnappyExtension) {
+  auto stmt = db_->Prepare("SELECT UNSNAP(SNAP(?))");
+  stmt.BindText(1, "hello");
+  TF_ASSERT_OK(stmt.Step(&is_done_));
+  EXPECT_FALSE(is_done_);
+  EXPECT_EQ("hello", stmt.ColumnString(0));
+}
+
+TEST_F(SqliteTest, SnappyBinaryCompatibility) {
+  auto stmt = db_->Prepare(
+      "SELECT UNSNAP(X'03207C746F6461792069732074686520656E64206F66207468652"
+      "072657075626C6963')");
+  TF_ASSERT_OK(stmt.Step(&is_done_));
+  EXPECT_FALSE(is_done_);
+  EXPECT_EQ("today is the end of the republic", stmt.ColumnString(0));
+}
+
 }  // namespace
 }  // namespace tensorflow

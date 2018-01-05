@@ -1210,84 +1210,84 @@ Literal::GetMutableArraySlice<bfloat16>() {
 
 template <>
 tensorflow::gtl::ArraySlice<bool> Literal::GetArraySlice<bool>() const {
-  CHECK_EQ(shape().element_type(), PRED);
+  CHECK_EQ(shape().element_type(), PRED) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<bool>(
       reinterpret_cast<const bool*>(preds().data()), preds().size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<uint8> Literal::GetArraySlice<uint8>() const {
-  CHECK_EQ(shape().element_type(), U8);
+  CHECK_EQ(shape().element_type(), U8) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<uint8>(
       reinterpret_cast<const uint8*>(u8s().data()), u8s().size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const {
-  CHECK_EQ(shape().element_type(), S8);
+  CHECK_EQ(shape().element_type(), S8) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<int8>(
       reinterpret_cast<const int8*>(u8s().data()), u8s().size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const {
-  CHECK_EQ(shape().element_type(), U16);
+  CHECK_EQ(shape().element_type(), U16) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<uint16>(u16s().data(), u16s().size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const {
-  CHECK_EQ(shape().element_type(), S16);
+  CHECK_EQ(shape().element_type(), S16) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<int16>(s16s().data(), s16s().size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<uint32> Literal::GetArraySlice<uint32>() const {
-  CHECK_EQ(shape().element_type(), U32);
+  CHECK_EQ(shape().element_type(), U32) << ShapeUtil::HumanString(shape());
   return u32s();
 }
 
 template <>
 tensorflow::gtl::ArraySlice<uint64> Literal::GetArraySlice<uint64>() const {
-  CHECK_EQ(shape().element_type(), U64);
+  CHECK_EQ(shape().element_type(), U64) << ShapeUtil::HumanString(shape());
   return u64s();
 }
 
 template <>
 tensorflow::gtl::ArraySlice<int32> Literal::GetArraySlice<int32>() const {
-  CHECK_EQ(shape().element_type(), S32);
+  CHECK_EQ(shape().element_type(), S32) << ShapeUtil::HumanString(shape());
   return s32s();
 }
 
 template <>
 tensorflow::gtl::ArraySlice<int64> Literal::GetArraySlice<int64>() const {
-  CHECK_EQ(shape().element_type(), S64);
+  CHECK_EQ(shape().element_type(), S64) << ShapeUtil::HumanString(shape());
   return s64s();
 }
 
 template <>
 tensorflow::gtl::ArraySlice<double> Literal::GetArraySlice<double>() const {
-  CHECK_EQ(shape().element_type(), F64);
+  CHECK_EQ(shape().element_type(), F64) << ShapeUtil::HumanString(shape());
   return f64s();
 }
 
 template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const {
-  CHECK_EQ(shape().element_type(), F16);
+  CHECK_EQ(shape().element_type(), F16) << ShapeUtil::HumanString(shape());
   return tensorflow::gtl::ArraySlice<half>(f16s().data(),
                                            f16s().size() / sizeof(half));
 }
 
 template <>
 tensorflow::gtl::ArraySlice<bfloat16> Literal::GetArraySlice<bfloat16>() const {
-  CHECK_EQ(shape().element_type(), BF16);
+  CHECK_EQ(shape().element_type(), BF16) << ShapeUtil::HumanString(shape());
   return {bf16s().data(), bf16s().size()};
 }
 
 template <>
 tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
     const {
-  CHECK_EQ(shape().element_type(), C64);
+  CHECK_EQ(shape().element_type(), C64) << ShapeUtil::HumanString(shape());
   return c64s();
 }
 

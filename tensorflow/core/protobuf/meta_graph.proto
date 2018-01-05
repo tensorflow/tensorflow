@@ -61,6 +61,10 @@ message MetaGraphDef {
     // graph. This will be populated by the framework, which will overwrite any
     // user supplied value.
     string tensorflow_git_version = 6;
+
+    // A flag to denote whether default-valued attrs have been stripped from
+    // the nodes in this graph_def.
+    bool stripped_default_attrs = 7;
   }
   MetaInfoDef meta_info_def = 1;
 

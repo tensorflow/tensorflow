@@ -412,7 +412,7 @@ class RNN(Layer):
   def states(self, states):
     self._states = states
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -2266,7 +2266,7 @@ class Recurrent(Layer):
     self.dropout = 0
     self.recurrent_dropout = 0
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

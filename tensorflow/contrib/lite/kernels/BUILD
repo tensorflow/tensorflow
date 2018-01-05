@@ -98,6 +98,7 @@ cc_library(
         "reshape.cc",
         "resize_bilinear.cc",
         "skip_gram.cc",
+        "space_to_batch_nd.cc",
         "space_to_depth.cc",
         "svdf.cc",
         "unidirectional_sequence_rnn.cc",
@@ -149,6 +150,32 @@ tf_cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "transpose_test",
+    size = "small",
+    srcs = ["transpose_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/kernels/internal:reference",
+        "//tensorflow/contrib/lite/kernels/internal:reference_base",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "space_to_batch_nd_test",
+    size = "small",
+    srcs = ["space_to_batch_nd_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
