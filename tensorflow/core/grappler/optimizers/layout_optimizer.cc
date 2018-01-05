@@ -1745,12 +1745,17 @@ class ReduceProcessor : public AgnosticNodeProcessor {
     int port;
     ParseNodeName(node_->input(0), &port);
     return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
-           IsPortDimsFour(*input0, port) && IsAlongAllFourDims() && IsOnGPU();
+           IsPortDimsFour(*input0, port) && IsReduceAxisSupported() &&
+           IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
  private:
+  bool IsReduceAxisSupported() const {
+    return IsAlongAllFourDims() || IsAlongHWC();
+  }
+
   bool IsAlongAllFourDims() const {
     auto axis_node = node_map_->GetNode(node_->input(1));
     if (!IsConstant(*axis_node)) {
@@ -1765,6 +1770,27 @@ class ReduceProcessor : public AgnosticNodeProcessor {
       if (tensor.dims() == 1 && tensor.dim_size(0) == 4) {
         if (tensor.flat<int>()(0) == 0 && tensor.flat<int>()(1) == 1 &&
             tensor.flat<int>()(2) == 2 && tensor.flat<int>()(3) == 3) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool IsAlongHWC() const {
+    auto axis_node = node_map_->GetNode(node_->input(1));
+    if (!IsConstant(*axis_node)) {
+      return false;
+    }
+    if (HasAttribute(*axis_node, "value").ok()) {
+      Tensor tensor;
+      auto success = tensor.FromProto(axis_node->attr().at({"value"}).tensor());
+      if (!success) {
+        LOG(ERROR) << "Failed to parse TensorProto.";
+      }
+      if (tensor.dims() == 1 && tensor.dim_size(0) == 3) {
+        if (tensor.flat<int>()(0) == 1 && tensor.flat<int>()(1) == 2 &&
+            tensor.flat<int>()(2) == 3) {
           return true;
         }
       }
