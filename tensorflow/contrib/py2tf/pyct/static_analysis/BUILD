@@ -29,6 +29,10 @@ py_library(
 py_test(
     name = "access_test",
     srcs = ["access_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
@@ -39,6 +43,10 @@ py_test(
 py_test(
     name = "live_values_test",
     srcs = ["live_values_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
@@ -49,6 +57,10 @@ py_test(
 py_test(
     name = "type_info_test",
     srcs = ["type_info_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
