@@ -531,6 +531,9 @@ def tf_additional_gdr_lib_defines():
       "//conditions:default": [],
   })
 
+def tf_py_clif_cc(name, visibility=None, **kwargs):
+  pass
+
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):
   pass

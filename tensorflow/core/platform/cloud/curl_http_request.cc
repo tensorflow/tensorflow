@@ -305,6 +305,10 @@ void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
                              &CurlHttpRequest::WriteCallbackDirect);
 }
 
+bool CurlHttpRequest::IsDirectResponse() const {
+  return direct_response_.buffer_ != nullptr;
+}
+
 size_t CurlHttpRequest::WriteCallbackDirect(const void* ptr, size_t size,
                                             size_t nmemb, void* userdata) {
   CHECK(ptr != nullptr);
@@ -431,6 +435,8 @@ Status CurlHttpRequest::Send() {
       ", error code ", curl_result, ", error message '", error_buffer, "')");
 
   Status result;
+  StringPiece response = GetResponse();
+  string extended_error_message;
   switch (response_code_) {
     // The group of response codes indicating that the request achieved
     // the expected goal.
@@ -463,7 +469,15 @@ Status CurlHttpRequest::Send() {
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
-      result = errors::PermissionDenied(error_message);
+      if (!response.empty()) {
+        extended_error_message = strings::StrCat(
+            error_message, ", response ",
+            response.substr(
+                0, std::min(response.size(), response_to_error_limit_)));
+        result = errors::PermissionDenied(extended_error_message);
+      } else {
+        result = errors::PermissionDenied(error_message);
+      }
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
@@ -508,6 +522,17 @@ void CurlHttpRequest::CheckMethodNotSet() const {
 
 void CurlHttpRequest::CheckNotSent() const {
   CHECK(!is_sent_) << "The request has already been sent.";
+}
+
+StringPiece CurlHttpRequest::GetResponse() const {
+  StringPiece response;
+  if (IsDirectResponse()) {
+    response = StringPiece(direct_response_.buffer_,
+                           direct_response_.bytes_transferred_);
+  } else {
+    response = StringPiece(response_buffer_->data(), response_buffer_->size());
+  }
+  return response;
 }
 
 string CurlHttpRequest::GetResponseHeader(const string& name) const {

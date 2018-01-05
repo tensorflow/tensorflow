@@ -181,11 +181,11 @@ class TimeDistributed(Wrapper):
     super(TimeDistributed, self).build()
     self.built = True
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
                                                  input_shape[2:])
-    child_output_shape = self.layer._compute_output_shape(  # pylint: disable=protected-access
+    child_output_shape = self.layer.compute_output_shape(
         child_input_shape).as_list()
     timesteps = input_shape[1]
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
@@ -231,7 +231,7 @@ class TimeDistributed(Wrapper):
       if hasattr(y, '_uses_learning_phase'):
         uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
-      output_shape = self._compute_output_shape(input_shape).as_list()
+      output_shape = self.compute_output_shape(input_shape).as_list()
       y = K.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
 
     # Apply activity regularizer if any:
@@ -301,16 +301,16 @@ class Bidirectional(Wrapper):
     self.forward_layer.set_weights(weights[:nw // 2])
     self.backward_layer.set_weights(weights[nw // 2:])
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
     if self.merge_mode in ['sum', 'ave', 'mul']:
-      return self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
+      return self.forward_layer.compute_output_shape(input_shape)
     elif self.merge_mode == 'concat':
-      shape = self.forward_layer._compute_output_shape(input_shape).as_list()  # pylint: disable=protected-access
+      shape = self.forward_layer.compute_output_shape(input_shape).as_list()
       shape[-1] *= 2
       return tensor_shape.TensorShape(shape)
     elif self.merge_mode is None:
-      shape = self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
+      shape = self.forward_layer.compute_output_shape(input_shape)
       return [shape, copy.copy(shape)]
 
   def call(self, inputs, training=None, mask=None):

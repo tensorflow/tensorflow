@@ -89,20 +89,27 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                             &captured_window_size_func));
 
     *output = new Dataset(
-        input, std::move(captured_key_func), std::move(captured_reduce_func),
+        ctx, input, key_func_, reduce_func_, window_size_func_,
+        std::move(captured_key_func), std::move(captured_reduce_func),
         std::move(captured_window_size_func), output_types_, output_shapes_);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& key_func, const NameAttrList& reduce_func,
+            const NameAttrList& window_size_func,
             std::unique_ptr<CapturedFunction> captured_key_func,
             std::unique_ptr<CapturedFunction> captured_reduce_func,
             std::unique_ptr<CapturedFunction> captured_window_size_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
+          key_func_(key_func),
+          reduce_func_(reduce_func),
+          window_size_func_(window_size_func),
           captured_key_func_(std::move(captured_key_func)),
           captured_reduce_func_(std::move(captured_reduce_func)),
           captured_window_size_func_(std::move(captured_window_size_func)),
@@ -127,6 +134,67 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "GroupByWindowDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+
+      std::vector<Node*> key_func_other_arguments_node;
+      DataTypeVector key_func_other_arguments_types;
+      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
+          b, captured_key_func_, &key_func_other_arguments_node,
+          &key_func_other_arguments_types));
+
+      std::vector<Node*> reduce_func_other_arguments_node;
+      DataTypeVector reduce_func_other_arguments_types;
+      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
+          b, captured_reduce_func_, &reduce_func_other_arguments_node,
+          &reduce_func_other_arguments_types));
+
+      std::vector<Node*> window_size_func_other_arguments_node;
+      DataTypeVector window_size_func_other_arguments_types;
+      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
+          b, captured_window_size_func_, &window_size_func_other_arguments_node,
+          &window_size_func_other_arguments_types));
+
+      AttrValue key_func;
+      b->BuildAttrValue(key_func_, &key_func);
+      AttrValue reduce_func;
+      b->BuildAttrValue(reduce_func_, &reduce_func);
+      AttrValue window_size_func;
+      b->BuildAttrValue(window_size_func_, &window_size_func);
+
+      AttrValue key_func_other_arguments_types_attr;
+      b->BuildAttrValue(key_func_other_arguments_types,
+                        &key_func_other_arguments_types_attr);
+      AttrValue reduce_func_other_arguments_types_attr;
+      b->BuildAttrValue(reduce_func_other_arguments_types,
+                        &reduce_func_other_arguments_types_attr);
+      AttrValue window_size_func_other_arguments_types_attr;
+      b->BuildAttrValue(window_size_func_other_arguments_types,
+                        &window_size_func_other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {{0, input_graph_node}},
+          {{1, key_func_other_arguments_node},
+           {2, reduce_func_other_arguments_node},
+           {3, window_size_func_other_arguments_node}},
+          {{"key_func", key_func},
+           {"reduce_func", reduce_func},
+           {"window_size_func", window_size_func},
+           {"Tkey_func_other_arguments", key_func_other_arguments_types_attr},
+           {"Treduce_func_other_arguments",
+            reduce_func_other_arguments_types_attr},
+           {"Twindow_size_func_other_arguments",
+            window_size_func_other_arguments_types_attr}},
+          output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -154,6 +222,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             // We have reached the end of the current group, so maybe move on
             // to the next group.
             current_group_iterator_.reset();
+            groups_.erase(current_key_);
           }
 
           // Iterate through the input dataset until we get a full
@@ -231,6 +300,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               group.push_back(std::move(next_input_element));
 
               if (group.size() == window_size) {
+                current_key_ = key;
                 TF_RETURN_IF_ERROR(StartFlushingGroup(ctx, key));
                 break;
               }
@@ -241,6 +311,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             if (!groups_.empty()) {
               // We have consumed all of the input, so flush an
               // arbitrarily chosen group.
+              current_key_ = groups_.begin()->first;
               TF_RETURN_IF_ERROR(
                   StartFlushingGroup(ctx, groups_.begin()->first));
             }
@@ -251,7 +322,160 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+
+        if (end_of_input_) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("end_of_input"), ""));
+        }
+
+        // Saving groups_
+        if (!groups_.empty()) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("groups_size"), groups_.size()));
+          int idx = 0;
+          for (auto it = groups_.begin(); it != groups_.end(); it++) {
+            int64 key = it->first;
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("groups_[", idx, "]->key")), key));
+            TF_RETURN_IF_ERROR(SaveGroup(
+                writer, full_name(strings::StrCat("groups_[", idx, "]")),
+                it->second));
+            idx++;
+          }
+        }
+
+        // Saving window_sizes_
+        if (!window_sizes_.empty()) {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("window_sizes_size"),
+                                                 window_sizes_.size()));
+          int idx = 0;
+          for (auto it = window_sizes_.begin(); it != window_sizes_.end();
+               it++) {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("window_sizes_[", idx, "]->key")),
+                it->first));
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("window_sizes_[", idx, "]->value")),
+                it->second));
+            idx++;
+          }
+        }
+
+        if (current_group_iterator_) {
+          TF_RETURN_IF_ERROR(SaveParent(writer, current_group_iterator_));
+
+          // Saving current_key_
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("current_key"), current_key_));
+        } else {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(
+              full_name("current_iterator_not_initialized"), ""));
+        }
+
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+
+        if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
+
+        // Restoring groups
+        if (reader->Contains(full_name("groups_size"))) {
+          int64 size;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("groups_size"), &size));
+          for (int idx = 0; idx < size; idx++) {
+            int64 key;
+            TF_RETURN_IF_ERROR(reader->ReadScalar(
+                full_name(strings::StrCat("groups_[", idx, "]->key")), &key));
+            std::vector<std::vector<Tensor>> group;
+            TF_RETURN_IF_ERROR(RestoreGroup(
+                reader, full_name(strings::StrCat("groups_[", idx, "]")),
+                &group));
+            groups_[key] = group;
+          }
+        }
+
+        // Restoring Windows
+        if (reader->Contains(full_name("window_sizes_size"))) {
+          int64 size;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("window_sizes_size"), &size));
+          for (int idx = 0; idx < size; idx++) {
+            int64 key;
+            TF_RETURN_IF_ERROR(reader->ReadScalar(
+                full_name(strings::StrCat("window_sizes_[", idx, "]->key")),
+                &key));
+            TF_RETURN_IF_ERROR(reader->ReadScalar(
+                full_name(strings::StrCat("window_sizes_[", idx, "]->value")),
+                &window_sizes_[key]));
+          }
+        }
+
+        if (reader->Contains(full_name("current_iterator_not_initialized"))) {
+          current_group_iterator_.reset();
+        } else {
+          // Restore current_key_
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("current_key"), &current_key_));
+
+          // Initialize current_group_iterator_
+          IteratorContext::Params params;
+          params.env = ctx->env();
+          params.runner = *(ctx->runner());
+          IteratorContext iter_ctx(std::move(params));
+          TF_RETURN_IF_ERROR(StartFlushingGroup(&iter_ctx, current_key_));
+          // Restore current_group_iterator_ state
+          TF_RETURN_IF_ERROR(
+              RestoreParent(ctx, reader, current_group_iterator_));
+        }
+        return Status::OK();
+      }
+
      private:
+      Status SaveGroup(IteratorStateWriter* writer, const string& name,
+                       const std::vector<std::vector<Tensor>>& group)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(strings::StrCat(name, "_size"), group.size()));
+        for (int i = 0; i < group.size(); i++) {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(
+              strings::StrCat(name, "[", i, "]_size"), group[i].size()));
+          for (int j = 0; j < group[i].size(); j++) {
+            TF_RETURN_IF_ERROR(writer->WriteTensor(
+                strings::StrCat(name, "[", i, "][", j, "]"), group[i][j]));
+          }
+        }
+        return Status::OK();
+      }
+
+      Status RestoreGroup(IteratorStateReader* reader, const string& name,
+                          std::vector<std::vector<Tensor>>* group)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        int64 group_size;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(strings::StrCat(name, "_size"), &group_size));
+        group->resize(group_size);
+        for (int i = 0; i < group_size; i++) {
+          int64 vector_size;
+          TF_RETURN_IF_ERROR(reader->ReadScalar(
+              strings::StrCat(name, "[", i, "]_size"), &vector_size));
+          group->at(i).resize(vector_size);
+          for (int j = 0; j < vector_size; j++) {
+            TF_RETURN_IF_ERROR(reader->ReadTensor(
+                strings::StrCat(name, "[", i, "][", j, "]"), &group->at(i)[j]));
+          }
+        }
+        return Status::OK();
+      }
+
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         FunctionLibraryRuntime::Options opts;
@@ -268,9 +492,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         DatasetBase* group_dataset;
         TF_RETURN_IF_ERROR(NewWindowDataset(
-            std::move(groups_[key]), dataset()->input_->output_dtypes(),
+            groups_[key], dataset()->input_->output_dtypes(),
             dataset()->input_->output_shapes(), &group_dataset));
-        groups_.erase(key);
 
         Tensor key_arg(DT_INT64, TensorShape({}));
         key_arg.scalar<int64>()() = key;
@@ -305,20 +528,40 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      const std::unique_ptr<IteratorBase> input_impl_;
       mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
       bool end_of_input_ GUARDED_BY(mu_) = false;
+      int64 current_key_ GUARDED_BY(mu_);
       std::map<int64, std::vector<std::vector<Tensor>>> groups_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_group_iterator_ GUARDED_BY(mu_);
       std::map<int64, int64> window_sizes_ GUARDED_BY(mu_);
     };
+
+    Status OtherArgumentsNodeAndType(
+        DatasetGraphDefBuilder* b,
+        const std::unique_ptr<CapturedFunction>& captured_func,
+        std::vector<Node*>* other_arguments_node,
+        DataTypeVector* other_arguments_types) const {
+      other_arguments_node->reserve(captured_func->captured_inputs().size());
+      other_arguments_types->reserve(captured_func->captured_inputs().size());
+      for (const Tensor& t : captured_func->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments_node->emplace_back(node);
+        other_arguments_types->emplace_back(t.dtype());
+      }
+      return Status::OK();
+    }
 
     // A resource name for the temporary window dataset that is
     // created as the input to the reduce function.
     static constexpr const char* kWindowResourceName = "__window_dataset";
 
     const DatasetBase* const input_;
+    const NameAttrList key_func_;
+    const NameAttrList reduce_func_;
+    const NameAttrList window_size_func_;
     const std::unique_ptr<CapturedFunction> captured_key_func_;
     const std::unique_ptr<CapturedFunction> captured_reduce_func_;
     const std::unique_ptr<CapturedFunction> captured_window_size_func_;

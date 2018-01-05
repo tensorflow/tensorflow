@@ -12,14 +12,27 @@ cc_library(
     srcs = ["sqlite.cc"],
     hdrs = ["sqlite.h"],
     deps = [
+        ":snapfn",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
-        "@sqlite_archive//:sqlite",
+        "@org_sqlite",
+    ],
+)
+
+cc_library(
+    name = "snapfn",
+    srcs = ["snapfn.cc"],
+    copts = ["-DSQLITE_OMIT_LOAD_EXTENSION"],
+    linkstatic = 1,
+    deps = [
+        "@org_sqlite",
+        "@snappy",
     ],
 )
 
 tf_cc_test(
     name = "sqlite_test",
+    size = "small",
     srcs = ["sqlite_test.cc"],
     deps = [
         ":sqlite",

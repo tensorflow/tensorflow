@@ -36,6 +36,10 @@ inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
          i3 * dims.strides[3];
 }
 
+inline int Offset(const Dims<4>& dims, int* index) {
+  return Offset(dims, index[0], index[1], index[2], index[3]);
+}
+
 // Get array size, DCHECKing that the dim index is in range.
 template <int N>
 int ArraySize(const Dims<N>& array, int index) {

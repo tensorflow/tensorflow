@@ -79,6 +79,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
@@ -242,6 +243,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleDot(HloInstruction* dot) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -331,6 +333,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns a ConvolutionThunk that calls DNN to implement `inst`.
   std::unique_ptr<Thunk> BuildConvolutionThunk(const HloInstruction* inst);
+
+  // Returns a FftThunk that calls cuFFT to implement `inst`.
+  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.

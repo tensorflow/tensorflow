@@ -605,6 +605,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       "Hit a case for convolution that is not implemented on GPU.");
 }
 
+Status IrEmitter::HandleFft(HloInstruction* fft) {
+  if (ShapeUtil::HasZeroElements(fft->shape())) {
+    // Emit no code for an empty output.
+    return Status::OK();
+  }
+  return Unimplemented("Hit a case for fft that is not implemented on GPU.");
+}
+
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
   return Unimplemented(

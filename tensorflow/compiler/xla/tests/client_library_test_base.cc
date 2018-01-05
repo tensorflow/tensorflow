@@ -251,8 +251,17 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
     const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
@@ -300,8 +309,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
-    const Shape* shape_with_layout) {
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
+    ErrorSpec error, const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
                ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
@@ -519,6 +537,14 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
   *data_handle =
       builder->Parameter(parameter_number, param_literal->shape(), name);
   return data;
+}
+
+ComputationDataHandle ClientLibraryTestBase::AddParam(
+    const Literal& argument, ComputationBuilder* builder) {
+  ComputationDataHandle data_handle;
+  arguments_.push_back(CreateParameterAndTransferLiteral(
+      arguments_.size(), argument, "", builder, &data_handle));
+  return data_handle;
 }
 
 ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
