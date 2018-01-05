@@ -319,6 +319,11 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
 )
 
+# TODO(jart): Why doesn't this work?
+# set_source_files_properties(
+#     ${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/snapfn.cc
+#     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
+
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
 
 add_library(tf_core_framework OBJECT

@@ -17,6 +17,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/logging.h"
 
+extern "C" int sqlite3_snapfn_init(sqlite3*, const char**, const void*);
+
 namespace tensorflow {
 namespace {
 
@@ -42,6 +44,7 @@ string ExecuteOrEmpty(Sqlite* db, const char* sql) {
 xla::StatusOr<std::shared_ptr<Sqlite>> Sqlite::Open(const string& uri) {
   sqlite3* sqlite = nullptr;
   TF_RETURN_IF_ERROR(MakeStatus(sqlite3_open(uri.c_str(), &sqlite)));
+  CHECK_EQ(SQLITE_OK, sqlite3_snapfn_init(sqlite, nullptr, nullptr));
   Sqlite* db = new Sqlite(sqlite, uri);
   // This is the SQLite default since 2016. However it's good to set
   // this anyway, since we might get linked against an older version of

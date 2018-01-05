@@ -43,6 +43,23 @@ limitations under the License.
 
 namespace xla {
 
+// Sets the use_bfloat16 on a container of test cases according to the values in
+// use_bfloat16_params. Generates one set of test cases for each values in
+// use_bfloat16_params with that value. Returns the result.
+template <typename TestCase>
+std::vector<TestCase> ExpandUseBfloat16(
+    tensorflow::gtl::ArraySlice<bool> use_bfloat16_params,
+    tensorflow::gtl::ArraySlice<TestCase> specs) {
+  std::vector<TestCase> expanded;
+  for (bool use_bfloat16 : use_bfloat16_params) {
+    for (const auto& spec : specs) {
+      expanded.push_back(spec);
+      expanded.back().use_bfloat16 = use_bfloat16;
+    }
+  }
+  return expanded;
+}
+
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
@@ -253,6 +270,20 @@ class ClientLibraryTestBase : public ::testing::Test {
       int64 parameter_number, const Literal& literal, const string& name,
       ComputationBuilder* builder, ComputationDataHandle* data_handle);
 
+  // Creates a parameter instruction and sets the value that will be passed to
+  // the computation as specified. This function must be used for all parameters
+  // or none and no parameters must be passed when invoking the computation if
+  // using this mechanism. If using this mechanism, then each parameter must be
+  // set exactly once. The first added parameter gets index 0, then 1 and so on.
+  ComputationDataHandle AddParam(const Literal& argument,
+                                 ComputationBuilder* builder);
+
+  template <class T>
+  ComputationDataHandle AddParam(const Array<T>& argument,
+                                 ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+
   // Creates a constant instruction with the given literal. When the
   // use_bfloat16 flag is set but the literal has F32 elements, the elements
   // will be converted to BF16s.
@@ -370,6 +401,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Whether to run tests with all float-type input/output converted to
   // bfloat16.
   bool use_bfloat16_ = false;
+
+  // Arguments to be passed to the computation when it runs.
+  std::vector<std::unique_ptr<GlobalData>> arguments_;
 };
 
 template <typename NativeT>

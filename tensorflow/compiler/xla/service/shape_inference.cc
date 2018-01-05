@@ -1715,6 +1715,78 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferFftShape(
+    const Shape& in, const FftType fft_type,
+    const tensorflow::gtl::ArraySlice<int64> fft_length) {
+  const int64 fft_rank = fft_length.size();
+  if (fft_rank < 1 || fft_rank > 3) {
+    return InvalidArgument("FFT only supports ranks 1-3, but got %lld",
+                           fft_rank);
+  }
+  switch (fft_type) {
+    case FFT:
+    case IFFT:
+      if (in.element_type() != C64) {
+        return InvalidArgument("%s requires C64 input type, found %s",
+                               FftType_Name(fft_type).c_str(),
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      return in;
+    case RFFT: {
+      if (in.element_type() != F32) {
+        return InvalidArgument("RFFT requires F32 input type, found %s",
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      for (int i = 0; i < fft_rank; i++) {
+        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+            fft_length[i]) {
+          return InvalidArgument(
+              "RFFT requires innermost dimensions match fft_length but "
+              "dimension %lld is %lld and should be %lld",
+              in.dimensions_size() - fft_rank + i,
+              in.dimensions(in.dimensions_size() - fft_rank + i),
+              fft_length[i]);
+        }
+      }
+      Shape result = ShapeUtil::ChangeElementType(in, C64);
+      result.set_dimensions(result.dimensions_size() - 1,
+                            fft_length[fft_rank - 1] / 2 + 1);
+      return result;
+    }
+    case IRFFT: {
+      if (in.element_type() != C64) {
+        return InvalidArgument("IRFFT requires C64 input type, found %s",
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      Shape result = ShapeUtil::ChangeElementType(in, F32);
+      for (int i = 0; i < fft_rank - 1; i++) {
+        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+            fft_length[i]) {
+          return InvalidArgument(
+              "IRFFT requires all but one innermost dimensions match "
+              "fft_length, but dimension %lld is %lld and should be %lld",
+              in.dimensions_size() - fft_rank + i,
+              in.dimensions(in.dimensions_size() - fft_rank + i),
+              fft_length[i]);
+        }
+      }
+      if (in.dimensions(in.dimensions_size() - 1) !=
+          fft_length[fft_rank - 1] / 2 + 1) {
+        return InvalidArgument(
+            "IRFFT requires innermost dimension matches fft_length/2+1, but "
+            "dimension %d is %lld and should be %lld",
+            in.dimensions_size() - 1, in.dimensions(in.dimensions_size() - 1),
+            fft_length[fft_rank - 1] / 2 + 1);
+      }
+      result.set_dimensions(result.dimensions_size() - 1,
+                            fft_length[fft_rank - 1]);
+      return result;
+    }
+    default:
+      LOG(FATAL) << "Unexpected fft_type: " << fft_type;
+  }
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
     tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {

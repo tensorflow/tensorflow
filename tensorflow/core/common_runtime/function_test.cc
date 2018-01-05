@@ -191,11 +191,14 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
                      test::function::Attrs attrs,
                      FunctionLibraryRuntime::Handle* handle) {
-    Status status = flr->Instantiate(name, attrs, handle);
-    if (!status.ok()) {
-      return status;
-    }
-    return Status::OK();
+    return flr->Instantiate(name, attrs, handle);
+  }
+
+  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+                     test::function::Attrs attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
+                     FunctionLibraryRuntime::Handle* handle) {
+    return flr->Instantiate(name, attrs, options, handle);
   }
 
   Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
@@ -783,6 +786,16 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
            "type attr not found");
 }
 
+TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
+  Init({test::function::InvalidControlFlow()});
+  auto x = test::AsTensor<int32>({0});
+  DCHECK_EQ(x.dtype(), DT_INT32);
+  Tensor y;
+  HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
+           "The node 'add' has inputs from different frames. The input 'enter' "
+           "is in frame 'while'. The input 'i' is in frame ''.");
+}
+
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -1078,8 +1091,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Handle handle;
-  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {{"_target", "/device:CPU:1"}},
-                          &handle));
+  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {}, {"/device:CPU:1"}, &handle));
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;

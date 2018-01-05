@@ -362,4 +362,68 @@ indices: A tensor of indices into the first dimension of `ref`.
 updates: A tensor of updated values to add to `ref`.
 )doc");
 
+REGISTER_OP("CriticalSectionOp")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Output("resource: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"(
+Creates a handle to a CriticalSection resource.
+
+container: the container this critical section is placed in.
+shared_name: the name by which this critical section is referred to.
+)");
+
+REGISTER_OP("ExecuteInCriticalSection")
+    .Input("critical_section: resource")
+    .Input("arguments: Targuments")
+    .Output("outputs: output_types")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](InferenceContext* c) {
+      std::vector<PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      for (int i = 0; i < output_shapes.size(); ++i) {
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(output_shapes[i], &s));
+        c->set_output(i, s);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Executes function `f` within critical section `critical_section`.
+
+While `f` is running in `critical_section`, no other functions which wish to
+use this critical section may run.
+
+Often the use case is that two executions of the same graph, in parallel,
+wish to run `f`; and we wish to ensure that only one of them executes
+at a time.  This is especially important if `f` modifies one or more
+variables at a time.
+
+It is also useful if two separate functions must share a resource, but we
+wish to ensure the usage is exclusive.
+
+The signature of `f` is expected to be:
+
+```
+  outputs <- F(arguments)
+```
+Typically, but this is not required, `arguments` contain resources.  The
+primary purpose of this op is to limit access to these resources to one
+execution of `F` at a time.
+
+critical_section: The handle of the `critical_section`.
+arguments: Arguments for `f`, including any captured inputs appended at the end.
+outputs: The outputs of `f`.
+f: The `Function` to execute.
+)doc");
+
 }  // namespace tensorflow

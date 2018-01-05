@@ -33,11 +33,13 @@ _VERSION = '1.5.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
+    'astor >= 0.6.0',
     'gast >= 0.2.0',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
     'tensorflow-tensorboard',
+    'termcolor >= 1.1.0',
 ]
 
 project_name = 'tensorflow'

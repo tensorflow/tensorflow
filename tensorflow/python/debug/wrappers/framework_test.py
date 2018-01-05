@@ -271,9 +271,9 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testSessionInitInvalidSessionType(self):
     """Attempt to wrap a non-Session-type object should cause an exception."""
 
-    wrapper = TestDebugWrapperSessionBadAction(self._sess)
+    sess = "not a session"
     with self.assertRaisesRegexp(TypeError, "Expected type .*; got type .*"):
-      TestDebugWrapperSessionBadAction(wrapper)
+      TestDebugWrapperSessionBadAction(sess)
 
   def testSessionInitBadActionValue(self):
     with self.assertRaisesRegexp(
