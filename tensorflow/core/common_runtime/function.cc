@@ -152,7 +152,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   ~FunctionLibraryRuntimeImpl() override;
 
   Status Instantiate(const string& function_name, AttrSlice attrs,
-                     const InstantiateOptions& options,
                      Handle* handle) override;
 
   Status ReleaseHandle(Handle handle) override;
@@ -224,7 +223,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status GetOrCreateItem(Handle handle, Item** item);
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      FunctionBody** g_body);
-  bool IsLocalTarget(const InstantiateOptions& options);
+  bool IsLocalTarget(const AttrSlice& attrs);
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
@@ -353,8 +352,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   // Try to instantiate this function for the func/attr. Maybe it's
   // cached already.
   Handle handle;
-  TF_RETURN_IF_ERROR(
-      Instantiate(ndef.op(), AttrSlice(&ndef.attr()), {}, &handle));
+  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
@@ -413,7 +411,7 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // f is a user-defined function.
     Handle f_handle;
     TF_RETURN_IF_ERROR(
-        Instantiate(func.name(), AttrSlice(&func.attr()), {}, &f_handle));
+        Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
     const FunctionBody* f_body = GetFunctionBody(f_handle);
     CHECK_NOTNULL(f_body);
     *g_body = SymbolicGradient(*f_body);
@@ -421,25 +419,42 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
   return Status::OK();
 }
 
-bool FunctionLibraryRuntimeImpl::IsLocalTarget(
-    const InstantiateOptions& options) {
+bool FunctionLibraryRuntimeImpl::IsLocalTarget(const AttrSlice& attrs) {
   if (device_ == nullptr) return true;
-  if (options.target.empty()) return true;
+  string target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
+  if (target.empty()) return true;
   Device* target_device;
-  if (!device_mgr_->LookupDevice(options.target, &target_device).ok()) {
+  if (!device_mgr_->LookupDevice(target, &target_device).ok()) {
     return false;
   }
   return target_device == device_;
 }
 
-Status FunctionLibraryRuntimeImpl::Instantiate(
-    const string& function_name, AttrSlice attrs,
-    const InstantiateOptions& options, Handle* handle) {
-  if (!IsLocalTarget(options)) {
-    return parent_->Instantiate(function_name, attrs, options, handle);
+AttrValueMap FunctionLibraryRuntimeImpl::FixAttrs(const AttrSlice& attrs) {
+  AttrValueMap value_map;
+  for (auto it : attrs) {
+    value_map[it.first] = it.second;
+  }
+  if (attrs.Find("_target") != nullptr) {
+    return value_map;
+  }
+  AttrValue v;
+  v.set_s(device_name_);
+  AddAttr("_target", v, &value_map);
+  return value_map;
+}
+
+Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
+                                               AttrSlice attrs,
+                                               Handle* handle) {
+  AttrValueMap value_map = FixAttrs(attrs);
+  AttrSlice new_attrs(&value_map);
+
+  if (!IsLocalTarget(new_attrs)) {
+    return parent_->Instantiate(function_name, new_attrs, handle);
   }
 
-  const string key = Canonicalize(function_name, attrs, options);
+  const string key = Canonicalize(function_name, new_attrs);
   *handle = parent_->GetHandle(key);
   if (*handle != kInvalidHandle) {
     return Status::OK();
@@ -448,7 +463,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = attrs.Find(kFuncAttr);
+    const AttrValue* f = new_attrs.Find(kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -458,7 +473,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
     const string grad = lib_def_->FindGradient(func.name());
     if (!grad.empty()) {
-      return Instantiate(grad, AttrSlice(&func.attr()), options, handle);
+      return Instantiate(grad, AttrSlice(&func.attr()), handle);
     }
     TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
   } else {
@@ -466,7 +481,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     if (fdef == nullptr) {
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
-    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, &fbody));
+    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, new_attrs, &fbody));
   }
 
   {
