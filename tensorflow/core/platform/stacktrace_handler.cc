@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/platform.h"
 
-#if !defined(PLATFORM_GOOGLE) && defined(PLATFORM_POSIX) && \
-    (defined(__clang__) || defined(__GNUC__))
+#if !defined(PLATFORM_GOOGLE) && !defined(IS_MOBILE_PLATFORM) && \
+    defined(PLATFORM_POSIX) && (defined(__clang__) || defined(__GNUC__))
 #define TF_GENERATE_STACKTRACE
 #endif
 
