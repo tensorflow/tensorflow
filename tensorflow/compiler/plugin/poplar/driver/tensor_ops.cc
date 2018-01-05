@@ -128,9 +128,6 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, inst, 2));
 
-  std::string vertex_name =
-          templateVertex("DynamicUpdateSlice", input.elementType());
-
   // We try to update in-place but it is possible that the input is a constant
   // tensor in which case we need to make a copy of it to update it.
   poplar::program::Sequence seq;
@@ -169,7 +166,7 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
                         slice_dims,
                         update.shape(),
                         seq,
-                        vertex_name);
+                        inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
 
@@ -189,9 +186,6 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   poplar::Tensor indices;
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, inst, 1));
-
-  std::string vertex_name =
-          templateVertex("DynamicSlice", input.elementType());
 
   // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
   // Tensorflow prefers signed int. Convert if necessary.
@@ -218,7 +212,7 @@ CreateDynamicSliceOp(poplar::Graph &graph,
                          slice_dims,
                          PoplarShapeFromXlaShape(output_shape),
                          seq,
-                         vertex_name);
+                         inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
