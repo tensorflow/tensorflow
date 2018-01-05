@@ -75,7 +75,6 @@ static void StacktraceHandler(int sig, siginfo_t *si, void *v) {
   sigaction(SIGALRM, &sa_timeout, 0);
 
   char buf[128];
-  void *trace[128];
 
   snprintf(buf, sizeof(buf), "*** Received signal %d ***\n", sig);
   (void)write(STDERR_FILENO, buf, strlen(buf));
