@@ -26,8 +26,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import os
-import subprocess
-import tempfile
 
 # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
@@ -101,6 +99,9 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   if not _toco_from_proto_bin:
     return _toco_python.TocoConvert(
         model_flags_str, toco_flags_str, input_data_str)
+
+  import subprocess
+  import tempfile
 
   with tempfile.NamedTemporaryFile() as fp_toco, \
            tempfile.NamedTemporaryFile() as fp_model, \
