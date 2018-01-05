@@ -25,8 +25,10 @@ like to try to build TensorFlow on Windows anyway, use either of the
 following:
 
 *   [Bazel on Windows](https://bazel.build/versions/master/docs/windows.html)
-*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/r0.12/tensorflow/contrib/cmake)
+*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/cmake)
 
+Note: Starting from 1.6 release, our prebuilt binaries will use AVX
+instructions. Older CPUs may not be able to execute these binaries.
 
 ## Determine which TensorFlow to install
 
