@@ -22,11 +22,12 @@ Hence, the process for building and uploading release artifacts is not a single
 
 ## Artifact Structure
 
-There are six artifacts and thus `pom.xml`s involved in this release:
+There are seven artifacts and thus `pom.xml`s involved in this release:
 
 1.  `tensorflow`: The single dependency for projects requiring TensorFlow for
-    Java. This convenience package depends on the two below, and is the one that
-    should typically be used in other programs.
+    Java. This convenience package depends on `libtensorflow` and
+    `libtensorflow_jni`. Typically, this is the single dependency that should
+    be used by client programs (unless GPU support is required).
 
 2.  `libtensorflow`: Java-only code for the [TensorFlow Java API](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary).
     The `.jar` itself has no native code, but requires the native code be either
@@ -36,15 +37,20 @@ There are six artifacts and thus `pom.xml`s involved in this release:
 3.  `libtensorflow_jni`: The native libraries required by `libtensorflow`.
     Native code for all supported platforms is packaged into a single `.jar`.
 
-4.  `proto`: Generated Java code for TensorFlow protocol buffers
+4.  `libtensorflow_jni_gpu`: The native libraries required by `libtensorflow`
+    with GPU (CUDA) support enabled. Programs requiring GPU-enabled TensorFlow
+    should add a dependency on `libtensorflow` and `libtensorflow_jni_gpu`.
+    As of January 2018, this artifact is *Linux only*.
+
+5.  `proto`: Generated Java code for TensorFlow protocol buffers
     (e.g., `MetaGraphDef`, `ConfigProto` etc.)
 
-5. `tensorflow-android`: A package geared towards
+6. `tensorflow-android`: A package geared towards
     supporting [TensorFlow on Android](../../contrib/android/README.md), and is
     a self-contained Android AAR library containing all necessary native and
     Java code.
 
-6.  [`parentpom`](https://maven.apache.org/pom/index.html): Common settings
+7.  [`parentpom`](https://maven.apache.org/pom/index.html): Common settings
     shared by all of the above.
 
 

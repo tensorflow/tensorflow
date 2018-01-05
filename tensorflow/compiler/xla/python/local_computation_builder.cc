@@ -21,6 +21,37 @@ namespace xla {
 
 namespace swig {
 
+void TransferToInfeedLocal(const Literal& literal) {
+  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  TF_CHECK_OK(client->TransferToInfeedLocal(literal, /*device_ordinal=*/0));
+}
+
+LocalShapedBuffer::LocalShapedBuffer(
+    std::unique_ptr<ScopedShapedBuffer> shaped_buffer)
+    : shaped_buffer_(std::move(shaped_buffer)) {}
+
+const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
+    const {
+  return shaped_buffer_;
+}
+
+/* static */
+LocalShapedBuffer* LocalShapedBuffer::FromLiteral(const Literal& argument) {
+  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  std::unique_ptr<ScopedShapedBuffer> buf =
+      client
+          ->LiteralToShapedBuffer(argument,
+                                  /*device_ordinal=*/0,
+                                  client->backend().memory_allocator())
+          .ConsumeValueOrDie();
+  return new LocalShapedBuffer(std::move(buf));
+}
+
+std::unique_ptr<Literal> LocalShapedBuffer::ToLiteral() const {
+  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  return client->ShapedBufferToLiteral(*shaped_buffer()).ConsumeValueOrDie();
+}
+
 CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
@@ -59,10 +90,32 @@ std::unique_ptr<Literal> CompiledLocalComputation::Execute(
   return client->ShapedBufferToLiteral(*result_buffer).ConsumeValueOrDie();
 }
 
-LocalComputation::LocalComputation(std::unique_ptr<Computation> computation)
+LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
+    tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles) {
+  LocalClient* client = ClientLibrary::LocalClientOrDie();
+
+  std::vector<const ShapedBuffer*> argument_buffers;
+  argument_buffers.reserve(argument_handles.size());
+  for (auto& handle : argument_handles) {
+    argument_buffers.push_back(handle->shaped_buffer().get());
+  }
+
+  // Execute
+  ExecutableRunOptions options;
+  options.set_allocator(client->backend().memory_allocator());
+  options.set_inter_op_thread_pool(client->backend().inter_op_thread_pool());
+  options.set_intra_op_thread_pool(
+      client->backend().eigen_intra_op_thread_pool_device());
+  std::unique_ptr<ScopedShapedBuffer> result_buffer =
+      executable_->Run(argument_buffers, options).ConsumeValueOrDie();
+
+  return new LocalShapedBuffer(std::move(result_buffer));
+}
+
+LocalComputation::LocalComputation(Computation computation)
     : computation_(std::move(computation)) {}
 
-CompiledLocalComputation* LocalComputation::Compile(
+StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
     const std::vector<Shape>& argument_shapes) {
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
@@ -72,21 +125,22 @@ CompiledLocalComputation* LocalComputation::Compile(
 
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   ExecutableBuildOptions options;
-  return new CompiledLocalComputation(
-      client->Compile(*computation_, argument_shape_pointers, options)
-          .ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto local_executable,
+      client->Compile(computation_, argument_shape_pointers, options));
+  return new CompiledLocalComputation(std::move(local_executable));
 }
 
 const Computation& LocalComputation::computation() const {
-  return *computation_;
+  return computation_;
 }
 
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(ClientLibrary::LocalClientOrDie(), computation_name) {}
 
-LocalComputation* LocalComputationBuilder::Build() {
-  return new LocalComputation(std::unique_ptr<Computation>(
-      new Computation(builder_.Build().ConsumeValueOrDie())));
+StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
+  TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
+  return new LocalComputation(std::move(computation));
 }
 
 ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
@@ -98,6 +152,10 @@ ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
 std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
     const ComputationDataHandle& operand) {
   return builder_.GetShape(operand).ConsumeValueOrDie();
+}
+
+ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
+  return builder_.Infeed(shape);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConstantLiteral(
@@ -230,6 +288,18 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
                          dimensions_to_reduce);
 }
 
+ComputationDataHandle LocalComputationBuilder::RngNormal(
+    const ComputationDataHandle& mu, const ComputationDataHandle& sigma,
+    const Shape& shape) {
+  return builder_.RngNormal(mu, sigma, shape);
+}
+
+ComputationDataHandle LocalComputationBuilder::RngUniform(
+    const ComputationDataHandle& a, const ComputationDataHandle& b,
+    const Shape& shape) {
+  return builder_.RngUniform(a, b, shape);
+}
+
 ComputationDataHandle LocalComputationBuilder::While(
     const LocalComputation& condition, const LocalComputation& body,
     const ComputationDataHandle& init) {
@@ -288,6 +358,18 @@ _FORWARD_UNOP(Sort)
 #undef _FORWARD
 #undef _FORWARD_UNOP
 #undef _FORWARD_BINOP
+
+void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer) {
+  delete local_shaped_buffer;
+}
+
+void DeleteCompiledLocalComputation(CompiledLocalComputation* computation) {
+  delete computation;
+}
+
+void DeleteLocalComputation(LocalComputation* computation) {
+  delete computation;
+}
 
 }  // namespace swig
 

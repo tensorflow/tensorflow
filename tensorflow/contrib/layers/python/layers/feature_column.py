@@ -753,6 +753,10 @@ class _WeightedSparseColumn(
     return config
 
   @property
+  def lookup_config(self):
+    return self.sparse_id_column.lookup_config
+
+  @property
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
     return "{}".format(self)

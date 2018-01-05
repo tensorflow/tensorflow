@@ -340,8 +340,11 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
       eq = math_ops.equal(x, y)
       condition = math_ops.reduce_all(eq)
       if not condition:
-        # Prepare a message with first elements of x and y
+        # Prepare a message with first elements of x and y.
         summary_msg = ''
+        # Default to printing 3 elements like control_flow_ops.Assert (used
+        # by graph mode) does.
+        summarize = 3 if summarize is None else summarize
         if summarize:
           # reshape((-1,)) is the fastest way to get a flat array view.
           x_np = x.numpy().reshape((-1,))
@@ -353,15 +356,13 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                          (x_sum, x_np[:x_sum],
                           y_sum, y_np[:y_sum]))
 
-        # Get the values that actually differed and their indices
+        # Get the values that actually differed and their indices.
         mask = math_ops.logical_not(eq)
         indices = array_ops.where(mask)
         indices_np = indices.numpy()
         x_vals = array_ops.boolean_mask(x, mask)
         y_vals = array_ops.boolean_mask(y, mask)
-        diff_to_print = 0
-        if summarize:
-          diff_to_print = min(summarize, indices_np.size)
+        summarize = min(summarize, indices_np.shape[0])
 
         raise errors.InvalidArgumentError(
             node_def=None, op=None,
@@ -372,9 +373,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                      '%s'
                      %
                      (message or '',
-                      diff_to_print, indices_np[:diff_to_print],
-                      x_vals.numpy().reshape((-1,))[:diff_to_print],
-                      y_vals.numpy().reshape((-1,))[:diff_to_print],
+                      summarize, indices_np[:summarize],
+                      x_vals.numpy().reshape((-1,))[:summarize],
+                      y_vals.numpy().reshape((-1,))[:summarize],
                       summary_msg)))
       return
 

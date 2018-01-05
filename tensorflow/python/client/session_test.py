@@ -1737,6 +1737,15 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
 
+  def testOpenAndCloseGrpcSession(self):
+    server = server_lib.Server.create_local_server()
+    with session.Session(server.target):
+      pass
+
+  def testOpenAndCloseSession(self):
+    with session.Session():
+      pass
+
   def testAutoConvertAndCheckData(self):
     with self.test_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)

@@ -1866,6 +1866,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
+        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
@@ -3174,7 +3175,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        ":fill_functor",
+    ],
 )
 
 tf_kernel_library(
@@ -3371,6 +3374,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
@@ -3984,6 +3988,12 @@ tf_kernel_library(
     name = "variable_ops",
     prefix = "variable_ops",
     deps = STATE_DEPS,
+)
+
+tf_kernel_library(
+    name = "critical_section",
+    prefix = "critical_section",
+    deps = STATE_DEPS + [":captured_function"],
 )
 
 tf_cc_test(
@@ -4935,6 +4945,7 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
+            "critical_section.*",
         ],
     ),
     visibility = ["//visibility:public"],

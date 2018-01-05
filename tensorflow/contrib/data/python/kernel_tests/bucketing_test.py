@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.python.framework import constant_op
@@ -158,6 +159,34 @@ class GroupByWindowTest(test.TestCase):
                               multiple_of_10_result[:, :tight_result.shape[1]])
           counts.append(tight_result.shape[0])
       self.assertEqual(len(components), sum(counts))
+
+
+class GroupByWindowSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset(self, components):
+    return dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
+        grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4), 4))
+
+  def testCoreGroupByWindow(self):
+    components = np.array(
+        [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
+    self.verify_unused_iterator(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_init_before_restore(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_multiple_breaks(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_reset_restored_iterator(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    self.verify_restore_in_empty_graph(
+        lambda: self._build_dataset(components), 12, verify_exhausted=False)
+    diff_components = np.array([0, 0, 0, 1, 1, 1], dtype=np.int64)
+    self.verify_restore_in_modified_graph(
+        lambda: self._build_dataset(components),
+        lambda: self._build_dataset(diff_components),
+        12,
+        verify_exhausted=False)
 
 
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.

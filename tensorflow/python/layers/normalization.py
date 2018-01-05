@@ -625,6 +625,9 @@ class BatchNormalization(base.Layer):
 
     return outputs
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
 
 def batch_normalization(inputs,
                         axis=-1,

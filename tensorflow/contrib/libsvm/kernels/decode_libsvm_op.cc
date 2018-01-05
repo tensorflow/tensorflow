@@ -58,6 +58,7 @@ class DecodeLibsvmOp : public OpKernel {
       OP_REQUIRES(ctx,
                   strings::SafeStringToNumeric<Tlabel>(piece, &label_value),
                   errors::InvalidArgument("Label format incorrect: ", piece));
+
       label(i) = label_value;
 
       str_util::RemoveLeadingWhitespace(&line);
@@ -76,10 +77,12 @@ class DecodeLibsvmOp : public OpKernel {
 
         T feature_value;
         OP_REQUIRES(
+
             ctx,
             strings::SafeStringToNumeric<T>(piece.substr(p + 1),
                                             &feature_value),
             errors::InvalidArgument("Feature format incorrect: ", piece));
+
         out_values.emplace_back(feature_value);
         out_indices.emplace_back(std::pair<int64, int64>(i, feature_index));
 

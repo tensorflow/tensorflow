@@ -59,6 +59,9 @@ class GaussianNoise(Layer):
 
     return K.in_train_phase(noised, inputs, training=training)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'stddev': self.stddev}
     base_config = super(GaussianNoise, self).get_config()
@@ -104,6 +107,9 @@ class GaussianDropout(Layer):
 
       return K.in_train_phase(noised, inputs, training=training)
     return inputs
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
   def get_config(self):
     config = {'rate': self.rate}
@@ -166,6 +172,9 @@ class AlphaDropout(Layer):
 
       return K.in_train_phase(dropped_inputs, inputs, training=training)
     return inputs
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
   def get_config(self):
     config = {'rate': self.rate}

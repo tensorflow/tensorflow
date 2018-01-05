@@ -485,7 +485,16 @@ class DatasetIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     port::Tracing::TraceMe activity(params_.prefix);
-    return GetNextInternal(ctx, out_tensors, end_of_sequence);
+    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
+      s = errors::Internal(
+          "Iterator \"", params_.prefix,
+          "\" returned OutOfRange without setting `*end_of_sequence`. This "
+          "indicates that an error may have occurred. Original message: ",
+          s.error_message());
+      LOG(ERROR) << s;
+    }
+    return s;
   }
 
   Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {

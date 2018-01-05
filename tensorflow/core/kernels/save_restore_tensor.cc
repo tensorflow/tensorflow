@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/save_restore_tensor.h"
+#include <numeric>
 #include <unordered_map>
-
 #include <utility>
 #include <vector>
-#include "tensorflow/core/kernels/save_restore_tensor.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -85,7 +85,17 @@ void SaveTensors(
   Status s;
   auto tensor_names_flat = tensor_names_t.flat<string>();
 
-  for (int i = 0; i < N; ++i) {
+  // Process tensors in sorted name order.  This allows us to avoid seeking
+  // during restoration in the common case where we are restoring a full
+  // checkpoint.
+  std::vector<size_t> sorted_name_idx(tensor_names_flat.size());
+  std::iota(sorted_name_idx.begin(), sorted_name_idx.end(), 0);
+  std::sort(sorted_name_idx.begin(), sorted_name_idx.end(),
+            [&tensor_names_flat](size_t a, size_t b) {
+              return tensor_names_flat(a) < tensor_names_flat(b);
+            });
+
+  for (size_t i : sorted_name_idx) {
     const string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
     TensorShape shape(input.shape());
@@ -132,7 +142,7 @@ void SaveTensors(
 
 void RestoreTensor(OpKernelContext* context,
                    checkpoint::TensorSliceReader::OpenTableFunction open_func,
-                   int preferred_shard, bool restore_slice) {
+                   int preferred_shard, bool restore_slice, int restore_index) {
   const Tensor& file_pattern_t = context->input(0);
   {
     const int64 size = file_pattern_t.NumElements();
@@ -145,26 +155,7 @@ void RestoreTensor(OpKernelContext* context,
   const string& file_pattern = file_pattern_t.flat<string>()(0);
 
   const Tensor& tensor_name_t = context->input(1);
-  {
-    const int64 size = tensor_name_t.NumElements();
-    OP_REQUIRES(
-        context, size == 1,
-        errors::InvalidArgument(
-            "Input 1 (tensor_name) must be a string scalar; got a tensor of ",
-            size, "elements"));
-  }
-  const string& tensor_name = tensor_name_t.flat<string>()(0);
-
-  const string* tensor_shape_and_slice_ptr = nullptr;
-  if (restore_slice) {
-    const Tensor& tensor_shape_and_slice_t = context->input(2);
-    OP_REQUIRES(
-        context, tensor_shape_and_slice_t.NumElements() == 1,
-        errors::InvalidArgument("Expected 1 element for the tensor "
-                                "shape and slice but got ",
-                                tensor_shape_and_slice_t.NumElements()));
-    tensor_shape_and_slice_ptr = tensor_shape_and_slice_t.flat<string>().data();
-  }
+  const string& tensor_name = tensor_name_t.flat<string>()(restore_index);
 
   // If we cannot find a cached reader we will allocate our own.
   std::unique_ptr<checkpoint::TensorSliceReader> allocated_reader;
@@ -187,7 +178,7 @@ void RestoreTensor(OpKernelContext* context,
       errors::NotFound("Tensor name \"", tensor_name,
                        "\" not found in checkpoint files ", file_pattern));
   OP_REQUIRES(
-      context, type == context->expected_output_dtype(0),
+      context, type == context->expected_output_dtype(restore_index),
       errors::InvalidArgument("Expected to restore a tensor of type ",
                               DataTypeString(context->expected_output_dtype(0)),
                               ", got a tensor of type ", DataTypeString(type),
@@ -196,23 +187,26 @@ void RestoreTensor(OpKernelContext* context,
   // Shape of the output and slice to load.
   TensorShape output_shape(saved_shape);
   TensorSlice slice_to_load(saved_shape.dims());
-  if (restore_slice && !tensor_shape_and_slice_ptr[0].empty()) {
-    const string& shape_spec = tensor_shape_and_slice_ptr[0];
-    TensorShape parsed_shape;
-    OP_REQUIRES_OK(
-        context, checkpoint::ParseShapeAndSlice(shape_spec, &parsed_shape,
-                                                &slice_to_load, &output_shape));
-    OP_REQUIRES(
-        context, parsed_shape.IsSameSize(saved_shape),
-        errors::InvalidArgument(
-            "Shape in shape_and_slice spec does not match the shape in the "
-            "save file: ",
-            parsed_shape.DebugString(), ", save file shape: ",
-            saved_shape.DebugString()));
+  if (restore_slice) {
+    const string& shape_spec = context->input(2).flat<string>()(restore_index);
+    if (!shape_spec.empty()) {
+      TensorShape parsed_shape;
+      OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(
+                                  shape_spec, &parsed_shape, &slice_to_load,
+                                  &output_shape));
+      OP_REQUIRES(
+          context, parsed_shape.IsSameSize(saved_shape),
+          errors::InvalidArgument(
+              "Shape in shape_and_slice spec does not match the shape in the "
+              "save file: ",
+              parsed_shape.DebugString(),
+              ", save file shape: ", saved_shape.DebugString()));
+    }
   }
 
   Tensor* t = nullptr;
-  OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &t));
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(restore_index, output_shape, &t));
 
   if (output_shape.num_elements() == 0) return;
 
@@ -239,8 +233,17 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                         const Tensor& shape_and_slices,
                         gtl::ArraySlice<DataType> dtypes) {
   const string& prefix_string = prefix.scalar<string>()();
+
   const auto& tensor_names_flat = tensor_names.flat<string>();
   const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
+
+  // Sort lookup keys to improve locality when reading multiple tensors.
+  std::vector<size_t> sorted_name_idx(tensor_names_flat.size());
+  std::iota(sorted_name_idx.begin(), sorted_name_idx.end(), 0);
+  std::sort(sorted_name_idx.begin(), sorted_name_idx.end(),
+            [&tensor_names_flat](size_t a, size_t b) {
+              return tensor_names_flat(a) < tensor_names_flat(b);
+            });
 
   BundleReader reader(Env::Default(), prefix_string);
   TF_RETURN_IF_ERROR(reader.status());
@@ -250,9 +253,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // within a fixed memory budget.
   TensorShape restored_full_shape;
   Tensor* restored_tensor = nullptr;
-  for (size_t i = 0; i < tensor_names_flat.size(); ++i) {
+  for (auto i : sorted_name_idx) {
     const string& tensor_name = tensor_names_flat(i);
     const string& shape_and_slice = shape_and_slices_flat(i);
+
     TF_RETURN_IF_ERROR(
         reader.LookupTensorShape(tensor_name, &restored_full_shape));
 

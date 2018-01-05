@@ -279,7 +279,7 @@ class TopologyConstructionTest(test.TestCase):
 
       model = keras.models.Model(inputs=[a, b], outputs=[c, d], name='model')
       self.assertEqual(len(model.layers), 6)
-      output_shapes = model._compute_output_shape([(None, 32), (None, 32)])
+      output_shapes = model.compute_output_shape([(None, 32), (None, 32)])
       self.assertListEqual(output_shapes[0].as_list(), [None, 64])
       self.assertListEqual(output_shapes[1].as_list(), [None, 5])
       self.assertListEqual(
@@ -360,8 +360,8 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual(
           model.compute_mask([e, f], [None, None]), [None, None])
       self.assertListEqual(
-          final_model._compute_output_shape([(10, 32), (10, 32)]), [(10, 7),
-                                                                    (10, 64)])
+          final_model.compute_output_shape([(10, 32), (10, 32)]), [(10, 7),
+                                                                   (10, 64)])
 
       # run recursive model
       fn = keras.backend.function(final_model.inputs, final_model.outputs)

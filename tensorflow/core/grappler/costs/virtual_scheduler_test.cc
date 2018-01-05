@@ -1446,6 +1446,102 @@ TEST_F(VirtualSchedulerTest, MultiDeviceSendRecvComopsiteNodeManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
+TEST_F(VirtualSchedulerTest, DeterminismInCompositeNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  CompositeNodeManager manager2;
+  manager2.Init(&node_states_);
+
+  // 6 nodes with same time_ready.
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeDef node10;
+  NodeDef node11;
+  NodeDef node12;
+  NodeSetUp("Node7", kConv2D, kCPU0, 1000, &node7);
+  NodeSetUp("Node8", kSend, kCPU0, 1000, &node8);
+  NodeSetUp("Node9", kRecv, kCPU0, 1000, &node9);
+  NodeSetUp("Node10", kConv2D, kCPU0, 999, &node10);
+  NodeSetUp("Node11", kRecv, kCPU0, 999, &node11);
+  NodeSetUp("Node12", kConv2D, kCPU1, 1000, &node12);
+
+  // Add Nodes 7 to 9 to manager.
+  manager.AddNode(&node7);
+  manager.AddNode(&node8);
+  manager.AddNode(&node9);
+
+  // It should return _Send, Recv, and the other op order, when the candidate
+  // nodes have same time_ready.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Add Nodes 7 to 9 to manager, but in a different order.
+  manager.AddNode(&node9);
+  manager.AddNode(&node8);
+  manager.AddNode(&node7);
+
+  // Expect same order (_Send, _Recv, and the other op), regardless of Add
+  // order.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Conv2D's time_ready < Send's time_ready; Expect Conv2D first.
+  manager.AddNode(&node8);
+  manager.AddNode(&node10);
+  EXPECT_EQ("Node10", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Recv's time_ready < Send' time_ready; Expect Recv first.
+  manager.AddNode(&node11);
+  manager.AddNode(&node8);
+  EXPECT_EQ("Node11", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Node7 and 12 are normal ops with the same time_ready, placed on different
+  // devices. These two nodes are added to manager and manager2, but in
+  // different orders; Expect GetCurrNode() returns the nodes in the same order.
+  manager.AddNode(&node7);
+  manager.AddNode(&node12);
+
+  manager2.AddNode(&node12);
+  manager2.AddNode(&node7);
+
+  EXPECT_EQ(manager.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
 // Create small graph, run predict costs on it, make sure the costs from the
 // summary match the hand-calculated costs.
 TEST_F(VirtualSchedulerTest, SummaryCostTest) {

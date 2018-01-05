@@ -1525,23 +1525,6 @@ the reversing dimensions, its index i is transformed into N - 1 - i).
 One use for the `Rev` operation is to reverse the convolution weight array along
 the two window dimensions during the gradient computation in neural networks.
 
-## RngBernoulli
-
-See also
-[`ComputationBuilder::RngBernoulli`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
-
-Constructs an output of a given shape with random numbers generated following
-the Bernoulli distribution. The parameter needs to be a scalar valued F32
-operand while the output shape needs to have elemental type U32.
-
-<b>`RngBernoulli(mean, shape)`</b>
-
-| Arguments | Type                    | Semantics                             |
-| --------- | ----------------------- | ------------------------------------- |
-| `mean`    | `ComputationDataHandle` | Scalar of type F32 specifying mean of |
-:           :                         : generated numbers                     :
-| `shape`   | `Shape`                 | Output shape of type U32              |
-
 ## RngNormal
 
 See also

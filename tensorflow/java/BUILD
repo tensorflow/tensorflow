@@ -103,22 +103,27 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":java_op_gen_lib",
+        "//third_party/tensorflow/core:framework",
+        "//third_party/tensorflow/core:framework_internal",
+        "//third_party/tensorflow/core:lib",
     ],
 )
 
 cc_library(
     name = "java_op_gen_lib",
     srcs = [
-        "src/gen/cc/java_defs.h",
         "src/gen/cc/op_generator.cc",
+    ],
+    hdrs = [
+        "src/gen/cc/java_defs.h",
         "src/gen/cc/op_generator.h",
     ],
     copts = tf_copts(),
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//third_party/tensorflow/core:framework",
+        "//third_party/tensorflow/core:framework_internal",
+        "//third_party/tensorflow/core:lib",
+        "//third_party/tensorflow/core:lib_internal",
     ],
 )
 

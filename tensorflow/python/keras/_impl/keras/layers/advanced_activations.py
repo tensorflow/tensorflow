@@ -61,6 +61,9 @@ class LeakyReLU(Layer):
     base_config = super(LeakyReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
 
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.
@@ -143,6 +146,9 @@ class PReLU(Layer):
       neg = -self.alpha * K.relu(-inputs)
     return pos + neg
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {
         'alpha_initializer': initializers.serialize(self.alpha_initializer),
@@ -182,6 +188,9 @@ class ELU(Layer):
   def call(self, inputs):
     return K.elu(inputs, self.alpha)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'alpha': float(self.alpha)}
     base_config = super(ELU, self).get_config()
@@ -215,6 +224,9 @@ class ThresholdedReLU(Layer):
 
   def call(self, inputs, mask=None):
     return inputs * K.cast(inputs > self.theta, K.floatx())
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
   def get_config(self):
     config = {'theta': float(self.theta)}

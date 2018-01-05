@@ -55,7 +55,8 @@ class TestEstimator(core_estimator.Estimator):
                         default_output_alternative_key=None,
                         assets_extra=None,
                         as_text=False,
-                        checkpoint_path=None):
+                        checkpoint_path=None,
+                        strip_default_attrs=False):
 
     if not os.path.exists(export_dir):
       os.makedirs(export_dir)

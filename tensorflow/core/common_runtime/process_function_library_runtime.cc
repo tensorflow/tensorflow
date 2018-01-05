@@ -88,16 +88,6 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
           std::move(custom_kernel_creator), nullptr /* cluster_flr */) {}
 
 /* static */
-string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
-    const AttrSlice& attrs) {
-  const AttrValue* value;
-  if (!attrs.Find("_target", &value).ok()) {
-    return "";
-  }
-  return DeviceNameUtils::CanonicalizeDeviceName(value->s());
-}
-
-/* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation,
@@ -240,22 +230,23 @@ string ProcessFunctionLibraryRuntime::GetDeviceName(
 
 Status ProcessFunctionLibraryRuntime::Instantiate(
     const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::Handle* handle) {
   *handle = kInvalidHandle;
-  string target = ObtainFunctionTarget(attrs);
-  FunctionLibraryRuntime* flr = GetFLR(target);
+  FunctionLibraryRuntime* flr = GetFLR(options.target);
   if (flr != nullptr) {
-    return flr->Instantiate(function_name, attrs, handle);
+    return flr->Instantiate(function_name, attrs, options, handle);
   }
   if (parent_ == nullptr) {
     return errors::Internal(
-        "Currently don't support instantiating functions on device: ", target);
+        "Currently don't support instantiating functions on device: ",
+        options.target);
   }
   FunctionLibraryRuntime::Handle cluster_handle;
-  TF_RETURN_IF_ERROR(
-      parent_->Instantiate(function_name, *lib_def_, attrs, &cluster_handle));
+  TF_RETURN_IF_ERROR(parent_->Instantiate(function_name, *lib_def_, attrs,
+                                          options, &cluster_handle));
   string function_key = Canonicalize(function_name, attrs);
-  *handle = AddHandle(function_key, target, cluster_handle);
+  *handle = AddHandle(function_key, options.target, cluster_handle);
   return Status::OK();
 }
 

@@ -113,6 +113,9 @@ class CurlHttpRequest : public HttpRequest {
   /// Using this method is mutually exclusive with using SetResultBuffer().
   void SetResultBufferDirect(char* buffer, size_t size) override;
 
+  /// \brief Distinguish response type (direct vs. implicit).
+  bool IsDirectResponse() const;
+
   /// \brief Returns the number of bytes (of the response body) that were
   /// transferred, when using the SetResultBufferDirect() method. The returned
   /// value will always be less than or equal to the 'size' parameter that
@@ -160,6 +163,7 @@ class CurlHttpRequest : public HttpRequest {
                               curl_off_t ulnow);
   void CheckMethodNotSet() const;
   void CheckNotSent() const;
+  StringPiece GetResponse() const;
 
   LibCurl* libcurl_;
   Env* env_;
@@ -209,6 +213,9 @@ class CurlHttpRequest : public HttpRequest {
 
   // Store the URI to help disambiguate requests when errors occur.
   string uri_;
+
+  // Limit the size of a http response that is copied into an error message.
+  const size_t response_to_error_limit_ = 500;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);
 };

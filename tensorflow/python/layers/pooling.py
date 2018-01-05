@@ -85,7 +85,7 @@ class _Pooling1D(base.Layer):
     else:
       return array_ops.squeeze(outputs, 1)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     length = utils.conv_output_length(input_shape[1], self.pool_size[0],
                                       self.padding, self.strides[0])
@@ -273,7 +273,7 @@ class _Pooling2D(base.Layer):
         data_format=utils.convert_data_format(self.data_format, 4))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       rows = input_shape[2]
@@ -487,7 +487,7 @@ class _Pooling3D(base.Layer):
       outputs = array_ops.transpose(outputs, (0, 4, 1, 2, 3))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       len_dim1 = input_shape[2]
