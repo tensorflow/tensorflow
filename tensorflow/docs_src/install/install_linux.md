@@ -6,7 +6,7 @@ tested (and we only support) these instructions on machines meeting the
 following requirements:
 
   * 64-bit desktops or laptops
-  * Ubuntu 14.04 or higher
+  * Ubuntu 16.04 or higher
 
 
 ## Determine which TensorFlow to install
