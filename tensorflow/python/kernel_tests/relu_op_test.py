@@ -452,7 +452,6 @@ class CreluTest(test.TestCase):
                            [9, 0, 5, 0, 1],
                            [0, 3, 0, 7, 0]])
       self.assertAllEqual(np_crelu, tf_relu)
-      self.assertShapeEqual(np_crelu, crelu)
 
   def testNumbersWithAxis1(self):
     with self.test_session():
@@ -463,7 +462,6 @@ class CreluTest(test.TestCase):
       np_crelu = np.array([[0, 7, 0, 3, 0, 9, 0, 5, 0, 1],
                            [1, 0, 5, 0, 9, 0, 3, 0, 7, 0]])
       self.assertAllEqual(np_crelu, tf_relu)
-      self.assertShapeEqual(np_crelu, crelu)
 
 
 if __name__ == "__main__":
