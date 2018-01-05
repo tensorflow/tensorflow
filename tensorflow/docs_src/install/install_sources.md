@@ -28,7 +28,7 @@ following:
 *   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/r0.12/tensorflow/contrib/cmake)
 
 Note: Starting from 1.6 release, our prebuilt binaries will use AVX
-instructions. This may break TF on older CPUs.
+instructions. Older CPUs may not be able to execute these binaries.
 
 ## Determine which TensorFlow to install
 
