@@ -237,6 +237,14 @@ void FileBlockCache::Prune() {
   }
 }
 
+void FileBlockCache::Flush() {
+  mutex_lock lock(mu_);
+  block_map_.clear();
+  lru_list_.clear();
+  lra_list_.clear();
+  cache_size_ = 0;
+}
+
 void FileBlockCache::RemoveFile(const string& filename) {
   mutex_lock lock(mu_);
   RemoveFile_Locked(filename);

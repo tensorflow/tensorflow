@@ -195,6 +195,49 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
   EXPECT_EQ("0123", result);
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_Flush) {
+  // Our underlying file in this test is a 15 byte file with contents
+  // "0123456789abcde".
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-8\n"
+           "Timeouts: 5 1 20\n",
+           "012345678"),
+       new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-8\n"
+           "Timeouts: 5 1 20\n",
+           "012345678")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   9 /* block size */, 18 /* max bytes */,
+                   0 /* max staleness */, 0 /* stat cache max age */,
+                   0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay */, kTestTimeoutConfig);
+
+  char scratch[100];
+  StringPiece result;
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+  // Read the first chunk. The cache will be populated with the first block of
+  // 9 bytes.
+  scratch[5] = 'x';
+  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  EXPECT_EQ("0123", result);
+  EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
+  // Flush caches and read the second chunk. This will be a cache miss, and
+  // the same block will be fetched again.
+  fs.FlushCaches();
+  TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
+  EXPECT_EQ("4567", result);
+}
+
 TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
   // Our underlying file in this test is a 16 byte file with contents
   // "0123456789abcdef".
@@ -1270,6 +1313,50 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache) {
   }
 }
 
+TEST(GcsFileSystemTest, GetMatchingPaths_Cache_Flush) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsubpath%2F\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{\"items\": [ "
+           "  { \"name\": \"path/subpath/file2.txt\" }]}"),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsubpath%2F\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{\"items\": [ "
+           "  { \"name\": \"path/subpath/file2.txt\" }]}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   0 /* stat cache max age */, 0 /* stat cache max entries */,
+                   3600 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay*/, kTestTimeoutConfig);
+
+  // This loop should trigger the first HTTP request to GCS.
+  for (int i = 0; i < 10; i++) {
+    std::vector<string> result;
+    TF_EXPECT_OK(
+        fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", &result));
+    EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+              result);
+  }
+  // After flushing caches, there should be another (identical) request to GCS.
+  fs.FlushCaches();
+  for (int i = 0; i < 10; i++) {
+    std::vector<string> result;
+    TF_EXPECT_OK(
+        fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", &result));
+    EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+              result);
+  }
+}
+
 TEST(GcsFileSystemTest, DeleteFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
@@ -1892,6 +1979,50 @@ TEST(GcsFileSystemTest, Stat_Cache) {
     EXPECT_EQ(0, stat.length);
     EXPECT_EQ(0, stat.mtime_nsec);
     EXPECT_TRUE(stat.is_directory);
+  }
+}
+
+TEST(GcsFileSystemTest, Stat_Cache_Flush) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "file.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* block size */, 0 /* max bytes */, 0 /* max staleness */,
+                   3600 /* stat cache max age */,
+                   0 /* stat cache max entries */,
+                   0 /* matching paths cache max age */,
+                   0 /* matching paths cache max entries */,
+                   0 /* initial retry delay*/, kTestTimeoutConfig);
+  // There should be a single HTTP request to GCS for fs.Stat in this loop.
+  for (int i = 0; i < 10; i++) {
+    FileStatistics stat;
+    TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
+    EXPECT_EQ(1010, stat.length);
+    EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
+    EXPECT_FALSE(stat.is_directory);
+  }
+  // After flushing caches, there should be a second request to GCS for fs.Stat.
+  fs.FlushCaches();
+  for (int i = 0; i < 10; i++) {
+    FileStatistics stat;
+    TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
+    EXPECT_EQ(1010, stat.length);
+    EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
