@@ -28,6 +28,16 @@ import traceback
 from tensorflow.python.platform import tf_logging as logging
 
 
+def IsInWhileLoop(op):
+  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingWhileContext(ctxt) is not None
+
+
+def IsInCond(op):
+  ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingCondContext(ctxt) is not None
+
+
 def IsSwitch(op):
   """Return true if `op` is a Switch."""
   return op.type == "Switch" or op.type == "RefSwitch"
@@ -88,6 +98,24 @@ def GetContainingWhileContext(ctxt):
   """
   while ctxt:
     if ctxt.IsWhileContext(): return ctxt
+    ctxt = ctxt.outer_context
+  return None
+
+
+def GetContainingCondContext(ctxt):
+  """Returns the first ancestor CondContext of `ctxt`.
+
+  Returns `ctxt` if `ctxt` is a CondContext, or None if `ctxt` is not in a cond.
+
+  Args:
+    ctxt: ControlFlowContext
+
+  Returns:
+    `ctxt` if `ctxt` is a CondContext, the most nested CondContext containing
+    `ctxt`, or None if `ctxt` is not in a cond.
+  """
+  while ctxt:
+    if ctxt.IsCondContext(): return ctxt
     ctxt = ctxt.outer_context
   return None
 

@@ -52,6 +52,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -748,22 +749,26 @@ class GradLoopState(object):
 
       outer_grad_ctxt = outer_grad_state.grad_context
       outer_grad_ctxt.Enter()
-      self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
-                                        forward_ctxt.back_prop,
-                                        forward_ctxt.swap_memory,
-                                        forward_ctxt.name,
-                                        self)
+      self._grad_context = WhileContext(
+          maximum_iterations=forward_ctxt.maximum_iterations,
+          parallel_iterations=forward_ctxt.parallel_iterations,
+          back_prop=forward_ctxt.back_prop,
+          swap_memory=forward_ctxt.swap_memory,
+          name=forward_ctxt.name,
+          grad_state=self)
       real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
       self._grad_index = self._grad_context.AddBackpropLoopCounter(
           real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
       if outer_forward_ctxt: outer_forward_ctxt.Enter()
-      self._grad_context = WhileContext(forward_ctxt.parallel_iterations,
-                                        forward_ctxt.back_prop,
-                                        forward_ctxt.swap_memory,
-                                        forward_ctxt.name,
-                                        self)
+      self._grad_context = WhileContext(
+          maximum_iterations=forward_ctxt.maximum_iterations,
+          parallel_iterations=forward_ctxt.parallel_iterations,
+          back_prop=forward_ctxt.back_prop,
+          swap_memory=forward_ctxt.swap_memory,
+          name=forward_ctxt.name,
+          grad_state=self)
       self._grad_index = self._grad_context.AddBackpropLoopCounter(
           cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
@@ -893,9 +898,14 @@ class GradLoopState(object):
     with ops.control_dependencies(None):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
+        maximum_iterations = self.forward_context.maximum_iterations
+        if maximum_iterations is None:
+          maximum_iterations = constant_op.constant(-1, dtypes.int32)
         # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack_v2(-1, value.dtype.base_dtype,
-                                          name="f_acc")
+        acc = gen_data_flow_ops._stack_v2(
+            max_size=maximum_iterations,
+            elem_type=value.dtype.base_dtype,
+            name="f_acc")
         # pylint: enable=protected-access
       if curr_ctxt: curr_ctxt.Exit()
 
@@ -1414,6 +1424,10 @@ class ControlFlowContext(object):
       # pylint: enable=protected-access
 
   @property
+  def name(self):
+    return self._name
+
+  @property
   def outer_context(self):
     """Return the context containing this context."""
     return self._outer_context
@@ -1518,6 +1532,9 @@ class ControlFlowContext(object):
   def IsWhileContext(self):
     return False
 
+  def IsCondContext(self):
+    return False
+
   def __str__(self):
     return self.name
 
@@ -1573,10 +1590,6 @@ class CondContext(ControlFlowContext):
     self._branch = context_def.branch
     super(CondContext, self).__init__(values_def=context_def.values_def,
                                       import_scope=import_scope)
-
-  @property
-  def name(self):
-    return self._name
 
   @property
   def pred(self):
@@ -1759,6 +1772,9 @@ class CondContext(ControlFlowContext):
       result = [result]
     return original_result, result
 
+  def IsCondContext(self):
+    return True
+
 
 def _UnpackIfSingleton(res):
   if isinstance(res, (list, _basetuple)) and len(res) == 1:
@@ -1767,6 +1783,7 @@ def _UnpackIfSingleton(res):
     return res
 
 
+# pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
 @deprecation.deprecated_args(
     None,
@@ -1943,6 +1960,7 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
       merges = _UnpackIfSingleton(merges)
     return merges
 # pylint: enable=g-doc-args
+# pylint: enable=redefined-outer-name
 
 
 def _resource_safe_shape(t):
@@ -1960,12 +1978,19 @@ def _resource_safe_shape(t):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
-               name="while_context", grad_state=None, context_def=None,
+  def __init__(self,
+               maximum_iterations=None,
+               parallel_iterations=10,
+               back_prop=True,
+               swap_memory=False,
+               name="while_context",
+               grad_state=None,
+               context_def=None,
                import_scope=None):
     """"Creates a `WhileContext`.
 
     Args:
+      maximum_iterations: Optional upper bound on number of loop iterations.
       parallel_iterations: The number of iterations allowed to run in parallel.
       back_prop: Whether backprop is enabled for this while loop.
       swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -1980,16 +2005,17 @@ class WhileContext(ControlFlowContext):
       self._init_from_proto(context_def, import_scope=import_scope)
     else:
       ControlFlowContext.__init__(self)
-      self._init_from_args(parallel_iterations, back_prop, swap_memory,
-                           name)
+      self._init_from_args(maximum_iterations, parallel_iterations, back_prop,
+                           swap_memory, name)
     # The gradient loop state.
     self._grad_state = grad_state
 
-  def _init_from_args(self, parallel_iterations, back_prop, swap_memory,
-                      name):
+  def _init_from_args(self, maximum_iterations, parallel_iterations, back_prop,
+                      swap_memory, name):
     """Creates a new `WhileContext` from arguments.
 
     Args:
+      maximum_iterations: Optional upper bound on number of loop iterations.
       parallel_iterations: The number of iterations allowed to run in parallel.
       back_prop: Whether backprop is enabled for this while loop.
       swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -2002,6 +2028,7 @@ class WhileContext(ControlFlowContext):
       raise ValueError("`parallel_iterations` must be a positive integer: "
                        "%s" % parallel_iterations)
     self._name = ops.get_default_graph().unique_name(name)
+    self._maximum_iterations = maximum_iterations
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
     self._swap_memory = swap_memory
@@ -2029,6 +2056,12 @@ class WhileContext(ControlFlowContext):
     g = ops.get_default_graph()
     self._name = ops.prepend_name_scope(
         context_def.context_name, import_scope)
+    if context_def.maximum_iterations_name:
+      self._maximum_iterations = g.as_graph_element(
+          ops.prepend_name_scope(context_def.maximum_iterations_name,
+                                 import_scope))
+    else:
+      self._maximum_iterations = None
     self._parallel_iterations = context_def.parallel_iterations
     self._back_prop = context_def.back_prop
     self._swap_memory = context_def.swap_memory
@@ -2053,8 +2086,9 @@ class WhileContext(ControlFlowContext):
                                        import_scope=import_scope)
 
   @property
-  def name(self):
-    return self._name
+  def maximum_iterations(self):
+    """The maximum number of iterations that will be executed."""
+    return self._maximum_iterations
 
   @property
   def parallel_iterations(self):
@@ -2106,6 +2140,9 @@ class WhileContext(ControlFlowContext):
       context_def.context_name = ops.strip_name_scope(
           self.name, export_scope)
       context_def.parallel_iterations = self._parallel_iterations
+      if self._maximum_iterations is not None:
+        context_def.maximum_iterations_name = ops.strip_name_scope(
+            self._maximum_iterations.name, export_scope)
       context_def.back_prop = self._back_prop
       context_def.swap_memory = self._swap_memory
       context_def.pivot_for_pred_name = ops.strip_name_scope(
@@ -2724,6 +2761,7 @@ class WhileContext(ControlFlowContext):
     return True
 
 
+# pylint: disable=redefined-outer-name
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
                name=None, maximum_iterations=None):
@@ -2861,6 +2899,28 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       if maximum_iterations.shape.ndims != 0:
         raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
                          maximum_iterations.shape)
+
+      # If/when we generated the gradient for this while loop, the
+      # maximum_iterations tensor will be used as the input to any generated
+      # stack ops. It's likely the stacks will be outside any control flow
+      # context (i.e. if gradients() is called outside any control flow
+      # context), which will result in the maximum_iterations tensor being an
+      # illegal input (see control_flow_util.CheckInputFromValidContext).
+      #
+      # NOTE(skyewm): we could technically allow tensors from CondContexts, but
+      # that will be error-prone and hard to reason about for users.
+      #
+      # TODO(skyewm): make this work (it's tricky).
+      if (context.in_graph_mode() and
+          (util.IsInWhileLoop(maximum_iterations.op) or
+           util.IsInCond(maximum_iterations.op))):
+        raise ValueError(
+            "maximum_iterations tensor cannot be declared in tf.cond or "
+            "tf.while_loop. Please file an issue at "
+            "https://github.com/tensorflow/tensorflow/issues if you require "
+            "this functionality. (Control flow context: %s)" %
+            maximum_iterations.op._get_control_flow_context().name)  # pylint: disable=protected-access
+
       counter = constant_op.constant(
           0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
@@ -2889,13 +2949,18 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
         shape_invariants = (tensor_shape.TensorShape([]), shape_invariants)
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
+    loop_context = WhileContext(
+        maximum_iterations=maximum_iterations,
+        parallel_iterations=parallel_iterations,
+        back_prop=back_prop,
+        swap_memory=swap_memory)
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
     result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     if maximum_iterations is not None:
       return result[1]
     else:
       return result
+# pylint: enable=redefined-outer-name
 
 
 def _AsTensorList(x, p):
@@ -3108,23 +3173,105 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-def _assert_exclusive(preds):
-  """Returns an Assert op that checks that the predicates are exclusive."""
-  preds_c = array_ops.stack(preds, name="preds_c")
+def _assert_at_most_n_true(predicates, n, msg):
+  """Returns an Assert op that checks that at most n predicates are True.
+
+  Args:
+    predicates: list of bool scalar tensors.
+    n: maximum number of true predicates allowed.
+    msg: Error message.
+  """
+  preds_c = array_ops.stack(predicates, name="preds_c")
   num_true_conditions = math_ops.reduce_sum(
       math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
-  at_most_one_true_condition = math_ops.less(
-      num_true_conditions, constant_op.constant(2, name="two_true_conds"))
+  condition = math_ops.less_equal(num_true_conditions,
+                                  constant_op.constant(n, name="n_true_conds"))
+  preds_names = ", ".join(getattr(p, "name", "?") for p in predicates)
+  error_msg = [
+      "%s: more than %d conditions (%s) evaluated as True:" %
+      (msg, n, preds_names), preds_c
+  ]
+  return Assert(condition, data=error_msg, summarize=len(predicates))
 
-  error_msg = [("More than one condition evaluated as True but "
-                "exclusive=True.  Conditions: (%s), Values:"
-                % ", ".join([p.name for p in preds])),
-               preds_c]
-  return Assert(condition=at_most_one_true_condition, data=error_msg,
-                summarize=len(preds))
+
+def _case_create_default_action(predicates, actions):
+  """Creates default action for a list of actions and their predicates.
+
+  It uses the input actions to select an arbitrary as default and makes sure
+  that corresponding predicates have valid values.
+
+  Args:
+    predicates: a list of bool scalar tensors
+    actions: a list of callable objects which return tensors.
+
+  Returns:
+    a callable
+  """
+  k = len(predicates) - 1  # could pick any
+  predicate, action = predicates[k], actions[k]
+  other_predicates, other_actions = predicates[:k], actions[:k]
+
+  def default_action():
+    others_msg = ("Implementation error: "
+                  "selected default action #%d was called, but some of other "
+                  "predicates are True: " % k)
+    default_msg = ("Input error: "
+                   "None of conditions evaluated as True:",
+                   array_ops.stack(predicates, name="preds_c"))
+    with ops.control_dependencies([
+        _assert_at_most_n_true(other_predicates, n=0, msg=others_msg),
+        Assert(predicate, data=default_msg)
+    ]):
+      return action()
+
+  return default_action, other_predicates, other_actions
 
 
-def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
+def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
+  """Verifies input arguments for the case function.
+
+  Args:
+    pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
+                   callable which returns a list of tensors.
+    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    name: A name for the case operation.
+
+  Raises:
+    TypeError: If `pred_fn_pairs` is not a list/dictionary.
+    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+
+  Returns:
+    a tuple <list of scalar bool tensors, list of callables>.
+  """
+  if not isinstance(pred_fn_pairs, (list, _basetuple, dict)):
+    raise TypeError("fns must be a list, tuple, or dict")
+
+  if isinstance(pred_fn_pairs, collections.OrderedDict):
+    pred_fn_pairs = pred_fn_pairs.items()
+  elif isinstance(pred_fn_pairs, dict):
+    pred_fn_pairs = sorted(pred_fn_pairs.items(), key=lambda item: item[0].name)
+    if not exclusive:
+      logging.warn("%s: An unordered dictionary of predicate/fn pairs was "
+                   "provided, but exclusive=False. The order of conditional "
+                   "tests is deterministic but not guaranteed.", name)
+  for pred_fn_pair in pred_fn_pairs:
+    if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
+      raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
+    pred, fn = pred_fn_pair
+    if pred.dtype != dtypes.bool:
+      raise TypeError("pred must be of type bool: %s", pred.name)
+    if not callable(fn):
+      raise TypeError("fn for pred %s must be callable." % pred.name)
+  predicates, actions = zip(*pred_fn_pairs)
+  return predicates, actions
+
+
+def case(pred_fn_pairs,
+         default=None,
+         exclusive=False,
+         strict=False,
          name="case"):
   """Create a case operation.
 
@@ -3209,152 +3356,27 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
-    ValueError: If in eager mode and all predicates are false and no
-               default is provided.
-    ValueError: If in eager mode and is passed a dictionary.
   """
-  pfp = pred_fn_pairs  # For readability
-  if not (isinstance(pfp, list) or isinstance(pfp, _basetuple)
-          or isinstance(pfp, dict)):
-    raise TypeError("fns must be a list, tuple, or dict")
-  if isinstance(pfp, dict):
-    if context.in_eager_mode():
-      raise ValueError(
-          "In eager mode the predicates must be a list, not a dictionary.")
-    if isinstance(pfp, collections.OrderedDict):
-      pfp = pfp.items()
-    else:
-      pfp = sorted(pfp.items(), key=lambda item: item[0].name)
-      if not exclusive:
-        logging.warn("%s: An unordered dictionary of predicate/fn pairs was "
-                     "provided, but exclusive=False. The order of conditional "
-                     "tests is deterministic but not guaranteed.", name)
-  for tup in pfp:
-    if not isinstance(tup, _basetuple) or len(tup) != 2:
-      raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
-    pred, fn = tup
-    if pred.dtype != dtypes.bool:
-      raise TypeError("pred must be of type bool: %s", pred.name)
-    if not callable(fn):
-      raise TypeError("fn for pred %s must be callable." % pred.name)
-
-  if default is not None and not callable(default):
-    raise TypeError("default must be callable.")
-
-  if context.in_eager_mode():
-    for pred, fn in pfp:
-      if pred:
+  predicates, actions = _case_verify_and_canonicalize_args(
+      pred_fn_pairs, exclusive, name)
+  with ops.name_scope(name, "case", [predicates]):
+    if default is None:
+      default, predicates, actions = _case_create_default_action(
+          predicates, actions)
+    fn = default
+    # To eval conditions in direct order we create nested conditions in reverse:
+    #   cond(c[0], true_fn=.., false_fn=cond(c[1], ...))
+    for predicate, action in reversed(list(zip(predicates, actions))):
+      fn = functools.partial(
+          cond, predicate, true_fn=action, false_fn=fn, strict=strict)
+    if exclusive:
+      with ops.control_dependencies([
+          _assert_at_most_n_true(
+              predicates, n=1, msg="Input error: exclusive=True")
+      ]):
         return fn()
-    if default is None:
-      raise ValueError("tf.case received all false predicates and no default.")
-    return default()
-
-  preds, fns = map(list, zip(*pfp))
-  del pfp  # From now on, preds and fns form the source of truth.
-
-  with ops.name_scope(name, "case", [preds]):
-    exclusivity_assert = _assert_exclusive(preds) if exclusive else None
-    # If no default is provided, then we remove one of the (predicate, function)
-    # pairs and define the default to be the removed function with an additional
-    # control dependency that asserts that the removed predicate holds.
-    if default is None:
-      all_preds = _basetuple(preds)  # For the error message.
-      last_pred, last_fn = preds.pop(), fns.pop()
-      def new_default():
-        preds_c = array_ops.stack(all_preds, name="preds_c")
-        error_msg = [
-            ("None of the conditions evaluated as True. Conditions: (%s), "
-             "Values:" % ", ".join([p.name for p in all_preds])),
-            preds_c]
-        assertion = Assert(condition=last_pred,
-                           data=error_msg, summarize=len(all_preds))
-        with ops.control_dependencies([assertion]):
-          return last_fn()
-      default = new_default
-
-    if not preds:
-      return default()
-    not_preds = []
-    for i, p in enumerate(preds):
-      with ops.name_scope("not_%d" % i):
-        not_preds.append(math_ops.logical_not(p))
-    and_not_preds = [constant_op.constant(True, name="always_true")]
-    for i, notp in enumerate(not_preds):
-      with ops.name_scope("and_not_%d" % i):
-        and_not_preds.append(math_ops.logical_and(and_not_preds[-1], notp))
-
-    # preds = [p1, p2, p3]
-    # fns = [f1, f2, f3]
-    # not_preds = [~p1, ~p2, ~p3]
-    # and_not_preds = [True, ~p1, ~p1 & ~p2, ~p1 & ~p2 & ~p3]
-    # case_preds = [p1,
-    #               p2 & ~p1,
-    #               p3 & ~p2 & ~p1,
-    #              ~p3 & ~p2 & ~p1]
-
-    case_preds = []
-    for i, (p, and_not_p_prev) in enumerate(zip(preds, and_not_preds[:-1])):
-      with ops.name_scope("case_%d" % i):
-        case_preds.append(math_ops.logical_and(p, and_not_p_prev))
-    with ops.name_scope("case_none_are_true"):
-      case_preds.append(and_not_preds[-1])
-
-    # Create an empty tensor, or list, with the right type and shape
-    with ops.name_scope("case_create_empty"):
-      def _create_empty_constant(dtype, shape):
-        value = ("" if dtype == dtypes.string else dtype.as_numpy_dtype())
-        if shape.ndims is None:
-          return array_ops.constant(value, dtype=dtype)
-        else:
-          temp_shape = [1 if x.value is None else x.value for x in shape]
-          result = array_ops.constant(value, shape=temp_shape, dtype=dtype)
-          result._shape = shape  # pylint: disable=protected-access
-          return result
-
-      def _correct_empty(v):
-        if isinstance(v, ops.Operation):
-          return no_op()
-        elif isinstance(v, tensor_array_ops.TensorArray):
-          return v
-        elif not hasattr(v, "dtype"):
-          return ops.convert_to_tensor(v)
-        elif isinstance(v, sparse_tensor.SparseTensor):
-          return sparse_tensor.SparseTensor(indices=[[0] * len(v.get_shape())],
-                                            values=[v.dtype.as_numpy_dtype()],
-                                            dense_shape=v.get_shape())
-        else:
-          return _create_empty_constant(v.dtype, v.get_shape())
-
-      empty = lambda: nest.map_structure(_correct_empty, default())
-
-    # case_sequence = [
-    #   cond(~p3 & ~p2 & ~p1, default, empty),
-    #   cond(p3 & ~p2 & ~p1, f3, lambda: case_sequence[0]),
-    #   cond(p2 & ~p1, f2, lambda: case_sequence[1]),
-    #   cond(p1, f1, lambda: case_sequence[2])
-    # ]
-    #
-    # And the return value will be case_sequence[-1]
-    def _build_case():
-      all_fns = [fn for fn in fns]
-      all_fns.append(default)
-      prev_case = None
-      for i, (cp, fn) in enumerate(list(zip(case_preds, all_fns))[::-1]):
-        prev_case = cond(
-            cp, fn,
-            empty if i == 0 else lambda: prev_case,
-            strict=strict, name="If_%d" % i)
-      return prev_case
-
-    if exclusivity_assert is not None:
-      with ops.control_dependencies([exclusivity_assert]):
-        case_seq = _build_case()
     else:
-      case_seq = _build_case()
-
-    if not strict:
-      case_seq = _UnpackIfSingleton(case_seq)
-    return case_seq
+      return fn()
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

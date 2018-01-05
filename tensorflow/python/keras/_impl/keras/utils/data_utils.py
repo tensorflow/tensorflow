@@ -28,6 +28,7 @@ import sys
 import tarfile
 import threading
 import time
+import traceback
 import zipfile
 
 import numpy as np
@@ -560,9 +561,9 @@ class OrderedEnqueuer(SequenceEnqueuer):
         self.queue.task_done()
         if inputs is not None:
           yield inputs
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-except
       self.stop()
-      raise StopIteration(e)
+      six.raise_from(StopIteration(e), e)
 
   def _send_sequence(self):
     """Send current Sequence to all workers."""
@@ -623,6 +624,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
     self._use_multiprocessing = use_multiprocessing
     self._threads = []
     self._stop_event = None
+    self._manager = None
     self.queue = None
     self.seed = seed
 
@@ -640,18 +642,27 @@ class GeneratorEnqueuer(SequenceEnqueuer):
         try:
           if self._use_multiprocessing or self.queue.qsize() < max_queue_size:
             generator_output = next(self._generator)
-            self.queue.put(generator_output)
+            self.queue.put((True, generator_output))
           else:
             time.sleep(self.wait_time)
         except StopIteration:
           break
-        except Exception:
+        except Exception as e:  # pylint: disable=broad-except
+          # Can't pick tracebacks.
+          # As a compromise, print the traceback and pickle None instead.
+          if self._use_multiprocessing:
+            traceback.print_exc()
+            setattr(e, '__traceback__', None)
+          elif not hasattr(e, '__traceback__'):
+            setattr(e, '__traceback__', sys.exc_info()[2])
+          self.queue.put((False, e))
           self._stop_event.set()
-          raise
+          break
 
     try:
       if self._use_multiprocessing:
-        self.queue = multiprocessing.Queue(maxsize=max_queue_size)
+        self._manager = multiprocessing.Manager()
+        self.queue = self._manager.Queue(maxsize=max_queue_size)
         self._stop_event = multiprocessing.Event()
       else:
         self.queue = queue.Queue()
@@ -695,9 +706,8 @@ class GeneratorEnqueuer(SequenceEnqueuer):
         else:
           thread.join(timeout)
 
-    if self._use_multiprocessing:
-      if self.queue is not None:
-        self.queue.close()
+    if self._manager:
+      self._manager.shutdown()
 
     self._threads = []
     self._stop_event = None
@@ -713,12 +723,23 @@ class GeneratorEnqueuer(SequenceEnqueuer):
     """
     while self.is_running():
       if not self.queue.empty():
-        inputs = self.queue.get()
-        if inputs is not None:
-          yield inputs
+        success, value = self.queue.get()
+        # Rethrow any exceptions found in the queue
+        if not success:
+          six.reraise(value.__class__, value, value.__traceback__)
+        # Yield regular values
+        if value is not None:
+          yield value
       else:
         all_finished = all([not thread.is_alive() for thread in self._threads])
         if all_finished and self.queue.empty():
           raise StopIteration()
         else:
           time.sleep(self.wait_time)
+
+      # Make sure to rethrow the first exception in the queue, if any
+    while not self.queue.empty():
+      success, value = self.queue.get()
+      if not success:
+        six.reraise(value.__class__, value, value.__traceback__)
+

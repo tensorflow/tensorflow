@@ -58,6 +58,14 @@ struct bfloat16 {
 #endif
   }
 
+  // Following the convention of numpy, converting between complex and
+  // float will lead to loss of imag value.
+  explicit EIGEN_DEVICE_FUNC bfloat16(const complex64& val)
+      : bfloat16(val.real()) {}
+
+  explicit EIGEN_DEVICE_FUNC bfloat16(const complex128& val)
+      : bfloat16(static_cast<float>(val.real())) {}
+
   template <class T>
   explicit EIGEN_DEVICE_FUNC bfloat16(const T& val)
       : bfloat16(static_cast<float>(val)) {}
@@ -129,6 +137,14 @@ struct bfloat16 {
     return static_cast<double>(float(*this));
   }
 
+  EIGEN_DEVICE_FUNC explicit operator complex64() const {
+    return complex64(float(*this), float(0.0));
+  }
+
+  EIGEN_DEVICE_FUNC explicit operator complex128() const {
+    return complex128(double(*this), double(0.0));
+  }
+
   static bfloat16 epsilon() {
     bfloat16 x;
     x.value = 0x3c00;  // 0x1.0p-7
@@ -175,7 +191,22 @@ inline bool operator>(bfloat16 a, bfloat16 b) {
 inline bool operator>=(bfloat16 a, bfloat16 b) {
   return static_cast<float>(a) >= static_cast<float>(b);
 }
-
+inline bfloat16& operator+=(bfloat16& a, bfloat16 b) {
+  a = a + b;
+  return a;
+}
+inline bfloat16& operator-=(bfloat16& a, bfloat16 b) {
+  a = a - b;
+  return a;
+}
+inline bfloat16& operator*=(bfloat16& a, bfloat16 b) {
+  a = a * b;
+  return a;
+}
+inline bfloat16& operator/=(bfloat16& a, bfloat16 b) {
+  a = a / b;
+  return a;
+}
 }  // end namespace tensorflow
 
 namespace Eigen {

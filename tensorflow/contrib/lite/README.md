@@ -186,7 +186,7 @@ bazel-bin/tensorflow/contrib/lite/toco/toco -- \
 - Setting the input_array, output_array and input_shape arguments are a bit trickier. The easiest way to find these values is to explore the graph in tensorboard .  The user should reuse the arguments that were used for specifying the output nodes for inference in the `freeze_graph`step.
 
 Note, it is also possible to use the Tensorflow Optimizing Converter through protos either from Python or from the command line see the
-documentation [here](https://github.com/tensorflow/tensorflow/tree/mastertensorflow/contrib/lite/python:toco_from_protos target) A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
+documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/python/toco_from_protos.py). A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
 
 ```
 import tensorflow as tf

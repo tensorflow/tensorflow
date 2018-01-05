@@ -559,20 +559,20 @@ void BM_DynamicSlice(int num_iters) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Initialize and transfer parameter buffer.
-  auto shape_size_fn = [client](const Shape& shape) {
-    return client->backend().transfer_manager()->GetByteSizeRequirement(shape);
-  };
-  auto buffer = ScopedShapedBuffer::Allocate(start_indices_shape, &allocator, 0,
-                                             shape_size_fn)
+  auto buffer = client->backend()
+                    .transfer_manager()
+                    ->AllocateScopedShapedBuffer(
+                        start_indices_shape, &allocator, /*device_ordinal=*/0)
                     .ConsumeValueOrDie();
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal,
-      buffer->mutable_buffer({})));
+      executors[device_ordinal], *start_indices_literal, *buffer));
 
   std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, {&buffer->shape()}, ExecutableBuildOptions())
+      client
+          ->Compile(computation, {&buffer->on_host_shape()},
+                    ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
   // Run some warm-up executions.

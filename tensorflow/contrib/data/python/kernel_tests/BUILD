@@ -392,6 +392,25 @@ py_test(
 )
 
 py_test(
+    name = "scan_dataset_op_test",
+    size = "small",
+    srcs = ["scan_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "sequence_dataset_op_test",
     size = "medium",
     srcs = ["sequence_dataset_op_test.py"],
@@ -464,11 +483,32 @@ py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+    ],
+)
+
+py_test(
+    name = "unique_dataset_op_test",
+    size = "small",
+    srcs = ["unique_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/contrib/stateless",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//third_party/py/numpy",
     ],
 )
 

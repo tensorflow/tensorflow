@@ -145,6 +145,7 @@ class HloDataflowAnalysis {
   // Updates the value set for a particular instruction type. Returns whether
   // the instruction value set changed.
   bool UpdateBitcastValueSet(HloInstruction* bitcast);
+  bool UpdateSliceValueSet(HloInstruction* slice);
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);

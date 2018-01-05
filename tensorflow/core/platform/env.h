@@ -218,6 +218,10 @@ class Env {
   /// Creates a local unique temporary file name. Returns true if success.
   bool LocalTempFilename(string* filename);
 
+  /// Creates a local unique file name that starts with |prefix| and ends with
+  /// |suffix|. Returns true if success.
+  bool CreateUniqueFileName(string* prefix, const string& suffix);
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.

@@ -250,7 +250,7 @@ class Service : public ServiceInterface {
   // class.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
-      tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       const ExecutionOptions& execution_options);
 
  protected:
@@ -265,10 +265,10 @@ class Service : public ServiceInterface {
 
   // Resolves the given argument handles in the allocation tracker and returns
   // the corresponding allocations. The function also verifies that each
-  // allocation matches the given backend and device ordinal.
-  StatusOr<std::vector<const Allocation*>> ResolveAndValidateArguments(
+  // allocation matches the execution platform and device ordinal.
+  StatusOr<std::vector<const ShapedBuffer*>> ResolveAndValidateArguments(
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      const Backend* backend, int device_ordinal);
+      int device_ordinal);
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
@@ -281,8 +281,6 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config,
-      const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
       Backend* backend, perftools::gputools::StreamExecutor* executor);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
@@ -299,8 +297,6 @@ class Service : public ServiceInterface {
   StatusOr<std::shared_ptr<Executable>> BuildAndCacheExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config,
-      const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
       Backend* backend, perftools::gputools::StreamExecutor* executor,
       ExecutionProfile* profile);
 
@@ -310,8 +306,7 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
+      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       Backend* backend, perftools::gputools::StreamExecutor* executor,
       const string& result_tag, ExecutionProfile* profile);
 
@@ -320,9 +315,7 @@ class Service : public ServiceInterface {
   // from the tracker are returned.
   StatusOr<std::vector<GlobalDataHandle>> ExecuteParallelAndRegisterResult(
       tensorflow::gtl::ArraySlice<Executable*> executables,
-      tensorflow::gtl::ArraySlice<
-          std::vector<perftools::gputools::DeviceMemoryBase>>
-          arguments,
+      tensorflow::gtl::ArraySlice<std::vector<const ShapedBuffer*>> arguments,
       Backend* backend,
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags,

@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+
 // "batch" flag only exists internally
 #ifdef PLATFORM_GOOGLE
 #include "base/commandlineflags.h"
@@ -134,6 +134,20 @@ bool ParseModelFlagsFromCommandLineFlags(
            parsed_flags.dump_graphviz_video.default_value(),
            "If true, will dump graphviz at each "
            "graph transformation, which may be used to generate a video."),
+      Flag("allow_nonexistent_arrays",
+           parsed_flags.allow_nonexistent_arrays.bind(),
+           parsed_flags.allow_nonexistent_arrays.default_value(),
+           "If true, will allow passing inexistent arrays in --input_arrays "
+           "and --output_arrays. This makes little sense, is only useful to "
+           "more easily get graph visualizations."),
+      Flag("allow_nonascii_arrays", parsed_flags.allow_nonascii_arrays.bind(),
+           parsed_flags.allow_nonascii_arrays.default_value(),
+           "If true, will allow passing non-ascii-printable characters in "
+           "--input_arrays and --output_arrays. By default (if false), only "
+           "ascii printable characters are allowed, i.e. character codes "
+           "ranging from 32 to 127. This is disallowed by default so as to "
+           "catch common copy-and-paste issues where invisible unicode "
+           "characters are unwittingly added to these strings."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -350,7 +364,10 @@ void ReadModelFlagsFromCommandLineFlags(
     }
   }
 
-  CheckInputArraysAreNotOutputArrays(*model_flags);
+  model_flags->set_allow_nonascii_arrays(
+      parsed_model_flags.allow_nonascii_arrays.value());
+  model_flags->set_allow_nonexistent_arrays(
+      parsed_model_flags.allow_nonexistent_arrays.value());
 }
 
 ParsedModelFlags* UncheckedGlobalParsedModelFlags(bool must_already_exist) {
@@ -383,16 +400,6 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]) {
     fprintf(stderr, "%s", msg.c_str());
     fflush(stderr);
     abort();
-  }
-}
-
-void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
-  for (const auto& input_array : model_flags.input_arrays()) {
-    for (const string& output_array : model_flags.output_arrays()) {
-      QCHECK_NE(input_array.name(), output_array)
-          << "The array " << output_array
-          << " is listed in both --input_arrays and --output_arrays.";
-    }
   }
 }
 

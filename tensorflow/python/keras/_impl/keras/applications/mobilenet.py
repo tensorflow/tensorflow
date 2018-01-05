@@ -68,7 +68,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import warnings
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
@@ -90,6 +89,7 @@ from tensorflow.python.keras._impl.keras.layers import Reshape
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
 
 BASE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'
 
@@ -380,18 +380,11 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       RuntimeError: If attempting to run this model with a
           backend that does not support separable convolutions.
   """
-
-  if K.backend() != 'tensorflow':
-    raise RuntimeError('Only TensorFlow backend is currently supported, '
-                       'as other backends do not support '
-                       'depthwise convolution.')
-
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
                      'or the path to the weights file to be loaded.')
-
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as ImageNet with `include_top` '
@@ -442,15 +435,15 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
                        ' Input shape provided = %s' % (input_shape,))
 
   if K.image_data_format() != 'channels_last':
-    warnings.warn('The MobileNet family of models is only available '
-                  'for the input data format "channels_last" '
-                  '(width, height, channels). '
-                  'However your settings specify the default '
-                  'data format "channels_first" (channels, width, height).'
-                  ' You should set `image_data_format="channels_last"` '
-                  'in your Keras config located at ~/.keras/keras.json. '
-                  'The model being returned right now will expect inputs '
-                  'to follow the "channels_last" data format.')
+    logging.warning('The MobileNet family of models is only available '
+                    'for the input data format "channels_last" '
+                    '(width, height, channels). '
+                    'However your settings specify the default '
+                    'data format "channels_first" (channels, width, height).'
+                    ' You should set `image_data_format="channels_last"` '
+                    'in your Keras config located at ~/.keras/keras.json. '
+                    'The model being returned right now will expect inputs '
+                    'to follow the "channels_last" data format.')
     K.set_image_data_format('channels_last')
     old_data_format = 'channels_first'
   else:
@@ -538,6 +531,8 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       weigh_path = BASE_WEIGHT_PATH + model_name
       weights_path = get_file(model_name, weigh_path, cache_subdir='models')
     model.load_weights(weights_path)
+  elif weights is not None:
+    model.load_weights(weights)
 
   if old_data_format:
     K.set_image_data_format(old_data_format)

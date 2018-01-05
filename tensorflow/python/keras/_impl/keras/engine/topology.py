@@ -1426,10 +1426,11 @@ def preprocess_weights_for_loading(layer,
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
   # convert the weights of CuDNNLSTM so that they could be loaded into LSTM
-  if layer.__class__.__name__ == 'LSTM':
+  if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
     # determine if we're loading a CuDNNLSTM layer from the number of bias
     # weights:
     # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
+    # if there's no bias weight in the file, skip this conversion
     units = weights[1].shape[0]
     bias = weights[2]
     if len(bias) == units * 8:

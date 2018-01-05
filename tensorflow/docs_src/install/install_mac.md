@@ -115,7 +115,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      TensorFlow in the active Virtualenv is as follows:
 
      <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc0-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -238,7 +238,7 @@ take the following steps:
      issue the following command:
 
      <pre> $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.whl</b> </pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc0-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -347,7 +347,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (<i>targetDirectory</i>)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc0-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -520,7 +520,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc0-py2-none-any.whl
 </pre>
 
 
@@ -528,46 +528,5 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py2-none-any.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.4.0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.5.0rc0-py3-none-any.whl
 </pre>
-
-
-
-<a name="Protobuf31"></a>
-## Protobuf pip package 3.1
-
-You can skip this section unless you are seeing problems related
-to the protobuf pip package.
-
-**NOTE:** If your TensorFlow programs are running slowly, you might
-have a problem related to the protobuf pip package.
-
-The TensorFlow pip package depends on protobuf pip package version 3.1. The
-protobuf pip package downloaded from PyPI (when invoking
-<tt>pip install protobuf</tt>) is a Python-only library containing
-Python implementations of proto serialization/deserialization that can run
-**10x-50x slower** than the C++ implementation. Protobuf also supports a
-binary extension for the Python package that contains fast
-C++ based proto parsing.  This extension is not available in the
-standard Python-only pip package.  We have created a custom binary
-pip package for protobuf that contains the binary extension. To install
-the custom binary protobuf pip package, invoke one of the following commands:
-
-  * for Python 2.7:
-
-    <pre>$ <b>pip install --upgrade \
-    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp27-none-macosx_10_11_x86_64.whl</b></pre>
-
-  * for Python 3.n:
-
-    <pre>$ <b>pip3 install --upgrade \
-    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp35-none-macosx_10_11_x86_64.whl</b></pre>
-
-Installing this protobuf package will overwrite the existing protobuf package.
-Note that the binary pip package already has support for protobufs
-larger than 64MB, which should fix errors such as these:
-
-<pre>[libprotobuf ERROR google/protobuf/src/google/protobuf/io/coded_stream.cc:207]
-A protocol message was rejected because it was too big (more than 67108864 bytes).
-To increase the limit (or to disable these warnings), see
-CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.</pre>

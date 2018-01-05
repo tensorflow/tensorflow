@@ -22,6 +22,11 @@ Usage: python ./rnn_ptb.py --data-path=<path_to_dataset>
 Penn Treebank (PTB) dataset from:
 http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import os
 import sys

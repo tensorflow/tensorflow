@@ -127,9 +127,6 @@ def Xception(include_top=True,
     raise ValueError('If using `weights` as imagenet with `include_top`'
                      ' as true, `classes` should be 1000')
 
-  if K.backend() != 'tensorflow':
-    raise RuntimeError('The Xception model is only available with '
-                       'the TensorFlow backend.')
   if K.image_data_format() != 'channels_last':
     logging.warning(
         'The Xception model is only available for the '
@@ -301,6 +298,8 @@ def Xception(include_top=True,
           cache_subdir='models',
           file_hash='b0042744bf5b25fce3cb969f33bebb97')
     model.load_weights(weights_path)
+  elif weights is not None:
+    model.load_weights(weights)
 
   if old_data_format:
     K.set_image_data_format(old_data_format)

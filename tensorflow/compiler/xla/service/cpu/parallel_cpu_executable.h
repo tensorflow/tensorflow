@@ -59,21 +59,14 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -108,13 +101,6 @@ class ParallelCpuExecutable : public Executable {
 
   // Calls the generated functions in 'function_names_', performing the
   // computation with the given arguments using the supplied buffers.
-  Status ExecuteComputeFunctions(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
   Status ExecuteComputeFunctions(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,

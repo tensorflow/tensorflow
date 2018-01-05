@@ -242,37 +242,6 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
                            DefaultErrorSpec());
 }
 
-// TODO(b/32173947): Test support for arbitrary-sized padding.
-TEST_P(ReduceWindowTest, DISABLED_AmongMajor2DimsMediumSizeLargePadding) {
-  Array4D<float> input_array(9, 12, 4, 89);  // simulate Dim0IsMinor layout
-  input_array.FillRandom(2.f, 2.f);
-
-  int64 rank = 4;
-  int win_len = 3;
-  int win_stride = 2;
-
-  const auto input_data_handle =
-      CreateConstantFromArray(input_array, &builder_);
-
-  Padding padding = Padding::kSame;
-  // Reduce only along the x and y dimensions, according to the win_len.
-  // Create padding vector with large padding values in the reduction dims.
-  std::vector<std::pair<int64, int64>> low_high_padding;
-  low_high_padding.resize(rank, {4, 4});
-
-  builder_.ReduceWindowWithGeneralPadding(
-      input_data_handle, builder_.ConstantR0<float>(0.0f),
-      CreateScalarAddComputation(F32, &builder_), {win_len, win_len, 1, 1},
-      {win_stride, win_stride, 1, 1}, low_high_padding);
-
-  auto result = ReferenceUtil::ReduceWindow4DAdd(
-      input_array, 0.0f, {win_len, win_len, 1, 1},
-      {win_stride, win_stride, 1, 1}, padding);
-
-  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(*result), {},
-                           DefaultErrorSpec());
-}
-
 XLA_TEST_P(ReduceWindowTest, Add1x1x2In2x1x2) {
   Array3D<float> input_array(2, 1, 2);
   input_array(0, 0, 0) = 1000;
@@ -424,7 +393,7 @@ XLA_TEST_P(ReduceWindowTest, R6Add) {
   auto shape = ShapeUtil::MakeShape(F32, input_dims);
 
   std::unique_ptr<Literal> arg_literal =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+      Literal::CreateFullWithDescendingLayout<float>(input_dims, 1.0f);
 
   const auto input = CreateConstantFromLiteral(*arg_literal, &builder_);
 
@@ -433,7 +402,7 @@ XLA_TEST_P(ReduceWindowTest, R6Add) {
 
   std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
   std::unique_ptr<Literal> expected =
-      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 9.0f);
+      Literal::CreateFullWithDescendingLayout<float>(output_dims, 9.0f);
 
   ComputeAndCompareLiteral(&builder_, *expected, {}, DefaultErrorSpec());
 }
@@ -689,6 +658,14 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // Arbitrary padding (not kSame or kValid).
+    R4ReduceWindowTestData{/*base_bounds=*/{9, 12, 4, 89},
+                           /*window_bounds=*/{3, 3, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{4, 4, 0, 0},
+                           /*pad_high=*/{4, 4, 0, 0},
                            /*reducer=*/kAdd},
 
     // Zero base bound edge case.

@@ -33,7 +33,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import tempfile
 import time
 
 from tensorflow.contrib.layers.python.layers import feature_column
@@ -682,22 +681,36 @@ def extend_export_strategy(base_export_strategy,
       ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified or if post_export_fn
         does not return a valid directory.
+      RuntimeError: If unable to create temporary or final export directory.
     """
-    tmp_base_export_dir = tempfile.mkdtemp()
+    tmp_base_export_folder = 'temp-base-export-' + str(int(time.time()))
+    tmp_base_export_dir = os.path.join(export_dir_base, tmp_base_export_folder)
+    if gfile.Exists(tmp_base_export_dir):
+      raise RuntimeError('Failed to obtain base export directory')
+    gfile.MakeDirs(tmp_base_export_dir)
     tmp_base_export = base_export_strategy.export(
         estimator, tmp_base_export_dir, checkpoint_path)
-    tmp_post_export_dir = tempfile.mkdtemp()
+
+    tmp_post_export_folder = 'temp-post-export-' + str(int(time.time()))
+    tmp_post_export_dir = os.path.join(export_dir_base, tmp_post_export_folder)
+    if gfile.Exists(tmp_post_export_dir):
+      raise RuntimeError('Failed to obtain temp export directory')
+
+    gfile.MakeDirs(tmp_post_export_dir)
     tmp_post_export = post_export_fn(tmp_base_export, tmp_post_export_dir)
 
     if not tmp_post_export.startswith(tmp_post_export_dir):
       raise ValueError('post_export_fn must return a sub-directory of {}'
                        .format(tmp_post_export_dir))
-    export_relpath = os.path.relpath(tmp_post_export, tmp_post_export_dir)
+    post_export_relpath = os.path.relpath(tmp_post_export, tmp_post_export_dir)
+    post_export = os.path.join(export_dir_base, post_export_relpath)
+    if gfile.Exists(post_export):
+      raise RuntimeError('Failed to obtain final export directory')
+    gfile.Rename(tmp_post_export, post_export)
 
-    gfile.Rename(
-        os.path.join(tmp_post_export_dir, export_relpath),
-        os.path.join(export_dir_base, export_relpath))
-    return os.path.join(export_dir_base, export_relpath)
+    gfile.DeleteRecursively(tmp_base_export_dir)
+    gfile.DeleteRecursively(tmp_post_export_dir)
+    return post_export
 
   name = post_export_name if post_export_name else base_export_strategy.name
   return export_strategy.ExportStrategy(name, export_fn)

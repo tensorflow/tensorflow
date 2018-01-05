@@ -16,7 +16,6 @@ limitations under the License.
 // XLA-specific reverse Op.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -66,7 +65,7 @@ class ReverseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reverse"), ReverseOp);
+REGISTER_XLA_OP(Name("Reverse").CompileTimeConstInput("dims"), ReverseOp);
 
 class ReverseV2Op : public XlaOpKernel {
  public:
@@ -104,7 +103,7 @@ class ReverseV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ReverseV2"), ReverseV2Op);
+REGISTER_XLA_OP(Name("ReverseV2").CompileTimeConstInput("axis"), ReverseV2Op);
 
 }  // namespace
 }  // namespace tensorflow

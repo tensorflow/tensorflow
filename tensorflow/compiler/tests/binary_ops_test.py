@@ -94,14 +94,12 @@ class BinaryOpsTest(XLATestCase):
           dtype(4),
           expected=np.array([[16], [81]], dtype=dtype))
 
-      atan2_supported = self.device == "XLA_GPU"
-      if atan2_supported:
-        self._testBinary(
-            math_ops.atan2,
-            np.array([0, np.sqrt(2), 1, np.sqrt(2), 0], dtype),
-            np.array([1, np.sqrt(2), 0, -np.sqrt(2), -1], dtype),
-            expected=np.array(
-                [0, np.pi / 4, np.pi / 2, np.pi * 3 / 4, np.pi], dtype=dtype))
+      self._testBinary(
+          math_ops.atan2,
+          np.array([0, np.sqrt(2), 1, np.sqrt(2), 0], dtype),
+          np.array([1, np.sqrt(2), 0, -np.sqrt(2), -1], dtype),
+          expected=np.array(
+              [0, np.pi / 4, np.pi / 2, np.pi * 3 / 4, np.pi], dtype=dtype))
 
       self._testBinary(
           gen_math_ops._reciprocal_grad,
@@ -388,30 +386,28 @@ class BinaryOpsTest(XLATestCase):
               ],
               dtype=dtype))
 
-      atan2_supported = self.device == "XLA_GPU"
-      if atan2_supported:
-        self._testBinary(
-            math_ops.pow,
-            dtype(3 + 2j),
-            dtype(4 - 5j),
-            expected=np.power(dtype(3 + 2j), dtype(4 - 5j)))
-        self._testBinary(  # empty rhs
-            math_ops.pow,
-            np.array([1 + 2j, 2 - 3j], dtype=dtype),
-            np.zeros(shape=[0, 2], dtype=dtype),
-            expected=np.zeros(shape=[0, 2], dtype=dtype))
-        self._testBinary(  # to zero power
-            math_ops.pow,
-            np.array([1 + 2j, 2 - 3j], dtype=dtype),
-            np.zeros(shape=[1, 2], dtype=dtype),
-            expected=np.ones(shape=[1, 2], dtype=dtype))
-        lhs = np.array([1 - 2j, 4 + 3j, 2 - 3j, 3, 2j, 1, 4], dtype=dtype)
-        rhs = np.array([2, 3j, 3 + 4j, 2 + 3j, 3 - 2j, 2, 3 + 3j], dtype=dtype)
-        scalar = dtype(2 + 2j)
-        self._testBinary(math_ops.pow, lhs, rhs, expected=np.power(lhs, rhs))
-        self._testBinary(
-            math_ops.pow, scalar, rhs, expected=np.power(scalar, rhs))
-        self._testBinary(math_ops.pow, lhs, scalar, np.power(lhs, scalar))
+      self._testBinary(
+          math_ops.pow,
+          dtype(3 + 2j),
+          dtype(4 - 5j),
+          expected=np.power(dtype(3 + 2j), dtype(4 - 5j)))
+      self._testBinary(  # empty rhs
+          math_ops.pow,
+          np.array([1 + 2j, 2 - 3j], dtype=dtype),
+          np.zeros(shape=[0, 2], dtype=dtype),
+          expected=np.zeros(shape=[0, 2], dtype=dtype))
+      self._testBinary(  # to zero power
+          math_ops.pow,
+          np.array([1 + 2j, 2 - 3j], dtype=dtype),
+          np.zeros(shape=[1, 2], dtype=dtype),
+          expected=np.ones(shape=[1, 2], dtype=dtype))
+      lhs = np.array([1 - 2j, 4 + 3j, 2 - 3j, 3, 2j, 1, 4], dtype=dtype)
+      rhs = np.array([2, 3j, 3 + 4j, 2 + 3j, 3 - 2j, 2, 3 + 3j], dtype=dtype)
+      scalar = dtype(2 + 2j)
+      self._testBinary(math_ops.pow, lhs, rhs, expected=np.power(lhs, rhs))
+      self._testBinary(
+          math_ops.pow, scalar, rhs, expected=np.power(scalar, rhs))
+      self._testBinary(math_ops.pow, lhs, scalar, np.power(lhs, scalar))
 
       lhs = np.array([4 + 2j, -3 - 1j, 2j, 1], dtype=dtype)
       rhs = np.array([5, -6j, 7 - 3j, -8j], dtype=dtype)
@@ -421,9 +417,8 @@ class BinaryOpsTest(XLATestCase):
       self._testBinary(
           gen_math_ops._sigmoid_grad, lhs, rhs, expected=rhs * lhs * (1 - lhs))
 
-      if atan2_supported:
-        self._testBinary(
-            gen_math_ops._rsqrt_grad, lhs, rhs, expected=lhs**3 * rhs / -2)
+      self._testBinary(
+          gen_math_ops._rsqrt_grad, lhs, rhs, expected=lhs**3 * rhs / -2)
 
       self._testBinary(
           gen_math_ops._sqrt_grad, lhs, rhs, expected=rhs / (2 * lhs))
@@ -547,7 +542,7 @@ class BinaryOpsTest(XLATestCase):
       self._testDivision(dtype)
 
   def testFloatDivision(self):
-    for dtype in self.float_types + self.complex_types:
+    for dtype in self.float_types | self.complex_types:
       self._testDivision(dtype)
 
   def _testRemainder(self, dtype):

@@ -55,20 +55,33 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
   // in IR.
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
-    if (ImplementedAsLibraryCall(*hlo)) {
+    // Inserts a copy of hlo->operand(n) if it's a constant.
+    auto copy_operand_if_constant = [&](int64 n) -> Status {
+      HloInstruction* operand = hlo->mutable_operand(n);
+      TF_RET_CHECK(ShapeUtil::IsArray(operand->shape()));
+      const auto& values = dataflow->GetValueSet(operand).values();
+      if (std::any_of(values.begin(), values.end(), [](const HloValue* value) {
+            return value->defining_instruction()->opcode() ==
+                   HloOpcode::kConstant;
+          })) {
+        TF_ASSIGN_OR_RETURN(HloInstruction * copy, FindOrInsertCopy(operand));
+        TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(n, copy));
+        changed = true;
+      }
+      return Status::OK();
+    };
+
+    if (IsCustomCallToDnnBatchNorm(*hlo)) {
+      // The epsilon and feature_index operands to a CUDNN batchnorm op don't
+      // need to be materialized in memory -- in fact, they must be constants.
+      // These are the last two operands of all three batchnorm ops.
+      for (int64 i = 0; i < hlo->operand_count() - 2; ++i) {
+        TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
+      }
+    } else if (ImplementedAsLibraryCall(*hlo)) {
+      // For all other library calls, materialize all the operands into memory.
       for (int64 i = 0; i < hlo->operand_count(); ++i) {
-        HloInstruction* operand = hlo->mutable_operand(i);
-        TF_RET_CHECK(ShapeUtil::IsArray(operand->shape()));
-        const auto& values = dataflow->GetValueSet(operand).values();
-        if (std::any_of(values.begin(), values.end(),
-                        [](const HloValue* value) {
-                          return value->defining_instruction()->opcode() ==
-                                 HloOpcode::kConstant;
-                        })) {
-          TF_ASSIGN_OR_RETURN(HloInstruction * copy, FindOrInsertCopy(operand));
-          TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, copy));
-          changed = true;
-        }
+        TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
     }
   }

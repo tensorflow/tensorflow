@@ -152,7 +152,9 @@ def _print_tensor_info(tensor_info):
   Args:
     tensor_info: TensorInfo object to be printed.
   """
-  print('    dtype: ' + types_pb2.DataType.keys()[tensor_info.dtype])
+  print('    dtype: ' +
+        {value: key
+         for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
   # Display shape as tuple.
   if tensor_info.tensor_shape.unknown_rank:
     shape = 'unknown_rank'

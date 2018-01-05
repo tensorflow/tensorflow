@@ -17,9 +17,72 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import gen_dataset_ops
+
+
+class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
+  """A `Dataset` that fuses `shuffle` and `repeat`."""
+
+  def __init__(self,
+               input_dataset,
+               buffer_size,
+               count=None,
+               seed=None):
+    """See `Dataset.map()` for details."""
+    super(_ShuffleAndRepeatDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._buffer_size = ops.convert_to_tensor(
+        buffer_size, dtype=dtypes.int64, name="buffer_size")
+    if count is None:
+      self._count = constant_op.constant(-1, dtype=dtypes.int64, name="count")
+    else:
+      self._count = ops.convert_to_tensor(
+          count, dtype=dtypes.int64, name="count")
+
+    seed, seed2 = random_seed.get_seed(seed)
+    if seed is None:
+      self._seed = constant_op.constant(0, dtype=dtypes.int64, name="seed")
+    else:
+      self._seed = ops.convert_to_tensor(seed, dtype=dtypes.int64, name="seed")
+    if seed2 is None:
+      self._seed2 = constant_op.constant(0, dtype=dtypes.int64, name="seed2")
+    else:
+      self._seed2 = ops.convert_to_tensor(
+          seed2, dtype=dtypes.int64, name="seed2")
+
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
+    input_resource = self._input_dataset._as_variant_tensor()
+    return gen_dataset_ops.shuffle_and_repeat_dataset(
+        input_resource,
+        buffer_size=self._buffer_size,
+        count=self._count,
+        seed=self._seed,
+        seed2=self._seed2,
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+    # pylint: enable=protected-access
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
@@ -50,20 +113,8 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
     A `Dataset` transformation function, which can be passed to
     @{tf.contrib.data.Dataset.apply}.
   """
+
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
-    random_ds = random_ops.RandomDataset(seed).apply(
-        batching.batch_and_drop_remainder(2))
-    if count is not None and count is not -1:
-      random_ds = random_ds.take(count)
-
-    def map_fn(seeds):
-      return dataset_ops.ShuffleDataset(
-          input_dataset=dataset,
-          buffer_size=buffer_size,
-          seed=seeds[0],
-          reshuffle_each_iteration=False,
-          seed2=seeds[1])
-
-    return random_ds.flat_map(map_fn)
+    return _ShuffleAndRepeatDataset(dataset, buffer_size, count, seed)
 
   return _apply_fn

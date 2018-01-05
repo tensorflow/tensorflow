@@ -353,7 +353,10 @@ def implicit_val_and_grad(f):
                              f.__name__))
     finally:
       popped_tape = tape.pop_tape()
-      variables = popped_tape.watched_variables()
+    # Sorting variables by id, which is monotonically increasing in construction
+    # order. This ensures unique order across executions.
+    variables = list(sorted(popped_tape.watched_variables(),
+                            key=lambda v: v.handle._id))  # pylint: disable=protected-access
     sources = [x.handle for x in variables]
 
     if not sources:
@@ -547,7 +550,7 @@ def _ensure_unique_tensor_objects(parameter_positions, args):
 
 
 def val_and_grad_function(f, params=None):
-  """Returns a function that computes f and is derivative w.r.t. params.
+  """Returns a function that computes f and its derivative w.r.t. params.
 
   Example:
   ```python

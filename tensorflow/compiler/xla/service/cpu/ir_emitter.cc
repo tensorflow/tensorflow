@@ -838,8 +838,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // Dot operation is complicated so we delegate to a helper class.
   return DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
-      hlo_module_config_);
+      lhs_array, rhs_array, /*addend_array=*/nullptr,
+      GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -1111,8 +1111,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
         llvm_ir::IrArray::Index kernel_index(num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
-          kernel_index[dnums.kernel_spatial_dimensions(i)] = kernel_spatial[i];
+          kernel_index[dnums.kernel_spatial_dimensions(i)] =
+              window.dimensions(i).window_reversal()
+                  ? ir_builder_.CreateNSWSub(
+                        ir_builder_.getInt64(window.dimensions(i).size() - 1),
+                        kernel_spatial[i])
+                  : kernel_spatial[i];
         }
+
         kernel_index[dnums.kernel_input_feature_dimension()] = input_feature;
         kernel_index[dnums.kernel_output_feature_dimension()] = output_feature;
 
@@ -1130,9 +1136,17 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+  if (hlo_module_config_.replica_count() == 1) {
+    // When there is a single replica, a cross replica sum is the identity
+    // function, and the buffer assignment expects a copy (we could eliminate
+    // these at the HLO level as an optimization).
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
+    return EmitMemcpy(*crs->operand(0), *crs);
+  }
+
   // TODO(b/33011107): Support cross replica sum on CPU.
   return Unimplemented(
-      "Cross replica sum not implemented on CPU. See b/33011107.");
+      "Cross replica sum is not implemented on CPU. See b/33011107.");
 }
 
 // Fills up the free variables in 'index_with_free_var' with values from
@@ -1380,9 +1394,14 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   llvm::LoadInst* param_address_untyped =
       ir_builder_.CreateLoad(param_address_offset);
   param_address_untyped->setName(AsStringRef(IrName(parameter, "untyped")));
-  if (hlo_module_config_.debug_options()
+  if (is_top_level_computation_ &&
+      hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    // We never reassign parameters, so this load is invariant.
+    // In the entry computation the parameter slots in the %params argument are
+    // invariant through program execution.  In computations that are called
+    // from the entry computation (via kWhile, kCall and kConditional) the
+    // parameter slots are *not* invariant since they're written to by their
+    // callers.
     param_address_untyped->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(param_address_untyped->getContext(), /*MDs=*/{}));
@@ -1509,13 +1528,9 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
 IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
     PrimitiveType element_type, unsigned element_count) {
-  // Here we assume that the largest register is a vector register.
-  int max_vector_register_size_in_bytes =
-      target_machine_features_.largest_register_size_in_bytes(
-          compute_function_->function());
-
   int vector_register_size_in_elements =
-      max_vector_register_size_in_bytes /
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
       ShapeUtil::ByteSizeOfPrimitiveType(element_type);
 
   ShardedVectorType sharded_vector_type;
@@ -1690,7 +1705,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 
   bool is_reduction_over_minor_dimension =
       std::find(dimensions.begin(), dimensions.end(),
-                arg->shape().layout().minor_to_major(0)) != dimensions.end();
+                LayoutUtil::Minor(arg->shape().layout(), 0)) !=
+      dimensions.end();
 
   unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
@@ -1727,8 +1743,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 
   llvm_ir::ForLoopNest loop_nest(IrName(reduce), &ir_builder_);
   llvm_ir::IrArray::Index array_index(reduce->shape().dimensions_size());
-  for (int i = reduce->shape().layout().minor_to_major_size() - 1; i > 0; --i) {
-    int64 dimension = reduce->shape().layout().minor_to_major(i);
+  for (int i = LayoutUtil::MinorToMajor(reduce->shape()).size() - 1; i > 0;
+       --i) {
+    int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
     int64 start_index = 0;
     int64 end_index = reduce->shape().dimensions(dimension);
     std::unique_ptr<llvm_ir::ForLoop> loop =
@@ -1737,7 +1754,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     array_index[dimension] = loop->GetIndVarValue();
   }
 
-  int64 innermost_dimension = reduce->shape().layout().minor_to_major(0);
+  int64 innermost_dimension = LayoutUtil::Minor(reduce->shape().layout(), 0);
   int64 innermost_dimension_size =
       reduce->shape().dimensions(innermost_dimension);
 
@@ -1773,10 +1790,10 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
                            target_array);
 
     if (auto exit_terminator = loop->GetExitBasicBlock()->getTerminator()) {
-      CHECK_GT(reduce->shape().layout().minor_to_major_size(), 1);
+      CHECK_GT(LayoutUtil::MinorToMajor(reduce->shape()).size(), 1);
       ir_builder_.SetInsertPoint(exit_terminator);
     } else {
-      CHECK_EQ(reduce->shape().layout().minor_to_major_size(), 1);
+      CHECK_EQ(LayoutUtil::MinorToMajor(reduce->shape()).size(), 1);
       ir_builder_.SetInsertPoint(loop->GetExitBasicBlock());
     }
   }
@@ -1936,7 +1953,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   // * Implement the memcpy within the innermost loop.
 
   tensorflow::gtl::FlatSet<int64> inner_dims;
-  for (int64 dim : layout.minor_to_major()) {
+  for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
     }
@@ -1963,7 +1980,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   // memcpy_dim is the innermost (in terms of layout) dimension for which the
   // slice does *not* just copy all the elements along the dimension.
-  const int64 memcpy_dim = layout.minor_to_major(inner_dims.size());
+  const int64 memcpy_dim = LayoutUtil::Minor(layout, inner_dims.size());
 
   const bool memcpy_is_contiguous = slice->slice_strides(memcpy_dim) == 1;
   // The number of logical elements that can be copied in a single call
@@ -2172,8 +2189,8 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
         *root, root->operand(0)->IsRank2Transpose(),
         root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
-        rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
-        hlo_module_config_));
+        rhs_array, /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(),
+        &ir_builder_, hlo_module_config_));
     return Status::OK();
   } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
                                                             assignment_)) {
@@ -2194,6 +2211,35 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());
+  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kOutput) {
+    VLOG(3) << "HandleFusion kOutput";
+    int64 dot_op_index = root->operand(0)->opcode() == HloOpcode::kDot ? 0 : 1;
+    const HloInstruction* dot = root->operand(dot_op_index);
+    CHECK_EQ(dot->opcode(), HloOpcode::kDot)
+        << dot->ToString() << "  "
+        << fusion->fused_instructions_computation()->ToString();
+
+    int64 dot_lhs_param_number = dot->operand(0)->parameter_number();
+    int64 dot_rhs_param_number = dot->operand(1)->parameter_number();
+    int64 addend_param_number =
+        root->operand(1 - dot_op_index)->parameter_number();
+
+    Shape target_shape = fusion->shape();
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+    llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
+
+    llvm_ir::IrArray lhs_array(
+        GetIrArrayFor(fusion->operand(dot_lhs_param_number)));
+    llvm_ir::IrArray rhs_array(
+        GetIrArrayFor(fusion->operand(dot_rhs_param_number)));
+    llvm_ir::IrArray addend_array(
+        GetIrArrayFor(fusion->operand(addend_param_number)));
+
+    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
+        *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
+        lhs_array, rhs_array, &addend_array, GetExecutableRunOptionsArgument(),
+        &ir_builder_, hlo_module_config_));
+    return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
   }
@@ -2395,14 +2441,13 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
 
   int64 concat_dim = concatenate->dimensions(0);
   const Layout& output_layout = output_shape.layout();
+  auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
   auto concat_dim_layout_itr =
-      std::find(output_layout.minor_to_major().begin(),
-                output_layout.minor_to_major().end(), concat_dim);
+      std::find(output_min2maj.begin(), output_min2maj.end(), concat_dim);
 
-  std::vector<int64> inner_dims(output_layout.minor_to_major().begin(),
-                                concat_dim_layout_itr);
+  std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
   std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
-                                output_layout.minor_to_major().end());
+                                output_min2maj.end());
 
   llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
   llvm::Type* i8_type = ir_builder_.getInt8Ty();
@@ -2798,10 +2843,14 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
       GetTempBuffersArgument(), slice.index(), &ir_builder_);
   llvm::LoadInst* tempbuf_address_base =
       ir_builder_.CreateLoad(tempbuf_address_ptr);
-  if (hlo_module_config_.debug_options()
+  if (is_top_level_computation_ &&
+      hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    // Loading the address of a buffer is invariant of the point at which the
-    // load is executed in the program because we never reassign buffers.
+    // In the entry computation the parameter slots in the %params argument are
+    // invariant through program execution.  In computations that are called
+    // from the entry computation (via kWhile, kCall and kConditional) the
+    // parameter slots are *not* invariant since they're written to by their
+    // callers.
     tempbuf_address_base->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
@@ -3013,36 +3062,18 @@ StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
                                  argument_addrs, name);
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes(
-    llvm::Function* function) {
-  auto itr = largest_register_size_in_bytes_.find(function);
-  if (itr != largest_register_size_in_bytes_.end()) {
-    return itr->second;
+llvm::TargetTransformInfo* TargetMachineFeatures::GetTargetTransformInfoFor(
+    const llvm::Function& function) {
+  auto it = target_transform_infos_.find(&function);
+  if (it == target_transform_infos_.end()) {
+    auto emplace_result = target_transform_infos_.emplace(
+        &function, target_machine_->getTargetTransformInfo(function));
+    CHECK(emplace_result.second);
+    it = emplace_result.first;
   }
 
-  int result = largest_register_size_in_bytes_impl(function);
-
-  InsertOrDie(&largest_register_size_in_bytes_, function, result);
-  DCHECK_EQ(result, largest_register_size_in_bytes_.begin()->second);
-  return result;
+  return &it->second;
 }
 
-unsigned TargetMachineFeatures::largest_register_size_in_bytes_impl(
-    llvm::Function* function) const {
-  auto register_info =
-      target_machine_->getSubtargetImpl(*function)->getRegisterInfo();
-
-  unsigned largest_register_size = 0;
-  for (const llvm::TargetRegisterClass* register_class :
-       register_info->regclasses()) {
-    if (register_class->isAllocatable()) {
-      largest_register_size =
-          std::max(largest_register_size,
-                   register_info->getRegSizeInBits(*register_class));
-    }
-  }
-
-  return largest_register_size / 8;
-}
 }  // namespace cpu
 }  // namespace xla

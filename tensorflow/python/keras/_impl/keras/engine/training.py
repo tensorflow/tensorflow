@@ -194,7 +194,7 @@ def _standardize_sample_or_class_weights(x_weight, output_names, weight_type):
     return x_weights
   else:
     raise TypeError('The model has multiple outputs, so `' + weight_type + '` '
-                    'should be either a list of a dict. '
+                    'should be either a list or a dict. '
                     'Provided `' + weight_type + '` type not understood: ' +
                     str(x_weight))
 
@@ -375,7 +375,7 @@ def _make_batches(size, batch_size):
   Returns:
       A list of tuples of array indices.
   """
-  num_batches = int(np.ceil(size / float(batch_size)))
+  num_batches = (size + batch_size - 1) // batch_size  # round up
   return [(i * batch_size, min(size, (i + 1) * batch_size))
           for i in range(num_batches)]
 
@@ -657,7 +657,7 @@ class Model(Network):
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
         raise ValueError('When passing a list as loss, '
-                         'it should have one entry per model outputs. '
+                         'it should have one entry per model output. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed loss=' + str(loss))
       loss_functions = [losses.get(l) for l in loss]
@@ -700,7 +700,7 @@ class Model(Network):
     elif isinstance(loss_weights, list):
       if len(loss_weights) != len(self.outputs):
         raise ValueError('When passing a list as loss_weights, '
-                         'it should have one entry per model outputs. '
+                         'it should have one entry per model output. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed loss_weights=' +
                          str(loss_weights))
@@ -716,7 +716,7 @@ class Model(Network):
       if isinstance(target_tensors, list):
         if len(target_tensors) != len(self.outputs):
           raise ValueError('When passing a list as `target_tensors`, '
-                           'it should have one entry per model outputs. '
+                           'it should have one entry per model output. '
                            'The model has ' + str(len(self.outputs)) +
                            ' outputs, but you passed target_tensors=' +
                            str(target_tensors))
@@ -789,7 +789,7 @@ class Model(Network):
     elif isinstance(sample_weight_mode, list):
       if len(sample_weight_mode) != len(self.outputs):
         raise ValueError('When passing a list as sample_weight_mode, '
-                         'it should have one entry per model outputs. '
+                         'it should have one entry per model output. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed '
                          'sample_weight_mode=' + str(sample_weight_mode))
@@ -1414,6 +1414,13 @@ class Model(Network):
                                      self._feed_loss_fns):
       if loss_fn is losses.sparse_categorical_crossentropy:
         output_shapes.append(output_shape[:-1] + (1,))
+      elif (not hasattr(loss_fn, '__name__') or
+            getattr(losses, loss_fn.__name__, None) is None):
+        # If `loss_fn` is not a function (e.g. callable class)
+        # or if it not in the `losses` module, then
+        # it is a user-defined loss and we make no assumptions
+        # about it.
+        output_shapes.append(None)
       else:
         output_shapes.append(output_shape)
     x = _standardize_input_data(
@@ -1919,7 +1926,7 @@ class Model(Network):
 
   def fit_generator(self,
                     generator,
-                    steps_per_epoch,
+                    steps_per_epoch=None,
                     epochs=1,
                     verbose=1,
                     callbacks=None,
@@ -1956,7 +1963,9 @@ class Model(Network):
             to yield from `generator` before declaring one epoch
             finished and starting the next epoch. It should typically
             be equal to the number of unique samples of your dataset
-            divided by the batch size. Not used if using `Sequence`.
+            divided by the batch size.
+            Optional for `Sequence`: if unspecified, will use
+            `len(generator)` as a number of steps.
         epochs: Integer, total number of iterations on the data.
         verbose: Verbosity mode, 0, 1, or 2.
         callbacks: List of callbacks to be called during training.
@@ -1967,11 +1976,15 @@ class Model(Network):
         validation_steps: Only relevant if `validation_data`
             is a generator. Total number of steps (batches of samples)
             to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            `len(generator)` as a number of steps.
         class_weight: Dictionary mapping class indices to a weight
             for the class.
-        max_queue_size: Maximum size for the generator queue
-        workers: Maximum number of processes to spin up
-            when using process-based threading.
+        max_queue_size: Maximum size for the generator queue.
+        workers: Integer. Maximum number of processes to spin up
+            when using process based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
         use_multiprocessing: If True, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -2031,15 +2044,33 @@ class Model(Network):
     if do_validation:
       self._make_test_function()
 
+    is_sequence = isinstance(generator, Sequence)
+    if not is_sequence and use_multiprocessing and workers > 1:
+      logging.warning('Using a generator with `use_multiprocessing=True`'
+                      ' and multiple workers may duplicate your data.'
+                      ' Please consider using the`keras.utils.Sequence'
+                      ' class.')
+    if steps_per_epoch is None:
+      if is_sequence:
+        steps_per_epoch = len(generator)
+      else:
+        raise ValueError('`steps_per_epoch=None` is only valid for a'
+                         ' generator based on the `keras.utils.Sequence`'
+                         ' class. Please specify `steps_per_epoch` or use'
+                         ' the `keras.utils.Sequence` class.')
+
     # python 2 has 'next', 3 has '__next__'
     # avoid any explicit version checks
-    val_gen = (hasattr(validation_data, 'next') or
-               hasattr(validation_data, '__next__') or
-               isinstance(validation_data, Sequence))
-    if val_gen and not validation_steps:
-      raise ValueError('When using a generator for validation data, '
-                       'you must specify a value for '
-                       '`validation_steps`.')
+    val_gen = (
+        hasattr(validation_data, 'next') or
+        hasattr(validation_data, '__next__') or
+        isinstance(validation_data, Sequence))
+    if (val_gen and not isinstance(validation_data, Sequence) and
+        not validation_steps):
+      raise ValueError('`validation_steps=None` is only valid for a'
+                       ' generator based on the `keras.utils.Sequence`'
+                       ' class. Please specify `validation_steps` or use'
+                       ' the `keras.utils.Sequence` class.')
 
     # Prepare display labels.
     out_labels = self._get_deduped_metrics_names()
@@ -2084,28 +2115,24 @@ class Model(Network):
         val_data += [0.]
       for cbk in callbacks:
         cbk.validation_data = val_data
-    is_sequence = isinstance(generator, Sequence)
-    if not is_sequence and use_multiprocessing and workers > 1:
-      logging.warning(
-          logging.warning('Using a generator with `use_multiprocessing=True`'
-                          ' and multiple workers may duplicate your data.'
-                          ' Please consider using the`keras.utils.Sequence'
-                          ' class.'))
-    if is_sequence:
-      steps_per_epoch = len(generator)
     enqueuer = None
 
     try:
-      if is_sequence:
-        enqueuer = OrderedEnqueuer(
-            generator, use_multiprocessing=use_multiprocessing, shuffle=shuffle)
+      if workers > 0:
+        if is_sequence:
+          enqueuer = OrderedEnqueuer(
+              generator,
+              use_multiprocessing=use_multiprocessing,
+              shuffle=shuffle)
+        else:
+          enqueuer = GeneratorEnqueuer(
+              generator,
+              use_multiprocessing=use_multiprocessing,
+              wait_time=wait_time)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        output_generator = enqueuer.get()
       else:
-        enqueuer = GeneratorEnqueuer(
-            generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
-      enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-      output_generator = enqueuer.get()
+        output_generator = generator
 
       callback_model.stop_training = False
       while epoch < epochs:
@@ -2119,6 +2146,7 @@ class Model(Network):
             raise ValueError('Output of generator should be '
                              'a tuple `(x, y, sample_weight)` '
                              'or `(x, y)`. Found: ' + str(generator_output))
+
           if len(generator_output) == 2:
             x, y = generator_output
             sample_weight = None
@@ -2196,7 +2224,7 @@ class Model(Network):
 
   def evaluate_generator(self,
                          generator,
-                         steps,
+                         steps=None,
                          max_queue_size=10,
                          workers=1,
                          use_multiprocessing=False,
@@ -2214,10 +2242,13 @@ class Model(Network):
             when using multiprocessing.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
-            Not used if using `Sequence`.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
         max_queue_size: maximum size for the generator queue
-        workers: maximum number of processes to spin up
-            when using process-based threading.
+        workers: Integer. Maximum number of processes to spin up
+            when using process based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
         use_multiprocessing: if True, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -2258,26 +2289,34 @@ class Model(Network):
     batch_sizes = []
     is_sequence = isinstance(generator, Sequence)
     if not is_sequence and use_multiprocessing and workers > 1:
-      logging.warning(
-          logging.warning('Using a generator with `use_multiprocessing=True`'
-                          ' and multiple workers may duplicate your data.'
-                          ' Please consider using the`keras.utils.Sequence'
-                          ' class.'))
-    if is_sequence:
-      steps = len(generator)
+      logging.warning('Using a generator with `use_multiprocessing=True`'
+                      ' and multiple workers may duplicate your data.'
+                      ' Please consider using the`keras.utils.Sequence'
+                      ' class.')
+    if steps is None:
+      if is_sequence:
+        steps = len(generator)
+      else:
+        raise ValueError('`steps=None` is only valid for a generator'
+                         ' based on the `keras.utils.Sequence` class.'
+                         ' Please specify `steps` or use the'
+                         ' `keras.utils.Sequence` class.')
     enqueuer = None
 
     try:
-      if is_sequence:
-        enqueuer = OrderedEnqueuer(
-            generator, use_multiprocessing=use_multiprocessing)
+      if workers > 0:
+        if is_sequence:
+          enqueuer = OrderedEnqueuer(
+              generator, use_multiprocessing=use_multiprocessing)
+        else:
+          enqueuer = GeneratorEnqueuer(
+              generator,
+              use_multiprocessing=use_multiprocessing,
+              wait_time=wait_time)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        output_generator = enqueuer.get()
       else:
-        enqueuer = GeneratorEnqueuer(
-            generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
-      enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-      output_generator = enqueuer.get()
+        output_generator = generator
 
       while steps_done < steps:
         generator_output = next(output_generator)
@@ -2297,11 +2336,11 @@ class Model(Network):
         outs = self.test_on_batch(x, y, sample_weight=sample_weight)
 
         if isinstance(x, list):
-          batch_size = len(x[0])
+          batch_size = x[0].shape[0]
         elif isinstance(x, dict):
-          batch_size = len(list(x.values())[0])
+          batch_size = list(x.values())[0].shape[0]
         else:
-          batch_size = len(x)
+          batch_size = x.shape[0]
         if batch_size == 0:
           raise ValueError('Received an empty batch. '
                            'Batches should at least contain one item.')
@@ -2325,7 +2364,7 @@ class Model(Network):
 
   def predict_generator(self,
                         generator,
-                        steps,
+                        steps=None,
                         max_queue_size=10,
                         workers=1,
                         use_multiprocessing=False,
@@ -2343,10 +2382,13 @@ class Model(Network):
                 when using multiprocessing.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
         max_queue_size: Maximum size for the generator queue.
-          Not used if using `Sequence`.
-        workers: Maximum number of processes to spin up
-            when using process-based threading.
+        workers: Integer. Maximum number of processes to spin up
+            when using process based threading.
+            If unspecified, `workers` will default to 1. If 0, will
+            execute the generator on the main thread.
         use_multiprocessing: If `True`, use process based threading.
             Note that because
             this implementation relies on multiprocessing,
@@ -2382,26 +2424,34 @@ class Model(Network):
     all_outs = []
     is_sequence = isinstance(generator, Sequence)
     if not is_sequence and use_multiprocessing and workers > 1:
-      logging.warning(
-          logging.warning('Using a generator with `use_multiprocessing=True`'
-                          ' and multiple workers may duplicate your data.'
-                          ' Please consider using the`keras.utils.Sequence'
-                          ' class.'))
-    if is_sequence:
-      steps = len(generator)
+      logging.warn('Using a generator with `use_multiprocessing=True`'
+                   ' and multiple workers may duplicate your data.'
+                   ' Please consider using the`keras.utils.Sequence'
+                   ' class.')
+    if steps is None:
+      if is_sequence:
+        steps = len(generator)
+      else:
+        raise ValueError('`steps=None` is only valid for a generator'
+                         ' based on the `keras.utils.Sequence` class.'
+                         ' Please specify `steps` or use the'
+                         ' `keras.utils.Sequence` class.')
     enqueuer = None
 
     try:
-      if is_sequence:
-        enqueuer = OrderedEnqueuer(
-            generator, use_multiprocessing=use_multiprocessing)
+      if workers > 0:
+        if is_sequence:
+          enqueuer = OrderedEnqueuer(
+              generator, use_multiprocessing=use_multiprocessing)
+        else:
+          enqueuer = GeneratorEnqueuer(
+              generator,
+              use_multiprocessing=use_multiprocessing,
+              wait_time=wait_time)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        output_generator = enqueuer.get()
       else:
-        enqueuer = GeneratorEnqueuer(
-            generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
-      enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-      output_generator = enqueuer.get()
+        output_generator = generator
 
       if verbose == 1:
         progbar = Progbar(target=steps)

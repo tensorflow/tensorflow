@@ -43,7 +43,7 @@ def load_data(path='imdb.npz',
           the most frequent words are kept
       skip_top: skip the top N most frequently occurring words
           (which may not be informative).
-      maxlen: truncate sequences after this length.
+      maxlen: sequences longer than this will be filtered out.
       seed: random seed for sample shuffling.
       start_char: The start of a sequence will be marked with this character.
           Set to 1 because 0 is usually the padding character.

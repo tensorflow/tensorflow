@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
@@ -773,7 +774,7 @@ TEST(CAPI, ImportGraphDef_WithReturnOutputs) {
   TF_DeleteStatus(s);
 }
 
-TEST(CAPI, ImportGraphDef_UnusedInputMappings) {
+TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -816,7 +817,7 @@ TEST(CAPI, ImportGraphDef_UnusedInputMappings) {
   int num_unused_input_mappings;
   const char** src_names;
   int* src_indexes;
-  TF_ImportGraphDefResultsUnusedInputMappings(
+  TF_ImportGraphDefResultsMissingUnusedInputMappings(
       results, &num_unused_input_mappings, &src_names, &src_indexes);
   ASSERT_EQ(1, num_unused_input_mappings);
   EXPECT_EQ(string("fake"), string(src_names[0]));
@@ -2025,6 +2026,77 @@ TEST_F(CApiAttributesTest, Errors) {
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   TF_OperationGetAttrString(oper, "v", nullptr, 0, s_);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST(TestApiDef, TestCreateApiDef) {
+  TF_Status* status = TF_NewStatus();
+  TF_Library* lib =
+      TF_LoadLibrary("tensorflow/c/test_op.so", status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  TF_Buffer op_list_buf = TF_GetOpList(lib);
+  status = TF_NewStatus();
+  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  string op_name = "TestCApi";
+  status = TF_NewStatus();
+  auto* api_def_buf =
+      TF_ApiDefMapGet(api_def_map, op_name.c_str(), op_name.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  tensorflow::ApiDef api_def;
+  EXPECT_TRUE(api_def.ParseFromArray(api_def_buf->data, api_def_buf->length));
+  EXPECT_EQ(op_name, api_def.graph_op_name());
+  EXPECT_EQ(R"doc(Used to test C API)doc", api_def.summary());
+
+  TF_DeleteBuffer(api_def_buf);
+  TF_DeleteApiDefMap(api_def_map);
+  TF_DeleteLibraryHandle(lib);
+}
+
+TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
+  TF_Status* status = TF_NewStatus();
+  TF_Library* lib =
+      TF_LoadLibrary("tensorflow/c/test_op.so", status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  TF_Buffer op_list_buf = TF_GetOpList(lib);
+  status = TF_NewStatus();
+  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  string api_def_overwrites = R"(op: <
+  graph_op_name: "TestCApi"
+  summary: "New summary"
+>
+)";
+  status = TF_NewStatus();
+  TF_ApiDefMapPut(api_def_map, api_def_overwrites.c_str(),
+                  api_def_overwrites.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  string op_name = "TestCApi";
+  status = TF_NewStatus();
+  auto* api_def_buf =
+      TF_ApiDefMapGet(api_def_map, op_name.c_str(), op_name.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+
+  tensorflow::ApiDef api_def;
+  EXPECT_TRUE(api_def.ParseFromArray(api_def_buf->data, api_def_buf->length));
+  EXPECT_EQ(op_name, api_def.graph_op_name());
+  EXPECT_EQ("New summary", api_def.summary());
+
+  TF_DeleteBuffer(api_def_buf);
+  TF_DeleteApiDefMap(api_def_map);
+  TF_DeleteLibraryHandle(lib);
 }
 
 #undef EXPECT_TF_META

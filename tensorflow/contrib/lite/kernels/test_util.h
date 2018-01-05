@@ -192,6 +192,9 @@ class SingleOpModel {
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
 };
 
+// Strings have a special implementation that is in test_util.cc
+template <>
+std::vector<string> SingleOpModel::ExtractVector(int index);
 }  // namespace tflite
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_

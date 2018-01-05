@@ -314,6 +314,47 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       self.assertEqual(0, total_sum2_v)
       self.assertEqual(0, total_sum3_v)
 
+  def testSaveableGraphDeviceAssignment(self):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    def DeviceFn(op):
+      if op.type in ("Variable", "VariableV2"):
+        return "/cpu:0"
+      else:
+        return "/gpu:0"
+
+    with ops.Graph().as_default() as g:
+      with ops.device(DeviceFn):
+        with vs.variable_scope("main"):
+          kernel_initializer = init_ops.constant_initializer(3.14)
+          bias_initializer = init_ops.constant_initializer(1.59)
+          inputs = random_ops.random_uniform(
+              [num_layers * dir_count, batch_size, num_units],
+              dtype=dtypes.float32)
+
+          lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                     direction=direction,
+                                     kernel_initializer=kernel_initializer,
+                                     bias_initializer=bias_initializer,
+                                     name="awesome_lstm")
+          outputs = lstm(inputs)
+
+        # saver is created in the scope of DeviceFn.
+        saver = saver_lib.Saver()
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      save_path = os.path.join(self.get_temp_dir(),
+                               "test-saveable-device-assignment")
+      sess.run(variables.global_variables_initializer())
+
+      saver.save(sess, save_path)
+      saver.restore(sess, save_path)
+      sess.run(outputs)
+
 
 # TODO(jamesqin): Transform to parameterized test after it is included in the
 # TF open source codebase.

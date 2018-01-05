@@ -78,14 +78,14 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   }
   for (int i = 0; i < arguments.size(); ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
-            arguments[i]->shape())) {
+            arguments[i]->on_host_shape())) {
       return InvalidArgument(
           "argument does not match shape or layout of computation parameter "
           "%d: expected %s, got %s",
           i,
           ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
               .c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(arguments[i]->on_host_shape()).c_str());
     }
   }
 
@@ -184,7 +184,7 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
+      executable_->ExecuteOnStreamWrapper(
           &service_options, options.execution_profile(), arguments));
   return ScopedShapedBuffer::MakeScoped(result.get(),
                                         actual_options.allocator());
@@ -281,13 +281,9 @@ LocalClient::LiteralToShapedBuffer(const Literal& literal, int device_ordinal,
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }
-  TF_ASSIGN_OR_RETURN(
-      auto scoped_buffer,
-      ScopedShapedBuffer::Allocate(
-          literal.shape(), allocator, device_ordinal,
-          [this](const Shape& shape) {
-            return backend().transfer_manager()->GetByteSizeRequirement(shape);
-          }));
+  TF_ASSIGN_OR_RETURN(auto scoped_buffer,
+                      backend().transfer_manager()->AllocateScopedShapedBuffer(
+                          literal.shape(), allocator, device_ordinal));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(

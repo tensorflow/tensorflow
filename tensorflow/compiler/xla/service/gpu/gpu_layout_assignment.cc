@@ -149,5 +149,106 @@ Status GpuLayoutAssignment::AddBackendConstraints(
   return Status::OK();
 }
 
+bool GpuLayoutAssignment::CustomCallRequiresMajorFirstLayout(
+    const HloInstruction* instruction) {
+  // Inputs to cudnn batchnorm custom calls don't need the major-first layout
+  // (i.e. {n, n-1, ...0}) -- we can handle any layout.
+  return !IsCustomCallToDnnBatchNorm(*instruction);
+}
+
+Status GpuLayoutAssignment::PropagateOperandConstraint(
+    const OperandLayoutConstraint& layout_constraint,
+    LayoutConstraints* constraints) {
+  const HloInstruction* instruction = layout_constraint.instruction();
+
+  // cudnn batchnorm forward inference's result must have the same layout as its
+  // operand 0.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() ==
+          kCudnnBatchNormForwardInferenceCallTarget &&
+      layout_constraint.operand_no() == 0) {
+    TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+        layout_constraint.shape_layout().shape(), instruction));
+  }
+
+  // cudnn batchnorm forward training returns a tuple {output, mean,
+  // inverse-stddev}.  mean and inverse-stddev are rank 1 and so have only one
+  // possible layout, but output is not (necessarily) rank 1, and, like in
+  // batchnorm forward inference, must have the same layout as operand 0.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() ==
+          kCudnnBatchNormForwardTrainingCallTarget &&
+      layout_constraint.operand_no() == 0) {
+    TF_ASSIGN_OR_RETURN(const LogicalBuffer* out_buf,
+                        constraints->points_to_analysis().GetBufferDefinedAt(
+                            instruction, /*index=*/{0}));
+    TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
+        layout_constraint.shape_layout().layout(), *out_buf));
+  }
+
+  // Like forward training, cudnn batchnorm backward returns a tuple {output,
+  // mean, inverse-stddev}, and its operand 0 and 'output' must have the same
+  // layout.  In addition, its operand 0 and operand 4 -- the 'operand' and
+  // 'grad_output' parameters -- must have the same layout.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
+      (layout_constraint.operand_no() == 0 ||
+       layout_constraint.operand_no() == 4)) {
+    TF_ASSIGN_OR_RETURN(const LogicalBuffer* out_buf,
+                        constraints->points_to_analysis().GetBufferDefinedAt(
+                            instruction, /*index=*/{0}));
+    TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
+        layout_constraint.shape_layout().layout(), *out_buf));
+
+    int64 operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        layout_constraint.shape_layout().shape(), instruction, operand_to_set));
+  }
+
+  return LayoutAssignment::PropagateOperandConstraint(layout_constraint,
+                                                      constraints);
+}
+
+Status GpuLayoutAssignment::PropagateBufferConstraint(
+    const BufferLayoutConstraint& buffer_constraint,
+    LayoutConstraints* constraints) {
+  const LogicalBuffer& buf = buffer_constraint.buffer();
+  const HloInstruction* instruction = buf.instruction();
+
+  Shape shape_with_layout = buf.shape();
+  *shape_with_layout.mutable_layout() = buffer_constraint.layout();
+
+  // Propagate output constraints to the operands of cudnn batchnorm ops.  This
+  // is the same as PropagateOperandConstraint, just in the other direction.  We
+  // need to both to fulfill our contract to LayoutAssignment.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() ==
+          kCudnnBatchNormForwardInferenceCallTarget) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        shape_with_layout, instruction, /*operand_no=*/0));
+  }
+
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() ==
+          kCudnnBatchNormForwardTrainingCallTarget &&
+      buf.index() == ShapeIndex({0})) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        shape_with_layout, instruction, /*operand_no=*/0));
+  }
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
+      buf.index() == ShapeIndex({0})) {
+    // batchnorm backward has two operands, "operand" and "grad_output" whose
+    // layouts must both match that of the result at tuple-index 0.
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        shape_with_layout, instruction, /*operand_no=*/0));
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+        shape_with_layout, instruction, /*operand_no=*/4));
+  }
+
+  return LayoutAssignment::PropagateBufferConstraint(buffer_constraint,
+                                                     constraints);
+}
+
 }  // namespace gpu
 }  // namespace xla

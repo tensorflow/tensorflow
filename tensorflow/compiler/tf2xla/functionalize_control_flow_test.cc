@@ -109,7 +109,7 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
     auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-    auto if_op = ops::XlaIf(scope.WithOpName("cond/Merge_If"), less,
+    auto if_op = ops::XlaIf(scope.WithOpName("cond/Less_If"), less,
                             std::initializer_list<Input>{less, y, x}, then_fn,
                             else_fn, {DT_INT32});
     GraphDef expected;

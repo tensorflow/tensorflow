@@ -843,6 +843,14 @@ TEST_F(NaryGradTest, SquaredDifference) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, Pow) {
+  TensorShape shape({3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // fix exponent to avoid overflow
+  auto y = Pow(scope_, x, Const(scope_, {1.f, 2.f, 3.f}));
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
 TEST_F(NaryGradTest, Maximum) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
@@ -863,6 +871,27 @@ TEST_F(NaryGradTest, Minimum) {
   Tensor x_init_value =
       test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
   RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NaryGradTest, Prod) {
+  TensorShape x_shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Prod(scope_, x, {1});
+  // y's shape is the result of reducing x along axes 1
+  TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({3, 2});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Use constant values to avoid instability when computing
+  Tensor c =
+      test::AsTensor<float>({-3.5f, 1.5f, -1.2f, 3.0f, -2.5f, 2.8f}, {3, 2});
+  auto zero = Cast(scope_, Const(scope_, 0.0), c.dtype());
+  auto y = Where3(scope_, Greater(scope_, c, zero), x1, x2);
+  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
 }
 
 }  // namespace

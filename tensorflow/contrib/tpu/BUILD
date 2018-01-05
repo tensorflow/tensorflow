@@ -201,6 +201,17 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "tpu_config_test",
+    size = "small",
+    srcs = ["python/tpu/tpu_config_test.py"],
+    additional_deps = [
+        ":tpu_estimator",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

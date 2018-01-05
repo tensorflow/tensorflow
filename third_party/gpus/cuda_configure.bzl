@@ -8,6 +8,9 @@
   * `TF_CUDA_CLANG`: Whether to use clang as a cuda compiler.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation if TF_CUDA_CLANG is 1.
+  * `TF_DOWNLOAD_CLANG`: Whether to download a recent release of clang
+    compiler and use it to build tensorflow. When this option is set
+    CLANG_CUDA_COMPILER_PATH is ignored.
   * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is
     `/usr/local/cuda`.
   * `TF_CUDA_VERSION`: The version of the CUDA toolkit. If this is blank, then
@@ -27,6 +30,7 @@ _TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
 _CUDNN_INSTALL_PATH = "CUDNN_INSTALL_PATH"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
+_TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 
 _DEFAULT_CUDA_VERSION = ""
 _DEFAULT_CUDNN_VERSION = ""
@@ -34,6 +38,7 @@ _DEFAULT_CUDA_TOOLKIT_PATH = "/usr/local/cuda"
 _DEFAULT_CUDNN_INSTALL_PATH = "/usr/local/cuda"
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 
+load(":download_clang.bzl", "download_clang")
 
 # TODO(dzc): Once these functions have been factored out of Bazel's
 # cc_configure.bzl, load them from @bazel_tools instead.
@@ -48,6 +53,8 @@ def find_cc(repository_ctx):
   if _use_cuda_clang(repository_ctx):
     target_cc_name = "clang"
     cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
+    if _flag_enabled(repository_ctx, _TF_DOWNLOAD_CLANG):
+      return "extra_tools/bin/clang"
   else:
     target_cc_name = "gcc"
     cc_path_envvar = _GCC_HOST_COMPILER_PATH
@@ -80,6 +87,23 @@ def _cxx_inc_convert(path):
     path = path[:-_OSX_FRAMEWORK_SUFFIX_LEN].strip()
   return path
 
+
+def _normalize_include_path(repository_ctx, path):
+  """Normalizes include paths before writing them to the crosstool.
+
+  If path points inside the 'crosstool' folder of the repository, a relative
+  path is returned.
+  If path points outside the 'crosstool' folder, an absolute path is returned.
+  """
+  path = str(repository_ctx.path(path))
+  crosstool_folder = str(repository_ctx.path(".").get_child('crosstool'))
+
+  if path.startswith(crosstool_folder):
+    # We drop the path to "$REPO/crosstool" and a trailing path separator.
+    return path[len(crosstool_folder)+1:]
+  return path
+
+
 def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
   """Compute the list of default C or C++ include directories."""
   if lang_is_cpp:
@@ -106,8 +130,11 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
   else:
     inc_dirs = result.stderr[index1 + 1:index2].strip()
 
-  return [str(repository_ctx.path(_cxx_inc_convert(p)))
-          for p in inc_dirs.split("\n")]
+  return [
+      _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
+      for p in inc_dirs.split("\n")
+  ]
+
 
 def get_cxx_inc_directories(repository_ctx, cc):
   """Compute the list of default C and C++ include directories."""
@@ -884,12 +911,14 @@ def _read_dir(repository_ctx, src_dir):
     result = find_result.stdout
   return result
 
+def _flag_enabled(repository_ctx, flag_name):
+  if flag_name in repository_ctx.os.environ:
+    value = repository_ctx.os.environ[flag_name].strip()
+    return value == "1"
+  return False
 
 def _use_cuda_clang(repository_ctx):
-  if "TF_CUDA_CLANG" in repository_ctx.os.environ:
-    enable_cuda = repository_ctx.os.environ["TF_CUDA_CLANG"].strip()
-    return enable_cuda == "1"
-  return False
+  return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
   if _use_cuda_clang(repository_ctx):
@@ -970,15 +999,25 @@ def _create_local_cuda_repository(repository_ctx):
            "%{cuda_headers}": ('":cuda-include",\n' +
                                '        ":cudnn-include",')
        })
+
+  is_cuda_clang = _use_cuda_clang(repository_ctx)
+
+  should_download_clang = is_cuda_clang and _flag_enabled(
+      repository_ctx, _TF_DOWNLOAD_CLANG)
+  if should_download_clang:
+    download_clang(repository_ctx, "crosstool/extra_tools")
+
   # Set up crosstool/
   cc = find_cc(repository_ctx)
-  host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
+  cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
+
+  host_compiler_includes = _host_compiler_includes(repository_ctx, cc_fullpath)
   cuda_defines = {
            "%{cuda_include_path}": _cuda_include_path(repository_ctx,
                                                       cuda_config),
            "%{host_compiler_includes}": host_compiler_includes,
        }
-  if _use_cuda_clang(repository_ctx):
+  if is_cuda_clang:
     cuda_defines["%{clang_path}"] = cc
     _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty"})
     _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
@@ -1046,7 +1085,10 @@ cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
     environ = [
         _GCC_HOST_COMPILER_PATH,
+        _CLANG_CUDA_COMPILER_PATH,
         "TF_NEED_CUDA",
+        "TF_CUDA_CLANG",
+        _TF_DOWNLOAD_CLANG,
         _CUDA_TOOLKIT_PATH,
         _CUDNN_INSTALL_PATH,
         _TF_CUDA_VERSION,

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_OP_UTIL_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_OP_UTIL_H_
 
+#include <cstdio>
+
 #define TF_LITE_FATAL(msg)          \
   do {                              \
     fprintf(stderr, "%s\n", (msg)); \

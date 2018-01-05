@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -338,6 +339,20 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));
   EXPECT_FALSE(env->FileExists(filename).ok());
+}
+
+TEST_F(DefaultEnvTest, CreateUniqueFileName) {
+  Env* env = Env::Default();
+
+  string prefix = "tempfile-prefix-";
+  string suffix = ".tmp";
+  string filename = prefix;
+
+  EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
+
+  StringPiece str(filename);
+  EXPECT_TRUE(str.starts_with(prefix));
+  EXPECT_TRUE(str.ends_with(suffix));
 }
 
 }  // namespace tensorflow

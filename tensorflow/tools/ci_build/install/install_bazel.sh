@@ -15,7 +15,7 @@
 # ==============================================================================
 
 # Select bazel version.
-BAZEL_VERSION="0.5.4"
+BAZEL_VERSION="0.8.0"
 
 set +e
 local_bazel_ver=$(bazel version 2>&1 | grep -i label | awk '{print $3}')

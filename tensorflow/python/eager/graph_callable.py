@@ -319,49 +319,32 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   func_def_outputs = [x for x in outputs_list if isinstance(x, tf_ops.Tensor)]
   initialization_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
-  initializer_function_def, initializer_fn = function.make_function_def(
-      initialization_name,
-      tmp_graph,
-      initializing_operations,
-      placeholder_inputs,
-      func_def_outputs)
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
     function._register(f._c_func)  # pylint: disable=protected-access
-  function._register(initializer_fn)  # pylint: disable=protected-access
   initializer_function = function.GraphModeFunction(
+      initialization_name,
       placeholder_inputs,
       extra_inputs,
-      initializer_function_def,
-      initializer_fn,
       tmp_graph,
       initializing_operations,
+      func_def_outputs,
       func_outputs,
-      function._map_sequence_obj_to_idx(func_def_outputs),  # pylint: disable=protected-access
       output_shapes)
 
   capture_func_def_outputs = [
       x for x in captured_outlist if isinstance(x, tf_ops.Tensor)]
   captured_function_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
-  captured_function_def, capturing_fn = function.make_function_def(
-      captured_function_name,
-      tmp_graph,
-      capturing_operations,
-      placeholder_inputs,
-      capture_func_def_outputs)
-  function._register(capturing_fn)  # pylint: disable=protected-access
-
   captured_function = function.GraphModeFunction(
+      captured_function_name,
       placeholder_inputs,
       extra_inputs,
-      captured_function_def,
-      capturing_fn,
       tmp_graph,
       capturing_operations,
+      capture_func_def_outputs,
       captured_outputs,
-      function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
       output_shapes,
       variables=[x.variable for x in sorted_variables])
 

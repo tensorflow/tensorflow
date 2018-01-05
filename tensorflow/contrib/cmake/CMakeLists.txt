@@ -33,11 +33,12 @@ option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
+option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
-option(tensorflow_CUDA_VERSION "CUDA version to build against" 9.0)
-option(tensorflow_CUDNN_VERSION "cuDNN version to build against" 7)
+set(tensorflow_CUDA_VERSION "9.0" CACHE STRING "CUDA version to build against")
+set(tensorflow_CUDNN_VERSION "7" CACHE STRING "cuDNN version to build against")
 
 if(HAIKU)
 	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
@@ -58,7 +59,15 @@ if (NOT WIN32)
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
   option(tensorflow_PATH_CUDNN_STATIC_LIB "Override PATH_STATIC_LIB for libcudnn_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_CUDNN_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
   option(tensorflow_PATH_NCCL_STATIC_LIB "Override PATH_STATIC_LIB for libnccl_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_NCCL_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_NCCL_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_NCCL_STATIC_LIB)
   option(tensorflow_CUDA_LIBRARY_PATH "Designate the default CUDA library paths" /usr/local/cuda/lib64)
   if (NOT tensorflow_CUDA_LIBRARY_PATH)
     # option's default value is OFF. Fill it with real default values
@@ -95,6 +104,10 @@ if (tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endif()
+
+if (tensorflow_DISABLE_EIGEN_FORCEINLINE)
+  add_definitions(-DEIGEN_STRONG_INLINE=inline)
 endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
@@ -391,7 +404,9 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_stream_executor.cmake)
+if (tensorflow_ENABLE_GPU)
+  include(tf_stream_executor.cmake)
+endif()
 
 include(tf_core_cpu.cmake)
 include(tf_core_ops.cmake)

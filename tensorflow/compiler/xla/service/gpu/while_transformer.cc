@@ -44,7 +44,7 @@ namespace {
 //
 //            Parameter
 //               |
-//   Const  GetTupleElemet
+//   Const  GetTupleElement
 //      \   /
 //       Add (root)
 //

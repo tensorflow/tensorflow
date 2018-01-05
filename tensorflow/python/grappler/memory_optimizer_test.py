@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -209,6 +210,66 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         loss_op_name=loss_op_name)
     self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-4)
 
+  def _annotated_graph(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      random_seed.set_random_seed(2)
+      current_activation = variable_scope.get_variable(
+          name='start', shape=[1, 2, 2, 5])
+      conv_filter = variable_scope.get_variable(
+          name='filter', shape=[5, 5, 5, 5])
+      for layer_number in range(3):
+        with variable_scope.variable_scope('layer_{}'.format(layer_number)):
+          after_conv = nn.conv2d(current_activation, conv_filter, [1, 1, 1, 1],
+                                 'SAME')
+          current_activation = 2. * after_conv
+          current_activation.op._set_attr(
+              '_recompute_hint',
+              # The value of the attribute does not matter; just that the key
+              # exists in the op's attributes.
+              attr_value_pb2.AttrValue(i=1))
+          current_activation += 5.
+          current_activation.op._set_attr(
+              '_recompute_hint', attr_value_pb2.AttrValue(i=0))
+          current_activation = nn.relu(current_activation)
+          current_activation.op._set_attr(
+              '_recompute_hint', attr_value_pb2.AttrValue(i=1))
+      loss = math_ops.reduce_mean(current_activation)
+      optimizer = train.AdamOptimizer(0.001)
+      train_op = optimizer.minimize(loss)
+      init_op = variables.global_variables_initializer()
+    return graph, init_op, train_op
+
+  def testHintNoMetaGraph(self):
+    # Closer to expected usage, but does not check that a re-write actually
+    # happens; see testHintDoesRewrite.
+    graph, init_op, train_op = self._annotated_graph()
+    with graph.as_default():
+      manual_memory_config = rewriter_config_pb2.RewriterConfig(
+          memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
+      graph_options = config_pb2.GraphOptions(
+          rewrite_options=manual_memory_config)
+      session_config = config_pb2.ConfigProto(graph_options=graph_options)
+      with session.Session(config=session_config) as sess:
+        sess.run(init_op)
+        sess.run(train_op)
+
+  def testHintDoesRewrite(self):
+    graph = self._annotated_graph()[0]
+    with graph.as_default():
+      metagraph = train.export_meta_graph()
+    self.assertEqual(
+        0,
+        len([node for node in metagraph.graph_def.node
+             if 'Recomputed/' in node.name]))
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+        rewriter_config_pb2.RewriterConfig(
+            memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL),
+        metagraph)
+    self.assertEqual(
+        9,
+        len([node for node in rewritten_graph_def.node
+             if 'Recomputed/' in node.name]))
 
 if __name__ == '__main__':
   test.main()

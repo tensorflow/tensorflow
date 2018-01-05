@@ -59,7 +59,7 @@ class HloParser {
   // ParseXXX returns false if an error occurred.
   bool ParseHloModule();
   bool ParseComputations();
-  bool ParseComputation();
+  bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation::Builder* builder,
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
@@ -171,6 +171,7 @@ class HloParser {
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
 
+  bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
   bool ParseParamList();
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
@@ -183,6 +184,12 @@ class HloParser {
   bool ParseDouble(double* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const string& msg);
+
+  // Returns true if the current token is the beginning of a shape.
+  bool CanBeShape();
+  // Returns true if the current token is the beginning of a
+  // param_list_to_shape.
+  bool CanBeParamListToShape();
 
   // Logs the current parsing line and the given message. Always returns false.
   bool TokenError(StringPiece msg);
@@ -211,6 +218,7 @@ class HloParser {
 
   HloLexer lexer_;
   std::unique_ptr<HloModule> module_;
+  std::vector<std::unique_ptr<HloComputation>> computations_;
   const HloModuleConfig config_;
   std::vector<string> error_;
 };
@@ -259,17 +267,52 @@ bool HloParser::ParseHloModule() {
 
 // computations ::= (computation)+
 bool HloParser::ParseComputations() {
+  HloComputation* entry_computation = nullptr;
   do {
-    if (!ParseComputation()) {
+    if (!ParseComputation(&entry_computation)) {
       return false;
     }
   } while (lexer_.GetKind() != TokKind::kEof);
+
+  for (int i = 0; i < computations_.size(); i++) {
+    // If entry_computation is not nullptr, it means the computation it pointed
+    // to is marked with "ENTRY"; otherwise, no computation is marked with
+    // "ENTRY", and we use the last computation as the entry computation. We
+    // add the non-entry computations as embedded computations to the module.
+    if ((entry_computation != nullptr &&
+         computations_[i].get() != entry_computation) ||
+        (entry_computation == nullptr && i != computations_.size() - 1)) {
+      module_->AddEmbeddedComputation(std::move(computations_[i]));
+      continue;
+    }
+    auto computation =
+        module_->AddEntryComputation(std::move(computations_[i]));
+    // The parameters and result layouts were set to default layout. Here we
+    // set the layouts to what the hlo text says.
+    for (int p = 0; p < computation->num_parameters(); p++) {
+      const Shape& param_shape = computation->parameter_instruction(p)->shape();
+      if (param_shape.has_layout()) {
+        module_->mutable_entry_computation_layout()
+            ->mutable_parameter_layout(p)
+            ->ResetLayout(param_shape.layout());
+      }
+    }
+    const Shape& result_shape = computation->root_instruction()->shape();
+    if (result_shape.has_layout()) {
+      module_->mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ResetLayout(result_shape.layout());
+    }
+  }
+
   return true;
 }
 
-// computation ::= ('ENTRY')? name param_list '->' shape instruction_list
-bool HloParser::ParseComputation() {
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
+bool HloParser::ParseComputation(HloComputation** entry_computation) {
+  LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
+
   string name;
   LocTy name_loc = lexer_.GetLoc();
   if (!ParseName(&name)) {
@@ -277,10 +320,14 @@ bool HloParser::ParseComputation() {
   }
   auto builder = MakeUnique<HloComputation::Builder>(name);
 
+  LocTy shape_loc = nullptr;
   Shape shape;
+  if (CanBeParamListToShape() && !ParseParamListToShape(&shape, &shape_loc)) {
+    return false;
+  }
+
   string root_name;
-  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'") ||
-      !ParseShape(&shape) || !ParseInstructionList(builder.get(), &root_name)) {
+  if (!ParseInstructionList(builder.get(), &root_name)) {
     return false;
   }
 
@@ -296,10 +343,32 @@ bool HloParser::ParseComputation() {
   // Now root can be either an existing instruction or a nullptr. If it's a
   // nullptr, the implementation of Builder will set the last instruction as
   // root instruction.
-  HloComputation* computation =
-      is_entry_computation
-          ? module_->AddEntryComputation(builder->Build(root))
-          : module_->AddEmbeddedComputation(builder->Build(root));
+  computations_.emplace_back(builder->Build(root));
+  HloComputation* computation = computations_.back().get();
+
+  if (!root) {
+    root = computation->root_instruction();
+  } else {
+    CHECK_EQ(root, computation->root_instruction());
+  }
+
+  // If param_list_to_shape was present, check compatibility.
+  if (shape_loc != nullptr && !ShapeUtil::Compatible(root->shape(), shape)) {
+    return Error(
+        shape_loc,
+        StrCat("Shape of computation ", name, ", ",
+               ShapeUtil::HumanString(shape),
+               ", is not compatible with that of its root instruction ",
+               root_name, ", ", ShapeUtil::HumanString(root->shape())));
+  }
+
+  if (is_entry_computation) {
+    if (*entry_computation != nullptr) {
+      return Error(maybe_entry_loc, "expects only one ENTRY");
+    }
+    *entry_computation = computation;
+  }
+
   return AddComputation(name, computation, name_loc);
 }
 
@@ -327,6 +396,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   Shape shape;
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
+
+  LocTy maybe_root_loc = lexer_.GetLoc();
   bool is_root = EatIfPresent(TokKind::kw_ROOT);
 
   const LocTy name_loc = lexer_.GetLoc();
@@ -335,7 +406,11 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       !ParseShape(&shape) || !ParseOpcode(&opcode)) {
     return false;
   }
+
   if (is_root) {
+    if (!root_name->empty()) {
+      return Error(maybe_root_loc, "one computation should have only one ROOT");
+    }
     *root_name = name;
   }
 
@@ -417,7 +492,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kLe:
     case HloOpcode::kLt:
     case HloOpcode::kNe:
-    case HloOpcode::kDot:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -865,12 +939,81 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
               static_cast<int>(*mantissa_bits)));
       break;
     }
-    case HloOpcode::kConditional:
-    case HloOpcode::kCustomCall:
+    case HloOpcode::kConditional: {
+      optional<HloComputation*> true_computation;
+      optional<HloComputation*> false_computation;
+      attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                   &true_computation};
+      attrs["false_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                    &false_computation};
+      if (!ParseOperands(&operands, /*expected_size=*/3) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateConditional(
+          shape, /*pred=*/operands[0],
+          /*true_computation_arg=*/operands[1], *true_computation,
+          /*false_computation_arg=*/operands[2], *false_computation));
+      break;
+    }
+    case HloOpcode::kCustomCall: {
+      optional<string> custom_call_target;
+      attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
+                                     &custom_call_target};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
+          shape, operands, *custom_call_target));
+      break;
+    }
+    case HloOpcode::kDot: {
+      optional<std::vector<int64>> lhs_contracting_dims;
+      attrs["lhs_contracting_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &lhs_contracting_dims};
+      optional<std::vector<int64>> rhs_contracting_dims;
+      attrs["rhs_contracting_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &rhs_contracting_dims};
+      optional<std::vector<int64>> lhs_batch_dims;
+      attrs["lhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                 &lhs_batch_dims};
+      optional<std::vector<int64>> rhs_batch_dims;
+      attrs["rhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                 &rhs_batch_dims};
+
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+
+      DotDimensionNumbers dnum;
+      if (lhs_contracting_dims) {
+        *dnum.mutable_lhs_contracting_dimensions() = {
+            lhs_contracting_dims->begin(), lhs_contracting_dims->end()};
+      }
+      if (rhs_contracting_dims) {
+        *dnum.mutable_rhs_contracting_dimensions() = {
+            rhs_contracting_dims->begin(), rhs_contracting_dims->end()};
+      }
+      if (lhs_batch_dims) {
+        *dnum.mutable_lhs_batch_dimensions() = {lhs_batch_dims->begin(),
+                                                lhs_batch_dims->end()};
+      }
+      if (rhs_batch_dims) {
+        *dnum.mutable_rhs_batch_dimensions() = {rhs_batch_dims->begin(),
+                                                rhs_batch_dims->end()};
+      }
+
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
+      break;
+    }
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
   }
+
+  instruction->set_name(name);
 
   // Add common attrs (sharding, control predecessors) to the instruction, if
   // they were seen.
@@ -1372,7 +1515,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
 // operands1
 //   ::= /*empty*/
 //   ::= operand (, operand)*
-// operand ::= shape name
+// operand ::= (shape)? name
 bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
@@ -1383,9 +1526,14 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   } else {
     do {
       LocTy loc = lexer_.GetLoc();
-      Shape shape;
       string name;
-      if (!ParseShape(&shape) || !ParseName(&name)) {
+      if (CanBeShape()) {
+        Shape shape;
+        if (!ParseShape(&shape)) {
+          return false;
+        }
+      }
+      if (!ParseName(&name)) {
         return false;
       }
       HloInstruction* instruction =
@@ -1910,6 +2058,19 @@ bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
       end, StrCat("expects an int64 list to end with ", TokKindToString(end)));
 }
 
+// param_list_to_shape ::= param_list '->' shape
+bool HloParser::ParseParamListToShape(Shape* shape, LocTy* shape_loc) {
+  if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'")) {
+    return false;
+  }
+  *shape_loc = lexer_.GetLoc();
+  return ParseShape(shape);
+}
+
+bool HloParser::CanBeParamListToShape() {
+  return lexer_.GetKind() == TokKind::kLparen;
+}
+
 // param_list ::= '(' param_list1 ')'
 // param_list1
 //   ::= /*empty*/
@@ -1926,8 +2087,8 @@ bool HloParser::ParseParamList() {
   } else {
     do {
       Shape shape;
-      if (!ParseToken(TokKind::kName, "expects name in parameter") ||
-          !ParseShape(&shape)) {
+      string name;
+      if (!ParseName(&name) || !ParseShape(&shape)) {
         return false;
       }
     } while (EatIfPresent(TokKind::kComma));
@@ -1966,9 +2127,17 @@ bool HloParser::ParseShape(Shape* result) {
   return true;
 }
 
+bool HloParser::CanBeShape() {
+  // A non-tuple shape starts with a kShape token; a tuple shape starts with
+  // '('.
+  return lexer_.GetKind() == TokKind::kShape ||
+         lexer_.GetKind() == TokKind::kLparen;
+}
+
 bool HloParser::ParseName(string* result) {
   VLOG(1) << "ParseName";
-  if (lexer_.GetKind() != TokKind::kName) {
+  if (lexer_.GetKind() != TokKind::kIdent &&
+      lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
   }
   *result = lexer_.GetStrVal();

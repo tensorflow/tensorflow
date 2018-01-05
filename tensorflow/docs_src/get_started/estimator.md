@@ -232,10 +232,10 @@ data and target values for the training set, respectively, and `test_set.data`
 and `test_set.target` contain feature data and target values for the test set.
 
 Later on, in
-["Fit the DNNClassifier to the Iris Training Data,"](#fit-dnnclassifier)
+["Fit the DNNClassifier to the Iris Training Data,"](#fit_the_dnnclassifier_to_the_iris_training_data)
 you'll use `training_set.data` and
 `training_set.target` to train your model, and in
-["Evaluate Model Accuracy,"](#evaluate-accuracy) you'll use `test_set.data` and
+["Evaluate Model Accuracy,"](#evaluate_model_accuracy) you'll use `test_set.data` and
 `test_set.target`. But first, you'll construct your model in the next section.
 
 ## Construct a Deep Neural Network Classifier

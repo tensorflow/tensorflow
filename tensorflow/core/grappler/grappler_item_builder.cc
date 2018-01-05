@@ -450,8 +450,11 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   // Instantiate all the missing attributes with their default values.
-  Status attr_status =
-      AddDefaultAttrsToGraphDef(&new_item->graph, *OpRegistry::Global(), 0);
+  Status attr_status = AddDefaultAttrsToGraphDef(
+      &new_item->graph,
+      FunctionLibraryDefinition(OpRegistry::Global(),
+                                new_item->graph.library()),
+      0);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
                << attr_status.error_message();

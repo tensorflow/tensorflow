@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -665,7 +666,7 @@ def _dynamic_rnn_loop(cell,
     final_outputs:
       A `Tensor` of shape `[time, batch_size, cell.output_size]`.  If
       `cell.output_size` is a (possibly nested) tuple of ints or `TensorShape`
-      objects, then this returns a (possibly nsted) tuple of Tensors matching
+      objects, then this returns a (possibly nested) tuple of Tensors matching
       the corresponding shapes.
     final_state:
       A `Tensor`, or possibly nested tuple of Tensors, matching in length
@@ -806,11 +807,28 @@ def _dynamic_rnn_loop(cell,
 
     return (time + 1, output_ta_t, new_state)
 
+  # TODO(pbar) `loop_bound` can be reduced to `max_sequence_length` once
+  # TensorArray shape inference is working.  When sequence lengths are highly
+  # variable, this will reduce the performance overheads of padding to a fixed
+  # maximum length.
+  loop_bound = time_steps
+
+  # This is a workaround since we cannot currently use maximum_iterations if
+  # time_steps is defined inside control flow, see the comment in
+  # control_flow_ops.py.
+  if (context.in_eager_mode() or
+      not (control_flow_util.IsInWhileLoop(time_steps.op) or
+           control_flow_util.IsInCond(time_steps.op))):
+    maximum_iterations = time_steps
+  else:
+    maximum_iterations = None
+
   _, output_final_ta, final_state = control_flow_ops.while_loop(
-      cond=lambda time, *_: time < time_steps,
+      cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
+      maximum_iterations=maximum_iterations,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.

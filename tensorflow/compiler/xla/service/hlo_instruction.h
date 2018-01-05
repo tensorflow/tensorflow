@@ -56,6 +56,107 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
+// A bunch of switches that control how the hlo text should be printed.
+class HloPrintOptions {
+ public:
+  // Constructs the default print options: don't print large constants, don't
+  // compact operands, no indentation.
+  HloPrintOptions()
+      : print_large_constants_(false),
+        print_subcomputation_references_(true),
+        print_metadata_(true),
+        compact_operands_(false),
+        print_operand_shape_(true),
+        print_program_shape_(true),
+        print_percent_(true),
+        indent_amount_(0) {}
+
+  static HloPrintOptions ShortParsable() {
+    return HloPrintOptions()
+        .set_print_large_constants(true)
+        .set_print_subcomputation_references(true)
+        .set_print_metadata(false)
+        .set_print_operand_shape(false)
+        .set_print_program_shape(false)
+        .set_print_percent(false);
+  }
+
+  // If true, large constants will be printed out.
+  HloPrintOptions& set_print_large_constants(bool value) {
+    print_large_constants_ = value;
+    return *this;
+  }
+
+  // If true, the names of subcomputations (e.g. a fusion node's fused
+  // computation) won't be printed.  This makes the resulting text not parsable.
+  //
+  // A CustomCall's call target is printed even if
+  // print_subcomputation_references is false, because the call target isn't an
+  // HloComputation.
+  HloPrintOptions& set_print_subcomputation_references(bool value) {
+    print_subcomputation_references_ = value;
+    return *this;
+  }
+
+  // If true, metatdata will be printed.
+  HloPrintOptions& set_print_metadata(bool value) {
+    print_metadata_ = value;
+    return *this;
+  }
+
+  // If true, operands' shapes will be printed.
+  HloPrintOptions& set_print_operand_shape(bool value) {
+    print_operand_shape_ = value;
+    return *this;
+  }
+
+  // If true, program shape of hlo computations will be printed.
+  HloPrintOptions& set_print_program_shape(bool value) {
+    print_program_shape_ = value;
+    return *this;
+  }
+
+  // If true, names will be printed with prefix '%'.
+  HloPrintOptions& set_print_percent(bool value) {
+    print_percent_ = value;
+    return *this;
+  }
+
+  // If true, only a part of operands will be printed out, and their names will
+  // be omitted (note that in this case the text will not be parsable).
+  HloPrintOptions& set_compact_operands(bool value) {
+    compact_operands_ = value;
+    return *this;
+  }
+
+  // The indent of the hlo text block.
+  HloPrintOptions& set_indent_amount(int value) {
+    indent_amount_ = value;
+    return *this;
+  }
+
+  bool print_large_constants() const { return print_large_constants_; }
+  bool print_subcomputation_references() const {
+    return print_subcomputation_references_;
+  }
+  bool print_metadata() const { return print_metadata_; }
+  bool compact_operands() const { return compact_operands_; }
+  bool print_operand_shape() const { return print_operand_shape_; }
+  bool print_program_shape() const { return print_program_shape_; }
+  bool print_percent() const { return print_percent_; }
+  int indent_amount() const { return indent_amount_; }
+
+ private:
+  bool print_large_constants_;
+  bool print_subcomputation_references_;
+  bool print_metadata_;
+  bool compact_operands_;
+  bool print_operand_shape_;
+  bool print_program_shape_;
+  bool print_percent_;
+  int indent_amount_;
+};
+
 // HLO instructions are the IR used by the high-level compiler.
 class HloInstruction {
  public:
@@ -165,6 +266,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateDot(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers);
+
+  // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1
+  // of the LHS with dimension 0 of the RHS with no batch dimensions.  Both LHS
+  // and the RHS must be of rank 2.
+  static std::unique_ptr<HloInstruction> CreateCanonicalDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs);
 
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
@@ -547,16 +654,6 @@ class HloInstruction {
     return parameter_number_;
   }
 
-  const string& parameter_name() const {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    return parameter_name_;
-  }
-
-  void set_parameter_name(const string& str) {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    parameter_name_ = str;
-  }
-
   // Returns the dimension sizes or numbers associated with this instruction.
   //
   // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
@@ -644,18 +741,20 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false, bool include_metadata = true,
-                  bool include_large_constants = false) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Components of the ToString() representation:
 
   // Returns a string representation of the operand list.
-  string OperandsToString(bool compact, bool include_large_constants) const;
+  string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  std::vector<string> ExtraAttributesToString() const;
-
-  string ToStringNoMetadata() const { return ToString(false, false); }
+  std::vector<string> ExtraAttributesToString(
+      const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
@@ -683,13 +782,15 @@ class HloInstruction {
   // Returns feature_index field associated with the instruction. The index
   // represents the index of the feature dimension.
   //
-  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
+  // or kBatchNormGrad.
   int64 feature_index() const { return feature_index_; }
 
   // Returns a epsilon value associated with the instruction. The is a small
   // number added to the variance to avoid divide-by-zero error.
   //
-  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  // Precondition: opcode() is one of kBatchNormTraining, kBatchNormInference,
+  // or kBatchNormGrad.
   float epsilon() const { return epsilon_; }
 
   // Returns the infeed configuration string. The infeed configuration includes
@@ -863,6 +964,17 @@ class HloInstruction {
   }
   const std::vector<int64>& slice_strides() const { return slice_strides_; }
 
+  // Returns the flag that describes whether a slice must be lowered into an
+  // offset into the original operand.
+  bool IsInPlaceSlice() const { return is_in_place_slice_; }
+
+  // Sets and returns the flag that describes whether a slice must be lowered
+  // into an offset into the original operand.
+  bool SetIsInPlaceSlice(bool value) {
+    is_in_place_slice_ = value;
+    return value;
+  }
+
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -1022,10 +1134,9 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns a string identifier for this instruction. If no string identifier
-  // has been explicitly set, then the identifier is the serialized pointer to
-  // this instruction.
+  // Gets/sets the string identifier for this instruction.
   const string& name() const { return name_; }
+  void set_name(tensorflow::StringPiece name) { name_ = name.ToString(); }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1197,6 +1308,9 @@ class HloInstruction {
   std::vector<int64> slice_limits_;
   std::vector<int64> slice_strides_;
 
+  // Describes whether the slice can be lowered to an offset into the operand.
+  bool is_in_place_slice_ = false;
+
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;
   int32 mantissa_bits_ = 0;
@@ -1217,7 +1331,6 @@ class HloInstruction {
 
   // For parameter instructions this field holds the parameter number.
   int64 parameter_number_ = 0;
-  string parameter_name_;
 
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;

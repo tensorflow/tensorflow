@@ -189,6 +189,44 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
+  def test_adjust_gamma_less_zero(self):
+    """White image should be returned for gamma equal to zero"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+    
+      x = constant_op.constant(x_np, shape=x_np.shape)
+
+      err_msg = 'Gamma should be a non-negative real number.'
+      
+      try:
+        image_ops.adjust_gamma(x, gamma=-1)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+
+  def test_adjust_gamma_less_zero_tensor(self):
+    """White image should be returned for gamma equal to zero"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+    
+      x = constant_op.constant(x_np, shape=x_np.shape)
+      y = constant_op.constant(-1.0, dtype=dtypes.float32)
+      
+      image = image_ops.adjust_gamma(x, gamma=y)
+      
+      err_msg = 'Gamma should be a non-negative real number.'
+      try:
+        image.eval()
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+      
   def test_adjust_gamma_zero(self):
     """White image should be returned for gamma equal to zero"""
     with self.test_session():
@@ -372,6 +410,89 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     delta_h = np.random.rand() * 2.0 - 1.0
     with self.assertRaisesOpError("input must have 3 channels"):
       self._adjustHueTf(x_np, delta_h)
+
+
+class FlipImageBenchmark(test.Benchmark):
+
+  def _benchmarkFlipLeftRight(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = config_pb2.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with session.Session("", graph=ops.Graph(), config=config) as sess:
+      with ops.device(device):
+        inputs = variables.Variable(
+            random_ops.random_uniform(
+                image_shape, dtype=dtypes.float32) * 255,
+            trainable=False,
+            dtype=dtypes.float32)
+        run_op = image_ops.flip_left_right(inputs)
+        sess.run(variables.global_variables_initializer())
+        for i in xrange(warmup_rounds + benchmark_rounds):
+          if i == warmup_rounds:
+            start = time.time()
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkFlipLeftRight_299_299_3_%s step_time: %.2f us" %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name="benchmarkFlipLeftRight_299_299_3_%s" % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def _benchmarkRandomFlipLeftRight(self, device, cpu_count):
+    image_shape = [299, 299, 3]
+    warmup_rounds = 100
+    benchmark_rounds = 1000
+    config = config_pb2.ConfigProto()
+    if cpu_count is not None:
+      config.inter_op_parallelism_threads = 1
+      config.intra_op_parallelism_threads = cpu_count
+    with session.Session("", graph=ops.Graph(), config=config) as sess:
+      with ops.device(device):
+        inputs = variables.Variable(
+            random_ops.random_uniform(
+                image_shape, dtype=dtypes.float32) * 255,
+            trainable=False,
+            dtype=dtypes.float32)
+        run_op = image_ops.random_flip_left_right(inputs)
+        sess.run(variables.global_variables_initializer())
+        for i in xrange(warmup_rounds + benchmark_rounds):
+          if i == warmup_rounds:
+            start = time.time()
+          sess.run(run_op)
+    end = time.time()
+    step_time = (end - start) / benchmark_rounds
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkRandomFlipLeftRight_299_299_3_%s step_time: %.2f us" %
+          (tag, step_time * 1e6))
+    self.report_benchmark(
+        name="benchmarkRandomFlipLeftRight_299_299_3_%s" % (tag),
+        iters=benchmark_rounds,
+        wall_time=step_time)
+
+  def benchmarkFlipLeftRightCpu1(self):
+    self._benchmarkFlipLeftRight("/cpu:0", 1)
+
+  def benchmarkFlipLeftRightCpuAll(self):
+    self._benchmarkFlipLeftRight("/cpu:0", None)
+
+  def benchmarkFlipLeftRightGpu(self):
+    self._benchmarkFlipLeftRight(test.gpu_device_name(), None)
+
+  def benchmarkRandomFlipLeftRightCpu1(self):
+    self._benchmarkRandomFlipLeftRight("/cpu:0", 1)
+
+  def benchmarkRandomFlipLeftRightCpuAll(self):
+    self._benchmarkRandomFlipLeftRight("/cpu:0", None)
+
+  def benchmarkRandomFlipLeftRightGpu(self):
+    self._benchmarkRandomFlipLeftRight(test.gpu_device_name(), None)
 
 
 class AdjustHueBenchmark(test.Benchmark):
@@ -759,17 +880,8 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
-  def testInvolutionLeftRight(self):
+  def testIdempotentLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testInvolutionLeftRightWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
@@ -783,33 +895,22 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, y_np)
-
-  def testLeftRightWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    y_np = np.array([[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.flip_left_right(x_tf)
+      self.assertTrue(y.op.name.startswith('flip_left_right'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
   def testRandomFlipLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
-    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
+      y = image_ops.random_flip_left_right(x_tf)
+      self.assertTrue(y.op.name.startswith('random_flip_left_right'))
 
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
+      for _ in range(50):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -817,57 +918,11 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
 
-  def testRandomFlipLeftRightWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    y_np = np.array([[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    seed = 42
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      count_flipped = 0
-      count_unflipped = 0
-      for _ in range(50):
-        y_tf = y.eval()
-        for index in range(0, x_tf.shape[0]):
-          current_x_tf = x_tf[index]
-          current_y_tf = y_tf[index]
-          current_y_np = y_np[index]
-
-          if current_y_tf[0][0] == 1:
-            self.assertAllEqual(current_y_tf, current_x_tf)
-            count_unflipped += 1
-          else:
-            self.assertAllEqual(current_y_tf, current_y_np)
-            count_flipped += 1
-      # Batch size 2 * 50 trials = 100
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
-
-  def testInvolutionUpDown(self):
+  def testIdempotentUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testInvolutionUpDownWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -882,32 +937,21 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, y_np)
-
-  def testUpDownWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    y_np = np.array([[[4, 5, 6], [1, 2, 3]], [[10, 11, 12], [7, 8, 9]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.flip_up_down(x_tf)
+      self.assertTrue(y.op.name.startswith('flip_up_down'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
   def testRandomFlipUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
-    seed = 42
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=42)
+      y = image_ops.random_flip_up_down(x_tf)
+      self.assertTrue(y.op.name.startswith('random_flip_up_down'))
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
+      for _ in range(50):
         y_tf = y.eval()
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
@@ -915,56 +959,11 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         else:
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertGreaterEqual(count_flipped, 1)
+      self.assertGreaterEqual(count_unflipped, 1)
 
-  def testRandomFlipUpDownWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    y_np = np.array([[[4, 5, 6], [1, 2, 3]], [[4, 5, 6], [1, 2, 3]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-    seed = 42
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape).eval()
-      y = image_ops.random_flip_up_down(x_tf, seed=42)
-      count_flipped = 0
-      count_unflipped = 0
-      for _ in range(50):
-        y_tf = y.eval()
-        for index in range(0, x_tf.shape[0]):
-          current_x_tf = x_tf[index]
-          current_y_tf = y_tf[index]
-          current_y_np = y_np[index]
-        if current_y_tf[0][0] == 1:
-          self.assertAllEqual(current_y_tf, current_x_tf)
-          count_unflipped += 1
-        else:
-          self.assertAllEqual(current_y_tf, current_y_np)
-          count_flipped += 1
-      # Batch size 2 * 50 trials = 100
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
-
-  def testInvolutionTranspose(self):
+  def testIdempotentTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
-
-  def testInvolutionTransposeWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
@@ -979,31 +978,15 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(x_tf)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, y_np)
-
-  def testTransposeWithBatch(self):
-    x_np = np.array([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
-                    dtype=np.uint8).reshape([2, 2, 3, 1])
-
-    y_np = np.array([[[1, 4], [2, 5], [3, 6]], [[7, 10], [8, 11], [9, 12]]],
-                    dtype=np.uint8).reshape([2, 3, 2, 1])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      self.assertTrue(y.op.name.startswith('transpose_image'))
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
 
   def testPartialShapes(self):
     p_unknown_rank = array_ops.placeholder(dtypes.uint8)
-    p_unknown_dims_3 = array_ops.placeholder(
+    p_unknown_dims = array_ops.placeholder(
         dtypes.uint8, shape=[None, None, None])
-    p_unknown_dims_4 = array_ops.placeholder(
-        dtypes.uint8, shape=[None, None, None, None])
     p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-    p_unknown_batch = array_ops.placeholder(dtypes.uint8,
-                                            shape=[None, 64, 64, 3])
 
     p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
     p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
@@ -1015,31 +998,18 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
-      transformed_unknown_dims_3 = op(p_unknown_dims_3)
-      self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
-      transformed_unknown_dims_4 = op(p_unknown_dims_4)
-      self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
+      transformed_unknown_dims = op(p_unknown_dims)
+      self.assertEqual(3, transformed_unknown_dims.get_shape().ndims)
       transformed_unknown_width = op(p_unknown_width)
       self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
-      transformed_unknown_batch = op(p_unknown_batch)
-      self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   "must have either 3 or 4 dimensions."):
+      with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
         op(p_wrong_rank)
       with self.assertRaisesRegexp(ValueError, "must be > 0"):
         op(p_zero_dim)
 
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
-    with self.test_session(use_gpu=True):
-      rotated = image
-      for _ in xrange(4):
-        rotated = image_ops.rot90(rotated)
-      self.assertAllEqual(image, rotated.eval())
-
-  def testRot90GroupOrderWithBatch(self):
-    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.test_session(use_gpu=True):
       rotated = image
       for _ in xrange(4):
@@ -1055,14 +1025,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         y_np = np.rot90(image, k=k)
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
-  def testRot90NumpyEquivalenceWithBatch(self):
-    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
-    with self.test_session(use_gpu=True):
-      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
-      y_tf = image_ops.rot90(image, k_placeholder)
-      for k in xrange(4):
-        y_np = np.rot90(image, k=k, axes=(1, 2))
-        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
 
@@ -1241,6 +1203,7 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.per_image_standardization(x)
+      self.assertTrue(y.op.name.startswith('per_image_standardization'))
       y_tf = y.eval()
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
@@ -1422,6 +1385,11 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     for params, err_msg in test_config:
       self._assertRaises(x, x_shape, *params, err_msg=err_msg)
 
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+    y = image_ops.crop_to_bounding_box(image, 0, 0, 55, 66)
+    self.assertTrue(y.name.startswith('crop_to_bounding_box'))
+
 
 class CentralCropTest(test_util.TensorFlowTestCase):
 
@@ -1497,6 +1465,13 @@ class CentralCropTest(test_util.TensorFlowTestCase):
         _ = image_ops.central_crop(x, 0.0)
       with self.assertRaises(ValueError):
         _ = image_ops.central_crop(x, 1.01)
+
+  def testNameScope(self):
+    x_shape = [13, 9, 3]
+    x_np = np.ones(x_shape, dtype=np.float32)
+    with self.test_session(use_gpu=True):
+      y = image_ops.central_crop(x_np, 1.0)
+      self.assertTrue(y.op.name.startswith('central_crop'))
 
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
@@ -1700,6 +1675,11 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
     for config_item in test_config:
       self._assertRaises(x, x_shape, *config_item)
+
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+    y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
+    self.assertTrue(y.op.name.startswith('pad_to_bounding_box'))
 
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
@@ -2305,6 +2285,13 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
     self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
 
+  def testNameScope(self):
+    img_shape = [1, 3, 2, 1]
+    with self.test_session(use_gpu=True):
+      single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+      y = image_ops.resize_images(single_image, [55, 66])
+      self.assertTrue(y.op.name.startswith('resize_images'))
+
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
@@ -2579,6 +2566,11 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     target_height, target_width = [5, 0]
     self._assertRaises(x, x_shape, target_height, target_width,
                        "target_width must be > 0")
+
+  def testNameScope(self):
+    image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+    y = image_ops.resize_image_with_crop_or_pad(image, 55, 66)
+    self.assertTrue(y.op.name.startswith('resize_image_with_crop_or_pad'))
 
 
 def _SimpleColorRamp():

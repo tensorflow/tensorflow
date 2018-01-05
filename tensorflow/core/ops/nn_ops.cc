@@ -762,8 +762,9 @@ REGISTER_OP("DataFormatDimMap")
 Returns the dimension index in the destination data format given the one in
 the source data format.
 
-x: Scalar. Dimension index in source data format. Must be in the range [-4, 4).
-y: Scalar. Dimension index in destination data format.
+x: A Tensor with each element as a dimension index in source data format.
+  Must be in the range [-4, 4).
+y: A Tensor with each element as a dimension index in destination data format.
 src_format: source data format.
 dst_format: destination data format.
 )doc");
@@ -776,11 +777,11 @@ REGISTER_OP("DataFormatVecPermute")
     .Attr("dst_format: string = 'NCHW'")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-Returns the permuted vector in the destination data format given the one in
-the source data format.
+Returns the permuted vector/tensor in the destination data format given the
+one in the source data format.
 
-x: Vector in source data format. Must be of size 4.
-y: Vector in destination data format. Must be of size 4.
+x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
+y: Vector of size 4 or Tensor of shape (4, 2) in destination data format.
 src_format: source data format.
 dst_format: destination data format.
 )doc");
@@ -3360,7 +3361,11 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
+#ifndef INTEL_MKL_DNN
     .Output("workspace: T")
+#else
+    .Output("workspace: uint8")
+#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .Attr("depth_radius: int = 5")
@@ -3384,7 +3389,11 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
+#ifndef INTEL_MKL_DNN
     .Input("workspace: T")
+#else
+    .Input("workspace: uint8")
+#endif
     .Input("mkl_input_grads: uint8")
     .Input("mkl_input_image: uint8")
     .Input("mkl_output_image: uint8")

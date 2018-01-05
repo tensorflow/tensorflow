@@ -38,7 +38,7 @@ computation is performed on the underlying representation of x.
       .Output("z: T")                                                        \
       .SetIsCommutative()                                                    \
       .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}") \
-      .SetShapeFn(shape_inference::UnchangedShape)
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("PopulationCount")
     .Input("x: T")

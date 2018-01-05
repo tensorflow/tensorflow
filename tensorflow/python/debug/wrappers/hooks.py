@@ -331,3 +331,13 @@ class TensorBoardDebugHook(GrpcDebugHook):
         watch_fn=_gated_grpc_watch_fn,
         thread_name_filter=thread_name_filter,
         log_usage=log_usage)
+
+    self._grpc_debug_server_addresses = grpc_debug_server_addresses
+    self._sent_graph_version = -1
+
+  def before_run(self, run_context):
+    self._sent_graph_version = grpc_wrapper.publish_traceback(
+        self._grpc_debug_server_addresses, run_context.session.graph,
+        run_context.original_args.feed_dict, run_context.original_args.fetches,
+        self._sent_graph_version)
+    return super(TensorBoardDebugHook, self).before_run(run_context)

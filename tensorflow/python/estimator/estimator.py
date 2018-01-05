@@ -486,7 +486,7 @@ class Estimator(object):
     `ExportOutput`s, and the inputs are always the input receivers provided by
     the serving_input_receiver_fn.
 
-    Extra assets may be written into the SavedModel via the extra_assets
+    Extra assets may be written into the SavedModel via the assets_extra
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
@@ -683,9 +683,10 @@ class Estimator(object):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
-    del mode  # unused
     input_fn_args = util.fn_args(input_fn)
     kwargs = {}
+    if 'mode' in input_fn_args:
+      kwargs['mode'] = mode
     if 'params' in input_fn_args:
       kwargs['params'] = self.params
     if 'config' in input_fn_args:

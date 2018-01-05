@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
+load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -47,6 +48,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # version we require here.
   check_version("0.5.4")
   cuda_configure(name="local_config_cuda")
+  git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
 
@@ -59,11 +61,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   mkl_repository(
       name = "mkl",
       urls = [
-          "https://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
-          "https://github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
+          "https://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.11/mklml_lnx_2018.0.1.20171007.tgz",
+          "https://github.com/01org/mkl-dnn/releases/download/v0.11/mklml_lnx_2018.0.1.20171007.tgz",
       ],
-      sha256 = "57ba56c4c243f403ff78f417ff854ef50b9eddf4a610a917b7c95e7fa8553a4b",
-      strip_prefix = "mklml_lnx_2018.0.20170720",
+      sha256 = "6b07cb7e5451db67c2e31e785ae458b18f7f363c60a61685488f69e9ae7199d4",
+      strip_prefix = "mklml_lnx_2018.0.1.20171007",
       build_file = str(Label("//third_party/mkl:mkl.BUILD")),
   )
 
@@ -74,32 +76,32 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "mkl_dnn",
       urls = [
-          "https://mirror.bazel.build/github.com/01org/mkl-dnn/archive/aab753280e83137ba955f8f19d72cb6aaba545ef.tar.gz",
-          "https://github.com/01org/mkl-dnn/archive/aab753280e83137ba955f8f19d72cb6aaba545ef.tar.gz",
+          "https://mirror.bazel.build/github.com/01org/mkl-dnn/archive/e0bfcaa7fcb2b1e1558f5f0676933c1db807a729.tar.gz",
+          "https://github.com/01org/mkl-dnn/archive/e0bfcaa7fcb2b1e1558f5f0676933c1db807a729.tar.gz",
       ],
-      sha256 = "fb67f255a96bd4ad39b8dd104eca5aa92200c95c1ed36e59641e6c0478eefd11",
-      strip_prefix = "mkl-dnn-aab753280e83137ba955f8f19d72cb6aaba545ef",
+      sha256 = "02e244f63dd95402691a361392504c143eede9a89043426f174836638a9cbf09",
+      strip_prefix = "mkl-dnn-e0bfcaa7fcb2b1e1558f5f0676933c1db807a729",
       build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
   )
 
   tf_http_archive(
       name = "com_google_absl",
       urls = [
-          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
-          "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/720c017e30339fd1786ce4aac68bc8559736e53f.tar.gz",
       ],
-     sha256 = "f1a7349f88d2846210c42e2f7271dabeee404c2a3b4198e34a797993e3569b03",
-     strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
+     sha256 = "5996380e3e8b981f55d1c8d58e709c00dbb4806ba367be75d0925a68cc2f6478",
+     strip_prefix = "abseil-cpp-720c017e30339fd1786ce4aac68bc8559736e53f",
   )
 
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/b6e6d0cf6a77.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
       ],
-      sha256 = "0840c497f2749b5e90bda666aab96be6da90dc75b4e21ca9843cae69b7fed52a",
-      strip_prefix = "eigen-eigen-b6e6d0cf6a77",
+      sha256 = "0a8ac1e83ef9c26c0e362bd7968650b710ce54e2d883f0df84e5e45a3abe842a",
+      strip_prefix = "eigen-eigen-034b6c3e1017",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -420,11 +422,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9ab4c272cb604a7f947865428c4ef2169fee2100.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/9ab4c272cb604a7f947865428c4ef2169fee2100.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7e6fcc775f56cdeeae061f6f8071f5c103087330.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/7e6fcc775f56cdeeae061f6f8071f5c103087330.tar.gz",
       ],
-      sha256 = "1b1b7d3800a94ca2302e3dd670dbe84238749583027883784b55297059d83da8",
-      strip_prefix = "llvm-9ab4c272cb604a7f947865428c4ef2169fee2100",
+      sha256 = "9478274a10d7f487e7ad878c8eec30398a54e07eb148867711cd9c6fe7ff5f59",
+      strip_prefix = "llvm-7e6fcc775f56cdeeae061f6f8071f5c103087330",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

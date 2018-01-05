@@ -2497,6 +2497,7 @@ REGISTER_OP("RecordInput")
     .Attr("file_buffer_size: int = 10000")
     .Attr("file_parallelism: int = 16")
     .Attr("batch_size: int = 32")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2510,6 +2511,8 @@ file_shuffle_shift_ratio: Shifts the list of files after the list is randomly
 file_buffer_size: The randomization shuffling buffer.
 file_parallelism: How many sstables are opened and concurrently iterated over.
 batch_size: The batch size.
+compression_type: The type of compression for the file. Currently ZLIB and
+    GZIP are supported. Defaults to none.
 )doc");
 
 }  // namespace tensorflow

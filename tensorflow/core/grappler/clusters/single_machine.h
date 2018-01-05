@@ -32,6 +32,8 @@ class SingleMachine : public Cluster {
   SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus);
   ~SingleMachine() override;
 
+  string type() const override { return "single_machine"; }
+
   Status Provision() override;
   Status Shutdown() override;
 

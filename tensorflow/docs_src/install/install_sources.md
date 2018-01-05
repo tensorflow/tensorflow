@@ -25,8 +25,10 @@ like to try to build TensorFlow on Windows anyway, use either of the
 following:
 
 *   [Bazel on Windows](https://bazel.build/versions/master/docs/windows.html)
-*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/r0.12/tensorflow/contrib/cmake)
+*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/cmake)
 
+Note: Starting from 1.6 release, our prebuilt binaries will use AVX
+instructions. Older CPUs may not be able to execute these binaries.
 
 ## Determine which TensorFlow to install
 
@@ -180,8 +182,9 @@ If bazel is not installed on your system, install it now by following
 
 ### Install python dependencies
 
-To install TensorFlow, you must install the following packages:
+To build TensorFlow, you must install the following packages:
 
+  * gast
   * six
   * numpy, which is a numerical processing package that TensorFlow requires.
   * wheel, which enables you to manage Python compressed packages
@@ -194,9 +197,13 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel</b> </pre>
+<pre> $ <b>sudo pip install gast six numpy wheel</b> </pre>
 
-
+Note: These are just the minimum requirements to _build_ tensorflow. Installing
+the pip package will download additional packages required to _run_ it. If you
+plan on executing tasks directly with `bazel` , without the pip installation,
+you may need to install additional python packages. For example, you should
+`pip install mock enum34` before running TensorFlow's tests with bazel.
 
 ### Optional: install TensorFlow for GPU prerequisites
 
@@ -355,10 +362,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.4.0 on Linux:
+for TensorFlow 1.5.0rc0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.4.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.5.0rc0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation

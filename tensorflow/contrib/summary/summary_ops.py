@@ -71,7 +71,7 @@ def should_record_summaries():
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   if global_step is None:
-    global_step = training_util.get_global_step()
+    global_step = training_util.get_or_create_global_step()
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
   with ops.device("cpu:0"):
@@ -560,7 +560,7 @@ def _serialize_graph(arbitrary_graph):
 
 def _choose_step(step):
   if step is None:
-    return training_util.get_global_step()
+    return training_util.get_or_create_global_step()
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step

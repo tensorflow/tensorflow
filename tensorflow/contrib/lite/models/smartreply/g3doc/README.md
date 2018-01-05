@@ -137,8 +137,8 @@ Following are the ops supported for using On-Device Smart Reply model:
 
 *   **HASHTABLE_LOOKUP**
 
-    This is a custom op that uses label id from predict op and looks up the
-    response text from the given label id.
+    This is an op inside TensorFlow Lite that uses label id from predict op and
+    looks up the response text from the given label id.
 
 ## Further Information
 

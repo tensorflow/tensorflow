@@ -434,6 +434,63 @@ string ComputationsToString(
       });
 }
 
+// Verifies various invariants about the structure of the HLO:
+//
+// (1) each instruction has a non-null parent() set to the HloComputation which
+//     contains it.
+//
+// (2) each computation has a non-null parent() set to the HloModule which
+//     contains it.
+//
+// (3) the operands of each instruction are in the same computation as the
+//     instruction.
+Status VerifyHloStructure(HloModule* module) {
+  for (const HloComputation* computation : module->computations()) {
+    if (computation->parent() == nullptr) {
+      return FailedPrecondition("Computation %s has a null parent pointer",
+                                computation->name().c_str());
+    }
+    if (computation->parent() != module) {
+      return FailedPrecondition(
+          "Computation %s parent() does not point to parent module",
+          computation->name().c_str());
+    }
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->parent() == nullptr) {
+        return FailedPrecondition("Instruction %s has a null parent pointer",
+                                  instruction->name().c_str());
+      }
+      if (instruction->parent() != computation) {
+        return FailedPrecondition(
+            "Instruction %s parent() does not point to parent computation",
+            instruction->name().c_str());
+      }
+    }
+  }
+
+  // Check that operands are in the same computation separately from verifying
+  // parent() correctness so conditions like a null HloInstruction::parent() are
+  // identified and reported explicitly above rather than reporting a mismatched
+  // operand.
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      for (int i = 0; i < instruction->operand_count(); ++i) {
+        const HloInstruction* operand = instruction->operand(i);
+        if (operand->parent() != instruction->parent()) {
+          return FailedPrecondition(
+              "Operand %d (%s) of instruction %s is in a different "
+              "computation: %s vs %s",
+              i, operand->name().c_str(), instruction->name().c_str(),
+              operand->parent()->name().c_str(),
+              instruction->parent()->name().c_str());
+        }
+      }
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
@@ -554,6 +611,8 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
 }
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
+  TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
 

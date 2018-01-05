@@ -71,6 +71,12 @@ class LayoutUtil {
   // Clears the layout on all Shapes within the given ProgramShape.
   static void ClearLayout(ProgramShape* program_shape);
 
+  // Returns whether the given Shape is an array and has a dense format layout.
+  static bool IsDense(const Shape& shape);
+
+  // Returns whether the given Layout has a dense format.
+  static bool IsDense(const Layout& layout);
+
   // Returns whether the layout is monotonic and dim 0 is minor in the layout.
   // * R0 and R1: this is always trivially true.
   // * R2+: equivalent to column-major. Dimension 0 is the minor, dimension 1 is
@@ -88,6 +94,19 @@ class LayoutUtil {
   // dimension size).
   static bool IsPadded(const Shape& shape);
 
+  // Returns the padded_dimensions array for the given Shape.  Requires that the
+  // shape is an array and has a dense layout.
+  static tensorflow::gtl::ArraySlice<int64> PaddedDimensions(
+      const Shape& shape);
+
+  // Returns the given index of the padded_dimensions array for the given Shape.
+  // Requires that the shape is an array and has a dense layout.
+  static int64 PaddedDimension(const Shape& shape, int64 index);
+
+  // Returns the padding_value for the given Shape.  Requires that the shape is
+  // an array and has a dense layout.
+  static PaddingValue GetPaddingValue(const Shape& shape);
+
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
@@ -97,6 +116,11 @@ class LayoutUtil {
 
   // Returns whether lhs and rhs are identical.
   static bool Equal(const Layout& lhs, const Layout& rhs);
+
+  // Returns the minor_to_major array for the given Shape.  Requires that the
+  // shape is an array and has a dense layout.
+  static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Shape& shape);
+  static tensorflow::gtl::ArraySlice<int64> MinorToMajor(const Layout& layout);
 
   // Major(0) is the most major logical dimension number, major(1) is the
   // second-most-major logical dimension number and so on.

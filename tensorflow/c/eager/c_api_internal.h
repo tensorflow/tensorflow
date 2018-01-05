@@ -67,6 +67,11 @@ struct TFE_Context {
   }
 
   const std::vector<tensorflow::Device*>& devices() { return session->devices; }
+
+  // Whether we should compute RunMetadata.
+  std::atomic<bool> should_store_metadata{false};
+  tensorflow::mutex metadata_mu;
+  tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
 };
 
 struct TFE_TensorHandle {

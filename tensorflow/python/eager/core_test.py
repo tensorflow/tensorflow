@@ -84,6 +84,20 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  def testContextStackContainsEagerMode(self):
+    # Eager execution has been enabled, and no other context
+    # switch has occurred, so `context_stack` should contain
+    # exactly one entry.
+    self.assertEqual(len(context.context_stack.stack), 1)
+    stack_entry = context.context_stack.stack[0]
+
+    # The entry should log that eager mode was entered.
+    self.assertIs(stack_entry.enter_context_fn, context.eager_mode)
+
+    # It is not possible to build a graph function when eager execution
+    # is enabled; the stack entry should reflect this fact.
+    self.assertFalse(stack_entry.is_building_function)
+
   def _runInThread(self, target, args):
     t = threading.Thread(target=target, args=args)
     try:

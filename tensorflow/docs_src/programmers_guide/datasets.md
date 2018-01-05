@@ -455,9 +455,6 @@ dataset = dataset.flat_map(
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
 
-For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
-in @{$get_started/linear_regression}.
-
 <!--
 TODO(mrry): Add these sections.
 
@@ -540,7 +537,7 @@ import cv2
 # Use a custom OpenCV function to read the image, instead of the standard
 # TensorFlow `tf.read_file()` operation.
 def _read_py_function(filename, label):
-  image_decoded = cv2.imread(image_string, cv2.IMREAD_GRAYSCALE)
+  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
   return image_decoded, label
 
 # Use standard TensorFlow operations to resize the image to a fixed shape.

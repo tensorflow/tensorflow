@@ -27,6 +27,7 @@ from __future__ import print_function
 import os.path as _os_path
 
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
+from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -75,8 +76,9 @@ def get_link_flags():
     The link flags.
   """
   flags = []
-  flags.append('-L%s' % get_lib())
-  flags.append('-ltensorflow_framework')
+  if not _MONOLITHIC_BUILD:
+    flags.append('-L%s' % get_lib())
+    flags.append('-ltensorflow_framework')
   return flags
 
 _allowed_symbols = []

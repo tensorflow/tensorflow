@@ -59,6 +59,14 @@ class DenseTest(test.TestCase):
     dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_2')
 
+  def testVariableInput(self):
+    with self.test_session():
+      v = variable_scope.get_variable(
+          'X', initializer=init_ops.zeros_initializer(), shape=(1, 1))
+      x = core_layers.Dense(1)(v)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(x.eval(), [[0.0]])
+
   @test_util.run_in_graph_and_eager_modes()
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')

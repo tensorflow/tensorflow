@@ -276,6 +276,23 @@ bool HloDataflowAnalysis::UpdateBitcastValueSet(HloInstruction* bitcast) {
   return false;
 }
 
+bool HloDataflowAnalysis::UpdateSliceValueSet(HloInstruction* slice) {
+  CHECK_EQ(slice->opcode(), HloOpcode::kSlice);
+  if (!slice->IsInPlaceSlice()) {
+    return false;
+  }
+  // If this slice is lowered to an in-place version, then it forwards the
+  // operand value to the output.
+  const InstructionValueSet& operand_set =
+      GetInstructionValueSet(slice->operand(0));
+  InstructionValueSet& slice_set = GetInstructionValueSet(slice);
+  if (operand_set != slice_set) {
+    slice_set = operand_set;
+    return true;
+  }
+  return false;
+}
+
 bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   CHECK_EQ(send->opcode(), HloOpcode::kSend);
   bool changed = false;
@@ -527,6 +544,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
+    case HloOpcode::kSlice:
+      return UpdateSliceValueSet(instruction);
     case HloOpcode::kCopy:
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
@@ -685,6 +704,11 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       switch (instruction->opcode()) {
         case HloOpcode::kBitcast:
           if (bitcast_defines_value_) {
+            define_all_values();
+          }
+          break;
+        case HloOpcode::kSlice:
+          if (!instruction->IsInPlaceSlice()) {
             define_all_values();
           }
           break;

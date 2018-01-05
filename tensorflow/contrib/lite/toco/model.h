@@ -75,6 +75,7 @@ enum class OperatorType {
   kSlice,
   kSqueeze,
   kMean,
+  kArgMax,
   // The SVDF Op is a decomposition of a densely connected Op into
   // low rank filters. For details:
   // https://research.google.com/pubs/pub43813.html
@@ -97,6 +98,7 @@ enum class OperatorType {
   kTensorFlowMinimum,
   kTensorFlowMatMul,
   kTensorFlowMerge,
+  kNeg,
   kTensorFlowReshape,
   kTensorFlowRsqrt,
   kTensorFlowShape,
@@ -151,7 +153,15 @@ enum class AxesOrder {
 // because we'll be dropping the array anyway (e.g. some exotic array types
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
-enum class ArrayDataType { kNone, kBool, kFloat, kUint8, kInt32, kInt64 };
+enum class ArrayDataType {
+  kNone,
+  kBool,
+  kFloat,
+  kUint8,
+  kInt32,
+  kInt64,
+  kString
+};
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
 template <ArrayDataType A>
@@ -179,6 +189,10 @@ struct DataTypeImpl<ArrayDataType::kInt32> {
 template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
   typedef int64 Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kString> {
+  typedef string Type;
 };
 
 template <ArrayDataType A>
@@ -546,7 +560,7 @@ struct AddOperator : Operator {
 };
 
 // Concatenation operator: concatenates its inputs
-// along the concat_dim dimension.
+// along the axis.
 //
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to concatenate.
@@ -554,7 +568,7 @@ struct AddOperator : Operator {
 // TensorFlow equivalent: Concat.
 struct ConcatenationOperator : Operator {
   ConcatenationOperator() : Operator(OperatorType::kConcatenation) {}
-  int concat_dim = 0;
+  int axis = 0;
 };
 
 // Reordering dimensions. Used only during tooling to transform graphs from
@@ -861,6 +875,16 @@ struct RangeOperator : Operator {
 // and not int64.  The output type could be stored herein.
 struct RankOperator : Operator {
   RankOperator() : Operator(OperatorType::kRank) {}
+};
+
+// Element-wise negation (-x) operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Neg
+struct NegOperator : Operator {
+  NegOperator() : Operator(OperatorType::kNeg) {}
 };
 
 // Element-wise reciprocal-square-root (x^-0.5) operator.
@@ -1208,7 +1232,19 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int input_rank;
+  int axis = 0;
+  int input_rank = 0;
+};
+
+// ArgMax operator. It returns the index of the maximum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMax
+struct ArgMaxOperator : Operator {
+  ArgMaxOperator() : Operator(OperatorType::kArgMax) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.
@@ -1249,6 +1285,10 @@ struct SpaceToBatchNDOperator : Operator {
 // TensorFlow equivalent: BatchToSpaceND
 struct BatchToSpaceNDOperator : Operator {
   BatchToSpaceNDOperator() : Operator(OperatorType::kBatchToSpaceND) {}
+
+  std::vector<int> block_shape;
+  std::vector<int> before_crops;
+  std::vector<int> after_crops;
 };
 
 // Mean operator.
@@ -1260,7 +1300,7 @@ struct BatchToSpaceNDOperator : Operator {
 struct MeanOperator : Operator {
   MeanOperator() : Operator(OperatorType::kMean) {}
 
-  std::vector<int> reduction_indices;
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 

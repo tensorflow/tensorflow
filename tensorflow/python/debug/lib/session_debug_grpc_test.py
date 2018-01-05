@@ -248,7 +248,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
     self.assertEqual(
         14, len(dump.get_tensors("v/read", 0, "DebugNumericSummary")[0]))
 
-  def testTensorBoardDebugHooWorks(self):
+  def testTensorBoardDebugHookWorks(self):
     u = variables.Variable(2.1, name="u")
     v = variables.Variable(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
@@ -261,7 +261,36 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
         ["localhost:%d" % self._server_port])
     sess = monitored_session._HookedSession(sess, [grpc_debug_hook])
 
+    # Activate watch point on some a tensor before calling sess.run().
+    self._server.request_watch("u/read", 0, "DebugIdentity")
     self.assertAllClose(42.0, sess.run(w))
+
+    # self.assertAllClose(42.0, sess.run(w))
+    dump = debug_data.DebugDumpDir(self._dump_root)
+    self.assertAllClose([2.1], dump.get_tensors("u/read", 0, "DebugIdentity"))
+
+    # Check that the server has received the stack trace.
+    self.assertTrue(self._server.query_op_traceback("u"))
+    self.assertTrue(self._server.query_op_traceback("u/read"))
+    self.assertTrue(self._server.query_op_traceback("v"))
+    self.assertTrue(self._server.query_op_traceback("v/read"))
+    self.assertTrue(self._server.query_op_traceback("w"))
+
+    # Check that the server has received the python file content.
+    # Query an arbitrary line to make sure that is the case.
+    with open(__file__, "rt") as this_source_file:
+      first_line = this_source_file.readline().strip()
+      self.assertEqual(
+          first_line, self._server.query_source_file_line(__file__, 1))
+
+    self._server.clear_data()
+    # Call sess.run() again, and verify that this time the traceback and source
+    # code is not sent, because the graph version is not newer.
+    self.assertAllClose(42.0, sess.run(w))
+    with self.assertRaises(ValueError):
+      self._server.query_op_traceback("delta_1")
+    with self.assertRaises(ValueError):
+      self._server.query_source_file_line(__file__, 1)
 
   def testConstructGrpcDebugHookWithOrWithouGrpcInUrlWorks(self):
     hooks.GrpcDebugHook(["grpc://foo:42424"])
@@ -747,6 +776,28 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
           # After the end of runs 1 and 3, the server has received the requests
           # to disable the breakpoint at delta:0:DebugIdentity.
           self.assertSetEqual(set(), self._server_1.breakpoints)
+
+        if i == 0:
+          # Check that the server has received the stack trace.
+          self.assertTrue(self._server_1.query_op_traceback("delta_1"))
+          self.assertTrue(self._server_1.query_op_traceback("delta_2"))
+          self.assertTrue(self._server_1.query_op_traceback("inc_v_1"))
+          self.assertTrue(self._server_1.query_op_traceback("inc_v_2"))
+          # Check that the server has received the python file content.
+          # Query an arbitrary line to make sure that is the case.
+          with open(__file__, "rt") as this_source_file:
+            first_line = this_source_file.readline().strip()
+          self.assertEqual(
+              first_line, self._server_1.query_source_file_line(__file__, 1))
+        else:
+          # In later Session.run() calls, the traceback shouldn't have been sent
+          # because it is already sent in the 1st call. So calling
+          # query_op_traceback() should lead to an exception, because the test
+          # debug server clears the data at the beginning of every iteration.
+          with self.assertRaises(ValueError):
+            self._server_1.query_op_traceback("delta_1")
+          with self.assertRaises(ValueError):
+            self._server_1.query_source_file_line(__file__, 1)
 
   def testGetGrpcDebugWatchesReturnsCorrectAnswer(self):
     with session.Session() as sess:

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -54,15 +55,6 @@ namespace cpu {
 
 // Wraps an llvm::TargetMachine and parses out some information that feeds into
 // code LLVM IR generation decisions.
-//
-// Ideally we'd be able to use llvm::TargetTransformInfo here (since its
-// interface is pretty much a perfect fit for our use case), but obtaining an
-// instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
-// super-ugly hacks is difficult.
-//
-// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
-// API that lets us directly create and use llvm::TargetTransformInfo instances
-// outside of a pass manager.
 class TargetMachineFeatures {
  public:
   TargetMachineFeatures(llvm::TargetMachine* target_machine)
@@ -77,20 +69,21 @@ class TargetMachineFeatures {
     return 128;
   }
 
-  // Return the size of the largest register size in bytes.  We need to pass in
+  // Return the size of the largest vector size in bytes.  We need to pass in
   // "function" since llvm functions can contain annotations for specializing
   // them to specific micro-architectures (though currently XLA does not use
   // this functionality).
-  //
-  // Ideally we should have been able to use
-  // llvm::TargetTransformInfo::getRegisterBitWidth(true) here.
-  unsigned largest_register_size_in_bytes(llvm::Function* function);
+  int vector_register_byte_size(const llvm::Function& function) {
+    llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
+    return tti->getRegisterBitWidth(/*Vector=*/true) / 8;
+  }
 
  private:
-  unsigned largest_register_size_in_bytes_impl(llvm::Function* function) const;
+  llvm::TargetTransformInfo* GetTargetTransformInfoFor(
+      const llvm::Function& function);
 
-  tensorflow::gtl::FlatMap<llvm::Function*, int>
-      largest_register_size_in_bytes_;
+  tensorflow::gtl::FlatMap<const llvm::Function*, llvm::TargetTransformInfo>
+      target_transform_infos_;
   llvm::TargetMachine* target_machine_;
 };
 

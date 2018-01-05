@@ -350,7 +350,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
     // Call destructors for all unneeded gradient functions and
     // clear the op_tape. We can clear the tape because ownership of
     // backward functions that will be used for gradient computation
-    // has been transfered to `result`.
+    // has been transferred to `result`.
     for (const auto& op_pair : *op_tape) {
       op_pair.second.backward_function_deleter();
     }
@@ -529,6 +529,11 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       in_gradients.resize(trace.input_tensor_id.size());
       if (!persistent_) {
         vspace.ReleaseBackwardFunction(trace.backward_function);
+      }
+      for (Gradient* grad : out_gradients) {
+        if (grad != nullptr) {
+          vspace.DeleteGradient(grad);
+        }
       }
     }
     VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "

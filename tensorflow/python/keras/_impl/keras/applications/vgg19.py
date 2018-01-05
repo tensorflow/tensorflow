@@ -110,7 +110,6 @@ def VGG19(include_top=True,
                      '(pre-training on ImageNet), '
                      'or the path to the weights file to be loaded.')
 
-
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as imagenet with `include_top`'
                      ' as true, `classes` should be 1000')
@@ -212,8 +211,6 @@ def VGG19(include_top=True,
           cache_subdir='models',
           file_hash='253f8cb515780f3b799900260a226db6')
     model.load_weights(weights_path)
-    if K.backend() == 'theano':
-      layer_utils.convert_all_kernels_in_model(model)
 
     if K.image_data_format() == 'channels_first':
       if include_top:

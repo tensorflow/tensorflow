@@ -62,10 +62,11 @@ The output type is a tuple of three handles:
 |------------- | ----------------------- | ------------------------------------|
 |`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
 :              :                         : `operand`                           :
-|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
-:              :                         : `offset`                            :
 |`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
 :              :                         : `scale`                             :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `offset`                            :
+
 
 ## BatchNormInference
 

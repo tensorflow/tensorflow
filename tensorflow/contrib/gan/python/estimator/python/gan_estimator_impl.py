@@ -96,7 +96,7 @@ class GANEstimator(estimator.Estimator):
       # Generate samples from generator.
       predictions = np.array([
           x for x in gan_estimator.predict(predict_input_fn)])
-    ```
+  ```
   """
 
   def __init__(self,
@@ -163,11 +163,6 @@ class GANEstimator(estimator.Estimator):
 
     super(GANEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
-
-
-def _use_check_shapes(real_data):
-  """Determines whether TFGAN should check Tensor shapes."""
-  return isinstance(real_data, ops.Tensor)
 
 
 def _gan_model_fn(
@@ -247,7 +242,7 @@ def _make_gan_model(generator_fn, discriminator_fn, real_data,
       real_data,
       generator_inputs,
       generator_scope=generator_scope,
-      check_shapes=_use_check_shapes(real_data))
+      check_shapes=False)
   if add_summaries:
     if not isinstance(add_summaries, (tuple, list)):
       add_summaries = [add_summaries]

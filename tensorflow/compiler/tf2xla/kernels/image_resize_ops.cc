@@ -243,7 +243,8 @@ class ResizeBilinearOp : public XlaOpKernel {
   bool align_corners_;
 };
 
-REGISTER_XLA_OP(Name("ResizeBilinear"), ResizeBilinearOp);
+REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstInput("size"),
+                ResizeBilinearOp);
 
 class ResizeBilinearGradOp : public XlaOpKernel {
  public:

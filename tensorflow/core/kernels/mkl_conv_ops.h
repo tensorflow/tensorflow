@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 #include <limits>
+#include <string>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -288,7 +289,7 @@ class MklDnnConvUtil {
 
     OP_REQUIRES(context_, input_tf_shape.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
-                                        input_tf_shape.DebugString()));
+                                          input_tf_shape.DebugString()));
 
     GetOutputAndPadSizeInMklOrder(input_tf_shape, filter_tf_shape,
                                   strides, output_dims_tf_order,

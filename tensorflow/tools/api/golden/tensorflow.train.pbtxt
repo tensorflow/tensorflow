@@ -266,7 +266,11 @@ tf_module {
   }
   member_method {
     name: "cosine_decay"
-    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
+  }
+  member_method {
+    name: "cosine_decay_restarts"
+    argspec: "args=[\'learning_rate\', \'global_step\', \'first_decay_steps\', \'t_mul\', \'m_mul\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'2.0\', \'1.0\', \'0.0\', \'None\'], "
   }
   member_method {
     name: "create_global_step"

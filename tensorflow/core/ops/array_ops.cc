@@ -1328,11 +1328,17 @@ The output will be:
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Fill")
-    .Input("dims: int32")
+    .Input("dims: index_type")
     .Input("value: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("index_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
+      DataType index_type = DT_INT32;
+      Status s = c->GetAttr("index_type", &index_type);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -1340,7 +1346,8 @@ REGISTER_OP("Fill")
       const Tensor* t = c->input_tensor(0);
       if (t != nullptr) {
         for (int i = 0; i < t->NumElements(); ++i) {
-          if (t->vec<int32>()(i) < 0) {
+          if ((index_type == DT_INT32 && t->vec<int32>()(i) < 0) ||
+              (index_type == DT_INT64 && t->vec<int64>()(i) < 0)) {
             return errors::InvalidArgument("Fill dimensions must be >= 0");
           }
         }

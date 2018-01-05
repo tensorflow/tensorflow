@@ -203,6 +203,8 @@ struct ParsedModelFlags {
   Arg<string> graphviz_last_array;
   Arg<string> dump_graphviz;
   Arg<bool> dump_graphviz_video = Arg<bool>(false);
+  Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
+  Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
 };
 
 // Flags that describe the operation you would like to do (what conversion

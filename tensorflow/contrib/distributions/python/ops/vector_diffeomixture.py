@@ -22,28 +22,174 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
+from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
 from tensorflow.contrib.linalg.python.ops import linear_operator_addition as linop_add_lib
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
 from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
 from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
 from tensorflow.python.ops.linalg import linear_operator_lower_triangular as linop_tril_lib
 
-static_value = distribution_util.static_value
-
 
 __all__ = [
     "VectorDiffeomixture",
+    "quadrature_scheme_softmaxnormal_gauss_hermite",
+    "quadrature_scheme_softmaxnormal_quantiles",
 ]
+
+
+def quadrature_scheme_softmaxnormal_gauss_hermite(
+    loc, scale, quadrature_size,
+    validate_args=False, name=None):
+  """Use Gauss-Hermite quadrature to form quadrature on `K - 1` simplex.
+
+  Note: for a given `quadrature_size`, this method is generally less accurate
+  than `quadrature_scheme_softmaxnormal_quantiles`.
+
+  Args:
+    loc: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`, B>=0.
+      Represents the `location` parameter of the SoftmaxNormal used for
+      selecting one of the `K` affine transformations.
+    scale: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`, B>=0.
+      Represents the `scale` parameter of the SoftmaxNormal used for
+      selecting one of the `K` affine transformations.
+    quadrature_size: Python `int` scalar representing the number of quadrature
+      points.
+    validate_args: Python `bool`, default `False`. When `True` distribution
+      parameters are checked for validity despite possibly degrading runtime
+      performance. When `False` invalid inputs may silently render incorrect
+      outputs.
+    name: Python `str` name prefixed to Ops created by this class.
+
+  Returns:
+    grid: Shape `[b1, ..., bB, K, quadrature_size]` `Tensor` representing the
+      convex combination of affine parameters for `K` components.
+      `grid[..., :, n]` is the `n`-th grid point, living in the `K - 1` simplex.
+    probs:  Shape `[b1, ..., bB, K, quadrature_size]` `Tensor` representing the
+      associated with each grid point.
+  """
+  with ops.name_scope(name, "quadrature_scheme_softmaxnormal_gauss_hermite",
+                      [loc, scale]):
+    loc = ops.convert_to_tensor(loc, name="loc")
+    dt = loc.dtype.base_dtype
+    scale = ops.convert_to_tensor(scale, dtype=dt, name="scale")
+
+    loc = maybe_check_quadrature_param(loc, "loc", validate_args)
+    scale = maybe_check_quadrature_param(scale, "scale", validate_args)
+
+    grid, probs = np.polynomial.hermite.hermgauss(deg=quadrature_size)
+    grid = grid.astype(loc.dtype.as_numpy_dtype)
+    probs = probs.astype(loc.dtype.as_numpy_dtype)
+    probs /= np.linalg.norm(probs, ord=1, keepdims=True)
+    probs = ops.convert_to_tensor(probs, name="probs", dtype=loc.dtype)
+
+    grid = softmax(
+        -distribution_util.pad(
+            (loc[..., array_ops.newaxis] +
+             np.sqrt(2.) * scale[..., array_ops.newaxis] * grid),
+            axis=-2,
+            front=True),
+        axis=-2)  # shape: [B, components, deg]
+
+    return grid, probs
+
+
+def quadrature_scheme_softmaxnormal_quantiles(
+    loc, scale, quadrature_size,
+    validate_args=False, name=None):
+  """Use SoftmaxNormal quantiles to form quadrature on `K - 1` simplex.
+
+  Args:
+    loc: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`, B>=0.
+      Represents the `location` parameter of the SoftmaxNormal used for
+      selecting one of the `K` affine transformations.
+    scale: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`, B>=0.
+      Represents the `scale` parameter of the SoftmaxNormal used for
+      selecting one of the `K` affine transformations.
+    quadrature_size: Python scalar `int` representing the number of quadrature
+      points.
+    validate_args: Python `bool`, default `False`. When `True` distribution
+      parameters are checked for validity despite possibly degrading runtime
+      performance. When `False` invalid inputs may silently render incorrect
+      outputs.
+    name: Python `str` name prefixed to Ops created by this class.
+
+  Returns:
+    grid: Shape `[b1, ..., bB, K, quadrature_size]` `Tensor` representing the
+      convex combination of affine parameters for `K` components.
+      `grid[..., :, n]` is the `n`-th grid point, living in the `K - 1` simplex.
+    probs:  Shape `[b1, ..., bB, K, quadrature_size]` `Tensor` representing the
+      associated with each grid point.
+  """
+  with ops.name_scope(name, "softmax_normal_grid_and_probs", [loc, scale]):
+    loc = ops.convert_to_tensor(loc, name="loc")
+    dt = loc.dtype.base_dtype
+    scale = ops.convert_to_tensor(scale, dtype=dt, name="scale")
+
+    loc = maybe_check_quadrature_param(loc, "loc", validate_args)
+    scale = maybe_check_quadrature_param(scale, "scale", validate_args)
+
+    dist = normal_lib.Normal(loc=loc, scale=scale)
+
+    def _get_batch_ndims():
+      """Helper to get dist.batch_shape.ndims, statically if possible."""
+      ndims = dist.batch_shape.ndims
+      if ndims is None:
+        ndims = array_ops.shape(dist.batch_shape_tensor())[0]
+      return ndims
+    batch_ndims = _get_batch_ndims()
+
+    def _get_final_shape(qs):
+      """Helper to build `TensorShape`."""
+      bs = dist.batch_shape.with_rank_at_least(1)
+      num_components = bs[-1].value
+      if num_components is not None:
+        num_components += 1
+      tail = tensor_shape.TensorShape([num_components, qs])
+      return bs[:-1].concatenate(tail)
+
+    def _compute_quantiles():
+      """Helper to build quantiles."""
+      # Omit {0, 1} since they might lead to Inf/NaN.
+      zero = array_ops.zeros([], dtype=dist.dtype)
+      edges = math_ops.linspace(zero, 1., quadrature_size + 3)[1:-1]
+      # Expand edges so its broadcast across batch dims.
+      edges = array_ops.reshape(edges, shape=array_ops.concat([
+          [-1], array_ops.ones([batch_ndims], dtype=dtypes.int32)], axis=0))
+      quantiles = dist.quantile(edges)
+      quantiles = SoftmaxCentered(event_ndims=1).forward(quantiles)
+      # Cyclically permute left by one.
+      perm = array_ops.concat([
+          math_ops.range(1, 1 + batch_ndims), [0]], axis=0)
+      quantiles = array_ops.transpose(quantiles, perm)
+      quantiles.set_shape(_get_final_shape(quadrature_size + 1))
+      return quantiles
+    quantiles = _compute_quantiles()
+
+    # Compute grid as quantile midpoints.
+    grid = (quantiles[..., :-1] + quantiles[..., 1:]) / 2.
+    # Set shape hints.
+    grid.set_shape(_get_final_shape(quadrature_size))
+
+    # By construction probs is constant, i.e., `1 / quadrature_size`. This is
+    # important, because non-constant probs leads to non-reparameterizable
+    # samples.
+    probs = array_ops.fill(
+        dims=[quadrature_size],
+        value=1. / math_ops.cast(quadrature_size, dist.dtype))
+
+    return grid, probs
 
 
 class VectorDiffeomixture(distribution_lib.Distribution):
@@ -222,17 +368,20 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                distribution,
                loc=None,
                scale=None,
-               quadrature_grid_and_probs=None,
+               quadrature_size=8,
+               quadrature_fn=quadrature_scheme_softmaxnormal_quantiles,
                validate_args=False,
                allow_nan_stats=True,
                name="VectorDiffeomixture"):
-    """Constructs the VectorDiffeomixture on `R**k`.
+    """Constructs the VectorDiffeomixture on `R**d`.
 
     Args:
-      mix_loc: `float`-like `Tensor`. Represents the `location` parameter of the
-        SoftmaxNormal used for selecting one of the `K` affine transformations.
-      mix_scale: `float`-like `Tensor`. Represents the `scale` parameter of the
-        SoftmaxNormal used for selecting one of the `K` affine transformations.
+      mix_loc: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`. Represents
+        the `location` parameter of the SoftmaxNormal used for selecting one of
+        the `K` affine transformations.
+      mix_scale: `float`-like `Tensor` with shape `[b1, ..., bB, K-1]`.
+        Represents the `scale` parameter of the SoftmaxNormal used for selecting
+        one of the `K` affine transformations.
       distribution: `tf.Distribution`-like instance. Distribution from which `d`
         iid samples are used as input to the selected affine transformation.
         Must be a scalar-batch, scalar-event distribution.  Typically
@@ -251,10 +400,13 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         `k`-th element represents the `scale` used for the `k`-th affine
         transformation. `LinearOperator`s must have shape `[B1, ..., Bb, d, d]`,
         `b >= 0`, i.e., characterizes `b`-batches of `d x d` matrices
-      quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
-        representing the sample points and the corresponding (possibly
-        normalized) weight.  When `None`, defaults to:
-        `np.polynomial.hermite.hermgauss(deg=8)`.
+      quadrature_size: Python `int` scalar representing number of
+        quadrature points.
+      quadrature_fn: Python callable taking `mix_loc`, `mix_scale`,
+        `quadrature_size`, `validate_args` and returning `tuple(grid, probs)`
+        representing the SoftmaxNormal grid and corresponding normalized weight.
+        normalized) weight.
+        Default value: `quadrature_scheme_softmaxnormal_quantiles`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -321,11 +473,8 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         raise NotImplementedError("Currently only bimixtures are supported; "
                                   "len(scale)={} is not 2.".format(len(scale)))
 
-      grid, probs = distribution_util.process_quadrature_grid_and_probs(
-          quadrature_grid_and_probs, dtype, validate_args)
-      self._quadrature_grid = grid
-      self._quadrature_probs = probs
-      self._quadrature_size = distribution_util.dimension_size(probs, axis=0)
+      self._grid, probs = tuple(quadrature_fn(
+          mix_loc, mix_scale, quadrature_size, validate_args))
 
       # Note: by creating the logits as `log(prob)` we ensure that
       # `self.mixture_distribution.logits` is equivalent to
@@ -335,21 +484,12 @@ class VectorDiffeomixture(distribution_lib.Distribution):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
-      mix_loc = maybe_check_mix_param(
-          mix_loc, "mix_loc", dtype, validate_args)
-      mix_scale = maybe_check_mix_param(
-          mix_scale, "mix_scale", dtype, validate_args)
-
       asserts = distribution_util.maybe_check_scalar_distribution(
           distribution, dtype, validate_args)
       if asserts:
-        mix_loc = control_flow_ops.with_dependencies(asserts, mix_loc)
+        self._grid = control_flow_ops.with_dependencies(
+            asserts, self._grid)
       self._distribution = distribution
-
-      # shape: [B, deg]
-      self._interpolate_weight = math_ops.sigmoid(
-          mix_loc
-          + np.sqrt(2.) * mix_scale * grid)
 
       self._interpolated_affine = [
           AffineLinearOperator(shift=loc_,
@@ -358,15 +498,16 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
-              interpolate_loc(self._quadrature_size,
-                              self._interpolate_weight,
-                              loc),
-              interpolate_scale(self._quadrature_size,
-                                self._interpolate_weight,
-                                scale)))]
+              interpolate_loc(self._grid, loc),
+              interpolate_scale(self._grid, scale)))]
 
-      self._batch_shape_, self._event_shape_ = determine_batch_event_shapes(
-          mix_loc, mix_scale, self._endpoint_affine)
+      [
+          self._batch_shape_,
+          self._batch_shape_tensor_,
+          self._event_shape_,
+          self._event_shape_tensor_,
+      ] = determine_batch_event_shapes(self._grid,
+                                       self._endpoint_affine)
 
       super(VectorDiffeomixture, self).__init__(
           dtype=dtype,
@@ -385,8 +526,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
           allow_nan_stats=allow_nan_stats,
           parameters=parameters,
           graph_parents=(
-              [mix_loc, mix_scale]
-              + distribution._graph_parents  # pylint: disable=protected-access
+              distribution._graph_parents  # pylint: disable=protected-access
               + [loc_ for loc_ in loc if loc_ is not None]
               + [p for scale_ in scale for p in scale_.graph_parents]),
           name=name)
@@ -402,9 +542,9 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     return self._distribution
 
   @property
-  def interpolate_weight(self):
+  def grid(self):
     """Grid of mixing probabilities, one for each grid point."""
-    return self._interpolate_weight
+    return self._grid
 
   @property
   def endpoint_affine(self):
@@ -416,27 +556,17 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     """Affine transformation for each convex combination of `K` components."""
     return self._interpolated_affine
 
-  @property
-  def quadrature_grid(self):
-    """Quadrature grid points."""
-    return self._quadrature_grid
-
-  @property
-  def quadrature_probs(self):
-    """Quadrature normalized weights."""
-    return self._quadrature_probs
-
   def _batch_shape_tensor(self):
-    return self._batch_shape_
+    return self._batch_shape_tensor_
 
   def _batch_shape(self):
-    return tensor_shape.TensorShape(static_value(self._batch_shape_))
+    return self._batch_shape_
 
   def _event_shape_tensor(self):
-    return self._event_shape_
+    return self._event_shape_tensor_
 
   def _event_shape(self):
-    return tensor_shape.TensorShape(static_value(self._event_shape_))
+    return self._event_shape_
 
   def _sample_n(self, n, seed=None):
     x = self.distribution.sample(
@@ -449,25 +579,44 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
     # Get ids as a [n, batch_size]-shaped matrix, unless batch_shape=[] then get
     # ids as a [n]-shaped vector.
-    batch_size = reduce_prod(self.batch_shape_tensor())
-    ids = self._mixture_distribution.sample(
+    batch_size = self.batch_shape.num_elements()
+    if batch_size is None:
+      batch_size = array_ops.reduce_prod(self.batch_shape_tensor())
+    mix_batch_size = self.mixture_distribution.batch_shape.num_elements()
+    if mix_batch_size is None:
+      mix_batch_size = math_ops.reduce_prod(
+          self.mixture_distribution.batch_shape_tensor())
+    ids = self.mixture_distribution.sample(
         sample_shape=concat_vectors(
             [n],
             distribution_util.pick_vector(
                 self.is_scalar_batch(),
                 np.int32([]),
-                [batch_size])),
+                [batch_size // mix_batch_size])),
         seed=distribution_util.gen_new_seed(
             seed, "vector_diffeomixture"))
+    # We need to flatten batch dims in case mixture_distribution has its own
+    # batch dims.
+    ids = array_ops.reshape(ids, shape=concat_vectors(
+        [n],
+        distribution_util.pick_vector(
+            self.is_scalar_batch(),
+            np.int32([]),
+            np.int32([-1]))))
 
-    # Stride `quadrature_size` for `batch_size` number of times.
+    # Stride `components * quadrature_size` for `batch_size` number of times.
+    stride = self.grid.shape.with_rank_at_least(
+        2)[-2:].num_elements()
+    if stride is None:
+      stride = array_ops.reduce_prod(
+          array_ops.shape(self.grid)[-2:])
     offset = math_ops.range(start=0,
-                            limit=batch_size * self._quadrature_size,
-                            delta=self._quadrature_size,
+                            limit=batch_size * stride,
+                            delta=stride,
                             dtype=ids.dtype)
 
     weight = array_ops.gather(
-        array_ops.reshape(self.interpolate_weight, shape=[-1]),
+        array_ops.reshape(self.grid, shape=[-1]),
         ids + offset)
     weight = weight[..., array_ops.newaxis]
 
@@ -499,10 +648,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         self.mixture_distribution.logits - fldj + log_prob, axis=-1)
 
   def _mean(self):
-    # Since we created logits to already be scaled, we can use exp which is
-    # slightly cheaper than `self.mixture_distribution.probs`.
-    p = math_ops.exp(self.mixture_distribution.logits)
-
+    p = self._expand_mix_distribution_probs()
     m = self._expand_base_distribution_mean()
     mean = None
     for k, aff in enumerate(self.interpolated_affine):
@@ -536,9 +682,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         self._covariance_of_mean_given_quadrature_component(diag_only=True))
 
   def _mean_of_covariance_given_quadrature_component(self, diag_only):
-    # Since we created logits to already be scaled, we can use exp which is
-    # slightly cheaper than `self.mixture_distribution.probs`.
-    p = math_ops.exp(self.mixture_distribution.logits)
+    p = self.mixture_distribution.probs
 
     # To compute E[Cov(Z|V)], we'll add matrices within three categories:
     # scaled-identity, diagonal, and full. Then we'll combine these at the end.
@@ -610,10 +754,9 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   def _covariance_of_mean_given_quadrature_component(self, diag_only):
     square = math_ops.square if diag_only else vec_osquare
 
-    # Since we created logits to already be scaled, we can use exp which is
-    # slightly cheaper than `self.mixture_distribution.probs`.
-    p = math_ops.exp(self.mixture_distribution.logits)
-
+    p = self._expand_mix_distribution_probs()
+    if not diag_only:
+      p = p[..., array_ops.newaxis, :]  # Assuming event.ndims=1.
     m = self._expand_base_distribution_mean()
 
     cov_e_z_given_v = None
@@ -637,17 +780,25 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     m.set_shape(self.batch_shape.concatenate(self.event_shape))
     return m
 
+  def _expand_mix_distribution_probs(self):
+    p = self.mixture_distribution.probs  # [B, deg]
+    deg = p.shape.with_rank_at_least(1)[-1].value
+    if deg is None:
+      deg = array_ops.shape(p)[-1]
+    event_ndims = self.event_shape.ndims
+    if event_ndims is None:
+      event_ndims = array_ops.shape(self.event_shape_tensor())[0]
+    expand_shape = array_ops.concat([
+        self.mixture_distribution.batch_shape_tensor(),
+        array_ops.ones([event_ndims], dtype=dtypes.int32),
+        [deg],
+    ], axis=0)
+    return array_ops.reshape(p, shape=expand_shape)
 
-def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
-  """Helper which checks validity of `mix_loc` and `mix_scale` init args."""
+
+def maybe_check_quadrature_param(param, name, validate_args):
+  """Helper which checks validity of `loc` and `scale` init args."""
   with ops.name_scope(name="check_" + name, values=[param]):
-    param = ops.convert_to_tensor(param, dtype=expected_base_dtype, name=name)
-
-    if param.dtype.base_dtype != expected_base_dtype:
-      raise TypeError(
-          "dtype mismatch; {}.base_dtype=\"{}\" is not \"{}\".".format(
-              name, param.dtype.base_dtype.name, expected_base_dtype.name))
-
     assertions = []
     if param.shape.ndims is not None:
       if param.shape.ndims == 0:
@@ -678,79 +829,84 @@ def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
     return param
 
 
-def determine_batch_event_shapes(mix_loc, mix_scale, endpoint_affine):
+def determine_batch_event_shapes(grid, endpoint_affine):
   """Helper to infer batch_shape and event_shape."""
   with ops.name_scope(name="determine_batch_event_shapes"):
-    mix_batch_shape = distribution_util.prefer_static_broadcast_shape(
-        array_ops.shape(mix_loc, name="mix_loc_shape"),
-        array_ops.shape(mix_scale, name="mix_scale_shape"))
-    if isinstance(mix_batch_shape, tensor_shape.TensorShape):
-      mix_batch_shape = mix_batch_shape.with_rank_at_least(1)[:-1]
-    else:
-      s = static_value(mix_batch_shape)
-      if s is not None:
-        mix_batch_shape = ops.convert_to_tensor(
-            s[:-1], dtype=dtypes.int32, name="mix_batch_shape")
-      else:
-        mix_batch_shape = mix_batch_shape[:-1]
+    # grid  # shape: [B, k, q]
+    # endpoint_affine     # len=k, shape: [B, d, d]
+    batch_shape = grid.shape[:-2]
+    batch_shape_tensor = array_ops.shape(grid)[:-2]
+    event_shape = None
+    event_shape_tensor = None
 
-    # We broadcast with a 1D constant to automatically make the result a
-    # TensorShape if possible.
-    batch_shape = distribution_util.prefer_static_broadcast_shape(
-        mix_batch_shape,
-        constant_op.constant([], dtype=dtypes.int32, name="batch_shape"))
-    event_shape = constant_op.constant(
-        [], dtype=dtypes.int32, name="event_shape")
+    def _set_event_shape(shape, shape_tensor):
+      if event_shape is None:
+        return shape, shape_tensor
+      return (array_ops.broadcast_static_shape(event_shape, shape),
+              array_ops.broadcast_dynamic_shape(
+                  event_shape_tensor, shape_tensor))
+
     for aff in endpoint_affine:
-      b, e = distribution_util.shapes_from_loc_and_scale(aff.shift, aff.scale)
-      if batch_shape is None:
-        batch_shape = distribution_util.prefer_static_broadcast_shape(
-            mix_batch_shape, b)
-      else:
-        batch_shape = distribution_util.prefer_static_broadcast_shape(
-            batch_shape, b)
-      event_shape = distribution_util.prefer_static_broadcast_shape(
-          event_shape, e)
-    if isinstance(batch_shape, tensor_shape.TensorShape):
-      batch_shape = ops.convert_to_tensor(
-          batch_shape.as_list(), dtype=dtypes.int32, name="batch_shape")
-    if isinstance(event_shape, tensor_shape.TensorShape):
-      event_shape = ops.convert_to_tensor(
-          event_shape.as_list(), dtype=dtypes.int32, name="event_shape")
-    return batch_shape, event_shape
+      if aff.shift is not None:
+        batch_shape = array_ops.broadcast_static_shape(
+            batch_shape, aff.shift.shape[:-1])
+        batch_shape_tensor = array_ops.broadcast_dynamic_shape(
+            batch_shape_tensor, array_ops.shape(aff.shift)[:-1])
+        event_shape, event_shape_tensor = _set_event_shape(
+            aff.shift.shape[-1:], array_ops.shape(aff.shift)[-1:])
+
+      if aff.scale is not None:
+        batch_shape = array_ops.broadcast_static_shape(
+            batch_shape, aff.scale.batch_shape)
+        batch_shape_tensor = array_ops.broadcast_dynamic_shape(
+            batch_shape_tensor, aff.scale.batch_shape_tensor())
+        event_shape, event_shape_tensor = _set_event_shape(
+            tensor_shape.TensorShape([aff.scale.range_dimension]),
+            aff.scale.range_dimension_tensor()[array_ops.newaxis])
+
+    return batch_shape, batch_shape_tensor, event_shape, event_shape_tensor
 
 
-def interpolate_loc(deg, interpolate_weight, loc):
+def interpolate_loc(grid, loc):
   """Helper which interpolates between two locs."""
   if len(loc) != 2:
     raise NotImplementedError("Currently only bimixtures are supported; "
                               "len(scale)={} is not 2.".format(len(loc)))
-  with ops.name_scope("interpolate_loc", values=[interpolate_weight, loc]):
+  deg = grid.shape.with_rank_at_least(1)[-1].value
+  if deg is None:
+    raise ValueError("Num quadrature grid points must be known prior "
+                     "to graph execution.")
+  with ops.name_scope("interpolate_loc", values=[grid, loc]):
     if loc is None or loc[0] is None and loc[1] is None:
       return [None]*deg
-    w = interpolate_weight[..., array_ops.newaxis, :]  # shape: [B, 1, deg]
+    # shape: [B, 1, k, deg]
+    w = grid[..., array_ops.newaxis, :, :]
     loc = [x[..., array_ops.newaxis]                   # shape: [B, e, 1]
            if x is not None else None for x in loc]
     if loc[0] is None:
-      x = (1. - w) * loc[1]                            # shape: [B, e, deg]
+      x = w[..., 1, :] * loc[1]                        # shape: [B, e, deg]
     elif loc[1] is None:
-      x = w * loc[0]                                   # shape: [B, e, deg]
+      x = w[..., 0, :] * loc[0]                        # shape: [B, e, deg]
     else:
       delta = loc[0] - loc[1]
-      x = w * delta + loc[1]                           # shape: [B, e, deg]
+      x = w[..., 0, :] * delta + loc[1]                # shape: [B, e, deg]
     return [x[..., k] for k in range(deg)]             # list(shape:[B, e])
 
 
-def interpolate_scale(deg, interpolate_weight, scale):
+def interpolate_scale(grid, scale):
   """Helper which interpolates between two scales."""
   if len(scale) != 2:
     raise NotImplementedError("Currently only bimixtures are supported; "
                               "len(scale)={} is not 2.".format(len(scale)))
-  with ops.name_scope("interpolate_scale", values=[interpolate_weight]):
+  deg = grid.shape.with_rank_at_least(1)[-1].value
+  if deg is None:
+    raise ValueError("Num quadrature grid points must be known prior "
+                     "to graph execution.")
+  with ops.name_scope("interpolate_scale", values=[grid]):
     return [linop_add_lib.add_operators([
-        linop_scale(interpolate_weight[..., k], scale[0]),
-        linop_scale(1. - interpolate_weight[..., k], scale[1]),
-    ])[0] for k in range(deg)]
+        linop_scale(grid[..., k, q], s)
+        for k, s in enumerate(scale)
+    ])[0] for q in range(deg)]
 
 
 def linop_scale(w, op):
@@ -790,37 +946,10 @@ def linop_scale(w, op):
 
 def concat_vectors(*args):
   """Concatenates input vectors, statically if possible."""
-  args_ = [static_value(x) for x in args]
+  args_ = [distribution_util.static_value(x) for x in args]
   if any(vec is None for vec in args_):
     return array_ops.concat(args, axis=0)
   return [val for vec in args_ for val in vec]
-
-
-def reduce_prod(x):
-  """Same as `math_ops.reduce_prod` but statically if possible."""
-  x_ = static_value(x)
-  if x_ is not None:
-    return np.prod(x_, dtype=x.dtype.as_numpy_dtype)
-  return array_ops.reduce_prod(x)
-
-
-def ndims_from_shape(shape):
-  """Returns `Tensor`'s `rank` implied by a `Tensor` shape."""
-  if shape.shape.ndims not in (None, 1):
-    raise ValueError("input is not a valid shape: not 1D")
-  if not shape.dtype.is_integer:
-    raise TypeError("input is not a valid shape: wrong dtype")
-  if shape.shape.is_fully_defined():
-    return shape.shape.as_list()[0]
-  return array_ops.shape(shape)[0]
-
-
-def ndims(x):
-  """Returns rank, statically if possible."""
-  x = ops.convert_to_tensor(x)
-  if x.shape.ndims is not None:
-    return x.shape.ndims
-  return array_ops.rank(x)
 
 
 def add(x, y):
@@ -835,3 +964,18 @@ def add(x, y):
 def vec_osquare(x):
   """Computes the outer-product of a (batch of) vector, i.e., x.T x."""
   return x[..., :, array_ops.newaxis] * x[..., array_ops.newaxis, :]
+
+
+def softmax(x, axis, name=None):
+  """Equivalent to tf.nn.softmax but works around b/70297725."""
+  with ops.name_scope(name, "softmax", [x, axis]):
+    x = ops.convert_to_tensor(x, name="x")
+    ndims = (x.shape.ndims if x.shape.ndims is not None
+             else array_ops.rank(x, name="ndims"))
+    axis = ops.convert_to_tensor(axis, dtype=dtypes.int32, name="axis")
+    axis_ = tensor_util.constant_value(axis)
+    if axis_ is not None:
+      axis = np.int(ndims + axis_ if axis_ < 0 else axis_)
+    else:
+      axis = array_ops.where(axis < 0, ndims + axis, axis)
+  return nn_ops.softmax(x, axis=axis)

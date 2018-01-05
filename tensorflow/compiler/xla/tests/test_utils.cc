@@ -25,6 +25,7 @@ namespace {
 
 template <typename FloatT>
 void PopulateWithRandomFloatingPointData(Literal* literal) {
+  // TODO(b/69179121): Generate data that is less self-similar.
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;
@@ -138,27 +139,45 @@ std::vector<HloInstruction*> FindConstrainedUses(
 StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     const tensorflow::gtl::ArraySlice<HloInstruction*> constrained_uses,
     const HloInstruction& param) {
-  const auto count = constrained_uses.size();
-  if (count > 1) {
-    return Unimplemented("multiple constrained uses not yet supported");
-  }
+  HloInstruction* needs_index = nullptr;
+  HloInstruction* needs_zero = nullptr;
+  for (HloInstruction* use : constrained_uses) {
+    switch (use->opcode()) {
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+        TF_RET_CHECK(ShapeUtil::Equal(param.shape(), use->operand(0)->shape()));
+        if (needs_index != nullptr &&
+            !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
+          return Unimplemented(
+              "Conflicting operand generation slice index constraints\n");
+        }
+        needs_index = use;
+        break;
 
-  if (count == 0) {
+      case HloOpcode::kReduce:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kSelectAndScatter:
+        needs_zero = use;
+        break;
+
+      default:
+        return Unimplemented(
+            "Constrained operand generation not implemented for %s.",
+            use->ToString().c_str());
+    }
+  }
+  if (needs_index != nullptr && needs_zero != nullptr) {
+    return Unimplemented(
+        "Conflicting operand generation constraints.\nNeeds index: %s\nNeeds "
+        "zero: %s\n",
+        needs_index->ToString().c_str(), needs_zero->ToString().c_str());
+  }
+  if (needs_index != nullptr) {
+    return MakeRandomNonwrappingSliceIndex(param.shape(), needs_index->shape());
+  } else if (needs_zero != nullptr) {
+    return Literal::CreateFromShape(param.shape());
+  } else {
     return MakeFakeLiteral(param.shape());
-  }
-
-  const HloInstruction* const use = constrained_uses[0];
-  switch (use->opcode()) {
-    case HloOpcode::kDynamicSlice:
-    case HloOpcode::kDynamicUpdateSlice:
-      return MakeRandomNonwrappingSliceIndex(use->operand(0)->shape(),
-                                             use->shape());
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kSelectAndScatter:
-      return Literal::CreateFromShape(param.shape());
-    default:
-      return Unimplemented("constrained use given; no equivalent literal");
   }
 }
 

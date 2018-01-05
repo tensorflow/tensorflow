@@ -96,6 +96,26 @@ class ConvolutionThunk : public Thunk {
     return !best_algorithm_.has_value();
   }
 
+  // Return true if scratch memory is needed to execute the thunk, that is
+  // either the best algorithm hasn't been chosen or the best algorithm is not
+  // the same as the no-scratch algorithm. This is because that the execution
+  // of the thunk is asynchronous, and the scratch allocator goes out of
+  // scope before the thunk finishes execution. Returning true tells the stream
+  // executor to make future thunks wait for this thunk to avoid reusing the
+  // deallocated scratch memory until this thunk is done with it.
+  bool ShouldBlockFutureThunks() {
+    if (!best_algorithm_.has_value()) {
+      return true;
+    }
+
+    const perftools::gputools::dnn::AlgorithmDesc& best_alg =
+        best_algorithm_->algorithm();
+    const perftools::gputools::dnn::AlgorithmDesc& no_scratch_best_alg =
+        best_algorithm_->algorithm_no_scratch();
+    return (!best_alg.is_default() || !no_scratch_best_alg.is_default() ||
+            !(best_alg == no_scratch_best_alg));
+  }
+
  private:
   tensorflow::Status ConvolveWithTune(
       const perftools::gputools::dnn::BatchDescriptor& input_descriptor,

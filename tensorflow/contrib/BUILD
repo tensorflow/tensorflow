@@ -53,6 +53,7 @@ py_library(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
+        "//tensorflow/contrib/libsvm",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
@@ -100,7 +101,7 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
 )
 
 cc_library(
@@ -121,7 +122,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ],
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
 )
 
 cc_library(

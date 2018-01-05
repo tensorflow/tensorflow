@@ -3,6 +3,7 @@
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
 load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -66,16 +67,14 @@ def pyx_library(
       pxd_srcs.append(src)
 
   # Invoke cython to produce the shared object libraries.
-  cpp_outs = [src.split(".")[0] + ".cpp" for src in pyx_srcs]
-  native.genrule(
-      name = name + "_cython_translation",
-      srcs = pyx_srcs,
-      outs = cpp_outs,
-      cmd = ("PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)"
-             # Rename outputs to expected location.
-             + """ && python -c 'import shutil, sys; n = len(sys.argv); [shutil.copyfile(src.split(".")[0] + ".cpp", dst) for src, dst in zip(sys.argv[1:], sys.argv[1+n//2:])]' $(SRCS) $(OUTS)"""),
-      tools = ["@cython//:cython_binary"] + pxd_srcs,
-  )
+  for filename in pyx_srcs:
+    native.genrule(
+        name = filename + "_cython_translation",
+        srcs = [filename],
+        outs = [filename.split(".")[0] + ".cpp"],
+        cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+        tools = ["@cython//:cython_binary"] + pxd_srcs,
+    )
 
   shared_objects = []
   for src in pyx_srcs:
@@ -358,7 +357,9 @@ def tf_additional_proto_hdrs():
       "platform/default/integral_types.h",
       "platform/default/logging.h",
       "platform/default/protobuf.h"
-  ]
+  ] + if_windows([
+      "platform/windows/integral_types.h",
+  ])
 
 def tf_additional_proto_srcs():
   return [

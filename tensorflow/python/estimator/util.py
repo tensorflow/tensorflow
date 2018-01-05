@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utility to retrieve function args.."""
+"""Utility to retrieve function args."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -45,7 +44,6 @@ def fn_args(fn):
   Raises:
     ValueError: if partial function has positionally bound arguments
   """
-  _, fn = tf_decorator.unwrap(fn)
   if isinstance(fn, functools.partial):
     args = fn_args(fn.func)
     args = [a for a in args[len(fn.args):] if a not in (fn.keywords or [])]

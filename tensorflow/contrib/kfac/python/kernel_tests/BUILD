@@ -110,6 +110,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/kfac/python/ops:utils",
+        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

@@ -4,6 +4,7 @@ package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 tf_kernel_library(
@@ -35,6 +36,7 @@ tf_kernel_library(
         "gather_op.cc",
         "gather_op_helpers.h",
         "identity_op.cc",
+        "image_ops.cc",
         "image_resize_ops.cc",
         "index_ops.cc",
         "l2loss_op.cc",
@@ -164,6 +166,7 @@ tf_kernel_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
@@ -176,6 +179,7 @@ cc_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",

@@ -33,7 +33,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
         ],
-    }),
+    }) + ["//tensorflow/core:gpu_runtime"],
 )
 
 tf_cuda_library(
@@ -55,6 +55,10 @@ tf_cuda_library(
 tf_cuda_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
+    tags = [
+        "guitar",
+        "multi_gpu",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/core:lib",

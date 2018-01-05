@@ -93,7 +93,7 @@ with an asset of the same name, only the first version is retained.
 Each meta graph added to the SavedModel must be annotated with user specified
 tags. The tags provide a means to identify the specific meta graph to load and
 restore, along with the shared set of variables and assets. These tags
-typically annotate a MetaGraph with it's functionality (e.g. serving or
+typically annotate a MetaGraph with its functionality (e.g. serving or
 training), and possibly hardware specific aspects such as GPU.
 
 #### Usage

@@ -283,6 +283,9 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -380,7 +383,15 @@ tf_xla_py_test(
     size = "small",
     srcs = ["random_ops_test.py"],
     # TODO(b/31361304): enable RNG ops on GPU when parallelized.
-    disabled_backends = ["gpu"],
+    disabled_backends = [
+        "gpu",
+        "cpu",
+    ],
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",

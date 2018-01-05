@@ -190,6 +190,9 @@ Status GrpcSession::RunHelper(
     req->add_feed(it.first, it.second);
   }
 
+  // Support long error messages by storing the error code in the response body.
+  req->set_store_errors_in_response_body(true);
+
   // Build an index from fetch tensor name to first index in
   // output_tensor_names.
   std::unordered_map<string, int> output_name_to_offset;
@@ -206,6 +209,11 @@ Status GrpcSession::RunHelper(
   CallOptions call_options;
   call_options.SetTimeout(req->options().timeout_in_ms());
   TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
+
+  // Look for an extended error returned in the response body.
+  if (resp->status_code() != error::Code::OK) {
+    return Status(resp->status_code(), resp->status_error_message());
+  }
 
   if (!output_tensor_names.empty()) {
     outputs->resize(output_tensor_names.size());

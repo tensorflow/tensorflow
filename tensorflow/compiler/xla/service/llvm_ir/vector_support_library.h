@@ -113,9 +113,10 @@ class VectorSupportLibrary {
 
   // Compute the horizontal sum of each vector in `vectors`.  The i'th element
   // in the result vector is the (scalar) horizontal sum of the i'th vector in
-  // `vectors`.
+  // `vectors`.  If `init_values` is not nullptr then the value in the i'th lane
+  // in `init_values` is added to the i'th horizontal sum.
   std::vector<llvm::Value*> ComputeHorizontalSums(
-      std::vector<llvm::Value*> vectors);
+      std::vector<llvm::Value*> vectors, llvm::Value* init_values = nullptr);
 
   llvm::Value* GetZeroVector();
   llvm::Value* GetZeroScalar();
@@ -155,7 +156,7 @@ class VectorSupportLibrary {
   llvm::Value* AvxStyleHorizontalAdd(llvm::Value* lhs, llvm::Value* rhs);
 
   std::vector<llvm::Value*> ComputeAvxOptimizedHorizontalSums(
-      std::vector<llvm::Value*> vectors);
+      std::vector<llvm::Value*> vectors, llvm::Value* init_values);
 
   int64 vector_size_;
   PrimitiveType primitive_type_;

@@ -3551,7 +3551,6 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual('mean', embedding_column.combiner)
     self.assertIsNotNone(embedding_column.initializer)
     self.assertIsNone(embedding_column.ckpt_to_load_from)
-    self.assertIsNone(embedding_column.shared_embedding_collection_name)
     self.assertIsNone(embedding_column.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column.max_norm)
     self.assertTrue(embedding_column.trainable)
@@ -3576,7 +3575,6 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual(embedding_dimension, embedding_column.dimension)
     self.assertEqual('my_combiner', embedding_column.combiner)
     self.assertEqual('my_initializer', embedding_column.initializer())
-    self.assertIsNone(embedding_column.shared_embedding_collection_name)
     self.assertEqual('my_ckpt', embedding_column.ckpt_to_load_from)
     self.assertEqual('my_ckpt_tensor', embedding_column.tensor_name_in_ckpt)
     self.assertEqual(42., embedding_column.max_norm)
@@ -3608,7 +3606,6 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertEqual(embedding_dimension, embedding_column.dimension)
       self.assertEqual('my_combiner', embedding_column.combiner)
       self.assertEqual('my_initializer', embedding_column.initializer())
-      self.assertIsNone(embedding_column.shared_embedding_collection_name)
       self.assertEqual('my_ckpt', embedding_column.ckpt_to_load_from)
       self.assertEqual('my_ckpt_tensor', embedding_column.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column.max_norm)
@@ -4534,8 +4531,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
           categorical_column_a.name: input_a,
           categorical_column_b.name: input_b,
       }, (embedding_column_a, embedding_column_b))
-      # Linear weights name should follow the column name.
-      # TODO(roumposg): Fix that.
+      # Linear weights do not follow the column name. But this is a rare use
+      # case, and fixing it would add too much complexity to the code.
       expected_var_names = (
           'linear_model/bias_weights:0',
           'linear_model/aaa_bbb_shared_embedding/weights:0',

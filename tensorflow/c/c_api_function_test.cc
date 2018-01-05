@@ -1462,7 +1462,11 @@ TEST_F(CApiFunctionTest, AppendHash) {
                  /*append_hash=*/true);
   tensorflow::FunctionDef fdef;
   ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  ASSERT_EQ(string("func_name_base_ZpgUD4x8oqk"), fdef.signature().name());
+#else
   ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
+#endif
 }
 
 TEST_F(CApiFunctionTest, GetOpDef) {
@@ -1500,7 +1504,7 @@ void DefineStatefulFunction(const char* name, TF_Function** func) {
 
   TF_Output inputs[] = {};
   TF_Output outputs[] = {{random, 0}};
-  *func = TF_GraphToFunction(func_graph.get(), name, /*append_hash=*/0, -1,
+  *func = TF_GraphToFunction(func_graph.get(), name, /*append_hash=*/false, -1,
                              /*opers=*/nullptr, 0, inputs, 1, outputs,
                              /*output_names=*/nullptr,
                              /*opts=*/nullptr, "", s.get());

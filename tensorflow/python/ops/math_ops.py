@@ -252,7 +252,7 @@ def abs(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
-    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+    Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
@@ -1437,7 +1437,7 @@ def reduce_mean(input_tensor,
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+      `[-rank(input_tensor), rank(input_tensor)]`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.

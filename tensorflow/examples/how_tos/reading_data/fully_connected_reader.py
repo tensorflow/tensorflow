@@ -62,7 +62,7 @@ def decode(serialized_example):
 
   # Convert label from a scalar uint8 tensor to an int32 scalar.
   label = tf.cast(features['label'], tf.int32)
-  
+
   return image, label
 
 def augment(image, label):
@@ -172,7 +172,7 @@ def run_training():
           step += 1
       except tf.errors.OutOfRangeError:
         print('Done training for %d epochs, %d steps.' % (FLAGS.num_epochs, step))
-      
+
 def main(_):
   run_training()
 

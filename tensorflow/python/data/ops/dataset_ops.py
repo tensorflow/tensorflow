@@ -803,7 +803,7 @@ class Dataset(object):
     ```python
     # Preprocess 4 files concurrently, and interleave blocks of 16 records from
     # each file.
-    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ..."]
+    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ...]
     dataset = (Dataset.from_tensor_slices(filenames)
                .interleave(lambda x:
                    TextLineDataset(x).map(parse_fn, num_parallel_calls=1),
@@ -1246,8 +1246,7 @@ class ShuffleDataset(Dataset):
                input_dataset,
                buffer_size,
                seed=None,
-               reshuffle_each_iteration=None,
-               seed2=None):
+               reshuffle_each_iteration=None):
     """Randomly shuffles the elements of this dataset.
 
     Args:
@@ -1261,10 +1260,6 @@ class ShuffleDataset(Dataset):
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
-      seed2: (Optional.) A `tf.int64` scalar `tf.Tensor` used to avoid seed
-        collision. Users should generally not need to specify this. This is
-        supposed to be used when both the seeds for the Dataset op need to be
-        manually specified. If not None, seed must also be non-None.
 
     Returns:
       A `Dataset`.
@@ -1276,10 +1271,7 @@ class ShuffleDataset(Dataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    if seed2 is None:
-      seed, seed2 = random_seed.get_seed(seed)
-    elif seed is None:
-      raise ValueError("seed must be non-None if seed2 is non-None.")
+    seed, seed2 = random_seed.get_seed(seed)
     if seed is None:
       self._seed = constant_op.constant(0, dtype=dtypes.int64, name="seed")
     else:
