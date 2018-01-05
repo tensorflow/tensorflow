@@ -133,7 +133,7 @@ Status ParseTransformParameters(const string& transforms_string,
   return Status::OK();
 }
 
-std::string ExpandPath(const std::string &path_string) {
+std::string ExpandPath(const std::string& path_string) {
 #if defined(PLATFORM_WINDOWS)
   return path_string;
 #else
@@ -141,22 +141,24 @@ std::string ExpandPath(const std::string &path_string) {
     return path_string;
   }
 
-  const char *home = NULL;
+  const char* home = NULL;
   std::string::size_type prefix = path_string.find_first_of('/');
   if (path_string.length() == 1 || prefix == 1) {
     // The value of $HOME, e.g., ~/foo
     home = getenv("HOME");
     if (!home) {
       // If HOME is not available, get uid
-      struct passwd *pw = getpwuid(getuid());
+      struct passwd* pw = getpwuid(getuid());
       if (pw) {
         home = pw->pw_dir;
       }
     }
   } else {
     // The value of ~user, e.g., ~user/foo
-    std::string user(path_string, 1, (prefix==std::string::npos) ? std::string::npos : prefix-1);
-    struct passwd *pw = getpwnam(user.c_str());
+    std::string user(path_string, 1, (prefix == std::string::npos)
+                                         ? std::string::npos
+                                         : prefix - 1);
+    struct passwd* pw = getpwnam(user.c_str());
     if (pw) {
       home = pw->pw_dir;
     }
@@ -171,14 +173,13 @@ std::string ExpandPath(const std::string &path_string) {
     return path;
   }
 
-  if (path.length() == 0 || path[path.length()-1] != '/') {
+  if (path.length() == 0 || path[path.length() - 1] != '/') {
     path += '/';
   }
   path += path_string.substr(prefix + 1);
   return path;
 #endif
 }
-
 
 int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   string in_graph_string = "";
