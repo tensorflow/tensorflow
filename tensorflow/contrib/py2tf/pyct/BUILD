@@ -30,6 +30,10 @@ py_library(
 py_test(
     name = "anno_test",
     srcs = ["anno_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -39,6 +43,10 @@ py_test(
 py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -48,6 +56,10 @@ py_test(
 py_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -57,6 +69,10 @@ py_test(
 py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
