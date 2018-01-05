@@ -1238,6 +1238,7 @@ py_test(
     srcs = ["framework/dtypes_test.py"],
     main = "framework/dtypes_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -3506,6 +3507,7 @@ py_test(
     size = "small",
     srcs = ["lib/core/bfloat16_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":lib",
