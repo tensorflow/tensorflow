@@ -650,10 +650,6 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
-      // Temporary fallback to Eigen until MKLDNN Concat performance
-      // is improved. To be removed.
-      invoke_eigen = true;
-
       // Call Eigen library
       if (invoke_eigen) {
         TensorShapeList tf_input_shapes;
@@ -694,7 +690,7 @@ class MklConcatOp : public OpKernel {
           // It does not matter what data format we use here (NHWC or NCHW).
           // We just need to ensure that output of Concat uses same data format
           // as input.
-                  memory::desc(src_dims, MklDnnType<T>(), memory::format::nhwc);
+                  memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
 
         srcs[k].SetUsrMem(src_md, &input_tensors[k]);
         auto src_mpd = srcs[k].GetUsrMemPrimDesc();
@@ -720,7 +716,7 @@ class MklConcatOp : public OpKernel {
       } else {
         // Again, format does not matter here. We just need to make it same as
         // input format.
-        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nhwc);
+        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nchw);
       }
 
       std::vector<primitive::at> inputs;
