@@ -188,6 +188,15 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) Status {
+  if (!$1.ok()) {
+    PyErr_SetString(
+        PyExc_RuntimeError, $1.ToString().c_str());
+    return NULL;
+  }
+  $result = Py_None;
+}
+
 // ArraySlice<int64>
 
 %typemap(in) tensorflow::gtl::ArraySlice<int64>
@@ -284,6 +293,14 @@ tensorflow::ImportNumpy();
 
 %typemap(out) std::unique_ptr<Literal> {
   $result = numpy::PyObjectFromXlaLiteral(*$1);
+}
+
+%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+  if (!$1.ok()) {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+  $result = numpy::PyObjectFromXlaLiteral(*$1.ValueOrDie());
 }
 
 %typemap(in) const std::vector<Literal>& (std::vector<Literal> temps) {
@@ -540,7 +557,10 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
+%unignore xla::swig::InitializeReplicaCount;
+%unignore xla::swig::GetReplicaCount;
 %unignore xla::swig::TransferToInfeedLocal;
+%unignore xla::swig::TransferToInfeedLocalReplica;
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;

@@ -318,4 +318,8 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
   return std::move(literal);
 }
 
+StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return local_service_->ReplicaNumberToDeviceOrdinal(replica_number);
+}
+
 }  // namespace xla

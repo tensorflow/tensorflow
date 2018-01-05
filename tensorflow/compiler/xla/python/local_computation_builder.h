@@ -27,11 +27,25 @@ namespace xla {
 
 namespace swig {
 
-// Wraps the local client's infeed-transfer function, aborting on error.
+// Initializes the number of replicas that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializeReplicaCount(int replica_count);
+
+// Returns the replica count that is currently set, regardless of whether the
+// local XLA service has been instantiated yet or not.
+int GetReplicaCount();
+
+// Wraps the local client's infeed-transfer function.
 //
-// TODO(leary) ideally we could return a value that would permit an appropriate
-// Python exception to be raised.
-void TransferToInfeedLocal(const Literal& literal);
+// The default device ordinal (0) is used.
+Status TransferToInfeedLocal(const Literal& literal);
+
+// Transfers the given literal to the infeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
@@ -56,7 +70,8 @@ class LocalShapedBuffer {
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
-  std::unique_ptr<Literal> Execute(const std::vector<Literal>& arguments);
+  StatusOr<std::unique_ptr<Literal> > Execute(
+      const std::vector<Literal>& arguments);
   LocalShapedBuffer* ExecuteWithShapedBuffers(
       tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
