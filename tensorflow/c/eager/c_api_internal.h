@@ -58,9 +58,10 @@ struct TFE_Context {
   // session->devices[i].
   std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
+  tensorflow::mutex cache_mu;
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
-      kernel_cache;
+      kernel_cache GUARDED_BY(cache_mu);
 
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
     return pflr->GetFLR(d->name());
