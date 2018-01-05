@@ -254,3 +254,51 @@ class LatestExporter(Exporter):
       except errors_impl.NotFoundError as e:
         tf_logging.warn('Can not delete %s recursively: %s', p.path, e)
     # pylint: enable=protected-access
+
+
+class EvalResultsExporter(Exporter):
+  """This class exports the evaulation results to a JSON file.
+
+  At the end of training, this class takes the dictionary returned from
+  ${tf.estimator.Estimator}'s `evaluate` method and saves it in the export
+  directory.
+
+  Use this class by passing it into a ${tf.estimator.EvalSpec} in the
+  `exporters` field. This works both with local filesystems and Google Cloud
+  Storage.
+  """
+
+  def __init__(self, name):
+    """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
+
+    Args:
+      name: unique name of this `Exporter`.
+
+    Raises:
+      ValueError: if `name` is not passed.
+    """
+    if not name:
+      raise ValueError( '`name` argument must be provided.')
+    self._name = name
+
+  @property
+  def name(self):
+    return self._name
+
+  def export(self, estimator, export_path, checkpoint_path, eval_result,
+             is_the_final_export):
+    if not is_the_final_export:
+      return None
+
+    file_path = '%s/eval_results.json' % export_path
+    tf_logging.info('Exporting final evaluation results to:\n%s' % file_path)
+
+    # Convert np.float32 values into JSON-serializable floats.
+    for key, value in eval_result.iteritems():
+      if isinstance(value, np.float32):
+        eval_result[key] = value.item()
+
+    # Make destination directory and save file.
+    tf.gfile.MkDir(export_path)
+    with tf.gfile.GFile(file_path, 'w') as f:
+      json.dump(eval_result, f)
