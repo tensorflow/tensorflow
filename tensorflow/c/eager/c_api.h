@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_H_
 
 // C API extensions to experiment with eager execution of kernels.
+// WARNING: Unlike tensorflow/c/c_api.h, the API here is not guaranteed to be
+// stable and can change without notice.
 
 #include "tensorflow/c/c_api.h"
 
