@@ -116,7 +116,6 @@ cc_library(
     ],
     hdrs = [
         "src/gen/cc/java_defs.h",
-
         "src/gen/cc/op_generator.h",
     ],
     copts = tf_copts(),
