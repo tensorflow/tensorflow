@@ -14,7 +14,6 @@
 		1CDB2D491ED3A9CD007929E9 /* CameraExampleAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2D431ED3A9CD007929E9 /* CameraExampleAppDelegate.m */; };
 		1CDB2D4A1ED3A9CD007929E9 /* CameraExampleViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2D451ED3A9CD007929E9 /* CameraExampleViewController.mm */; };
 		1CDB2D4E1ED3AA35007929E9 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1CDB2D4D1ED3AA35007929E9 /* Info.plist */; };
-		54DC6C3C5F734F3A58069F0C /* libPods-tflite_camera_example.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3BA8BF92C84895BFE59D8236 /* libPods-tflite_camera_example.a */; };
 		AC1F82661FBA3CBD0052BA77 /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = AC1F82641FBA3CBD0052BA77 /* labels.txt */; };
 		AC1F82691FBA3F930052BA77 /* libtensorflow-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AC1F82681FBA3F930052BA77 /* libtensorflow-lite.a */; };
 		ACA1A4CA1FBB6C28009B8D86 /* mobilenet_quant_v1_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = ACA1A4C91FBB6C28009B8D86 /* mobilenet_quant_v1_224.tflite */; };
@@ -35,8 +34,6 @@
 		1CDB2D451ED3A9CD007929E9 /* CameraExampleViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CameraExampleViewController.mm; sourceTree = "<group>"; };
 		1CDB2D4D1ED3AA35007929E9 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		3BA8BF92C84895BFE59D8236 /* libPods-tflite_camera_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tflite_camera_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		3BC5BE4BBD09374D3E98F082 /* Pods-tflite_camera_example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_camera_example.debug.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_camera_example/Pods-tflite_camera_example.debug.xcconfig"; sourceTree = "<group>"; };
-		55ED318E8D29C8AFEF03DF1E /* Pods-tflite_camera_example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_camera_example.release.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_camera_example/Pods-tflite_camera_example.release.xcconfig"; sourceTree = "<group>"; };
 		AC1F82641FBA3CBD0052BA77 /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
 		AC1F82681FBA3F930052BA77 /* libtensorflow-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libtensorflow-lite.a"; path = "../../../gen/lib/libtensorflow-lite.a"; sourceTree = "<group>"; };
 		ACA1A4C91FBB6C28009B8D86 /* mobilenet_quant_v1_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_quant_v1_224.tflite; sourceTree = "<group>"; };
@@ -50,7 +47,6 @@
 				AC1F82691FBA3F930052BA77 /* libtensorflow-lite.a in Frameworks */,
 				1CB47D491ED3AD1700DF7666 /* AVFoundation.framework in Frameworks */,
 				1CA5EB931ED3ABFB00247A34 /* CoreMedia.framework in Frameworks */,
-				54DC6C3C5F734F3A58069F0C /* libPods-tflite_camera_example.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,15 +67,6 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		3E9FC355632FB928EA23BEED /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				3BC5BE4BBD09374D3E98F082 /* Pods-tflite_camera_example.debug.xcconfig */,
-				55ED318E8D29C8AFEF03DF1E /* Pods-tflite_camera_example.release.xcconfig */,
-			);
-			name = Pods;
-			sourceTree = "<group>";
-		};
 		591157921CF4011C00C31E3A = {
 			isa = PBXGroup;
 			children = (
@@ -92,7 +79,6 @@
 				1CDB2D451ED3A9CD007929E9 /* CameraExampleViewController.mm */,
 				59A3CFF31CF4E68100C4259F /* data */,
 				5911579C1CF4011C00C31E3A /* Products */,
-				3E9FC355632FB928EA23BEED /* Pods */,
 				24D7686C331131624F4454A0 /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -121,12 +107,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1C564C351ED3A92E00087306 /* Build configuration list for PBXNativeTarget "tflite_camera_example" */;
 			buildPhases = (
-				66DAEAAEE9EF6550C3A061E0 /* [CP] Check Pods Manifest.lock */,
 				1C564C091ED3A92E00087306 /* Sources */,
 				1C564C0A1ED3A92E00087306 /* Frameworks */,
 				1C564C0B1ED3A92E00087306 /* Resources */,
-				00E875C3B066535AE6B77101 /* [CP] Embed Pods Frameworks */,
-				5C2D02120E3E5E09567AA946 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -186,57 +169,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		00E875C3B066535AE6B77101 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_camera_example/Pods-tflite_camera_example-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		5C2D02120E3E5E09567AA946 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_camera_example/Pods-tflite_camera_example-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		66DAEAAEE9EF6550C3A061E0 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-tflite_camera_example-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		1C564C091ED3A92E00087306 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -253,7 +185,6 @@
 /* Begin XCBuildConfiguration section */
 		1C564C361ED3A92E00087306 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 3BC5BE4BBD09374D3E98F082 /* Pods-tflite_camera_example.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -273,7 +204,6 @@
 		};
 		1C564C371ED3A92E00087306 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 55ED318E8D29C8AFEF03DF1E /* Pods-tflite_camera_example.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ANALYZER_NONNULL = YES;
