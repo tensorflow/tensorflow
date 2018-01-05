@@ -117,7 +117,6 @@ py_test(
 
 py_library(
     name = "dataset_serialization_test",
-    testonly = 1,
     srcs = [
         "dataset_serialization_test_base.py",
     ],

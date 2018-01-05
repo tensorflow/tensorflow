@@ -326,7 +326,7 @@ class TrainAndEvaluateTest(test.TestCase):
       mock_executor.assert_called_with(estimator=mock_est,
                                        train_spec=mock_train_spec,
                                        eval_spec=mock_eval_spec)
-      mock_executor_instance.run.assert_called()
+      self.assertTrue(mock_executor_instance.run.called)
 
   def test_error_out_if_evaluator_task_id_is_non_zero(self):
     tf_config = {
