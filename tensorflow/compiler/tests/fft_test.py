@@ -21,8 +21,10 @@ from __future__ import print_function
 import itertools
 
 import numpy as np
+import scipy.signal as sps
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.contrib.signal.python.ops import spectral_ops as signal
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import spectral_ops
@@ -75,6 +77,29 @@ class FFTTest(XLATestCase):
           out = tf_method(ph)
         value = sess.run(out, {ph: data})
         self.assertAllClose(expected, value, rtol=RTOL, atol=ATOL)
+
+  def testContribSignalSTFT(self):
+    ws = 512
+    hs = 128
+    dims = (ws * 20,)
+    shape = BATCH_DIMS + dims
+    data = np.arange(np.prod(shape)) / np.prod(dims)
+    np.random.seed(123)
+    np.random.shuffle(data)
+    data = np.reshape(data.astype(np.float32), shape)
+    window = sps.get_window("hann", ws)
+    expected = sps.stft(
+        data, nperseg=ws, noverlap=ws - hs, boundary=None, window=window)[2]
+    expected = np.swapaxes(expected, -1, -2)
+    expected *= window.sum()  # scipy divides by window sum
+    with self.test_session() as sess:
+      with self.test_scope():
+        ph = array_ops.placeholder(
+            dtypes.as_dtype(data.dtype), shape=data.shape)
+        out = signal.stft(ph, ws, hs)
+
+      value = sess.run(out, {ph: data})
+      self.assertAllClose(expected, value, rtol=RTOL, atol=ATOL)
 
   def testFFT(self):
     self._VerifyFftMethod(INNER_DIMS_1D, lambda x: x, np.fft.fft,
