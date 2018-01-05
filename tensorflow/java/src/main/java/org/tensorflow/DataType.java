@@ -18,6 +18,7 @@ package org.tensorflow;
 import java.util.HashMap;
 import java.util.Map;
 import org.tensorflow.types.UInt8;
+import org.tensorflow.types.UInt16;
 
 /** Represents the type of elements in a {@link Tensor} as an enum. */
 public enum DataType {
@@ -44,7 +45,10 @@ public enum DataType {
   INT64(9),
 
   /** Boolean. */
-  BOOL(10);
+  BOOL(10),
+
+  /** 16-bit unsigned integer. */
+  UINT16(17);
 
   private final int value;
 
@@ -95,6 +99,7 @@ public enum DataType {
     typeCodes.put(Double.class, DataType.DOUBLE);
     typeCodes.put(Integer.class, DataType.INT32);
     typeCodes.put(UInt8.class, DataType.UINT8);
+    typeCodes.put(UInt16.class, DataType.UINT16);
     typeCodes.put(Long.class, DataType.INT64);
     typeCodes.put(Boolean.class, DataType.BOOL);
     typeCodes.put(String.class, DataType.STRING);

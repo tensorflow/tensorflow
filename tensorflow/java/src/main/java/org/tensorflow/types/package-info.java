@@ -19,8 +19,8 @@ limitations under the License.
  * TensorFlow int32 type is represented by the type {@link java.lang.Integer} and by the class
  * object {@code Integer.class}. The former is used to support compile-time checking of tensor
  * element types and the latter is used for run-time checking of element types. Classes appearing in
- * this package, such as UInt8, represent TensorFlow data types for which there is no existing Java
- * equivalent.
+ * this package, such as UInt8 and UInt16, represent TensorFlow data types for which there is no 
+ * existing Java equivalent.
  *
  * <p>TensorFlow element types are also separately represented by the {@link
  * org.tensorflow.DataType} enum, with one enum value per element type. The enum representation is

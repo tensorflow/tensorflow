@@ -605,6 +605,8 @@ public final class Tensor<T> implements AutoCloseable {
       case BOOL:
       case UINT8:
         return 1;
+      case UINT16:
+        return 2;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
     }
@@ -633,6 +635,8 @@ public final class Tensor<T> implements AutoCloseable {
     classDataTypes.put(Byte.class, DataType.STRING);
     classDataTypes.put(boolean.class, DataType.BOOL);
     classDataTypes.put(Boolean.class, DataType.BOOL);
+    classDataTypes.put(char.class, DataType.UINT16);
+    classDataTypes.put(Character.class, DataType.UINT16);
   }
 
   /** The class for the data type to which Java object o corresponds. */

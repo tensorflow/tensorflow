@@ -31,6 +31,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.types.UInt8;
+import org.tensorflow.types.UInt16;
 
 /** Unit tests for {@link org.tensorflow.Tensor}. */
 @RunWith(JUnit4.class)
@@ -422,6 +423,19 @@ public class TensorTest {
       assertArrayEquals(new long[] {4}, t.shape());
 
       byte[] got = t.copyTo(new byte[4]);
+      assertArrayEquals(vector, got);
+    }
+  }
+
+  @Test
+  public void testUInt16Tensor() {
+    char[] vector = new char[] {256,257,258,32768};
+    try (Tensor<UInt16> t = Tensor.create(vector, UInt16.class)) {
+      assertEquals(DataType.UINT16, t.dataType());
+      assertEquals(1, t.numDimensions());
+      assertArrayEquals(new long[] {4}, t.shape());
+
+      char[] got = t.copyTo(new char[4]);
       assertArrayEquals(vector, got);
     }
   }

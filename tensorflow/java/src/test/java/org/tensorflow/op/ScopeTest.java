@@ -30,6 +30,7 @@ import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.Tensors;
 import org.tensorflow.types.UInt8;
+import org.tensorflow.types.UInt16;
 
 /** Unit tests for {@link org.tensorflow.Scope}. */
 @RunWith(JUnit4.class)
@@ -286,6 +287,7 @@ public class ScopeTest {
     zeros.put(Double.class, 0.0);
     zeros.put(Integer.class, 0);
     zeros.put(UInt8.class, (byte) 0);
+    zeros.put(UInt16.class, 0);
     zeros.put(Long.class, 0L);
     zeros.put(Boolean.class, false);
     zeros.put(String.class, null); // no zero value

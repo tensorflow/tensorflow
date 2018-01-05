@@ -47,6 +47,10 @@ size_t elemByteSize(TF_DataType dtype) {
       static_assert(sizeof(jbyte) == 1,
                     "Java byte not compatible with TF_UINT8");
       return 1;
+    case TF_UINT16:
+      static_assert(sizeof(jchar) == 2,
+                    "Java character not compatible with TF_UINT16");
+      return 2;
     case TF_FLOAT:
     case TF_INT32:
       static_assert(sizeof(jfloat) == 4,
@@ -94,6 +98,7 @@ void writeScalar(JNIEnv* env, jobject src, TF_DataType dtype, void* dst,
     CASE(TF_INT32, jint, "intValue", "()I", Int);
     CASE(TF_INT64, jlong, "longValue", "()J", Long);
     CASE(TF_UINT8, jbyte, "byteValue", "()B", Byte);
+    CASE(TF_UINT16, jchar, "charValue", "()C", Char);
 #undef CASE
     case TF_BOOL: {
       jclass clazz = env->FindClass("java/lang/Boolean");
@@ -139,6 +144,7 @@ size_t write1DArray(JNIEnv* env, jarray array, TF_DataType dtype, void* dst,
     CASE(TF_INT64, jlong, Long);
     CASE(TF_BOOL, jboolean, Boolean);
     CASE(TF_UINT8, jbyte, Byte);
+    CASE(TF_UINT16, jchar, Char);
 #undef CASE
     default:
       throwException(env, kIllegalStateException, "invalid DataType(%d)",
@@ -174,6 +180,7 @@ size_t read1DArray(JNIEnv* env, TF_DataType dtype, const void* src,
     CASE(TF_INT64, jlong, Long);
     CASE(TF_BOOL, jboolean, Boolean);
     CASE(TF_UINT8, jbyte, Byte);
+    CASE(TF_UINT16, jchar, Char);
 #undef CASE
     default:
       throwException(env, kIllegalStateException, "invalid DataType(%d)",
