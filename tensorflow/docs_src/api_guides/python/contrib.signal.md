@@ -34,8 +34,8 @@ with inner structure (e.g. a spectrogram):
 magnitude_spectrograms = tf.abs(tf.contrib.signal.stft(
     signals, frame_length=256, frame_step=64, fft_length=256))
 
-# `spectrogram_patches` is a [batch_size, ?, 256, 127] tensor containing a
-# variable number of [256, 127] spectrogram patches per batch item.
+# `spectrogram_patches` is a [batch_size, ?, 64, 129] tensor containing a
+# variable number of [64, 129] spectrogram patches per batch item.
 spectrogram_patches = tf.contrib.signal.frame(
     magnitude_spectrograms, frame_length=64, frame_step=16, axis=1)
 ```
