@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -611,6 +612,22 @@ static const NodeDef* FindSwapTrigger(
   return nullptr;
 }
 
+static bool IsSwappable(GraphView::InputPort input) {
+  const NodeDef& node = *input.node;
+
+  const OpDef* op_def;
+  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
+    return false;
+  }
+
+  DataType dtype;
+  if (!InputTypeForNode(*input.node, *op_def, input.port_id, &dtype).ok()) {
+    return false;
+  }
+
+  return !IsRefType(dtype);
+}
+
 static void IdentifySwappingCandidates(Cluster* cluster,
                                        const GrapplerItem& item,
                                        GraphDef* optimized_graph) {
@@ -671,6 +688,9 @@ static void IdentifySwappingCandidates(Cluster* cluster,
       GraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
       for (GraphView::InputPort input : graph.GetFanout(port)) {
+        if (!IsSwappable(input)) {
+          continue;
+        }
         auto it = execution_times.find(input.node->name());
         if (it != execution_times.end()) {
           if (it->second > execution_time) {
