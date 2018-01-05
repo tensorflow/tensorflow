@@ -890,11 +890,6 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   handle = op.inputs[0]
   indices = op.inputs[1]
-  if context.in_graph_mode():
-    # Walk graph back until the original handle is found.
-    # TODO(apassos): implement this for EAGER mode.
-    while handle.op.type != "VarHandleOp":
-      handle = handle.op.inputs[0]
   params_shape = gen_resource_variable_ops.variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
