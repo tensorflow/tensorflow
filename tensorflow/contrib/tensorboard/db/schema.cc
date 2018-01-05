@@ -19,7 +19,8 @@ namespace {
 
 Status Run(Sqlite* db, const char* sql) {
   auto stmt = db->Prepare(sql);
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(stmt.StepAndReset(), sql);
+  TF_RETURN_IF_ERROR(stmt.status());
+  TF_RETURN_IF_ERROR(stmt.ValueOrDie().StepAndReset());
   return Status::OK();
 }
 
@@ -28,11 +29,11 @@ Status Run(Sqlite* db, const char* sql) {
 Status SetupTensorboardSqliteDb(Sqlite* db) {
   // Note: GCC raw strings macros are broken.
   // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55971
-  db->Prepare(strings::StrCat("PRAGMA application_id=",
-                              kTensorboardSqliteApplicationId))
-      .StepAndReset()
-      .IgnoreError();
-  db->Prepare("PRAGMA user_version=0").StepAndReset().IgnoreError();
+  TF_RETURN_IF_ERROR(
+      db->PrepareOrDie(strings::StrCat("PRAGMA application_id=",
+                                       kTensorboardSqliteApplicationId))
+          .StepAndReset());
+  db->PrepareOrDie("PRAGMA user_version=0").StepAndResetOrDie();
   Status s;
 
   // Creates Ids table.
