@@ -44,6 +44,6 @@ export PATH="/c/Program Files/Anaconda3:$PATH"
 export PATH="/c/Program Files/Anaconda3/Scripts:$PATH"
 
 # Add Cuda and Cudnn dll directories into PATH
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/bin:$PATH"
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPTI/libx64:$PATH"
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/bin:$PATH"
+export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/extras/CUPTI/libx64:$PATH"
 export PATH="/c/tools/cuda/bin:$PATH"
