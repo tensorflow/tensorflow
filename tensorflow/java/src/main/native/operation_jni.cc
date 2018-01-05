@@ -120,10 +120,7 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(
   std::unique_ptr<int64_t[]> cdims(new int64_t[num_dims]);
   TF_GraphGetTensorShape(graph, output, cdims.get(), static_cast<int>(num_dims),
                          status);
-  if (!throwExceptionIfNotOK(env, status)) {
-    TF_DeleteStatus(status);
-    return nullptr;
-  }
+                                        
   TF_DeleteStatus(status);
 
   jlongArray ret = env->NewLongArray(num_dims);
