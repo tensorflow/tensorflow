@@ -21,6 +21,7 @@
 * Make `tf.contrib.distributions` QuadratureCompound classes support batch.
 * `Stream::BlockHostUntilDone` now returns Status rather than bool.
 * Customize request timeouts for the GCS filesystem.
+* `tf.data` now supports `tf.SparseTensor` components in dataset elements.
 
 ## Thanks to our Contributors
 
