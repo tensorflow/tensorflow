@@ -92,32 +92,14 @@ tf_java_op_gen_srcjar(
         "user_ops",
     ],
 )
-
 # Build the gen tool as a library, as it will be linked to a core/ops binary
 # file before making it an executable. See tf_java_op_gen_srcjar().
 cc_library(
     name = "java_op_gen_tool",
-    srcs = [
-        "src/gen/cc/op_gen_main.cc",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":java_op_gen_lib",
-        "//third_party/tensorflow/core:framework",
-        "//third_party/tensorflow/core:framework_internal",
-        "//third_party/tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "java_op_gen_lib",
-    srcs = [
-        "src/gen/cc/op_generator.cc",
-    ],
-    hdrs = [
-        "src/gen/cc/java_defs.h",
-        "src/gen/cc/op_generator.h",
-    ],
+    srcs = glob([
+        "src/gen/cc/*.h",
+        "src/gen/cc/*.cc",
+    ]),
     copts = tf_copts(),
     deps = [
         "//third_party/tensorflow/core:framework",
@@ -126,6 +108,7 @@ cc_library(
         "//third_party/tensorflow/core:lib_internal",
     ],
 )
+
 
 java_library(
     name = "testutil",
