@@ -882,5 +882,17 @@ TEST_F(NaryGradTest, Prod) {
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({3, 2});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Use constant values to avoid instability when computing
+  Tensor c =
+      test::AsTensor<float>({-3.5f, 1.5f, -1.2f, 3.0f, -2.5f, 2.8f}, {3, 2});
+  auto zero = Cast(scope_, Const(scope_, 0.0), c.dtype());
+  auto y = Where3(scope_, Greater(scope_, c, zero), x1, x2);
+  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
+}
+
 }  // namespace
 }  // namespace tensorflow

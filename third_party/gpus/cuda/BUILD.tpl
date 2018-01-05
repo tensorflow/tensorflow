@@ -46,7 +46,6 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
-        "cuda/include/crt",
     ],
     visibility = ["//visibility:public"],
 )
