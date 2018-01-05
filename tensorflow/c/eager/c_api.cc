@@ -110,6 +110,10 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
 }
 
+void TFE_ContextClearCaches(TFE_Context* ctx) {
+  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+}
+
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
