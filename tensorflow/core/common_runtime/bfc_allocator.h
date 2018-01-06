@@ -70,6 +70,8 @@ class BFCAllocator : public VisitableAllocator {
 
   void GetStats(AllocatorStats* stats) override;
 
+  void ClearStats() override;
+
  private:
   struct Bin;
 
