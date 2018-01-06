@@ -81,11 +81,19 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
 
 
 def _norm(g, b, inp, scope, center=True):
+  """layer normalize helper:
+
+  Args:
+    g: float, layer normalization scale (gamma) initial value.
+    b: float, layer normalization offset (beta) initial value.
+    scope: Optional scope for `variable_scope`.
+    center: boolean. If True (default), add layer normalization offset (beta)
+      after normalization.
+  """
   shape = inp.get_shape()[-1:]
   gamma_init = init_ops.constant_initializer(g)
   beta_init = init_ops.constant_initializer(b)
   with vs.variable_scope(scope):
-    # Initialize beta and gamma for use by layer_norm.
     vs.get_variable("gamma", shape=shape, initializer=gamma_init)
     if center:
       vs.get_variable("beta", shape=shape, initializer=beta_init)
@@ -1353,16 +1361,10 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   Stanislau Semeniuta, Aliaksei Severyn, Erhardt Barth.
   """
 
-  def __init__(self,
-               num_units,
-               forget_bias=1.0,
-               input_size=None,
-               activation=math_ops.tanh,
-               layer_norm=True,
-               norm_gain=1.0,
-               norm_shift=0.0,
-               dropout_keep_prob=1.0,
-               dropout_prob_seed=None,
+  def __init__(self, num_units, forget_bias=1.0,
+               input_size=None, activation=math_ops.tanh,
+               layer_norm=True, layer_norm_columns=True, norm_gain=1.0,
+               norm_shift=0.0, dropout_keep_prob=1.0, dropout_prob_seed=None,
                reuse=None):
     """Initializes the basic LSTM cell.
 
@@ -1372,6 +1374,12 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
       input_size: Deprecated and unused.
       activation: Activation function of the inner states.
       layer_norm: If `True`, layer normalization will be applied.
+      layer_norm_columns: If `True`, layer normalization will be applied
+        separately to columns of the linear transformation of the inputs and
+        recurrent states. If `False`, normalization will be applied as
+        described in the paper "Layer Normalization" by Ba et. al.
+        `False` is the recommended setting. `True` is the default for backwards
+        compatibility. If `layer_norm` is `False`, this argument is ignored.
       norm_gain: float, The layer normalization gain initial value. If
         `layer_norm` has been set to `False`, this argument will be ignored.
       norm_shift: float, The layer normalization shift initial value. If
@@ -1395,6 +1403,7 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     self._keep_prob = dropout_keep_prob
     self._seed = dropout_prob_seed
     self._layer_norm = layer_norm
+    self._layer_norm_columns = layer_norm_columns
     self._norm_gain = norm_gain
     self._norm_shift = norm_shift
     self._reuse = reuse
@@ -1428,14 +1437,18 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     h_weights = vs.get_variable("h_kernel", [h_size, out_size], dtype=dtype)
     in_out = math_ops.matmul(inputs, in_weights)
     h_out = math_ops.matmul(h, h_weights)
-    if self._layer_norm:
+
+    if self._layer_norm and not self._layer_norm_columns:
       # Don't add layer norm offset because we add a bias.
       in_out = self._norm(in_out, "inputs", center=False, dtype=dtype)
       h_out = self._norm(h_out, "hidden", center=False, dtype=dtype)
+
     out = in_out + h_out
-    init = init_ops.constant_initializer(0.0, dtype=dtype)
-    bias = vs.get_variable("bias", [out_size], dtype=dtype, initializer=init)
-    out = nn_ops.bias_add(out, bias)
+
+    if not (self._layer_norm and self._layer_norm_columns):
+      init = init_ops.constant_initializer(0.0, dtype=dtype)
+      bias = vs.get_variable("bias", [out_size], dtype=dtype, initializer=init)
+      out = nn_ops.bias_add(out, bias)
     return out
 
   def call(self, inputs, state):
@@ -1445,6 +1458,12 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     dtype = h.dtype
 
     i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
+
+    if self._layer_norm and self._layer_norm_columns:
+      i = self._norm(i, "input", dtype=dtype)
+      j = self._norm(j, "transform", dtype=dtype)
+      f = self._norm(f, "forget", dtype=dtype)
+      o = self._norm(o, "output", dtype=dtype)
 
     g = self._activation(j)
     if (not isinstance(self._keep_prob, float)) or self._keep_prob < 1:
@@ -2488,7 +2507,8 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
                proj_clip=None,
                forget_bias=1.0,
                activation=None,
-               layer_norm=False,
+               layer_norm=True,
+               layer_norm_columns=True,
                norm_gain=1.0,
                norm_shift=0.0,
                reuse=None):
@@ -2512,6 +2532,12 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         CudnnLSTM trained checkpoints.
       activation: Activation function of the inner states.  Default: `tanh`.
       layer_norm: If `True`, layer normalization will be applied.
+      layer_norm_columns: If `True`, layer normalization will be applied
+        separately to columns of the linear transformation of the inputs and
+        recurrent states. If `False`, normalization will be applied as
+        described in the paper "Layer Normalization" by Ba et. al.
+        `False` is the recommended setting. `True` is the default for backwards
+        compatibility. If `layer_norm` is `False`, this argument is ignored.
       norm_gain: float, The layer normalization gain initial value. If
         `layer_norm` has been set to `False`, this argument will be ignored.
       norm_shift: float, The layer normalization shift initial value. If
@@ -2534,6 +2560,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     self._forget_bias = forget_bias
     self._activation = activation or math_ops.tanh
     self._layer_norm = layer_norm
+    self._layer_norm_columns = layer_norm_columns
     self._norm_gain = norm_gain
     self._norm_shift = norm_shift
 
@@ -2557,8 +2584,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
               output_size,
               bias,
               bias_initializer=None,
-              kernel_initializer=None,
-              layer_norm=False):
+              kernel_initializer=None):
     """Linear map: sum_i(args[i] * W[i]), where W[i] is a Variable.
 
     Args:
@@ -2568,12 +2594,12 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       bias_initializer: starting value to initialize the bias
         (default is all zeros).
       kernel_initializer: starting value to initialize the weight.
-      layer_norm: boolean, whether to apply layer normalization.
-
 
     Returns:
       A 2D Tensor with shape [batch x output_size] taking value
-      sum_i(args[i] * W[i]), where each W[i] is a newly created Variable.
+      sum_i(args[i] * W[i]), where each W[i] is a newly created Variable,
+      and where args[i] * W[i] will be layer normalized if `layer_norm` is
+      "columns"
 
     Raises:
       ValueError: if some of the arguments has unspecified or wrong shape.
@@ -2586,7 +2612,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     # Calculate the total size of arguments on dimension 1.
     total_arg_size = 0
     shapes = [a.get_shape() for a in args]
-    axis_sizes = [shape[1].value for shape in shapes]
     for shape in shapes:
       if shape.ndims != 2:
         raise ValueError("linear is expecting 2D arguments: %s" % shapes)
@@ -2605,7 +2630,8 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
           "kernel", [total_arg_size, output_size],
           dtype=dtype,
           initializer=kernel_initializer)
-      if layer_norm:
+      if self._layer_norm and not self._layer_norm_columns:
+        axis_sizes = [shape[1].value for shape in shapes]
         weights = array_ops.split(kernel, axis_sizes)
         res = [math_ops.matmul(arg, w) for arg, w in zip(args, weights)]
         # Don't add layer norm offset because we add a bias.
@@ -2614,7 +2640,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         res = sum(res)
       else:
         res = math_ops.matmul(array_ops.concat(args, 1), kernel)
-      if not bias:
+      if not bias or (self._layer_norm and self._layer_norm_columns):
         return res
       with vs.variable_scope(outer_scope) as inner_scope:
         inner_scope.set_partitioner(None)
@@ -2667,10 +2693,15 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
           [inputs, m_prev],
           4 * self._num_units,
           bias=True,
-          bias_initializer=None,
-          layer_norm=self._layer_norm)
+          bias_initializer=None)
       i, j, f, o = array_ops.split(
           value=lstm_matrix, num_or_size_splits=4, axis=1)
+
+      if self._layer_norm and self._layer_norm_columns:
+        i = _norm(self._norm_gain, self._norm_shift, i, "input")
+        j = _norm(self._norm_gain, self._norm_shift, j, "transform")
+        f = _norm(self._norm_gain, self._norm_shift, f, "forget")
+        o = _norm(self._norm_gain, self._norm_shift, o, "output")
 
       # Diagonal connections
       if self._use_peepholes:

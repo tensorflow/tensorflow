@@ -1120,7 +1120,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
 
   # NOTE: all the values in the current test case have been calculated.
 
-  def testBasicLSTMCell(self):
+  def testBasicLSTMCellColumns(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -1132,7 +1132,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = rnn_cell.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2)
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2,
+          layer_norm_columns=True, norm_shift=0.5)
         cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
@@ -1145,11 +1146,11 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
                 h1.name: 0.1 * np.asarray([[6, 7]]),
             })
 
-        expected_h = np.array([[-0.38079708, 0.38079708]])
-        expected_state0_c = np.array([[-1.0, 1.0]])
-        expected_state0_h = np.array([[-0.38079708, 0.38079708]])
-        expected_state1_c = np.array([[-1.0, 1.0]])
-        expected_state1_h = np.array([[-0.38079708, 0.38079708]])
+        expected_h = np.array([[-0.28764914, 0.56341798]])
+        expected_state0_c = np.array([[-0.5, 1.5]])
+        expected_state0_h = np.array([[-0.28764914, 0.56341798]])
+        expected_state1_c = np.array([[-0.5, 1.5]])
+        expected_state1_h = np.array([[-0.28764914, 0.56341798]])
 
         actual_h = res[0]
         actual_state0_c = res[1][0].c
@@ -1170,7 +1171,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         c = array_ops.zeros([1, 2])
         h = array_ops.zeros([1, 2])
         state = rnn_cell.LSTMStateTuple(c, h)
-        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2,
+          layer_norm_columns=True)
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run(
@@ -1179,6 +1181,73 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
                 c.name: 0.1 * np.asarray([[0, 1]]),
                 h.name: 0.1 * np.asarray([[2, 3]]),
             })
+
+        expected_h = np.array([[-0.38079708, 0.38079708]])
+        expected_c = np.array([[-1.0, 1.0]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_h, 1e-5)
+        self.assertAllClose(res[1].c, expected_c, 1e-5)
+        self.assertAllClose(res[1].h, expected_h, 1e-5)
+
+  def testBasicLSTMCellPaper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        c0 = array_ops.zeros([1, 2])
+        h0 = array_ops.zeros([1, 2])
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
+        c1 = array_ops.zeros([1, 2])
+        h1 = array_ops.zeros([1, 2])
+        state1 = rnn_cell.LSTMStateTuple(c1, h1)
+        state = (state0, state1)
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2,
+          layer_norm_columns=False, norm_shift=0.5)
+        cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+            x.name: np.array([[1., 1.]]),
+            c0.name: 0.1 * np.asarray([[0, 1]]),
+            h0.name: 0.1 * np.asarray([[2, 3]]),
+            c1.name: 0.1 * np.asarray([[4, 5]]),
+            h1.name: 0.1 * np.asarray([[6, 7]]),
+        })
+
+        expected_h = np.array([[-0.23105858, 0.45257413]])
+        expected_state0_c = np.array([[-0.5, 1.5]])
+        expected_state0_h = np.array([[-0.23105858, 0.45257413]])
+        expected_state1_c = np.array([[-0.5, 1.5]])
+        expected_state1_h = np.array([[-0.23105858, 0.45257413]])
+
+        actual_h = res[0]
+        actual_state0_c = res[1][0].c
+        actual_state0_h = res[1][0].h
+        actual_state1_c = res[1][1].c
+        actual_state1_h = res[1][1].h
+
+        self.assertAllClose(actual_h, expected_h, 1e-5)
+        self.assertAllClose(expected_state0_c, actual_state0_c, 1e-5)
+        self.assertAllClose(expected_state0_h, actual_state0_h, 1e-5)
+        self.assertAllClose(expected_state1_c, actual_state1_c, 1e-5)
+        self.assertAllClose(expected_state1_h, actual_state1_h, 1e-5)
+
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros(
+            [1, 3])  # Test BasicLSTMCell with input_size != num_units.
+        c = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        state = rnn_cell.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2,
+          layer_norm_columns=False)
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+            x.name: np.array([[1., 1., 1.]]),
+            c.name: 0.1 * np.asarray([[0, 1]]),
+            h.name: 0.1 * np.asarray([[2, 3]]),
+        })
 
         expected_h = np.array([[-0.38079708, 0.38079708]])
         expected_c = np.array([[-1.0, 1.0]])
@@ -1200,7 +1269,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = rnn_cell.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)  # pylint: disable=line-too-long
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2,
+          layer_norm=False)
         cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
@@ -1305,7 +1375,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         state1 = rnn_cell_impl.LSTMStateTuple(c1, h1)
         cell = rnn_cell_impl.MultiRNNCell([
             contrib_rnn_cell.LayerNormLSTMCell(
-                2, layer_norm=True, norm_gain=1.0, norm_shift=0.0)
+                2, norm_gain=1.0, norm_shift=0.0)
             for _ in range(2)
         ])
         h, (s0, s1) = cell(x, (state0, state1))
