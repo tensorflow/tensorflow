@@ -101,7 +101,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   instruction->metadata_ = proto.metadata();
   if (proto.has_literal()) {
-    instruction->literal_ = MakeUnique<Literal>(proto.literal());
+    TF_ASSIGN_OR_RETURN(instruction->literal_,
+                        Literal::CreateFromProto(proto.literal()));
   }
   instruction->parameter_number_ = proto.parameter_number();
 
@@ -166,8 +167,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
-  instruction->literal_.reset(new Literal);
-  instruction->literal_->append_u8s(tag);
+  instruction->literal_ = Literal::CreateR1U8(tag);
   return instruction;
 }
 
@@ -2308,7 +2308,7 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s_string();
+  return literal_->GetR1U8AsString();
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
