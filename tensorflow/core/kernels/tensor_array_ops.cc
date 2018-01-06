@@ -336,8 +336,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           tensor_array->HasIdenticalElementShapes(), false /* dynamic_size */,
           true /* multiple_writes_aggregate */, true /* is_grad */,
           marked_size /* marked_size */, true /* close_after_read */);
-      TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
-      return Status::OK();
+      return (*ret)->CopyShapesFrom(tensor_array);
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(

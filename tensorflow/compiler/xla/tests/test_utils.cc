@@ -29,7 +29,7 @@ void PopulateWithRandomFloatingPointData(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<FloatT> generator(0.0f, 1.0f);
+  std::uniform_real_distribution<FloatT> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<FloatT>(
       [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
         return generator(engine);
@@ -42,7 +42,7 @@ template <>
 void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(), BF16);
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<float> generator(0.0f, 1.0f);
+  std::uniform_real_distribution<float> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<bfloat16>(
       [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
         return static_cast<bfloat16>(generator(engine));
@@ -126,6 +126,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
                                 fused_uses.end());
       } else if (NeedsZeroInitValue(use)) {
         constrained_uses.push_back(instruction);
+      } else if (opcode == HloOpcode::kConvert ||
+                 opcode == HloOpcode::kReducePrecision) {
+        auto converted_uses = FindConstrainedUses(dataflow, *instruction);
+        constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
+                                converted_uses.end());
       }
     }
   }
@@ -145,7 +150,6 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
-        TF_RET_CHECK(ShapeUtil::Equal(param.shape(), use->operand(0)->shape()));
         if (needs_index != nullptr &&
             !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
           return Unimplemented(
@@ -173,7 +177,8 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
         needs_index->ToString().c_str(), needs_zero->ToString().c_str());
   }
   if (needs_index != nullptr) {
-    return MakeRandomNonwrappingSliceIndex(param.shape(), needs_index->shape());
+    return MakeRandomNonwrappingSliceIndex(needs_index->operand(0)->shape(),
+                                           needs_index->shape());
   } else if (needs_zero != nullptr) {
     return Literal::CreateFromShape(param.shape());
   } else {

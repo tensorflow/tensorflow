@@ -68,9 +68,12 @@ class Env {
   /// \brief Returns the file system schemes registered for this Env.
   virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
 
-  // \brief Register a file system for a scheme.
+  /// \brief Register a file system for a scheme.
   virtual Status RegisterFileSystem(const string& scheme,
                                     FileSystemRegistry::Factory factory);
+
+  /// \brief Flush filesystem caches for all registered filesystems.
+  Status FlushFileSystemCaches();
 
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.

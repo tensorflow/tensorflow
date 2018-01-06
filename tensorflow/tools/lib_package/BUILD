@@ -55,7 +55,10 @@ pkg_tar(
 
 pkg_tar(
     name = "cheaders",
-    files = ["//tensorflow/c:headers"],
+    files = [
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
     package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352

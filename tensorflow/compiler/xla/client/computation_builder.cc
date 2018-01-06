@@ -855,6 +855,31 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::Fft(
+    const ComputationDataHandle& operand, const FftType fft_type,
+    const tensorflow::gtl::ArraySlice<int64> fft_length) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  FftRequest request;
+  *request.mutable_operand() = operand;
+  request.set_fft_type(fft_type);
+  for (int64 dim_len : fft_length) {
+    request.add_fft_length(dim_len);
+  }
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_fft_request() = request;
+  AddCommonFieldsToOpRequest(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making fft op request";
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
                                                  const string& config) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
@@ -1475,11 +1500,6 @@ ComputationDataHandle ComputationBuilder::RngUniform(
     const ComputationDataHandle& a, const ComputationDataHandle& b,
     const Shape& shape) {
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
-}
-
-ComputationDataHandle ComputationBuilder::RngBernoulli(
-    const ComputationDataHandle& mean, const Shape& shape) {
-  return RngOp(RandomDistribution::RNG_BERNOULLI, {mean}, shape);
 }
 
 ComputationDataHandle ComputationBuilder::While(

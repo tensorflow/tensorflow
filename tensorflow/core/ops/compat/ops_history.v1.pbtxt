@@ -10885,6 +10885,28 @@ op {
   }
 }
 op {
+  name: "CriticalSectionOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "CropAndResize"
   input_arg {
     name: "image"
@@ -12690,6 +12712,14 @@ op {
     name: "handle"
     type: DT_STRING
   }
+}
+op {
+  name: "DeleteSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  is_stateful: true
 }
 op {
   name: "DenseToDenseSetOperation"
@@ -15017,6 +15047,43 @@ op {
       }
     }
   }
+}
+op {
+  name: "ExecuteInCriticalSection"
+  input_arg {
+    name: "critical_section"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "outputs"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "Exit"
@@ -18008,6 +18075,22 @@ op {
   }
 }
 op {
+  name: "GetSessionHandle"
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
   name: "GetSessionHandleV2"
   input_arg {
     name: "value"
@@ -18037,6 +18120,22 @@ op {
     name: "dtype"
     type: "type"
   }
+}
+op {
+  name: "GetSessionTensor"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
 }
 op {
   name: "Greater"
@@ -19422,6 +19521,63 @@ op {
   }
 }
 op {
+  name: "Inv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Inv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  deprecation {
+    version: 17
+  }
+}
+op {
   name: "InvGrad"
   input_arg {
     name: "x"
@@ -19481,6 +19637,67 @@ op {
   }
   deprecation {
     version: 17
+  }
+}
+op {
+  name: "InvGrad"
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dy"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  deprecation {
+    version: 17
+  }
+}
+op {
+  name: "InvGrad"
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dy"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
   }
 }
 op {

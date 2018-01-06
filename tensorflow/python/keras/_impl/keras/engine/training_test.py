@@ -399,7 +399,7 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
-      np.random.seed(1337)
+      np.random.seed(43)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,

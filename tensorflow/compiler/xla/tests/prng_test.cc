@@ -64,40 +64,6 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
   });
 }
 
-template <typename T>
-void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
-  ComputationBuilder builder(client_, TestName());
-  auto shape =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims);
-  builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
-  ExecutionOptions execution_options = execution_options_;
-  execution_options.set_seed(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto actual, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                               &execution_options));
-  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  T sum = 0;
-  actual->EachCell<T>([&sum](tensorflow::gtl::ArraySlice<int64>, T value) {
-    EXPECT_TRUE(value == static_cast<T>(0) || value == static_cast<T>(1));
-    sum += value;
-  });
-
-  int32 elements_in_output = ShapeUtil::ElementsIn(shape);
-  float p_tilde = sum / static_cast<float>(elements_in_output);
-
-  // Test within expected range using normal approximation. The test uses a
-  // fixed seed and has a fixed output per p and backend. Using the normal
-  // approximation as this test is invoked for different `p` and the different
-  // backends could use different random number generators and produce different
-  // values. Choose 95% confidence level, so that z_{1-\alpha/2} = 1.96.
-  float normal_approximation_term =
-      1.96 * sqrt(p * (1 - p) / elements_in_output);
-  EXPECT_GE(p_tilde, p - normal_approximation_term);
-  EXPECT_LE(p_tilde, p + normal_approximation_term);
-}
-
 // Uniform random number generation tests
 XLA_TEST_F(PrngTest, ScalarU01) { UniformTest<float>(0, 1, {}); }
 XLA_TEST_F(PrngTest, ZeroValuesU01) { UniformTest<float>(0, 1, {0}); }
@@ -253,32 +219,6 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   LiteralTestUtil::ExpectNotEqual(*result1, *result4);
   LiteralTestUtil::ExpectNotEqual(*result4, *result5);
   LiteralTestUtil::ExpectNotEqual(*result5, *result6);
-}
-
-// Bernoulli random number generation tests
-XLA_TEST_F(PrngTest, HundredValuesB10p5U32) {
-  BernoulliTest<uint32>(0.5, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p1U32) {
-  BernoulliTest<uint32>(0.1, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p5S32) {
-  BernoulliTest<int32>(0.5, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p1S32) {
-  BernoulliTest<int32>(0.1, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p5F32) {
-  BernoulliTest<float>(0.5, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p1F32) {
-  BernoulliTest<float>(0.1, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p5F64) {
-  BernoulliTest<double>(0.5, {100});
-}
-XLA_TEST_F(PrngTest, HundredValuesB10p1F64) {
-  BernoulliTest<double>(0.1, {100});
 }
 
 XLA_TEST_F(PrngTest, TenValuesN01) {

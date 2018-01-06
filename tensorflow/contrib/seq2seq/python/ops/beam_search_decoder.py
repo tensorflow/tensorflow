@@ -67,7 +67,8 @@ class FinalBeamSearchDecoderOutput(
 
   Args:
     predicted_ids: The final prediction. A tensor of shape
-      `[T, batch_size, beam_width]`.
+      `[batch_size, T, beam_width]` (or `[T, batch_size, beam_width]` if
+      `output_time_major` is True). Beams are ordered from best to worst.
     beam_search_decoder_output: An instance of `BeamSearchDecoderOutput` that
       describes the state of the beam search.
   """
@@ -249,7 +250,7 @@ class BeamSearchDecoder(decoder.Decoder):
       output_shape_with_unknown_batch = nest.map_structure(
           lambda s: tensor_shape.TensorShape([None]).concatenate(s),
           size)
-      layer_output_shape = self._output_layer._compute_output_shape(  # pylint: disable=protected-access
+      layer_output_shape = self._output_layer.compute_output_shape(
           output_shape_with_unknown_batch)
       return nest.map_structure(lambda s: s[1:], layer_output_shape)
 

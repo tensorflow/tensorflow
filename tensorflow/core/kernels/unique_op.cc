@@ -83,65 +83,100 @@ class UniqueOp : public OpKernel {
       }
     }
 
-    auto Tin = input.shaped<T, 3>(new_sizes);
-
     Tensor* idx = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                1, TensorShape({Tin.dimension(1)}), &idx));
+                                1, TensorShape({new_sizes[1]}), &idx));
     auto idx_vec = idx->template vec<TIndex>();
 
-    auto hash_fn = [&Tin](const int64& key) -> unsigned long {
-      size_t h = 0;
-      for (int64 i = 0; i < Tin.dimension(0); i++) {
-        for (int64 j = 0; j < Tin.dimension(2); j++) {
-          h = Hash64Combine(h, hash<T>{}(Tin(i, key, j)));
+    int64 uniq_size;
+    if (new_sizes[0] == 1 && new_sizes[2] == 1) {
+      // Specialized and faster implementation when unique is run over single
+      // elements. Here we put T directly into the map rather than ints pointing
+      // to them as in the general case.
+      auto Tin = input.flat<T>();
+      const int64 N = static_cast<int64>(Tin.size());
+
+      std::unordered_map<T, TIndex> uniq;
+      uniq.reserve(2 * N);
+      for (int64 i = 0, j = 0; i < N; ++i) {
+        auto it = uniq.insert(std::make_pair(Tin(i), j));
+        idx_vec(i) = it.first->second;
+        if (it.second) {
+          ++j;
         }
       }
-      return h;
-    };
 
-    auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
-      for (int64 i = 0; i < Tin.dimension(0); i++) {
-        for (int64 j = 0; j < Tin.dimension(2); j++) {
-          if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
-            return false;
+      uniq_size = static_cast<int64>(uniq.size());
+      TensorShape output_shape(input.shape());
+      output_shape.set_dim(axis, uniq_size);
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+      auto Tout = output->flat<T>();
+
+      for (auto it : uniq) {
+        Tout(it.second) = it.first;
+      }
+    } else {
+      // General implementation when unique is run over multiple elements.
+      auto Tin = input.shaped<T, 3>(new_sizes);
+
+      auto hash_fn = [&Tin](const int64& key) {
+        size_t h = 0;
+        for (int64 i = 0; i < Tin.dimension(0); i++) {
+          for (int64 j = 0; j < Tin.dimension(2); j++) {
+            h = Hash64Combine(h, hash<T>{}(Tin(i, key, j)));
           }
         }
+        return h;
+      };
+
+      auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
+        for (int64 i = 0; i < Tin.dimension(0); i++) {
+          for (int64 j = 0; j < Tin.dimension(2); j++) {
+            if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      };
+
+      std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
+          uniq(0, hash_fn, equal_to_fn);
+
+      uniq.reserve(2 * Tin.dimension(1));
+
+      for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
+        auto it = uniq.insert(std::make_pair(i, j));
+        idx_vec(i) = it.first->second;
+        if (it.second) {
+          ++j;
+        }
       }
-      return true;
-    };
 
-    std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
-        uniq(0, hash_fn, equal_to_fn);
+      uniq_size = static_cast<int64>(uniq.size());
+      new_sizes[1] = uniq_size;
+      TensorShape output_shape(input.shape());
+      output_shape.set_dim(axis, uniq_size);
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output));
+      auto Tout = output->shaped<T, 3>(new_sizes);
 
-    uniq.reserve(2 * Tin.dimension(1));
-
-    for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
-      auto it = uniq.insert(std::make_pair(i, j));
-      idx_vec(i) = it.first->second;
-      if (it.second) {
-        ++j;
+      for (auto it : uniq) {
+        Tout.chip(it.second, 1) = Tin.chip(it.first, 1);
       }
-    }
-
-    int64 uniq_size = static_cast<int64>(uniq.size());
-    new_sizes[1] = uniq_size;
-    TensorShape output_shape(input.shape());
-    output_shape.set_dim(axis, uniq_size);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    auto Tout = output->shaped<T, 3>(new_sizes);
-
-    for (auto it : uniq) {
-      Tout.chip(it.second, 1) = Tin.chip(it.first, 1);
     }
 
     if (num_outputs() > 2) {
+      Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(
                                   2, TensorShape({uniq_size}), &output));
       auto count_output_vec = output->template vec<TIndex>();
       count_output_vec.setZero();
-      for (int64 i = 0; i < Tin.dimension(1); ++i) {
+      const int N = idx_vec.size();
+      for (int64 i = 0; i < N; ++i) {
         count_output_vec(idx_vec(i))++;
       }
     }

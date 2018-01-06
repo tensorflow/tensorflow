@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
+namespace {
+
 using namespace ops;  // NOLINT(build/namespaces)
 using ops::internal::MirrorPadGrad;
-
-namespace {
 
 class ArrayGradTest : public ::testing::Test {
  protected:

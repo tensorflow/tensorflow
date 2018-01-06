@@ -107,6 +107,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
               // sequence has been reached, we return an OutOfRange error to
               // terminate the iteration. (Otherwise, this iterator may loop
               // infinitely and never produce a value.)
+              *end_of_sequence = true;
               return errors::OutOfRange(
                   "Attempted to repeat an empty dataset infinitely.");
             }

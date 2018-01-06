@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -56,21 +55,11 @@ Status Serialize(const protobuf::MessageLite& proto, string* output) {
   return Status::OK();
 }
 
-Status Compress(const string& data, string* output) {
-  output->clear();
-  if (!port::Snappy_Compress(data.data(), data.size(), output)) {
-    return errors::FailedPrecondition("TensorBase needs Snappy");
-  }
-  return Status::OK();
-}
-
 Status BindProto(SqliteStatement* stmt, int parameter,
                  const protobuf::MessageLite& proto) {
   string serialized;
   TF_RETURN_IF_ERROR(Serialize(proto, &serialized));
-  string compressed;
-  TF_RETURN_IF_ERROR(Compress(serialized, &compressed));
-  stmt->BindBlob(parameter, compressed);
+  stmt->BindBlob(parameter, serialized);
   return Status::OK();
 }
 
@@ -78,7 +67,6 @@ Status BindTensor(SqliteStatement* stmt, int parameter, const Tensor& t) {
   // TODO(@jart): Make portable between little and big endian systems.
   // TODO(@jart): Use TensorChunks with minimal copying for big tensors.
   // TODO(@jart): Add field to indicate encoding.
-  // TODO(@jart): Allow crunch tool to re-compress with zlib instead.
   TensorProto p;
   t.AsProtoTensorContent(&p);
   return BindProto(stmt, parameter, p);
@@ -145,7 +133,8 @@ Status CoerceScalar(const Tensor& t, Tensor* out) {
 class IdAllocator {
  public:
   IdAllocator(Env* env, Sqlite* db)
-      : env_{env}, inserter_{db->Prepare("INSERT INTO Ids (id) VALUES (?)")} {}
+      : env_{env},
+        inserter_{db->PrepareOrDie("INSERT INTO Ids (id) VALUES (?)")} {}
 
   Status CreateNewId(int64* id) {
     Status s;
@@ -220,7 +209,7 @@ class GraphSaver {
   }
 
   Status SaveNodeInputs() {
-    auto insert = db_->Prepare(R"sql(
+    auto insert = db_->PrepareOrDie(R"sql(
       INSERT INTO NodeInputs (graph_id, node_id, idx, input_node_id, is_control)
       VALUES (?, ?, ?, ?, ?)
     )sql");
@@ -248,9 +237,9 @@ class GraphSaver {
   }
 
   Status SaveNodes() {
-    auto insert = db_->Prepare(R"sql(
+    auto insert = db_->PrepareOrDie(R"sql(
       INSERT INTO Nodes (graph_id, node_id, node_name, op, device, node_def)
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, snap(?))
     )sql");
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       NodeDef* node = graph_->mutable_node(node_id);
@@ -274,9 +263,9 @@ class GraphSaver {
   }
 
   Status SaveGraph() {
-    auto insert = db_->Prepare(R"sql(
+    auto insert = db_->PrepareOrDie(R"sql(
       INSERT INTO Graphs (graph_id, inserted_time, graph_def)
-      VALUES (?, ?, ?)
+      VALUES (?, ?, snap(?))
     )sql");
     insert.BindInt(1, graph_id_);
     insert.BindDouble(2, GetWallTime(env_));
@@ -303,14 +292,14 @@ class RunWriter {
         experiment_name_{experiment_name},
         run_name_{run_name},
         user_name_{user_name},
-        insert_tensor_{db_->Prepare(R"sql(
+        insert_tensor_{db_->PrepareOrDie(R"sql(
           INSERT OR REPLACE INTO Tensors (tag_id, step, computed_time, tensor)
-          VALUES (?, ?, ?, ?)
+          VALUES (?, ?, ?, snap(?))
         )sql")} {}
 
   ~RunWriter() {
     if (run_id_ == kAbsent) return;
-    auto update = db_->Prepare(R"sql(
+    auto update = db_->PrepareOrDie(R"sql(
       UPDATE Runs SET finished_time = ? WHERE run_id = ?
     )sql");
     update.BindDouble(1, GetWallTime(env_));
@@ -343,7 +332,8 @@ class RunWriter {
     TF_RETURN_IF_ERROR(
         GraphSaver::Save(env_, db_.get(), &id_allocator_, g.get(), &graph_id));
     if (run_id_ != kAbsent) {
-      auto set = db_->Prepare("UPDATE Runs SET graph_id = ? WHERE run_id = ?");
+      auto set =
+          db_->PrepareOrDie("UPDATE Runs SET graph_id = ? WHERE run_id = ?");
       set.BindInt(1, graph_id);
       set.BindInt(2, run_id_);
       TF_RETURN_IF_ERROR(set.StepAndReset());
@@ -362,14 +352,14 @@ class RunWriter {
     TF_RETURN_IF_ERROR(id_allocator_.CreateNewId(tag_id));
     tag_ids_[tag_name] = *tag_id;
     if (!metadata.summary_description().empty()) {
-      SqliteStatement insert_description = db_->Prepare(R"sql(
+      SqliteStatement insert_description = db_->PrepareOrDie(R"sql(
         INSERT INTO Descriptions (id, description) VALUES (?, ?)
       )sql");
       insert_description.BindInt(1, *tag_id);
       insert_description.BindText(2, metadata.summary_description());
       TF_RETURN_IF_ERROR(insert_description.StepAndReset());
     }
-    SqliteStatement insert = db_->Prepare(R"sql(
+    SqliteStatement insert = db_->PrepareOrDie(R"sql(
       INSERT INTO Tags (
         run_id,
         tag_id,
@@ -399,7 +389,7 @@ class RunWriter {
  private:
   Status InitializeUser() {
     if (user_id_ != kAbsent || user_name_.empty()) return Status::OK();
-    SqliteStatement get = db_->Prepare(R"sql(
+    SqliteStatement get = db_->PrepareOrDie(R"sql(
       SELECT user_id FROM Users WHERE user_name = ?
     )sql");
     get.BindText(1, user_name_);
@@ -410,7 +400,7 @@ class RunWriter {
       return Status::OK();
     }
     TF_RETURN_IF_ERROR(id_allocator_.CreateNewId(&user_id_));
-    SqliteStatement insert = db_->Prepare(R"sql(
+    SqliteStatement insert = db_->PrepareOrDie(R"sql(
       INSERT INTO Users (user_id, user_name, inserted_time) VALUES (?, ?, ?)
     )sql");
     insert.BindInt(1, user_id_);
@@ -424,7 +414,7 @@ class RunWriter {
     if (experiment_name_.empty()) return Status::OK();
     if (experiment_id_ == kAbsent) {
       TF_RETURN_IF_ERROR(InitializeUser());
-      SqliteStatement get = db_->Prepare(R"sql(
+      SqliteStatement get = db_->PrepareOrDie(R"sql(
         SELECT
           experiment_id,
           started_time
@@ -444,7 +434,7 @@ class RunWriter {
       } else {
         TF_RETURN_IF_ERROR(id_allocator_.CreateNewId(&experiment_id_));
         experiment_started_time_ = computed_time;
-        SqliteStatement insert = db_->Prepare(R"sql(
+        SqliteStatement insert = db_->PrepareOrDie(R"sql(
           INSERT INTO Experiments (
             user_id,
             experiment_id,
@@ -463,7 +453,7 @@ class RunWriter {
     }
     if (computed_time < experiment_started_time_) {
       experiment_started_time_ = computed_time;
-      SqliteStatement update = db_->Prepare(R"sql(
+      SqliteStatement update = db_->PrepareOrDie(R"sql(
         UPDATE Experiments SET started_time = ? WHERE experiment_id = ?
       )sql");
       update.BindDouble(1, computed_time);
@@ -479,7 +469,7 @@ class RunWriter {
     if (run_id_ == kAbsent) {
       TF_RETURN_IF_ERROR(id_allocator_.CreateNewId(&run_id_));
       run_started_time_ = computed_time;
-      SqliteStatement insert = db_->Prepare(R"sql(
+      SqliteStatement insert = db_->PrepareOrDie(R"sql(
         INSERT OR REPLACE INTO Runs (
           experiment_id,
           run_id,
@@ -497,7 +487,7 @@ class RunWriter {
     }
     if (computed_time < run_started_time_) {
       run_started_time_ = computed_time;
-      SqliteStatement update = db_->Prepare(R"sql(
+      SqliteStatement update = db_->PrepareOrDie(R"sql(
         UPDATE Runs SET started_time = ? WHERE run_id = ?
       )sql");
       update.BindDouble(1, computed_time);
@@ -635,7 +625,7 @@ Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
                              const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
-  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
+  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db.get()));
   *result = new SummaryDbWriter(env, std::move(db), experiment_name, run_name,
                                 user_name);
   return Status::OK();

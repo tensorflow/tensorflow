@@ -181,7 +181,7 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta,
 
 
 def _compute_dx_and_dy(x, y, y_shape):
-  """Returns a node to compute gradient of x wrt y."""
+  """Returns a node to compute gradient of y wrt x."""
   # We make up a dy so that we can compute the gradients. We don't really use
   # the value of dy -- we will always feed it. We need to add an identity node
   # so that we can always feed it properly. Otherwise, for the Add operation,
@@ -189,7 +189,7 @@ def _compute_dx_and_dy(x, y, y_shape):
   with x.graph.as_default():
     dy_orig = constant_op.constant(1.0, shape=y_shape, dtype=y.dtype)
     dy = array_ops.identity(dy_orig)
-  # We compute the gradients for x wrt. y
+  # We compute the gradients for y wrt. x
   grads = gradients.gradients(y, x, dy)
   assert len(grads) == 1
   return grads[0], dy_orig

@@ -47,8 +47,8 @@ table QuantizationParameters {
 
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
-  // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // builtin ops use: [batch size, height, width, number of channels] (That's
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
@@ -108,6 +108,7 @@ enum BuiltinOperator : byte {
   UNIDIRECTIONAL_SEQUENCE_RNN = 35,
   GATHER = 36,
   BATCH_TO_SPACE_ND = 37,
+  SPACE_TO_BATCH_ND = 38,
 }
 
 // Options for the builtin operators.
@@ -136,6 +137,7 @@ union BuiltinOptions {
   PadOptions,
   GatherOptions,
   BatchToSpaceNDOptions,
+  SpaceToBatchNDOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -258,6 +260,12 @@ table PadOptions {
 
 table ReshapeOptions {
   new_shape:[int];
+}
+
+table SpaceToBatchNDOptions {
+  block_shape:[int];
+  before_paddings:[int];
+  after_paddings:[int];
 }
 
 table BatchToSpaceNDOptions {

@@ -108,6 +108,18 @@ Status Env::RegisterFileSystem(const string& scheme,
   return file_system_registry_->Register(scheme, std::move(factory));
 }
 
+Status Env::FlushFileSystemCaches() {
+  std::vector<string> schemes;
+  TF_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
+  for (const string& scheme : schemes) {
+    FileSystem* fs = nullptr;
+    TF_RETURN_IF_ERROR(
+        GetFileSystemForFile(io::CreateURI(scheme, "", ""), &fs));
+    fs->FlushCaches();
+  }
+  return Status::OK();
+}
+
 Status Env::NewRandomAccessFile(const string& fname,
                                 std::unique_ptr<RandomAccessFile>* result) {
   FileSystem* fs;

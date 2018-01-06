@@ -106,7 +106,7 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-class TPUReplicateContext(control_flow_ops.ControlFlowContext):
+class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
   The primary role of `TPUReplicateContext` is to mark operators inside a
@@ -122,7 +122,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   """
 
   def __init__(self, name):
-    control_flow_ops.ControlFlowContext.__init__(self)
+    super(TPUReplicateContext, self).__init__()
     self._name = name
     self._unsupported_ops = []
 
@@ -142,8 +142,9 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
-      raise ValueError("Operation of type %s (%s) is not supported on the TPU" %
-                       (op.type, op.name))
+      logging.error("Operation of type %s (%s) is not supported on the TPU. "
+                    "Execution will fail if this op is used in the graph. " %
+                    (op.type, op.name))
 
     if op.type in _NOT_IMPLEMENTED_OPS:
       self._unsupported_ops.append(op)

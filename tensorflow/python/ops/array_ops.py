@@ -1494,20 +1494,17 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
-    # Checking for boolean dtype to prevent attempting to run fill on the GPU
-    # which does not have a boolean kernel registered.
-    if context.in_eager_mode() and dtype != dtypes.bool:
-      return fill(shape, constant(zero, dtype=dtype), name=name)
-    try:
-      if isinstance(shape, ops.Tensor):
-        # TODO(apassos) this is required to reproduce the behavior from before
-        # Tensors were iterable. It's a crutch.
-        raise TypeError
-      shape = tensor_shape.as_shape(shape)
-      output = constant(zero, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(zero, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(zero, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -1625,15 +1622,17 @@ def ones(shape, dtype=dtypes.float32, name=None):
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
     one = True if dtype == dtypes.bool else 1
-    try:
-      if isinstance(shape, ops.Tensor):
-        raise TypeError(
-            "preserving semantics from before tensors were iterable")
-      shape = tensor_shape.as_shape(shape)
-      output = constant(one, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(one, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(one, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 
