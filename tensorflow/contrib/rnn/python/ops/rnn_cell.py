@@ -2598,8 +2598,8 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     Returns:
       A 2D Tensor with shape [batch x output_size] taking value
       sum_i(args[i] * W[i]), where each W[i] is a newly created Variable,
-      and where args[i] * W[i] will be layer normalized if `layer_norm` is
-      "columns"
+      and where args[i] * W[i] will be layer normalized if `layer_norm_columns`
+      is False.
 
     Raises:
       ValueError: if some of the arguments has unspecified or wrong shape.
