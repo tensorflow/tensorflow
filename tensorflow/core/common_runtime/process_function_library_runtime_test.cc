@@ -49,10 +49,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Status Run(const string& name, FunctionLibraryRuntime::Options opts,
-             test::function::Attrs attrs, const std::vector<Tensor>& args,
-             std::vector<Tensor*> rets) {
+             test::function::Attrs attrs,
+             const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
+             const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = proc_flr_->Instantiate(name, attrs, &handle);
+    Status status =
+        proc_flr_->Instantiate(name, attrs, instantiate_opts, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -142,21 +144,6 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, Basic) {
   rendezvous_->Unref();
 }
 
-TEST_F(ProcessFunctionLibraryRuntimeTest, ObtainFunctionTarget) {
-  AttrSlice empty_attrs;
-  string target =
-      ProcessFunctionLibraryRuntime::ObtainFunctionTarget(empty_attrs);
-  EXPECT_EQ("", target);
-
-  AttrValueMap attr_values;
-  AttrValue v;
-  v.set_s("/job:a/replica:0/task:0/cpu:1");
-  AddAttr("_target", v, &attr_values);
-  AttrSlice attrs(&attr_values);
-  target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
-  EXPECT_EQ("/job:a/replica:0/task:0/device:CPU:1", target);
-}
-
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetDeviceIncarnation) {
   Init({});
   int64 incarnation;
@@ -178,10 +165,8 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCall) {
   opts.remote_execution = true;
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
-  TF_CHECK_OK(
-      Run("XTimesTwo", opts,
-          {{"T", DT_FLOAT}, {"_target", "/job:a/replica:0/task:0/cpu:0"}}, {x},
-          {&y}));
+  TF_CHECK_OK(Run("XTimesTwo", opts, {{"T", DT_FLOAT}},
+                  {"/job:a/replica:0/task:0/cpu:0"}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
   rendezvous_->Unref();
 }
@@ -193,8 +178,8 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
-  TF_CHECK_OK(Run("FindDevice", opts,
-                  {{"_target", "/job:a/replica:0/task:0/cpu:0"}}, {}, {&y}));
+  TF_CHECK_OK(
+      Run("FindDevice", opts, {}, {"/job:a/replica:0/task:0/cpu:0"}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
                                 TensorShape({})));
@@ -209,15 +194,11 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
   opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
-  TF_CHECK_OK(
-      Run("XTimesTwo", opts,
-          {{"T", DT_FLOAT}, {"_target", "/job:a/replica:0/task:0/cpu:0"}}, {x},
-          {&y}));
+  TF_CHECK_OK(Run("XTimesTwo", opts, {{"T", DT_FLOAT}},
+                  {"/job:a/replica:0/task:0/cpu:0"}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
-  TF_CHECK_OK(
-      Run("XTimesFour", opts,
-          {{"T", DT_FLOAT}, {"_target", "/job:a/replica:0/task:0/cpu:0"}}, {x},
-          {&y}));
+  TF_CHECK_OK(Run("XTimesFour", opts, {{"T", DT_FLOAT}},
+                  {"/job:a/replica:0/task:0/cpu:0"}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
   rendezvous_->Unref();
 }
@@ -229,13 +210,13 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
   opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
-  TF_CHECK_OK(Run("FindDevice", opts,
-                  {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
+  TF_CHECK_OK(
+      Run("FindDevice", opts, {}, {"/job:a/replica:0/task:0/cpu:1"}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
-  TF_CHECK_OK(Run("FindDevice", opts,
-                  {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
+  TF_CHECK_OK(
+      Run("FindDevice", opts, {}, {"/job:a/replica:0/task:0/cpu:1"}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
@@ -249,11 +230,13 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
-  TF_CHECK_OK(Run("FindDevice", opts, {{"_target", "/cpu:0"}}, {}, {&y}));
+  TF_CHECK_OK(Run("FindDevice", opts, {},
+                  {"/job:a/replica:0/task:0/device:CPU:0"}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
                                 TensorShape({})));
-  TF_CHECK_OK(Run("FindDevice", opts, {{"_target", "/cpu:1"}}, {}, {&y}));
+  TF_CHECK_OK(Run("FindDevice", opts, {},
+                  {"/job:a/replica:0/task:0/device:CPU:1"}, {}, {&y}));
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
