@@ -802,8 +802,10 @@ void ConvertTensorFlowReshapeOperator(const Model& model,
   *reshape_op->add_input() = src_op.inputs[1];
   (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
   const auto& shape_array = model.GetArray(src_op.inputs[1]);
-  CHECK(shape_array.data_type == ArrayDataType::kInt32);
-  CHECK(shape_array.buffer != nullptr);
+  QCHECK(shape_array.data_type == ArrayDataType::kInt32)
+      << "Only int32 shape is supported.";
+  QCHECK(shape_array.buffer != nullptr)
+      << "Shape inferred at runtime is not supported.";
   const auto& shape_data = shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   CreateReshapeShapeTensorConst(src_op.inputs[1], shape_data, tensorflow_graph);
 }

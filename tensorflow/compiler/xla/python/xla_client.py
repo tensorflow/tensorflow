@@ -209,20 +209,24 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
-def transfer_to_infeed(value):
+def transfer_to_infeed(value, replica_number=None):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
   a totally ordered stream of values. This is dequeued from XLA computations via
   the Infeed() operation.
 
-  TODO(leary): this currently implicitly enqueues to device ordinal 0.
-
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
+    replica_number: the replica number to infeed the value to -- if not
+      provided, then the default replica (trivially replica 0) is used.
   """
-  c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+  if replica_number is None:
+    c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+  else:
+    c_api.TransferToInfeedLocalReplica(
+        require_numpy_array_layout(value), replica_number)
 
 
 class LocalComputation(object):
@@ -832,3 +836,25 @@ def _forward_methods_to_local_builder():
 
 
 _forward_methods_to_local_builder()
+
+
+def initialize_replica_count(replica_count):
+  """Initializes the desired replica count to use on XLA service init.
+
+  Args:
+    replica_count: number of replicas that are desired for set up during XLA
+      initalization.
+
+  Raises:
+    A runtime exception if the XLA service has already been initialized.
+  """
+  c_api.InitializeReplicaCount(replica_count)
+
+
+def get_replica_count():
+  """Returns the current replica count used for the XLA service.
+
+  Note: this will return a value whether the XLA service has been initialized
+  yet or not.
+  """
+  return c_api.GetReplicaCount()

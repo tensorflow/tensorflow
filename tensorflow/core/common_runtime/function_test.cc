@@ -191,14 +191,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
                      test::function::Attrs attrs,
                      FunctionLibraryRuntime::Handle* handle) {
-    return flr->Instantiate(name, attrs, handle);
-  }
-
-  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
-                     test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::Handle* handle) {
-    return flr->Instantiate(name, attrs, options, handle);
+    Status status = flr->Instantiate(name, attrs, handle);
+    if (!status.ok()) {
+      return status;
+    }
+    return Status::OK();
   }
 
   Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
@@ -1091,7 +1088,8 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Handle handle;
-  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {}, {"/device:CPU:1"}, &handle));
+  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {{"_target", "/device:CPU:1"}},
+                          &handle));
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;

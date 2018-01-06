@@ -1971,6 +1971,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({0.0f, 5.0f, 0.0f, -3.0f, 2.0f, -8.0f});
+  auto b = builder.ConstantR1<float>({6.0f, 0.0f, -4.0f, 0.0f, 2.0f, 8.0f});
+  auto atan = builder.Atan2(a, b);
+
+  ComputeAndCompareR1<float>(
+      &builder,
+      {0.0f, 1.57079633f, 3.14159265f, -1.57079633f, 0.78539816f, -0.78539816f},
+      {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({-2.5f, 3.14f, 2.25f});

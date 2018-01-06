@@ -1413,6 +1413,10 @@ REGISTER_OP("TensorArrayGradV3")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
       c->set_output(1, c->Scalar());
+      if (c->input_handle_shapes_and_types(0)) {
+        c->set_output_handle_shapes_and_types(
+            0, *c->input_handle_shapes_and_types(0));
+      }
       return Status::OK();
     })
     .Doc(R"doc(

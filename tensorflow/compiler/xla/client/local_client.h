@@ -176,6 +176,13 @@ class LocalClient : public Client {
   StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
       const Shape& shape, int device_ordinal);
 
+  // Returns the device ordinal that corresponds to the given replica number.
+  //
+  // This returns an error if there is not a one-to-one correspondence of
+  // replicas to device ordinals, but is useful as a short term mechanism for
+  // the "easy" case where a single replica is a single device.
+  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
+
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;
 

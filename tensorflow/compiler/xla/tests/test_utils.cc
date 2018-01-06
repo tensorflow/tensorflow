@@ -29,7 +29,7 @@ void PopulateWithRandomFloatingPointData(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<FloatT> generator(0.0f, 1.0f);
+  std::uniform_real_distribution<FloatT> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<FloatT>(
       [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
         return generator(engine);
@@ -42,7 +42,7 @@ template <>
 void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(), BF16);
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<float> generator(0.0f, 1.0f);
+  std::uniform_real_distribution<float> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<bfloat16>(
       [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
         return static_cast<bfloat16>(generator(engine));
@@ -126,6 +126,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
                                 fused_uses.end());
       } else if (NeedsZeroInitValue(use)) {
         constrained_uses.push_back(instruction);
+      } else if (opcode == HloOpcode::kConvert ||
+                 opcode == HloOpcode::kReducePrecision) {
+        auto converted_uses = FindConstrainedUses(dataflow, *instruction);
+        constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
+                                converted_uses.end());
       }
     }
   }

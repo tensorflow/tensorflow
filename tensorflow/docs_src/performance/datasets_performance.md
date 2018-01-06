@@ -224,7 +224,7 @@ dataset = files.interleave(tf.data.TFRecordDataset)
 to:
 
 ```
-dataset = files.apply(tf.data.contrib.parallel_interleave(
+dataset = files.apply(tf.contrib.data.parallel_interleave(
     tf.data.TFRecordDataset, cycle_length=FLAGS.num_parallel_readers))
 ```
 
