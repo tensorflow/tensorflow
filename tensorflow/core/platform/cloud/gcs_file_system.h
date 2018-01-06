@@ -84,6 +84,8 @@ class GcsFileSystem : public FileSystem {
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override;
 
+  void FlushCaches() override;
+
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
   size_t block_size() const { return file_block_cache_->block_size(); }

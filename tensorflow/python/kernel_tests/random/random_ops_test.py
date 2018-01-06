@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -173,6 +174,17 @@ class TruncatedNormalTest(test.TestCase):
       rnd2 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
       diff = rnd2 - rnd1
       self.assertTrue(np.linalg.norm(diff.eval()) > 0.1)
+
+  def testEagerSeed(self):
+    with context.eager_mode():
+      # Ensure a context has been created
+      random_ops.random_normal([])
+      # Set the same seed twice and check that the values match
+      context.set_global_seed(42)
+      rnd1 = random_ops.random_normal([])
+      context.set_global_seed(42)
+      rnd2 = random_ops.random_normal([])
+      self.assertAllEqual(rnd1, rnd2)
 
 
 class RandomUniformTest(test.TestCase):

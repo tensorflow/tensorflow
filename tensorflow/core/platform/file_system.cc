@@ -73,6 +73,8 @@ Status FileSystem::IsDirectory(const string& name) {
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
+void FileSystem::FlushCaches() {}
+
 RandomAccessFile::~RandomAccessFile() {}
 
 WritableFile::~WritableFile() {}

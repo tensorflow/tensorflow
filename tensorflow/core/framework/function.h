@@ -234,6 +234,15 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 // same.
 uint64 FunctionDefHash(const FunctionDef& fdef);
 
+// Returns a canonicalized string for the instantiation of the
+// function of the given "name" and attributes "attrs".
+//
+// The returned string is guaranteed to be stable within one address
+// space. But it may be change as the implementation
+// evolves. Therefore, it should not be persisted or compared across
+// address spaces.
+string Canonicalize(const string& funcname, AttrSlice attrs);
+
 class CallFrameInterface {
  public:
   virtual ~CallFrameInterface() {}
@@ -409,23 +418,9 @@ class FunctionLibraryRuntime {
   //
   // Returns OK and fills in "handle" if the instantiation succeeds.
   // Otherwise returns an error and "handle" is undefined.
-  struct InstantiateOptions {
-    // The canonical device name of the device on which the function
-    // should be instantiated. If empty, the function will be
-    // instantiated on the local device.
-    string target;
-
-    // TODO(b/70352992): Add an API for allowing a different
-    // FunctionLibraryDefinition to be overlaid on this runtime's library.
-  };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
-                             const InstantiateOptions& options,
                              Handle* handle) = 0;
-  Status Instantiate(const string& function_name, AttrSlice attrs,
-                     Handle* handle) {
-    return Instantiate(function_name, attrs, {}, handle);
-  }
 
   // Releases state associated with the handle.
   virtual Status ReleaseHandle(Handle handle) = 0;
@@ -507,19 +502,6 @@ class FunctionLibraryRuntime {
   typedef uint64 LocalHandle;
 };
 
-// Returns a canonicalized string for the instantiation of the
-// function of the given "name", attributes "attrs", and "options".
-//
-// The returned string is guaranteed to be stable within one address
-// space. But it may be change as the implementation
-// evolves. Therefore, it should not be persisted or compared across
-// address spaces.
-string Canonicalize(const string& funcname, AttrSlice attrs,
-                    const FunctionLibraryRuntime::InstantiateOptions& options);
-inline string Canonicalize(const string& funcname, AttrSlice attrs) {
-  return Canonicalize(funcname, attrs, {});
-}
-
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
@@ -532,11 +514,10 @@ class DistributedFunctionLibraryRuntime {
   virtual ~DistributedFunctionLibraryRuntime() {}
 
   // The _target attr in attrs determines where the function is instantiated.
-  virtual Status Instantiate(
-      const string& function_name, const FunctionLibraryDefinition& lib_def,
-      AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options,
-      FunctionLibraryRuntime::LocalHandle* handle) = 0;
+  virtual Status Instantiate(const string& function_name,
+                             const FunctionLibraryDefinition& lib_def,
+                             AttrSlice attrs,
+                             FunctionLibraryRuntime::LocalHandle* handle) = 0;
 
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,

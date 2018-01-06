@@ -21,9 +21,57 @@ namespace xla {
 
 namespace swig {
 
-void TransferToInfeedLocal(const Literal& literal) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
-  TF_CHECK_OK(client->TransferToInfeedLocal(literal, /*device_ordinal=*/0));
+// TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
+// device handles instead of needing to set the number of replicas at XLA
+// service initialization time.
+tensorflow::mutex g_replica_count_mutex(tensorflow::LINKER_INITIALIZED);
+int g_replica_count = 1;
+bool g_local_client_created = false;
+
+Status InitializeReplicaCount(int replica_count) {
+  if (replica_count < 1) {
+    return InvalidArgument("Replica count must be >= 1; got %d.",
+                           replica_count);
+  }
+  tensorflow::mutex_lock lock(g_replica_count_mutex);
+  if (g_local_client_created) {
+    return FailedPrecondition(
+        "Attempted to set the replica count to %d, but a local XLA service was "
+        "previously created with a replica count of %d.",
+        replica_count, g_replica_count);
+  }
+  g_replica_count = replica_count;
+  return Status::OK();
+}
+
+int GetReplicaCount() {
+  tensorflow::mutex_lock lock(g_replica_count_mutex);
+  return g_replica_count;
+}
+
+LocalClient* GetOrCreateLocalClient() {
+  LocalClientOptions options;
+  {
+    tensorflow::mutex_lock lock(g_replica_count_mutex);
+    options.set_number_of_replicas(g_replica_count);
+    g_local_client_created = true;
+  }
+  return ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+}
+
+Status TransferToInfeedLocal(const Literal& literal) {
+  VLOG(1) << "Infeeding literal without replica number.";
+  LocalClient* client = GetOrCreateLocalClient();
+  return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
+}
+
+Status TransferToInfeedLocalReplica(const Literal& literal,
+                                    int replica_number) {
+  VLOG(1) << "Infeeding literal to replica number: " << replica_number;
+  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  return client->TransferToInfeedLocal(literal, device_ordinal);
 }
 
 LocalShapedBuffer::LocalShapedBuffer(
@@ -37,7 +85,7 @@ const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
 
 /* static */
 LocalShapedBuffer* LocalShapedBuffer::FromLiteral(const Literal& argument) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
   std::unique_ptr<ScopedShapedBuffer> buf =
       client
           ->LiteralToShapedBuffer(argument,
@@ -48,7 +96,7 @@ LocalShapedBuffer* LocalShapedBuffer::FromLiteral(const Literal& argument) {
 }
 
 std::unique_ptr<Literal> LocalShapedBuffer::ToLiteral() const {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
   return client->ShapedBufferToLiteral(*shaped_buffer()).ConsumeValueOrDie();
 }
 
@@ -56,43 +104,95 @@ CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-std::unique_ptr<Literal> CompiledLocalComputation::Execute(
+StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
 
-  // Transfer arguments in
-  std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
-  scoped_buffers.reserve(arguments.size());
-  for (const Literal& argument : arguments) {
-    scoped_buffers.push_back(
-        client
-            ->LiteralToShapedBuffer(argument,
-                                    /*device_ordinal=*/0,
-                                    client->backend().memory_allocator())
-            .ConsumeValueOrDie());
+  // Each replica populates a StatusOr result, but only replica zero actually
+  // retrieves its literal value.
+  std::vector<StatusOr<std::unique_ptr<Literal>>> results(GetReplicaCount());
+  {
+    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
+                                        GetReplicaCount());
+
+    for (int replica = 0; replica < GetReplicaCount(); ++replica) {
+      pool.Schedule([this, client, replica, &arguments, &results] {
+        StatusOr<int> device_ordinal_status =
+            client->ReplicaNumberToDeviceOrdinal(replica);
+        if (!device_ordinal_status.ok()) {
+          results[replica] = device_ordinal_status.status();
+          return;
+        }
+        const int device_ordinal = device_ordinal_status.ValueOrDie();
+        VLOG(3) << "Replica " << replica
+                << " mapped to device ordinal for execution: "
+                << device_ordinal;
+        // Transfer arguments in
+        std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
+        scoped_buffers.reserve(arguments.size());
+        for (const Literal& argument : arguments) {
+          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed =
+              client->LiteralToShapedBuffer(
+                  argument, device_ordinal,
+                  client->backend().memory_allocator());
+          if (!pushed.ok()) {
+            results[replica] = pushed.status();
+            return;
+          }
+          scoped_buffers.push_back(std::move(pushed).ValueOrDie());
+        }
+
+        // Execute
+        std::vector<const ShapedBuffer*> argument_buffers;
+        argument_buffers.reserve(scoped_buffers.size());
+        for (auto& buffer : scoped_buffers) {
+          argument_buffers.push_back(buffer.get());
+        }
+
+        DeviceAssignment device_assignment =
+            client->backend()
+                .computation_placer()
+                ->AssignDevices(GetReplicaCount(), /*computation_count=*/1)
+                .ConsumeValueOrDie();
+
+        ExecutableRunOptions options;
+        options.set_device_ordinal(device_ordinal);
+        options.set_allocator(client->backend().memory_allocator());
+        options.set_inter_op_thread_pool(
+            client->backend().inter_op_thread_pool());
+        options.set_intra_op_thread_pool(
+            client->backend().eigen_intra_op_thread_pool_device());
+        options.set_device_assignment(&device_assignment);
+        StatusOr<std::unique_ptr<ScopedShapedBuffer>> result_buffer_status =
+            executable_->Run(argument_buffers, options);
+        if (!result_buffer_status.ok()) {
+          results[replica] = result_buffer_status.status();
+          return;
+        }
+
+        // Transfer result out
+        results[replica] =
+            client->ShapedBufferToLiteral(*result_buffer_status.ValueOrDie());
+      });
+    }
   }
 
-  // Execute
-  std::vector<const ShapedBuffer*> argument_buffers;
-  argument_buffers.reserve(scoped_buffers.size());
-  for (auto& buffer : scoped_buffers) {
-    argument_buffers.push_back(buffer.get());
+  for (int replica = 0; replica < GetReplicaCount(); ++replica) {
+    const auto& statusor = results[replica];
+    if (!statusor.ok()) {
+      return InternalError(
+          "Failed running replica %d (other replicas may have failed as well): "
+          "%s.",
+          replica, statusor.status().ToString().c_str());
+    }
   }
-  ExecutableRunOptions options;
-  options.set_allocator(client->backend().memory_allocator());
-  options.set_inter_op_thread_pool(client->backend().inter_op_thread_pool());
-  options.set_intra_op_thread_pool(
-      client->backend().eigen_intra_op_thread_pool_device());
-  std::unique_ptr<ScopedShapedBuffer> result_buffer =
-      executable_->Run(argument_buffers, options).ConsumeValueOrDie();
 
-  // Transfer result out
-  return client->ShapedBufferToLiteral(*result_buffer).ConsumeValueOrDie();
+  return std::move(results[0]);
 }
 
 LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
     tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
 
   std::vector<const ShapedBuffer*> argument_buffers;
   argument_buffers.reserve(argument_handles.size());
@@ -123,7 +223,7 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
     argument_shape_pointers.push_back(&argument_shape);
   }
 
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
   ExecutableBuildOptions options;
   TF_ASSIGN_OR_RETURN(
       auto local_executable,
@@ -136,7 +236,7 @@ const Computation& LocalComputation::computation() const {
 }
 
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
-    : builder_(ClientLibrary::LocalClientOrDie(), computation_name) {}
+    : builder_(GetOrCreateLocalClient(), computation_name) {}
 
 StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());

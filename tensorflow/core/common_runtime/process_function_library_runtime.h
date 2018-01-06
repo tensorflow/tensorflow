@@ -53,6 +53,11 @@ class ProcessFunctionLibraryRuntime {
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator);
 
+  // Given a list of attrs on a function, extracts the "_target" attribute which
+  // indicates which device to run the function on. If it can't find the _target
+  // attribute, returns "". Canonicalizes the device name.
+  static string ObtainFunctionTarget(const AttrSlice& attrs);
+
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
   // Rendezvous. `device_context` should be the DeviceContext of the device
@@ -116,7 +121,6 @@ class ProcessFunctionLibraryRuntime {
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
   Status Instantiate(const string& function_name, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
