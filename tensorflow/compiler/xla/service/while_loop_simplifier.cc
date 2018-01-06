@@ -306,6 +306,11 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
+    return false;
+  }
+
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
 
   // Bail if param0 of while_cond or while_body has users which aren't of type

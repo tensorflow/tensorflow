@@ -142,8 +142,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
-      raise ValueError("Operation of type %s (%s) is not supported on the TPU" %
-                       (op.type, op.name))
+      logging.error("Operation of type %s (%s) is not supported on the TPU. "
+                    "Execution will fail if this op is used in the graph. " %
+                    (op.type, op.name))
 
     if op.type in _NOT_IMPLEMENTED_OPS:
       self._unsupported_ops.append(op)

@@ -478,8 +478,7 @@ class RandomForestGraphs(object):
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      A tuple of (probabilities, tree_paths, variance), where variance
-      is the variance over all the trees for regression problems only.
+      A tuple of (probabilities, tree_paths, variance).
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -513,13 +512,12 @@ class RandomForestGraphs(object):
           self.params.num_trees,
           name='probabilities')
       tree_paths = array_ops.stack(paths, axis=1)
-      regression_variance = None
-      if self.params.regression:
-        expected_squares = math_ops.div(
-            math_ops.reduce_sum(all_predict * all_predict, 1),
-            self.params.num_trees)
-        regression_variance = math_ops.maximum(
-            0., expected_squares - average_values * average_values)
+
+      expected_squares = math_ops.div(
+          math_ops.reduce_sum(all_predict * all_predict, 1),
+          self.params.num_trees)
+      regression_variance = math_ops.maximum(
+          0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

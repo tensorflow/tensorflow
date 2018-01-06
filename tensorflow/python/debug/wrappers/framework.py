@@ -154,8 +154,7 @@ class OnSessionInitRequest(object):
       sess: A tensorflow Session object.
     """
 
-    _check_type(sess, (session.SessionInterface,
-                       monitored_session.MonitoredSession))
+    _check_type(sess, (session.BaseSession, monitored_session.MonitoredSession))
     self.session = sess
 
 
@@ -359,8 +358,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
       NotImplementedError: If a non-DirectSession sess object is received.
     """
 
-    _check_type(sess, (session.SessionInterface,
-                       monitored_session.MonitoredSession))
+    _check_type(sess, (session.BaseSession, monitored_session.MonitoredSession))
 
     # The session being wrapped.
     self._sess = sess

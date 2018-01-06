@@ -34,7 +34,6 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::LocalHandle* handle) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -43,10 +42,10 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
            FunctionLibraryRuntime::DoneCallback done) override;
 
  private:
-  static Status ConstructFunctionGraph(
-      const OpDef& sig, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
-      std::vector<string>* send_keys, std::vector<string>* recv_keys);
+  static Status ConstructFunctionGraph(const OpDef& sig, AttrSlice attrs,
+                                       GraphDef* g,
+                                       std::vector<string>* send_keys,
+                                       std::vector<string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 
   mutable mutex mu_;

@@ -58,6 +58,10 @@ class SingleMachineTest : public ::testing::Test {
   std::unique_ptr<SingleMachine> cluster_;
 };
 
+TEST_F(SingleMachineTest, ClusterType) {
+  CHECK_EQ("single_machine", cluster_->type());
+}
+
 TEST_F(SingleMachineTest, CostModel) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
                                           cluster_->GetDeviceNames());

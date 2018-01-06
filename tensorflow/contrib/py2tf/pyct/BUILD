@@ -22,6 +22,7 @@ py_library(
         "compiler.py",
         "parser.py",
         "pretty_printer.py",
+        "templates.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -30,6 +31,10 @@ py_library(
 py_test(
     name = "anno_test",
     srcs = ["anno_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -65,6 +70,19 @@ py_test(
 py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "templates_test",
+    srcs = ["templates_test.py"],
     tags = [
         "manual",
         "notap",

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_H_
 
 // C API extensions to experiment with eager execution of kernels.
+// WARNING: Unlike tensorflow/c/c_api.h, the API here is not guaranteed to be
+// stable and can change without notice.
 
 #include "tensorflow/c/c_api.h"
 
@@ -86,6 +88,10 @@ TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
 TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);
+
+// Clears the internal caches in the TFE context. Useful when reseeding random
+// ops.
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 
 // A handle to a tensor on a device.
 //

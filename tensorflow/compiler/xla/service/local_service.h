@@ -47,6 +47,13 @@ class LocalService : public Service {
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const Shape* result_layout, int device_ordinal);
 
+  // Returns the device ordinal that corresponds to the given replica number.
+  //
+  // This returns an error if there is not a one-to-one correspondence of
+  // replicas to device ordinals, but is useful as a short term mechanism for
+  // the "easy" case where a single replica is a single device.
+  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
+
  private:
   explicit LocalService(const ServiceOptions& options,
                         std::unique_ptr<Backend> backend);
