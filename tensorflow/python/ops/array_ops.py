@@ -1107,7 +1107,8 @@ def concat(values, axis, name="concat"):
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
     axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
-      in the range `[-rank(values), rank(values))`.
+      in the range `[-rank(values), rank(values))`. If a negative number for
+      axis is specified then it is counted backward from the end.
     name: A name for the operation (optional).
 
   Returns:
