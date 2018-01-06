@@ -1699,10 +1699,6 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
     int input_port;
     auto input = node_map_->GetNode(node_->input(0));
     ParseNodeName(node_->input(0), &input_port);
-    if (IsTransposeNCHWToNHWC(input->name())) {
-      input = node_map_->GetNode(input->input(0));
-      ParseNodeName(input->input(0), &input_port);
-    }
     if (input->attr().find("_output_shapes") != input->attr().end()) {
       auto shape = input->attr().at("_output_shapes").list().shape(input_port);
       if (shape.dim_size() != 4) {
@@ -1749,14 +1745,24 @@ class ReduceProcessor : public AgnosticNodeProcessor {
            IsOnGPU();
   }
 
+  Status CustomizedProcessing() override {
+    if (IsAlongNHW() || IsAlongHW() || IsAlongC()) {
+      DataType dtype = node_->attr().at("Tidx").type();
+      TF_RETURN_IF_ERROR(
+          UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype));
+    }
+    return Status::OK();
+  }
+
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
  private:
   bool IsReduceAxisSupported() const {
-    return IsAlongAllFourDims() || IsAlongHWC();
+    return IsAlongAllFourDims() || IsAlongHWC() ||
+           ((IsAlongNHW() || IsAlongHW() || IsAlongC()) && !KeepDims());
   }
 
-  bool IsAlongAllFourDims() const {
+  bool IsAlongAxis(const std::vector<int>& axis) const {
     auto axis_node = node_map_->GetNode(node_->input(1));
     if (!IsConstant(*axis_node)) {
       return false;
@@ -1767,36 +1773,28 @@ class ReduceProcessor : public AgnosticNodeProcessor {
       if (!success) {
         LOG(ERROR) << "Failed to parse TensorProto.";
       }
-      if (tensor.dims() == 1 && tensor.dim_size(0) == 4) {
-        if (tensor.flat<int>()(0) == 0 && tensor.flat<int>()(1) == 1 &&
-            tensor.flat<int>()(2) == 2 && tensor.flat<int>()(3) == 3) {
-          return true;
+      if (tensor.dims() == 1 && tensor.dim_size(0) == axis.size()) {
+        bool along_axis = true;
+        for (int i = 0; i < axis.size(); i++) {
+          along_axis = along_axis && (tensor.flat<int>()(i) == axis[i]);
         }
+        if (along_axis) return true;
       }
     }
     return false;
   }
 
-  bool IsAlongHWC() const {
-    auto axis_node = node_map_->GetNode(node_->input(1));
-    if (!IsConstant(*axis_node)) {
-      return false;
-    }
-    if (HasAttribute(*axis_node, "value").ok()) {
-      Tensor tensor;
-      auto success = tensor.FromProto(axis_node->attr().at({"value"}).tensor());
-      if (!success) {
-        LOG(ERROR) << "Failed to parse TensorProto.";
-      }
-      if (tensor.dims() == 1 && tensor.dim_size(0) == 3) {
-        if (tensor.flat<int>()(0) == 1 && tensor.flat<int>()(1) == 2 &&
-            tensor.flat<int>()(2) == 3) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
+  bool IsAlongAllFourDims() const { return IsAlongAxis({0, 1, 2, 3}); }
+
+  bool IsAlongHWC() const { return IsAlongAxis({1, 2, 3}); }
+
+  bool IsAlongNHW() const { return IsAlongAxis({0, 1, 2}); }
+
+  bool IsAlongHW() const { return IsAlongAxis({1, 2}); }
+
+  bool IsAlongC() const { return IsAlongAxis({3}); }
+
+  bool KeepDims() const { return node_->attr().at("keep_dims").b(); }
 };
 
 class SwitchProcessor : public AgnosticNodeProcessor {
