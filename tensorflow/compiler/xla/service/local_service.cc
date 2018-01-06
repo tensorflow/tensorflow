@@ -122,4 +122,10 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
                          execute_backend_.get(), executor);
 }
 
+StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return backend().computation_placer()->DeviceId(
+      replica_number, /*computation=*/0, options_.number_of_replicas(),
+      /*computation_count=*/1);
+}
+
 }  // namespace xla

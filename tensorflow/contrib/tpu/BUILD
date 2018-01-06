@@ -176,7 +176,9 @@ tf_py_test(
     additional_deps = [
         ":tpu",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
     ],
 )
 

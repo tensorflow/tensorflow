@@ -133,6 +133,9 @@ class Context(object):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
     self._rng = random.Random(self._seed)
+    # Also clear the kernel cache, to reset any existing seeds
+    if self._context_handle is not None:
+      pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
 
   def _internal_operation_seed(self):
     """Returns a fake operation seed.

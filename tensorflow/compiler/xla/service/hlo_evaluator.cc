@@ -467,6 +467,27 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleSign<ReturnT>(sign);
   }
 
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleAtan2(HloInstruction* atan2) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[atan2],
+                        ElementWiseBinaryOp(atan2, [](ElementwiseT lhs_elem,
+                                                      ElementwiseT rhs_elem) {
+                          return std::atan2(lhs_elem, rhs_elem);
+                        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<!std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleAtan2(HloInstruction* atan2) {
+    return InvalidArgument("Unsupported type for Atan2");
+  }
+
+  Status HandleAtan2(HloInstruction* atan2) override {
+    return HandleAtan2<ElementwiseT>(atan2);
+  }
+
   Status HandleTanh(HloInstruction* tanh) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[tanh],
                         ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {

@@ -164,7 +164,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
                 buffer_element.value.size()));
             for (size_t j = 0; j < buffer_element.value.size(); j++) {
               TF_RETURN_IF_ERROR(writer->WriteTensor(
-                  strings::StrCat("buffer[", i, "][", j, "]"),
+                  full_name(strings::StrCat("buffer[", i, "][", j, "]")),
                   buffer_element.value[j]));
             }
           }
@@ -201,7 +201,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
             for (size_t j = 0; j < value_size; j++) {
               buffer_element.value.emplace_back();
               TF_RETURN_IF_ERROR(reader->ReadTensor(
-                  strings::StrCat("buffer[", i, "][", j, "]"),
+                  full_name(strings::StrCat("buffer[", i, "][", j, "]")),
                   &buffer_element.value.back()));
             }
           }

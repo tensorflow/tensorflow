@@ -25,6 +25,7 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -1450,6 +1451,10 @@ using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
 template <typename ValueT>
 using ConstHloInstructionMap =
     std::map<const HloInstruction*, ValueT, HloPtrComparator>;
+
+using HloInstructionSet = std::set<HloInstruction*, HloPtrComparator>;
+using ConstHloInstructionSet =
+    std::set<const HloInstruction*, HloPtrComparator>;
 
 }  // namespace xla
 

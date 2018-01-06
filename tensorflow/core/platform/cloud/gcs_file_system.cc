@@ -1377,6 +1377,15 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   return Status::OK();
 }
 
+// Flushes all caches for filesystem metadata and file contents. Useful for
+// reclaiming memory once filesystem operations are done (e.g. model is loaded),
+// or for resetting the filesystem to a consistent state.
+void GcsFileSystem::FlushCaches() {
+  file_block_cache_->Flush();
+  stat_cache_->Clear();
+  matching_paths_cache_->Clear();
+}
+
 // Creates an HttpRequest and sets several parameters that are common to all
 // requests.  All code (in GcsFileSystem) that creates an HttpRequest should
 // go through this method, rather than directly using http_request_factory_.

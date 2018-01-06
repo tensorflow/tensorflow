@@ -98,7 +98,10 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
   status->status = tensorflow::Status::OK();
-  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+  {
+    tensorflow::mutex_lock ml(ctx->cache_mu);
+    tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+  }
   TF_Graph* graph = ctx->session->graph;
   TF_DeleteSession(ctx->session, status);
   TF_DeleteGraph(graph);
@@ -108,6 +111,11 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
+}
+
+void TFE_ContextClearCaches(TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->cache_mu);
+  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -489,8 +497,11 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   std::vector<tensorflow::Tensor> outputs(1);
   const tensorflow::MemoryTypeVector* output_memory_types = nullptr;
   tensorflow::Fprint128 cache_key = op->attrs.CacheKey(device->name());
-  tensorflow::KernelAndDevice* kernel =
-      tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
+  tensorflow::KernelAndDevice* kernel;
+  {
+    tensorflow::tf_shared_lock l(ctx->cache_mu);
+    kernel = tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
+  }
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
@@ -506,6 +517,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
       delete kernel;
       return;
     }
+    tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
   }
   std::vector<TFE_TensorHandle*> copied_tensors;

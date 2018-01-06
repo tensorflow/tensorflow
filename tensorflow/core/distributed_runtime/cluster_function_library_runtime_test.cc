@@ -47,31 +47,30 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
         new ClusterFunctionLibraryRuntime(worker_session_.get()));
   }
 
-  Status ConstructFunctionGraphHelper(
-      const OpDef& sig, test::function::Attrs attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
-      std::vector<string>* send_keys, std::vector<string>* recv_keys) {
+  Status ConstructFunctionGraphHelper(const OpDef& sig,
+                                      test::function::Attrs attrs, GraphDef* g,
+                                      std::vector<string>* send_keys,
+                                      std::vector<string>* recv_keys) {
     return ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
-        sig, attrs, options, g, send_keys, recv_keys);
+        sig, attrs, g, send_keys, recv_keys);
   }
 
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def,
                      test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::LocalHandle* local_handle) {
-    return cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
+    return cluster_flr_->Instantiate(function_name, lib_def, attrs,
                                      local_handle);
   }
 
-  Status InstantiateAndRun(
-      const string& function_name, const FunctionLibraryDefinition& lib_def,
-      test::function::Attrs attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options,
-      const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
+  Status InstantiateAndRun(const string& function_name,
+                           const FunctionLibraryDefinition& lib_def,
+                           test::function::Attrs attrs,
+                           const std::vector<Tensor>& args,
+                           std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    TF_RETURN_IF_ERROR(cluster_flr_->Instantiate(function_name, lib_def, attrs,
-                                                 options, &handle));
+    TF_RETURN_IF_ERROR(
+        cluster_flr_->Instantiate(function_name, lib_def, attrs, &handle));
 
     Notification done;
     FunctionLibraryRuntime::Options opts;
@@ -104,9 +103,9 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {
   GraphDef actual;
   std::vector<string> send_keys, recv_keys;
   TF_CHECK_OK(ConstructFunctionGraphHelper(
-      test::function::Swap().signature(), {{"T", DT_FLOAT}},
-      {"/job:a/replica:0/task:0/device:CPU:0"}, &actual, &send_keys,
-      &recv_keys));
+      test::function::Swap().signature(),
+      {{"T", DT_FLOAT}, {"_target", "/job:a/replica:0/task:0/cpu:0"}}, &actual,
+      &send_keys, &recv_keys));
   GraphDef expected;
   protobuf::TextFormat::ParseFromString(R"(
 node {
@@ -206,7 +205,7 @@ node {
   attr {
     key: "_target"
     value {
-      s: "/job:a/replica:0/task:0/device:CPU:0"
+      s: "/job:a/replica:0/task:0/cpu:0"
     }
   }
 }
@@ -310,9 +309,9 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, DISABLED_InstantiateAndRun) {
 
   Tensor y;
   auto x = test::AsTensor<int32>({1, 2, 3, 4});
-  TF_EXPECT_OK(InstantiateAndRun("XTimesTwoInt32", lib_def, {},
-                                 {"/job:localhost/replica:0/task:1/cpu:0"}, {x},
-                                 {&y}));
+  TF_EXPECT_OK(InstantiateAndRun(
+      "XTimesTwoInt32", lib_def,
+      {{"_target", "/job:localhost/replica:0/task:1/cpu:0"}}, {x}, {&y}));
   test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
 }
 
@@ -325,9 +324,10 @@ TEST_F(ClusterFunctionLibraryRuntimeTest,
   Tensor y1, y2;
   auto x1 = test::AsTensor<float>({1, 2, 3, 4});
   auto x2 = test::AsTensor<float>({4, 3, 2, 1});
-  TF_EXPECT_OK(InstantiateAndRun("Swap", lib_def, {{"T", DT_FLOAT}},
-                                 {"/job:localhost/replica:0/task:1/cpu:0"},
-                                 {x1, x2}, {&y1, &y2}));
+  TF_EXPECT_OK(InstantiateAndRun(
+      "Swap", lib_def,
+      {{"T", DT_FLOAT}, {"_target", "/job:localhost/replica:0/task:1/cpu:0"}},
+      {x1, x2}, {&y1, &y2}));
   test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({4, 3, 2, 1}));
   test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({1, 2, 3, 4}));
 }
