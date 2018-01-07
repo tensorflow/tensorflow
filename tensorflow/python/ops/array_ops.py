@@ -1090,6 +1090,27 @@ def concat(values, axis, name="concat"):
   tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
   tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
   ```
+  As in Python, the `axis` could also be negative numbers. Negative `axis`
+  are interpreted as counting from the end of the rank, i.e.,
+   `axis + rank(values)`-th dimension.
+
+  For example:
+
+  ```python
+  t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
+  t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
+  tf.concat([t1, t2], -1)
+  ```
+
+  would produce:
+
+  ```python
+  [[[ 1,  2,  7,  4],
+    [ 2,  3,  8,  4]],
+
+   [[ 4,  4,  2, 10],
+    [ 5,  3, 15, 11]]]
+  ```
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
@@ -1107,8 +1128,10 @@ def concat(values, axis, name="concat"):
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
     axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
-      in the range `[-rank(values), rank(values))`. If a negative number for
-      axis is specified then it is counted backward from the end.
+      in the range `[-rank(values), rank(values))`. As in Python, indexing
+      for axis is 0-based. Positive axis in the rage of
+      `[0, rank(values))` refers to `axis`-th dimension. And negative axis
+      refers to `axis + rank(values)`-th dimension.
     name: A name for the operation (optional).
 
   Returns:
