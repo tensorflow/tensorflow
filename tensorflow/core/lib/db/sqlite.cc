@@ -96,7 +96,7 @@ Status SetEnvPragmaActual(Sqlite* db, const char* pragma, const char* var) {
     }
   }
   // We can't use Bind*() for pragmas.
-  auto stmt = db->Prepare(strings::StrCat("PRAGMA ", pragma, "=", value));
+  auto stmt = db->PrepareOrDie(strings::StrCat("PRAGMA ", pragma, "=", value));
   TF_RETURN_IF_ERROR(stmt.status());
   bool unused_done;
   return stmt.ValueOrDie().Step(&unused_done);

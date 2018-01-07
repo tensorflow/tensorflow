@@ -62,7 +62,7 @@ Status SqliteQueryConnection::GetNext(std::vector<Tensor>* out_tensors,
 }
 
 Status SqliteQueryConnection::PrepareQuery() {
-  auto prep = db_->Prepare(query_);
+  auto prep = db_->PrepareOrDie(query_);
   TF_RETURN_IF_ERROR(prep.status());
   int column_count = prep.ValueOrDie().ColumnCount();
   if (column_count != output_types_.size()) {

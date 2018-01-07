@@ -195,7 +195,7 @@ TEST_F(SqliteTest, Statement_MoveAssignment) {
 
 TEST_F(SqliteTest, PrepareFailed) {
   SqliteLock lock(*db_);
-  Status s = db_->Prepare("SELECT").status();
+  Status s = db_->PrepareOrDie("SELECT").status();
   ASSERT_FALSE(s.ok());
   EXPECT_NE(string::npos, s.error_message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
