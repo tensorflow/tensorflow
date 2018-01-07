@@ -743,7 +743,8 @@ template <int POW>
 void TestDivide64x2Pow(int64 val, int64 ref) {
   const int64x2_t val_64x2 = vmovq_n_s64(val);
   const int64x2_t ret = Divide64x2Pow<POW>(val_64x2);
-  int64 rets[2];
+  // TODO(b/70947959) Change back to int64 when possible
+  int64_t rets[2];
   vst1q_s64(rets, ret);
   EXPECT_EQ(rets[0], ref);
   EXPECT_EQ(rets[1], ref);
@@ -754,7 +755,8 @@ template <int POW>
 void TestDivide64x2PowRound(int64 val, int64 ref) {
   const int64x2_t val_64x2 = vmovq_n_s64(val);
   const int64x2_t shifted = Divide64x2PowRound<POW>(val_64x2);
-  int64 rets[2];
+  // TODO(b/70947959) Change back to int64 when possible
+  int64_t rets[2];
   vst1q_s64(rets, shifted);
   EXPECT_EQ(rets[0], ref) << "in = " << val << ", " << POW
                           << ", act = " << rets[0] << ", ref = " << ref;

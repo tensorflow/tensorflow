@@ -726,8 +726,8 @@ void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
+  // This method only handles input dimensions of 4.
   if (input_shape.dimensions_count() != 4) {
-    // This method only handles input dimensions of 4
     return;
   }
   const auto input_height = input_shape.dims(1);

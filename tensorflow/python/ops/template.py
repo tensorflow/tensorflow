@@ -127,8 +127,8 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
 
   Returns:
     A function to encapsulate a set of variables which should be created once
-    and reused. An enclosing scope will created, either where `make_template`
-    is called, or wherever the result is called, depending on the value of
+    and reused. An enclosing scope will be created either when `make_template`
+    is called or when the result is called, depending on the value of
     `create_scope_now_`. Regardless of the value, the first time the template
     is called it will enter the scope with no reuse, and call `func_` to create
     variables, which are guaranteed to be unique. All subsequent calls will

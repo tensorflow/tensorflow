@@ -16,6 +16,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
+import numpy as np
+
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
@@ -88,6 +92,65 @@ class IteratorTest(test.TestCase):
       x = datasets.Iterator(ds).next()
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
+
+
+class DatasetConstructorBenchmark(test.Benchmark):
+
+  def benchmarkSliceRepeatBatchEager(self):
+    input_size = 10000
+    batch_size = 100
+    num_epochs = 100
+
+    input_data = np.random.randn(input_size)
+
+    dataset = (
+        Dataset.from_tensor_slices(input_data).repeat(num_epochs)
+        .batch(batch_size))
+    iterator = datasets.Iterator(dataset)
+
+    ends = [time.time()]
+    for _ in iterator:
+      ends.append(time.time())
+
+    deltas = np.ediff1d(ends)
+    median_wall_time = np.median(deltas)
+    print(
+        'Slice/repeat/batch eager input size: %d batch size: %d Median wall '
+        'time per element: %f'
+        % (input_size, batch_size, median_wall_time))
+    self.report_benchmark(
+        iters=len(deltas),
+        wall_time=median_wall_time,
+        name='benchmark_slice_repeat_batch_eager_input_%d_batch_%d' %
+        (input_size, batch_size))
+
+  def benchmarkSliceBatchCacheRepeatCallable(self):
+    input_size = 10000
+    batch_size = 100
+    num_epochs = 100
+
+    input_data = np.random.randn(input_size)
+
+    dataset = (
+        Dataset.from_tensor_slices(input_data).batch(batch_size).cache()
+        .repeat(num_epochs))
+    iterator = datasets.Iterator(dataset)
+
+    ends = [time.time()]
+    for _ in iterator:
+      ends.append(time.time())
+
+    deltas = np.ediff1d(ends)
+    median_wall_time = np.median(deltas)
+    print(
+        'Slice/batch/cache/repeat eager input size: %d batch size: %d Median '
+        'wall time per element: %f'
+        % (input_size, batch_size, median_wall_time))
+    self.report_benchmark(
+        iters=len(deltas),
+        wall_time=median_wall_time,
+        name='benchmark_slice_batch_cache_repeat_eager_input_%d_batch_%d' %
+        (input_size, batch_size))
 
 
 if __name__ == '__main__':

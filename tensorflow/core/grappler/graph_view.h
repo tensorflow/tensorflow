@@ -29,8 +29,8 @@ namespace grappler {
 class GraphView {
  public:
   struct Port {
-    NodeDef* node;
-    int port_id;
+    NodeDef* node = nullptr;
+    int port_id = -1;
 
     bool operator==(const Port& other) const {
       return node == other.node && port_id == other.port_id;

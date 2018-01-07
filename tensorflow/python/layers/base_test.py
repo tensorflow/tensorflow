@@ -531,6 +531,30 @@ class BaseLayerTest(test.TestCase):
       self.assertEqual(layer2.my_var.name, 'name_3/my_var:0')
       self.assertEqual(op2.name, 'name_3/my_op:0')
 
+  def testVariablesAreLiftedFromFunctionBuildingGraphs(self):
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.my_var = self.add_variable('my_var', (), dtypes.float32)
+        self.built = True
+
+      def call(self, inputs):
+        return inputs
+
+    outer_graph = ops.get_default_graph()
+    function_building_graph = ops.Graph()
+    function_building_graph._building_function = True
+    with outer_graph.as_default():
+      with function_building_graph.as_default():
+        layer = MyLayer()
+        # Create a variable by invoking build through __call__ and assert that
+        # it is both tracked and lifted into the outer graph.
+        inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+        layer.apply(inputs)
+        self.assertEqual(len(layer.variables), 1)
+        self.assertEqual(len(layer.trainable_variables), 1)
+        self.assertEqual(layer.variables[0].graph, outer_graph)
+
 
 if __name__ == '__main__':
   test.main()
