@@ -174,11 +174,7 @@ def _internal_input_layer(features,
           'Items of feature_columns must be a _DenseColumn. '
           'You can wrap a categorical column with an '
           'embedding_column or indicator_column. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+  weight_collections = _populate_weight_collections(weight_collections)
 
   # a non-None `scope` can allow for variable reuse, when, e.g., this function
   # is wrapped by a `make_template`.
@@ -207,6 +203,15 @@ def _internal_input_layer(features,
               scope=variable_scope.get_variable_scope().name)
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
+
+
+def _populate_weight_collections(weight_collections):
+  weight_collections = list(weight_collections or [])
+  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+  return weight_collections
 
 
 def input_layer(features,
@@ -406,11 +411,7 @@ def linear_model(features,
     if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
       raise ValueError('Items of feature_columns must be either a _DenseColumn '
                        'or _CategoricalColumn. Given: {}'.format(column))
-  weight_collections = list(weight_collections or [])
-  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
-  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
-    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+  weight_collections = _populate_weight_collections(weight_collections)
   with variable_scope.variable_scope(
       None, default_name='linear_model', values=features.values()):
     weighted_sums = []
