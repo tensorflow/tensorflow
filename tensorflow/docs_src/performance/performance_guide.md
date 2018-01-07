@@ -224,11 +224,7 @@ On NVIDIA GPUs, the use of @{tf.contrib.cudnn_rnn} should always be preferred
 unless you want layer normalization, which it doesn't support.  It is often at
 least an order of magnitude faster than @{tf.contrib.rnn.BasicLSTMCell} and
 @{tf.contrib.rnn.LSTMBlockCell} and uses 3-4x less memory than
-@{tf.contrib.rnn.BasicLSTMCell}.  Unfortunately, @{tf.contrib.cudnn_rnn} is not
-compatible with @{tf.train.SyncReplicasOptimizer} so you should either use a
-different synchronization mechanism (consider an all-reduce based strategy) or
-use the @{tf.contrib.rnn.LSTMBlockFusedCell} (at a significant performance
-penalty).
+@{tf.contrib.rnn.BasicLSTMCell}.
 
 If you need to run one step of the RNN at a time, as might be the case in
 reinforcement learning with a recurrent policy, then you should use the

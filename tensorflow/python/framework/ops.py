@@ -4882,16 +4882,16 @@ def init_scope():
         context switch is popped from the stack when the context is exited.
         Entering an `init_scope` is equivalent to crawling up the
         `context_stack`, finding the first context that is not building a graph
-        function, and entering it.
+        function, and entering it. A caveat is that if graph mode is enabled
+        but the default graph stack is empty, then entering an `init_scope`
+        will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
   outer_context = None
-  if not context.context_stack.stack:
-    # This is correct because of an invariant: the stack is
-    # empty if and only if eager execution has not been enabled.
+  if context.in_graph_mode() and not _default_graph_stack.stack:
     outer_context = get_default_graph().as_default
   else:
     for stack_entry in reversed(context.context_stack.stack):

@@ -169,8 +169,16 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
       std::unique_ptr<ScopedShapedBuffer> scoped_result,
       ScopedShapedBuffer::MakeScoped(result.get(), run_options.allocator()));
 
-  return backend().transfer_manager()->TransferLiteralFromDevice(
+  auto result_literal = backend().transfer_manager()->TransferLiteralFromDevice(
       stream.parent(), *scoped_result);
+  if (result_literal.ok()) {
+    VLOG(4) << "Executed binary and got result: "
+            << result_literal.ValueOrDie()->ToString();
+  } else {
+    VLOG(4) << "Executed binary and got status: "
+            << result_literal.status().ToString();
+  }
+  return result_literal;
 }
 
 Backend& HloRunner::backend() {

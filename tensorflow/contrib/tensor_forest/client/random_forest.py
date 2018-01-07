@@ -237,8 +237,7 @@ def get_model_fn(params,
     if params.inference_tree_paths:
       model_ops.predictions[TREE_PATHS_PREDICTION_KEY] = tree_paths
 
-    if params.regression:
-      model_ops.predictions[VARIANCE_PREDICTION_KEY] = regression_variance
+    model_ops.predictions[VARIANCE_PREDICTION_KEY] = regression_variance
 
     return model_ops
 

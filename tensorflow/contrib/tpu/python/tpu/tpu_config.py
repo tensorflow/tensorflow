@@ -99,7 +99,10 @@ class TPUConfig(
 class RunConfig(run_config_lib.RunConfig):
   """RunConfig with TPU support."""
 
-  def __init__(self, tpu_config=None, evaluation_master=None, master='',
+  def __init__(self,
+               tpu_config=None,
+               evaluation_master=None,
+               master=None,
                **kwargs):
     """Constructs a RunConfig.
 
@@ -113,11 +116,23 @@ class RunConfig(run_config_lib.RunConfig):
     """
     super(RunConfig, self).__init__(**kwargs)
     self._tpu_config = tpu_config or TPUConfig()
-    if evaluation_master is None:
-      self._evaluation_master = master
-    else:
+
+    # If user sets master and/or evaluation_master explicilty, including empty
+    # string '', take it. Otherwise, take the values set by parent class.
+    if master is not None:
+      self._master = master
+
+    if evaluation_master is not None:
       self._evaluation_master = evaluation_master
-    self._master = master
+    elif (not self._evaluation_master and
+          self.task_type != run_config_lib.TaskType.EVALUATOR):
+      # If the task type is EVALUATOR, it means some cluster manager sets the
+      # TF_CONFIG. In that case, we respect the configuration in TF_CONFIG.
+      #
+      # Otherwise, it means user executes the code without external cluster
+      # manager. For that, we optimize the user experience by setting
+      # evaluation_master to master, unless user overwrites it.
+      self._evaluation_master = self._master
 
   @property
   def evaluation_master(self):

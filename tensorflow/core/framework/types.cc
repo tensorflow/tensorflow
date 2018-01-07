@@ -47,11 +47,8 @@ const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
 #endif  // TENSORFLOW_USE_SYCL
 
-string DataTypeString(DataType dtype) {
-  if (IsRefType(dtype)) {
-    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
-    return strings::StrCat(DataTypeString(non_ref), "_ref");
-  }
+namespace {
+string DataTypeStringInternal(DataType dtype) {
   switch (dtype) {
     case DT_INVALID:
       return "INVALID";
@@ -105,6 +102,15 @@ string DataTypeString(DataType dtype) {
       LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
       return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
+}
+}  // end namespace
+
+string DataTypeString(DataType dtype) {
+  if (IsRefType(dtype)) {
+    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
+    return strings::StrCat(DataTypeStringInternal(non_ref), "_ref");
+  }
+  return DataTypeStringInternal(dtype);
 }
 
 bool DataTypeFromString(StringPiece sp, DataType* dt) {

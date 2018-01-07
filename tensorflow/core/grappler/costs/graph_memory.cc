@@ -32,7 +32,17 @@ Status GraphMemory::InferStatically(
     const std::unordered_map<string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
   TF_RETURN_IF_ERROR(cluster.Provision());
-  return InferDynamically(&cluster);
+  TF_RETURN_IF_ERROR(cluster.Initialize(item_));
+  RunMetadata metadata;
+  Status s = cluster.Run(item_.graph, item_.feed, item_.fetch, &metadata);
+  // The virtual cluster returns the RESOURCE_EXHAUSTED error when it detects
+  // that the model would run out of memory. We still get the metadata we need
+  // out of the simulation, so we just ignore this error.
+  if (!s.ok() && s.code() != error::RESOURCE_EXHAUSTED) {
+    return s;
+  }
+  InferFromTrace(metadata.step_stats());
+  return Status::OK();
 }
 
 Status GraphMemory::InferDynamically(Cluster* cluster) {

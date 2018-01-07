@@ -436,8 +436,7 @@ XLA_TEST_F(ParamsTest,
 
 #endif
 
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU_PARALLEL(TupleOfR1ParametersAddedTogether)) {
+XLA_TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
   ComputationBuilder builder(client_, TestName());
 
   Shape r1f32_3 = ShapeUtil::MakeShape(F32, {3});

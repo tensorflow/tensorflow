@@ -24,7 +24,7 @@ namespace {
 
 TEST(SchemaTest, SmokeTestTensorboardSchema) {
   auto db = Sqlite::Open(":memory:").ValueOrDie();
-  TF_ASSERT_OK(SetupTensorboardSqliteDb(db));
+  TF_ASSERT_OK(SetupTensorboardSqliteDb(db.get()));
 }
 
 }  // namespace

@@ -168,7 +168,7 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+                    .contains("depends on a parameter"))
         << value.status();
   }
 }
@@ -184,7 +184,7 @@ TEST_F(ComputeConstantTest, IndirectParamMissing) {
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
     EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+                    .contains("depends on a parameter"))
         << value.status();
   }
 }

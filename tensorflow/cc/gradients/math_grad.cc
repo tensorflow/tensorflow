@@ -763,24 +763,6 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
-Status SelectGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
-  auto comparator = op.input(0);
-  auto x = op.input(1);
-  auto zeros = ZerosLike(scope, x);
-  auto grad = grad_inputs[0];
-
-  auto gx_1 = Where3(scope, comparator, grad, zeros);
-  auto gx_2 = Where3(scope, comparator, zeros, grad);
-
-  grad_outputs->push_back(NoGradient());
-  grad_outputs->push_back(gx_1);
-  grad_outputs->push_back(gx_2);
-  return scope.status();
-}
-REGISTER_GRADIENT_OP("Select", SelectGrad);
-
 Status MinOrMaxGrad(const Scope& scope, const Operation& op,
                     const std::vector<Output>& grad_inputs,
                     std::vector<Output>* grad_outputs) {

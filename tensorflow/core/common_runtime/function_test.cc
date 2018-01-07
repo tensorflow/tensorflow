@@ -783,6 +783,16 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
            "type attr not found");
 }
 
+TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
+  Init({test::function::InvalidControlFlow()});
+  auto x = test::AsTensor<int32>({0});
+  DCHECK_EQ(x.dtype(), DT_INT32);
+  Tensor y;
+  HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
+           "The node 'add' has inputs from different frames. The input 'enter' "
+           "is in frame 'while'. The input 'i' is in frame ''.");
+}
+
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});

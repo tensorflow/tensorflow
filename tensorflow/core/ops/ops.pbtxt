@@ -6026,6 +6026,31 @@ op {
   summary: "Increments \'ref\' until it reaches \'limit\'."
 }
 op {
+  name: "CriticalSectionOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the container this critical section is placed in."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the name by which this critical section is referred to."
+  }
+  summary: "Creates a handle to a CriticalSection resource."
+  is_stateful: true
+}
+op {
   name: "CropAndResize"
   input_arg {
     name: "image"
@@ -7102,6 +7127,7 @@ op {
     type: DT_STRING
   }
   summary: "Delete the tensor specified by its handle in the session."
+  is_stateful: true
 }
 op {
   name: "DenseToDenseSetOperation"
@@ -8561,6 +8587,49 @@ op {
     }
   }
   summary: "Computes the complementary error function of `x` element-wise."
+}
+op {
+  name: "ExecuteInCriticalSection"
+  input_arg {
+    name: "critical_section"
+    description: "The handle of the `critical_section`."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "arguments"
+    description: "Arguments for `f`, including any captured inputs appended at the end."
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "outputs"
+    description: "The outputs of `f`."
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "The `Function` to execute."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Executes function `f` within critical section `critical_section`."
+  description: "While `f` is running in `critical_section`, no other functions which wish to\nuse this critical section may run.\n\nOften the use case is that two executions of the same graph, in parallel,\nwish to run `f`; and we wish to ensure that only one of them executes\nat a time.  This is especially important if `f` modifies one or more\nvariables at a time.\n\nIt is also useful if two separate functions must share a resource, but we\nwish to ensure the usage is exclusive.\n\nThe signature of `f` is expected to be:\n\n```\n  outputs <- F(arguments)\n```\nTypically, but this is not required, `arguments` contain resources.  The\nprimary purpose of this op is to limit access to these resources to one\nexecution of `F` at a time."
+  is_stateful: true
 }
 op {
   name: "Exit"
@@ -10695,6 +10764,7 @@ op {
     type: "type"
   }
   summary: "Store the input tensor in the state of the current session."
+  is_stateful: true
 }
 op {
   name: "GetSessionHandleV2"
@@ -10733,6 +10803,7 @@ op {
     description: "The type of the output value."
   }
   summary: "Get the value of the tensor specified by its handle."
+  is_stateful: true
 }
 op {
   name: "Greater"

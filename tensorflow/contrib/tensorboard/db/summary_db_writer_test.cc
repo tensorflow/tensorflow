@@ -48,7 +48,7 @@ class FakeClockEnv : public EnvWrapper {
 
 class SummaryDbWriterTest : public ::testing::Test {
  protected:
-  void SetUp() override { db_ = Sqlite::Open(":memory:").ValueOrDie(); }
+  void SetUp() override { db_ = Sqlite::OpenOrDie(":memory:"); }
 
   void TearDown() override {
     if (writer_ != nullptr) {
@@ -58,7 +58,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   }
 
   int64 QueryInt(const string& sql) {
-    SqliteStatement stmt = db_->Prepare(sql);
+    SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
@@ -69,7 +69,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   }
 
   double QueryDouble(const string& sql) {
-    SqliteStatement stmt = db_->Prepare(sql);
+    SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
@@ -80,7 +80,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   }
 
   string QueryString(const string& sql) {
-    SqliteStatement stmt = db_->Prepare(sql);
+    SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {

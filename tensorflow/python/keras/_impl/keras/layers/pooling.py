@@ -351,7 +351,7 @@ class _GlobalPooling1D(Layer):
     super(_GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape([input_shape[0], input_shape[2]])
 
@@ -398,7 +398,7 @@ class _GlobalPooling2D(Layer):
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
       return tensor_shape.TensorShape([input_shape[0], input_shape[3]])
@@ -493,7 +493,7 @@ class _GlobalPooling3D(Layer):
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
       return tensor_shape.TensorShape([input_shape[0], input_shape[4]])

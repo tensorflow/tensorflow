@@ -582,6 +582,54 @@ ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], varia
 
 )"
 },
+// fft
+{
+"Fft",
+R"(HloModule Fft_module
+
+ENTRY %Fft (input: c64[8,32]) -> c64[8,32] {
+  %input = c64[8,32]{1,0} parameter(0)
+  ROOT %fft = c64[8,32]{1,0} fft(c64[8,32]{1,0} %input), fft_type=FFT, fft_length={32}
+}
+
+)"
+},
+// ifft
+{
+"Ifft2d",
+R"(HloModule Ifft2d_module
+
+ENTRY %Ifft2d (input: c64[5,8,32]) -> c64[5,8,32] {
+  %input = c64[5,8,32]{2,1,0} parameter(0)
+  ROOT %fft = c64[5,8,32]{2,1,0} fft(c64[5,8,32]{2,1,0} %input), fft_type=IFFT, fft_length={8,32}
+}
+
+)"
+},
+// rfft2d
+{
+"Rfft2d",
+R"(HloModule Rfft2d_module
+
+ENTRY %Rfft2d (input: f32[5,64,32]) -> c64[5,64,17] {
+  %input = f32[5,64,32]{2,1,0} parameter(0)
+  ROOT %fft = c64[5,64,17]{2,1,0} fft(f32[5,64,32]{2,1,0} %input), fft_type=RFFT, fft_length={64,32}
+}
+
+)"
+},
+// irfft3d
+{
+"Irfft3d",
+R"(HloModule Irfft3d_module
+
+ENTRY %Irfft3d (input: c64[5,64,128,33]) -> f32[5,64,128,64] {
+  %input = c64[5,64,128,33]{3,2,1,0} parameter(0)
+  ROOT %fft = f32[5,64,128,64]{3,2,1,0} fft(c64[5,64,128,33]{3,2,1,0} %input), fft_type=IRFFT, fft_length={64,128,64}
+}
+
+)"
+},
 // pad
 {
 "Pad",

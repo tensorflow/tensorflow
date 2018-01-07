@@ -74,7 +74,9 @@ pip3.5 install werkzeug
 
 pip3.5 install grpcio
 
-# Eager-to-graph execution needs gast:
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip3.5 install --upgrade astor
 pip3.5 install --upgrade gast
+pip3.5 install --upgrade termcolor
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

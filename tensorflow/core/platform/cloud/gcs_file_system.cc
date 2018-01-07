@@ -729,6 +729,8 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
 Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
                                         size_t n, char* buffer,
                                         size_t* bytes_transferred) {
+  *bytes_transferred = 0;
+
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
 
@@ -1373,6 +1375,15 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
     }
   }
   return Status::OK();
+}
+
+// Flushes all caches for filesystem metadata and file contents. Useful for
+// reclaiming memory once filesystem operations are done (e.g. model is loaded),
+// or for resetting the filesystem to a consistent state.
+void GcsFileSystem::FlushCaches() {
+  file_block_cache_->Flush();
+  stat_cache_->Clear();
+  matching_paths_cache_->Clear();
 }
 
 // Creates an HttpRequest and sets several parameters that are common to all
