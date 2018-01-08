@@ -23,6 +23,8 @@ from tensorflow.contrib.receptive_field.python.util import receptive_field
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 import numpy as np
@@ -176,6 +178,34 @@ def create_test_network_6():
   return g
 
 
+def create_test_network_7():
+  """Aligned network for test, with a control dependency.
+
+  The graph is similar to create_test_network_1(), except that it includes an
+  assert operation on the left branch.
+
+  Returns:
+    g: Tensorflow graph object (Graph proto).
+  """
+  g = ops.Graph()
+  with g.as_default():
+    # An 8x8 test image.
+    x = array_ops.placeholder(dtypes.float32, (1, 8, 8, 1), name='input_image')
+    # Left branch.
+    l1 = slim.conv2d(x, 1, [1, 1], stride=4, scope='L1', padding='VALID')
+    l1_shape = array_ops.shape(l1)
+    assert_op = control_flow_ops.Assert(
+        gen_math_ops.equal(l1_shape[1], 2), [l1_shape], summarize=4)
+    # Right branch.
+    l2_pad = array_ops.pad(x, [[0, 0], [1, 0], [1, 0], [0, 0]])
+    l2 = slim.conv2d(l2_pad, 1, [3, 3], stride=2, scope='L2', padding='VALID')
+    l3 = slim.conv2d(l2, 1, [1, 1], stride=2, scope='L3', padding='VALID')
+    # Addition.
+    with ops.control_dependencies([assert_op]):
+      nn.relu(l1 + l3, name='output')
+  return g
+
+
 class RfUtilsTest(test.TestCase):
 
   def testComputeRFFromGraphDefAligned(self):
@@ -269,13 +299,29 @@ class RfUtilsTest(test.TestCase):
     input_node = 'input_image'
     output_node = 'output'
     rf = receptive_field.compute_receptive_field_from_graph_def(
-      graph_def, input_node, output_node)
+        graph_def, input_node, output_node)
 
     x = np.random.randint(0, 100, (50, 2))
     y = rf.compute_feature_coordinates(x)
     x2 = rf.compute_input_center_coordinates(y)
 
     self.assertAllEqual(x, x2)
+
+  def testComputeRFFromGraphDefAlignedWithControlDependencies(self):
+    graph_def = create_test_network_7().as_graph_def()
+    input_node = 'input_image'
+    output_node = 'output'
+    (receptive_field_x, receptive_field_y, effective_stride_x,
+     effective_stride_y, effective_padding_x, effective_padding_y) = (
+         receptive_field.compute_receptive_field_from_graph_def(
+             graph_def, input_node, output_node))
+    self.assertEqual(receptive_field_x, 3)
+    self.assertEqual(receptive_field_y, 3)
+    self.assertEqual(effective_stride_x, 4)
+    self.assertEqual(effective_stride_y, 4)
+    self.assertEqual(effective_padding_x, 1)
+    self.assertEqual(effective_padding_y, 1)
+
 
 if __name__ == '__main__':
   test.main()
