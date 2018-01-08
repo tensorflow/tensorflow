@@ -498,13 +498,14 @@ static HloInstruction* BuildTupleConstant(HloComputation* computation,
   if (ShapeUtil::IsTuple(literal.shape())) {
     std::vector<HloInstruction*> elems;
     elems.reserve(ShapeUtil::TupleElementCount(literal.shape()));
-    for (const Literal& child : literal.tuple_literals()) {
-      elems.push_back(BuildTupleConstant(computation, child));
+    for (int i = 0; i < ShapeUtil::TupleElementCount(literal.shape()); ++i) {
+      elems.push_back(
+          BuildTupleConstant(computation, LiteralView::Create(literal, {i})));
     }
     return computation->AddInstruction(HloInstruction::CreateTuple(elems));
   } else {
     return computation->AddInstruction(
-        HloInstruction::CreateConstant(MakeUnique<Literal>(literal)));
+        HloInstruction::CreateConstant(literal.CloneToUnique()));
   }
 }
 

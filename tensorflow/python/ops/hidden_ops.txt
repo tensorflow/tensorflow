@@ -8,6 +8,7 @@ ConcatV2
 ConjugateTranspose
 Const
 DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
 ExpandDims
 ListDiff

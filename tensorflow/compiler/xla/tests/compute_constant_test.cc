@@ -149,7 +149,7 @@ TEST_F(ComputeConstantTest, Param) {
     auto computation = b.Add(param, b.ConstantR0<float>(1.5f));
 
     std::vector<Literal> arguments;
-    arguments.emplace_back(*Literal::CreateR0(42.5f));
+    arguments.push_back(std::move(*Literal::CreateR0(42.5f)));
     EXPECT_TRUE(IsConstant(computation, &b, arguments.size()));
 
     auto value =
