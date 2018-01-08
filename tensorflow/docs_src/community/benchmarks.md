@@ -97,7 +97,7 @@ load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 tf_py_logged_benchmark(
     name = "sample_logged_benchmark",
-    target = "//tensorflow/tools/test:sample_benchmark",
+    target = "//tensorflow/examples/benchmark:sample_benchmark",
 )
 ```
 
