@@ -21,8 +21,6 @@ from __future__ import print_function
 import collections
 import numpy as np
 
-import numpy as np
-
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
@@ -229,8 +227,11 @@ class BeamSearchDecoder(decoder.Decoder):
     self._start_tokens = array_ops.tile(
         array_ops.expand_dims(self._start_tokens, 1), [1, self._beam_width])
     self._start_inputs = self._embedding_fn(self._start_tokens)
-    self._finished = array_ops.zeros(
-        [self._batch_size, self._beam_width], dtype=dtypes.bool)
+    
+    self._finished = array_ops.one_hot(
+        array_ops.zeros([self._batch_size], dtype=dtypes.int32),
+        depth=self._beam_width, on_value=False,
+        off_value=True, dtype=dtypes.bool)
 
   @property
   def batch_size(self):
@@ -300,18 +301,9 @@ class BeamSearchDecoder(decoder.Decoder):
 
     log_prob_mask = array_ops.one_hot(  # shape(batch_sz, beam_sz)
         array_ops.zeros([self._batch_size], dtype=dtypes.int32),
-        depth=self._beam_width, on_value=True,
-        off_value=False, dtype=dtypes.bool)
+        depth=self._beam_width, on_value=0.0,
+        off_value=-np.Inf, dtype=dtypes.float32)
 
-    log_prob_zeros = array_ops.zeros([self._batch_size, self._beam_width],
-                                     dtype=nest.flatten(
-                                         self._initial_cell_state)[0].dtype)
-    log_prob_neg_inf = array_ops.ones([self._batch_size, self._beam_width],
-                                      dtype=nest.flatten(
-                                          self._initial_cell_state)[0].dtype
-                                     ) * -np.Inf
-
-    log_probs = array_ops.where(log_prob_mask, log_prob_zeros, log_prob_neg_inf)
 
     initial_state = BeamSearchDecoderState(
         cell_state=self._initial_cell_state,
