@@ -12,6 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
+
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
+#include "tensorflow/core/kernels/adjust_saturation_op.h"
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -205,5 +212,36 @@ class AdjustSaturationOp<CPUDevice> : public AdjustSaturationOpBase {
 
 REGISTER_KERNEL_BUILDER(Name("AdjustSaturation").Device(DEVICE_CPU),
                         AdjustSaturationOp<CPUDevice>);
+
+#if GOOGLE_CUDA
+template <>
+class AdjustSaturationOp<GPUDevice> : public AdjustSaturationOpBase {
+ public:
+  explicit AdjustSaturationOp(OpKernelConstruction* context)
+      : AdjustSaturationOpBase(context) {}
+
+  void DoCompute(OpKernelContext* context,
+                 const ComputeOptions& options) override {
+    const Tensor* input = options.input;
+    const Tensor* scale = options.scale;
+    Tensor* output = options.output;
+    const int64 number_of_elements = input->NumElements();
+    GPUDevice device = context->eigen_gpu_device();
+    const auto stream = device.stream();
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    if (number_of_elements > 0) {
+      const float* input_data = input->flat<float>().data();
+      const float* scale_data = scale->flat<float>().data();
+      float* const output_data = output->flat<float>().data();
+      functor::AdjustSaturationGPU()(&device, number_of_elements, input_data,
+                                     scale_data, output_data);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("AdjustSaturation").Device(DEVICE_GPU),
+                        AdjustSaturationOp<GPUDevice>);
+
+#endif
 
 }  // namespace tensorflow

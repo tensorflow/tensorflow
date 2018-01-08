@@ -25,6 +25,42 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
+const char kDecodeJpegCommonDocStr[] = R"doc(
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+
+If needed, the JPEG-encoded image is transformed to match the requested number
+of color channels.
+
+The attr `ratio` allows downscaling the image by an integer factor during
+decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+downscaling the image later.
+
+)doc";
+
+const char kDecodeJpegCommonParamsDocStr[] = R"doc(
+channels: Number of color channels for the decoded image.
+ratio: Downscaling ratio.
+fancy_upscaling: If true use a slower but nicer upscaling of the
+  chroma planes (yuv420/422 only).
+try_recover_truncated:  If true try to recover an image from truncated input.
+acceptable_fraction: The minimum required fraction of lines before a truncated
+  input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
+image: 3-D with shape `[height, width, channels]`..
+)doc";
+
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
 Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
@@ -115,7 +151,7 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -143,7 +179,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -162,11 +198,36 @@ resized_images: 4-D with shape
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ResizeBicubicGrad")
+    .Input("grads: float")
+    .Input("original_image: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes the gradient of bicubic interpolation.
+
+grads: 4-D with shape `[batch, height, width, channels]`.
+original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+  The image tensor that was resized.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
+output: 4-D with shape `[batch, orig_height, orig_width, channels]`.
+  Gradients with respect to the input image. Input image must have been
+  float or double.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -250,7 +311,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -370,44 +431,69 @@ REGISTER_OP("DecodeJpeg")
     .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
-    .Doc(R"doc(
+    .Doc(strings::StrCat(R"doc(
 Decode a JPEG-encoded image to a uint8 tensor.
-
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
-
-Accepted values are:
-
-*   0: Use the number of channels in the JPEG-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-
-If needed, the JPEG-encoded image is transformed to match the requested number
-of color channels.
-
-The attr `ratio` allows downscaling the image by an integer factor during
-decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-downscaling the image later.
-
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
 This op also supports decoding PNGs and non-animated GIFs since the interface is
 the same, though it is cleaner to use `tf.image.decode_image`.
 
 contents: 0-D.  The JPEG-encoded image.
-channels: Number of color channels for the decoded image.
-ratio: Downscaling ratio.
-fancy_upscaling: If true use a slower but nicer upscaling of the
-  chroma planes (yuv420/422 only).
-try_recover_truncated:  If true try to recover an image from truncated input.
-acceptable_fraction: The minimum required fraction of lines before a truncated
-  input is accepted.
-dct_method: string specifying a hint about the algorithm used for
-  decompression.  Defaults to "" which maps to a system-specific
-  default.  Currently valid values are ["INTEGER_FAST",
-  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-  jpeg library changes to a version that does not have that specific
-  option.)
-image: 3-D with shape `[height, width, channels]`..
-)doc");
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeAndCropJpeg")
+    .Input("contents: string")
+    .Input("crop_window: int32")
+    .Attr("channels: int = 0")
+    .Attr("ratio: int = 1")
+    .Attr("fancy_upscaling: bool = true")
+    .Attr("try_recover_truncated: bool = false")
+    .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
+    .Output("image: uint8")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      DimensionHandle channels_dim = c->UnknownDim();
+      DimensionHandle h = c->UnknownDim();
+      DimensionHandle w = c->UnknownDim();
+
+      int32 channels;
+      TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+      if (channels != 0) {
+        if (channels < 0) {
+          return errors::InvalidArgument("channels must be non-negative, got ",
+                                         channels);
+        }
+        channels_dim = c->MakeDim(channels);
+      }
+
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(unused, 0), 4, &unused_dim));
+
+      const Tensor* crop_window = c->input_tensor(1);
+      if (crop_window != nullptr) {
+        auto crop_window_vec = crop_window->vec<int32>();
+        h = c->MakeDim(crop_window_vec(2));
+        w = c->MakeDim(crop_window_vec(3));
+      }
+      c->set_output(0, c->MakeShape({h, w, channels_dim}));
+      return Status::OK();
+    })
+    .Doc(strings::StrCat(R"doc(
+Decode and Crop a JPEG-encoded image to a uint8 tensor.
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
+It is equivalent to a combination of decode and crop, but much faster by only
+decoding partial jpeg image.
+
+contents: 0-D.  The JPEG-encoded image.
+crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
 
 // --------------------------------------------------------------------------
 REGISTER_OP("EncodeJpeg")
@@ -455,6 +541,28 @@ x_density: Horizontal pixels per density unit.
 y_density: Vertical pixels per density unit.
 xmp_metadata: If not empty, embed this XMP metadata in the image header.
 contents: 0-D. JPEG-encoded image.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ExtractJpegShape")
+    .Input("contents: string")
+    .Output("image_shape: output_type")
+    .Attr("output_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(3));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Extract the shape information of a JPEG-encoded image.
+
+This op only parses the image header, so it is much faster than DecodeJpeg.
+
+contents: 0-D. The JPEG-encoded image.
+image_shape: 1-D. The image shape with format [height, width, channels].
+output_type: (Optional) The output type of the operation (int32 or int64).
+    Defaults to int32.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -656,7 +764,7 @@ image: 4-D with shape `[num_frames, height, width, 3]`. RGB order
 REGISTER_OP("RGBToHSV")
     .Input("images: T")
     .Output("output: T")
-    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float, double} = DT_FLOAT")
     .SetShapeFn(ColorspaceShapeFn)
     .Doc(R"doc(
 Converts one or more images from RGB to HSV.
@@ -677,7 +785,7 @@ output: `images` converted to HSV.
 REGISTER_OP("HSVToRGB")
     .Input("images: T")
     .Output("output: T")
-    .Attr("T: {float, double} = DT_FLOAT")
+    .Attr("T: {half, bfloat16, float, double} = DT_FLOAT")
     .SetShapeFn(ColorspaceShapeFn)
     .Doc(R"doc(
 Convert one or more images from HSV to RGB.
@@ -710,8 +818,8 @@ bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
-For example, if an image is 100 x 200 pixels (height x width) and the bounding 
-box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of 
+For example, if an image is 100 x 200 pixels (height x width) and the bounding
+box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
 the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
 
 Parts of the bounding box may fall outside the image.
@@ -776,7 +884,7 @@ For example,
     # Draw the bounding box in an image summary.
     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                   bbox_for_draw)
-    tf.image_summary('images_with_box', image_with_box)
+    tf.summary.image('images_with_box', image_with_box)
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
@@ -817,27 +925,27 @@ use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
 )doc");
 
 REGISTER_OP("SampleDistortedBoundingBoxV2")
-  .Input("image_size: T")
-  .Input("bounding_boxes: float")
-  .Input("min_object_covered: float")
-  .Output("begin: T")
-  .Output("size: T")
-  .Output("bboxes: float")
-  .Attr("T: {uint8, int8, int16, int32, int64}")
-  .Attr("seed: int = 0")
-  .Attr("seed2: int = 0")
-  .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
-  .Attr("area_range: list(float) = [0.05, 1.0]")
-  .Attr("max_attempts: int = 100")
-  .Attr("use_image_if_no_bounding_boxes: bool = false")
-  .SetIsStateful()
-  .SetShapeFn([](InferenceContext* c) {
-    c->set_output(0, c->Vector(3));
-    c->set_output(1, c->Vector(3));
-    c->set_output(2, c->MakeShape({1, 1, 4}));
-    return Status::OK();
-  })
-  .Doc(R"doc(
+    .Input("image_size: T")
+    .Input("bounding_boxes: float")
+    .Input("min_object_covered: float")
+    .Output("begin: T")
+    .Output("size: T")
+    .Output("bboxes: float")
+    .Attr("T: {uint8, int8, int16, int32, int64}")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
+    .Attr("area_range: list(float) = [0.05, 1.0]")
+    .Attr("max_attempts: int = 100")
+    .Attr("use_image_if_no_bounding_boxes: bool = false")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(3));
+      c->set_output(1, c->Vector(3));
+      c->set_output(2, c->MakeShape({1, 1, 4}));
+      return Status::OK();
+    })
+    .Doc(R"doc(
 Generate a single randomly distorted bounding box for an image.
 
 Bounding box annotations are often supplied in addition to ground-truth labels
@@ -868,7 +976,7 @@ For example,
     # Draw the bounding box in an image summary.
     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                   bbox_for_draw)
-    tf.image_summary('images_with_box', image_with_box)
+    tf.summary.image('images_with_box', image_with_box)
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
@@ -989,7 +1097,7 @@ REGISTER_OP("CropAndResize")
     .Input("box_ind: int32")
     .Input("crop_size: int32")
     .Output("crops: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
@@ -1022,7 +1130,10 @@ slice from the input image and does not allow resizing or aspect ratio change.
 Returns a tensor with `crops` from the input `image` at positions defined at the
 bounding box locations in `boxes`. The cropped boxes are all resized (with
 bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The
+resizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the
+method will give identical results to using `tf.image.resize_bilinear()`
+with `align_corners=True`.
 
 image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
   Both `image_height` and `image_width` need to be positive.
@@ -1093,7 +1204,7 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Input("boxes: float")
     .Input("box_ind: int32")
     .Output("output: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(2));
@@ -1125,16 +1236,16 @@ method: A string specifying the interpolation method. Only 'bilinear' is
 // --------------------------------------------------------------------------
 
 REGISTER_OP("NonMaxSuppression")
-  .Input("boxes: float")
-  .Input("scores: float")
-  .Input("max_output_size: int32")
-  .Output("selected_indices: int32")
-  .Attr("iou_threshold: float = 0.5")
-  .SetShapeFn([](InferenceContext* c) {
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Output("selected_indices: int32")
+    .Attr("iou_threshold: float = 0.5")
+    .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();
     })
-  .Doc(R"doc(
+    .Doc(R"doc(
 Greedily selects a subset of bounding boxes in descending order of score,
 pruning away boxes that have high intersection-over-union (IOU) overlap
 with previously selected boxes.  Bounding boxes are supplied as

@@ -41,8 +41,8 @@ const uint32 kAllowedInputs = 2;
 const float kEMADecay = 0.999;
 
 // Node types to rewrite. Insert quantize_and_dequantize op for their inputs.
-const std::unordered_set<string, StringPiece::Hasher> nodes_to_rewrite{
-    "MatMul", "Conv2D"};
+const auto* nodes_to_rewrite =
+    new std::unordered_set<string, StringPieceHasher>{"MatMul", "Conv2D"};
 
 // Contains necessary parameters to convert an edge.
 struct EdgeToConvert {
@@ -563,7 +563,7 @@ Status ProcessTargetEdges(Graph* graph, const string& quant_op_type,
                           const std::vector<EdgeToConvert>& target_edges) {
   // Remember previously converted ops to avoid duplicated conversion on the
   // same input.
-  std::unordered_map<string, Node*, StringPiece::Hasher> name_index;
+  std::unordered_map<string, Node*, StringPieceHasher> name_index;
   std::vector<Node*> added_variables;
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;
@@ -602,7 +602,8 @@ Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
   int potential_input = 0;
   std::vector<EdgeToConvert> target_edges;
   for (Node* node : graph->nodes()) {
-    if (nodes_to_rewrite.find(node->type_string()) != nodes_to_rewrite.end() &&
+    if (nodes_to_rewrite->find(node->type_string()) !=
+            nodes_to_rewrite->end() &&
         !IsGradientNode(graph, node)) {
       // Find out which types are the inputs and convert them accordingly.
       // 1. Const/Variable OP: This is quantized as signed tensors with no given

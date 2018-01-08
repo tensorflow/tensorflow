@@ -20,21 +20,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
-from tensorflow.python import framework
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 
 
 class _Pooling1D(base.Layer):
@@ -94,7 +85,7 @@ class _Pooling1D(base.Layer):
     else:
       return array_ops.squeeze(outputs, 1)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     length = utils.conv_output_length(input_shape[1], self.pool_size[0],
                                       self.padding, self.strides[0])
@@ -154,6 +145,9 @@ def average_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling1D(pool_size=pool_size,
                            strides=strides,
@@ -216,6 +210,9 @@ def max_pooling1d(inputs, pool_size, strides,
 
   Returns:
     The output tensor, of rank 3.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling1D(pool_size=pool_size,
                        strides=strides,
@@ -276,7 +273,7 @@ class _Pooling2D(base.Layer):
         data_format=utils.convert_data_format(self.data_format, 4))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       rows = input_shape[2]
@@ -354,6 +351,9 @@ def average_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling2D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -419,6 +419,9 @@ def max_pooling2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling2D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
@@ -484,7 +487,7 @@ class _Pooling3D(base.Layer):
       outputs = array_ops.transpose(outputs, (0, 4, 1, 2, 3))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       len_dim1 = input_shape[2]
@@ -570,6 +573,9 @@ def average_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = AveragePooling3D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
@@ -639,6 +645,9 @@ def max_pooling3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
   layer = MaxPooling3D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,

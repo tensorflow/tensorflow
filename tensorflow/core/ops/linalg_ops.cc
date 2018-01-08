@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -23,7 +24,6 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 namespace {
-
 
 // Return in <out> the result of making the end of <s> a square matrix.
 Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
@@ -214,6 +214,46 @@ input: Shape is `[..., M, M]`.
 output: Shape is `[...]`.
 )doc");
 
+REGISTER_OP("LogMatrixDeterminant")
+    .Input("input: T")
+    .Output("sign: T")
+    .Output("log_abs_determinant: T")
+    .Attr("T: {float, double, complex64, complex128}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(input, -1), c->Dim(input, -2), &unused));
+
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &s));
+      c->set_output(0, s);
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
+      c->set_output(1, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes the sign and the log of the absolute value of the determinant of
+one or more square matrices.
+
+The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
+form square matrices. The outputs are two tensors containing the signs and
+absolute values of the log determinants for all N input submatrices
+`[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
+The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
+is the LU decomposition of the input and P is the corresponding
+permutation matrix.
+
+input: Shape is `[N, M, M]`.
+sign: The signs of the log determinants of the inputs. Shape is `[N]`.
+log_abs_determinant: The logs of the absolute values of the determinants
+of the N input matrices.  Shape is `[N]`.
+)doc");
+
 REGISTER_OP("MatrixInverse")
     .Input("input: T")
     .Output("output: T")
@@ -239,6 +279,33 @@ output: Shape is `[..., M, M]`.
 
 @compatibility(numpy)
 Equivalent to np.linalg.inv
+@end_compatibility
+)doc");
+
+REGISTER_OP("MatrixExponential")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
+    .Doc(R"doc(
+Computes the matrix exponential of one or more square matrices:
+
+exp(A) = \sum_{n=0}^\infty A^n/n!
+
+The exponential is computed using a combination of the scaling and squaring
+method and the Pade approximation. Details can be founds in:
+Nicholas J. Higham, "The scaling and squaring method for the matrix exponential
+revisited," SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. The output is a tensor of the same shape as the input
+containing the exponential for all input submatrices `[..., :, :]`.
+
+input: Shape is `[..., M, M]`.
+output: Shape is `[..., M, M]`.
+
+@compatibility(scipy)
+Equivalent to scipy.linalg.expm
 @end_compatibility
 )doc");
 
@@ -398,7 +465,7 @@ matrix is assumed to be zero and not accessed.
 `rhs` is a tensor of shape `[..., M, K]`.
 
 The output is a tensor of shape `[..., M, K]`. If `adjoint` is
-`True` then the innermost matrices in output` satisfy matrix equations
+`True` then the innermost matrices in `output` satisfy matrix equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 If `adjoint` is `False` then the strictly then the  innermost matrices in
 `output` satisfy matrix equations
@@ -557,34 +624,39 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .Deprecated(11, "Use SelfAdjointEigV2 instead.");
+    .Deprecated(11, "Use SelfAdjointEigV2 instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 // Can all be deleted after 9mar2017.
 REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double, complex64, complex128}")
-    .Deprecated(13, "Use MatrixDeterminant instead.");
+    .Deprecated(13, "Use MatrixDeterminant instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixInverse")
     .Input("input: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixInverse instead.");
+    .Deprecated(13, "Use MatrixInverse instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchCholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use Cholesky instead.");
+    .Deprecated(13, "Use Cholesky instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchCholeskyGrad")
     .Input("l: T")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .Deprecated(13, "Use CholeskyGrad instead.");
+    .Deprecated(13, "Use CholeskyGrad instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchSelfAdjointEigV2")
     .Input("input: T")
@@ -592,7 +664,8 @@ REGISTER_OP("BatchSelfAdjointEigV2")
     .Output("v: T")
     .Attr("compute_v: bool = True")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use SelfAdjointEigV2 instead.");
+    .Deprecated(13, "Use SelfAdjointEigV2 instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixSolve")
     .Input("matrix: T")
@@ -600,7 +673,8 @@ REGISTER_OP("BatchMatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixSolve instead.");
+    .Deprecated(13, "Use MatrixSolve instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixTriangularSolve")
     .Input("matrix: T")
@@ -609,7 +683,8 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .Deprecated(13, "Use MatrixTriangularSolve instead.");
+    .Deprecated(13, "Use MatrixTriangularSolve instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchMatrixSolveLs")
     .Input("matrix: T")
@@ -618,7 +693,8 @@ REGISTER_OP("BatchMatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
-    .Deprecated(13, "Use MatrixSolveLs instead.");
+    .Deprecated(13, "Use MatrixSolveLs instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("BatchSvd")
     .Input("input: T")
@@ -628,6 +704,7 @@ REGISTER_OP("BatchSvd")
     .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float, complex64, complex128}")
-    .Deprecated(13, "Use Svd instead.");
+    .Deprecated(13, "Use Svd instead.")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow

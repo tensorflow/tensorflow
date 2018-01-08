@@ -43,7 +43,7 @@ REGISTER_OP("Print")
     .Output("output: T")
     .SetIsStateful()
     .Attr("T: type")
-    .Attr("U: list(type)")
+    .Attr("U: list(type) >= 0")
     .Attr("message: string = ''")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
@@ -146,7 +146,7 @@ REGISTER_OP("ImageSummary")
     .Input("tensor: T")
     .Output("summary: string")
     .Attr("max_images: int >= 1 = 3")
-    .Attr("T: {uint8, float, half} = DT_FLOAT")
+    .Attr("T: {uint8, float, half, float64} = DT_FLOAT")
     .Attr(
         "bad_color: tensor = { dtype: DT_UINT8 "
         "tensor_shape: { dim { size: 4 } } "

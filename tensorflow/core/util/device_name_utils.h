@@ -48,9 +48,6 @@ class DeviceNameUtils {
   // Returns a fully qualified device name given the parameters.
   static string FullName(const string& job, int replica, int task,
                          const string& type, int id);
-  // Returns a fully qualified device name given the parameters in legacy style.
-  static string LegacyName(const string& job, int replica, int task,
-                           const string& type, int id);
 
   struct ParsedName {
     void Clear() {
@@ -90,6 +87,11 @@ class DeviceNameUtils {
   };
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
+
+  // Canonicalizes "fullname". Accepts both legacy, newer and local versions of
+  // the device spec. Returns the newer version of the device spec. If we were
+  // unable to interpret / parse "fullname" returns "".
+  static string CanonicalizeDeviceName(StringPiece fullname);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
   static bool HasSomeDetails(const ParsedName& name) {
@@ -155,8 +157,14 @@ class DeviceNameUtils {
 
   // Returns canonical and legacy full names for the given parsed
   // device name 'pn'. The returned string names are often useful to
-  // lookup devices from a mapping.
+  // look up devices from a mapping.
   static std::vector<string> GetNamesForDeviceMappings(const ParsedName& pn);
+
+  // Returns canonical and legacy local names for the given parsed device name
+  // 'pn'. The returned string names are often useful to look up devices from a
+  // mapping.
+  static std::vector<string> GetLocalNamesForDeviceMappings(
+      const ParsedName& pn);
 };
 
 }  // namespace tensorflow

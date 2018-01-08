@@ -23,8 +23,6 @@ import shutil
 import sys
 import tempfile
 
-import six
-
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
@@ -33,6 +31,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
 from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 
@@ -83,6 +82,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
+      dump_root = os.path.expanduser(dump_root)
       if os.path.isfile(dump_root):
         raise ValueError("dump_root path points to a file: %s" % dump_root)
       elif os.path.isdir(dump_root) and os.listdir(dump_root):
@@ -95,6 +95,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Registered tensor filters.
     self._tensor_filters = {}
+    # Register frequently-used filter(s).
+    self.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
 
     # Below are the state variables of this wrapper object.
     # _active_tensor_filter: what (if any) tensor filter is in effect. If such
@@ -414,7 +416,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_profile_cli_for_run_end(self, py_graph, run_metadata):
     self._init_command = "lp"
     self._run_cli = profile_analyzer_cli.create_profiler_ui(
-        py_graph, run_metadata, ui_type=self._ui_type)
+        py_graph, run_metadata, ui_type=self._ui_type,
+        config=self._run_cli.config)
     self._title = "run-end (profiler mode): " + self._run_description
 
   def _launch_cli(self):
@@ -463,12 +466,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     feed_key = None
     feed_value = None
     for key in self._feed_dict:
-      if isinstance(key, six.string_types):
-        if key == tensor_name:
-          feed_key = key
-      elif key.name == tensor_name:
-        feed_key = key.name
-      if feed_key is not None:
+      key_name = common.get_graph_element_name(key)
+      if key_name == tensor_name:
+        feed_key = key_name
         feed_value = self._feed_dict[key]
         break
 
@@ -563,7 +563,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                                            list(self._tensor_filters.keys()))
     if self._feed_dict:
       # Register tab completion for feed_dict keys.
-      feed_keys = [(key if isinstance(key, six.string_types) else key.name)
+      feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]
       curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
 

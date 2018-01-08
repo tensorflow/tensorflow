@@ -293,15 +293,15 @@ TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
   // Check operand 0 (not merged). Should have 4 instructions.
   auto* operand0 = root->operand(0);
   EXPECT_EQ(HloOpcode::kFusion, operand0->opcode());
-  EXPECT_EQ(4, operand0->fused_instructions().size());
+  EXPECT_EQ(4, operand0->fused_instruction_count());
   // Check operand 1 (should have merged in its operand fusion instruction).
   auto* operand1 = root->operand(1);
   EXPECT_EQ(HloOpcode::kFusion, operand1->opcode());
-  EXPECT_EQ(7, operand1->fused_instructions().size());
+  EXPECT_EQ(7, operand1->fused_instruction_count());
   // Check operand 2 (should have merged in its operand fusion instruction).
   auto* operand2 = root->operand(2);
   EXPECT_EQ(HloOpcode::kFusion, operand2->opcode());
-  EXPECT_EQ(7, operand2->fused_instructions().size());
+  EXPECT_EQ(7, operand2->fused_instruction_count());
 }
 
 // Tests that we do not merge a fusion instruction that above flops to bytes
@@ -462,7 +462,3 @@ TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

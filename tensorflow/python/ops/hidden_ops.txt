@@ -5,6 +5,7 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
 DebugGradientIdentity
 EditDistance
@@ -20,6 +21,7 @@ ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -41,6 +43,7 @@ UniformCandidateSampler
 # checkpoint_ops
 GenerateVocabRemapping
 LoadAndRemapMatrix
+
 
 # control_flow_ops
 Switch
@@ -167,6 +170,7 @@ NonMaxSuppression
 NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
@@ -206,6 +210,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -218,6 +223,8 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
+MatrixExponential
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -237,7 +244,9 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul
@@ -253,6 +262,7 @@ ComplexAbs
 Conj
 FloorDiv
 FloorMod
+HistogramFixedWidth
 Max
 Mean
 Min
@@ -284,6 +294,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
@@ -331,6 +342,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -345,6 +357,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

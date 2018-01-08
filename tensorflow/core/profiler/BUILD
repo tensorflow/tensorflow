@@ -19,7 +19,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_binary(
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
+
+tf_cc_binary(
     name = "profiler",
     srcs = ["profiler.cc"],
     deps = [
@@ -37,9 +41,6 @@ cc_binary(
         "@linenoise//:linenoise",
     ],
 )
-
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 tf_proto_library(
     name = "protos_all",

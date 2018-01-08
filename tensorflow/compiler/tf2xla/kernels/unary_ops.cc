@@ -41,15 +41,50 @@ namespace {
   };                                                                   \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
+XLAJIT_MAKE_UNARY(ComplexAbs, b->Abs(x));
+
+XLAJIT_MAKE_UNARY(Angle, b->Atan2(b->Imag(x), b->Real(x)));
+
+XLAJIT_MAKE_UNARY(Conj, b->Conj(x));
+
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
+
+// acosh(x) = log(x + sqrt(x^2 - 1))
+XLAJIT_MAKE_UNARY(
+    Acosh,
+    b->Log(b->Add(x, b->Pow(b->Sub(b->Mul(x, x),
+                                   XlaHelpers::One(b, input_type(0))),
+                            XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+// asinh(x) = log(x + sqrt(x^2 + 1))
+XLAJIT_MAKE_UNARY(
+    Asinh,
+    b->Log(b->Add(x, b->Pow(b->Add(b->Mul(x, x),
+                                   XlaHelpers::One(b, input_type(0))),
+                            XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+// atanh(x) = 0.5 * log((1 + x) / (1 - x))
+XLAJIT_MAKE_UNARY(
+    Atanh, b->Mul(b->Log(b->Div(b->Add(XlaHelpers::One(b, input_type(0)), x),
+                                b->Sub(XlaHelpers::One(b, input_type(0)), x))),
+                  XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
 XLAJIT_MAKE_UNARY(Cos, b->Cos(x));
+XLAJIT_MAKE_UNARY(Cosh,
+                  b->Mul(b->Add(b->Exp(x), b->Exp(b->Neg(x))),
+                         XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Sin, b->Sin(x));
 XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
+
+// TODO(b/34703906): use a more accurate implementation of expm1.
+XLAJIT_MAKE_UNARY(Expm1, b->Sub(b->Exp(x), XlaHelpers::One(b, input_type(0))));
+
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
-// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
+XLAJIT_MAKE_UNARY(IsFinite, b->IsFinite(x));
+XLAJIT_MAKE_UNARY(IsInf, b->Eq(b->Abs(x),
+                               XlaHelpers::FloatLiteral(
+                                   b, input_type(0),
+                                   std::numeric_limits<double>::infinity())));
+XLAJIT_MAKE_UNARY(IsNan, b->Ne(x, x));
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, b->Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Reciprocal, b->Div(XlaHelpers::One(b, input_type(0)), x));
@@ -58,7 +93,8 @@ XLAJIT_MAKE_UNARY(Log, b->Log(x));
 // TODO(b/34703906): use a more accurate implementation of log1p.
 XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
-XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
+XLAJIT_MAKE_UNARY(Invert, b->Not(x));
+XLAJIT_MAKE_UNARY(LogicalNot, b->Not(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
 
 // Implements Banker's rounding: numbers that are equidistant between two
@@ -75,10 +111,16 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
   auto nearest_even_int =
       b->Sub(round_val, b->Mul(two, b->Floor(b->Mul(half, x))));
   auto is_odd = b->Eq(nearest_even_int, one);
-  return b->Select(b->LogicalOr(b->Gt(fraction, half),
-                                b->LogicalAnd(b->Eq(fraction, half), is_odd)),
-                   b->Add(round_val, one), round_val);
+  return b->Select(
+      b->Or(b->Gt(fraction, half), b->And(b->Eq(fraction, half), is_odd)),
+      b->Add(round_val, one), round_val);
 }
+
+XLAJIT_MAKE_UNARY(Rint, Round(b, input_type(0), x));
+XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
+
+XLAJIT_MAKE_UNARY(Rsqrt,
+                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
 
 // Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
 static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
@@ -87,17 +129,47 @@ static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
   auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
   return b->Add(half, b->Mul(half, b->Tanh(b->Mul(half, x))));
 }
-
-XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
-XLAJIT_MAKE_UNARY(Rsqrt,
-                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
 XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(b, input_type(0), x));
-XLAJIT_MAKE_UNARY(Softplus,
-                  b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
+
+// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
+XLAJIT_MAKE_UNARY(Sinh,
+                  b->Mul(b->Sub(b->Exp(x), b->Exp(b->Neg(x))),
+                         XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
+
+static xla::ComputationDataHandle Softplus(
+    xla::ComputationBuilder* b, DataType dtype,
+    const xla::ComputationDataHandle& features) {
+  xla::ComputationDataHandle threshold =
+      b->Add(b->Log(XlaHelpers::Epsilon(b, dtype)),
+             XlaHelpers::FloatLiteral(b, dtype, 2.0));
+  // Value above which exp(x) may overflow, but softplus(x) == x
+  // is within machine epsilon.
+  xla::ComputationDataHandle too_large = b->Gt(features, b->Neg(threshold));
+  // Value below which exp(x) may underflow, but softplus(x) == exp(x)
+  // is within machine epsilon.
+  xla::ComputationDataHandle too_small = b->Lt(features, threshold);
+  xla::ComputationDataHandle features_exp = b->Exp(features);
+  xla::ComputationDataHandle output = b->Select(
+      too_large, features,
+      b->Select(too_small, features_exp,
+                b->Log(b->Add(features_exp, XlaHelpers::One(b, dtype)))));
+  return output;
+}
+XLAJIT_MAKE_UNARY(Softplus, Softplus(b, input_type(0), x));
+
+// softsign(x) = x / (abs(x) + 1)
+XLAJIT_MAKE_UNARY(Softsign,
+                  b->Div(x,
+                         b->Add(b->Abs(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
+XLAJIT_MAKE_UNARY(Tan, b->Div(b->Sin(x), b->Cos(x)));
 XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
+
+XLAJIT_MAKE_UNARY(Real, b->Real(x));
+XLAJIT_MAKE_UNARY(Imag, b->Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
 

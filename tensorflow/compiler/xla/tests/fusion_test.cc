@@ -17,8 +17,12 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <new>
+#include <random>
 #include <utility>
 
+#define EIGEN_USE_THREADS
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
@@ -37,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -153,8 +158,8 @@ float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
 }
 
 template <>
-uint8 FusionTest::ComputeElementwiseAnswer<uint8>(HloOpcode opcode,
-                                                  ArraySlice<float> xs) {
+bool FusionTest::ComputeElementwiseAnswer<bool>(HloOpcode opcode,
+                                                ArraySlice<float> xs) {
   switch (opcode) {
     case HloOpcode::kEq:
       return xs[0] == xs[1];
@@ -248,6 +253,42 @@ XLA_TEST_F(FusionTest, Parameter) {
   LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>({{-1.0, 0.0, 1.0}}),
                               *ExecuteAndTransfer(std::move(hlo_module), {}),
                               ErrorSpec(1e-4));
+}
+
+XLA_TEST_F(FusionTest, RandomizedParallelPartition) {
+  // Tests parallel partitioning of a fusion instruction.
+  // Create shape with random outer dimension size to generate random parallel
+  // partition counts for each test run.
+  const int seed = tensorflow::testing::RandomSeed();
+  LOG(INFO) << "RandomizedParallelPartition seed: " << seed;
+  std::mt19937 generator(seed);
+  std::uniform_int_distribution<int> distribution(128, 1024);
+  const int64 rand_dim0_size = distribution(generator);
+  const int64 dim1_size = 1024;
+  Shape shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {rand_dim0_size, dim1_size}, {1, 0});
+  // Build simple fusion computation: y = x^2 (elementwise).
+  auto builder = HloComputation::Builder(TestName());
+  auto hlo_module = CreateNewModule();
+
+  auto two = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape, two, {}));
+  auto y = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, x, x));
+
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(/*instructions_to_fuse=*/{y, x, two},
+                                HloInstruction::FusionKind::kLoop);
+  // Compute result.
+  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  // Every element of result should be y = x^2 = 4.0.
+  for (int i = 0; i < rand_dim0_size; ++i) {
+    for (int j = 0; j < dim1_size; ++j) {
+      EXPECT_EQ(4.0, result->Get<float>({i, j}));
+    }
+  }
 }
 
 XLA_TEST_F(FusionTest, BroadcastIntoBinaryOp) {
@@ -569,12 +610,12 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceImplicitBroadcast)) {
       ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kNegate, reduce2));
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, reduce2));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate3, reduce2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-15}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(-15),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
@@ -655,10 +696,10 @@ XLA_TEST_F(FusionTest, SharedConstant) {
   HloComputation* entry_comp = hlo_module->entry_computation();
 
   // entry computation contains the constant(0) and the fusion
-  EXPECT_EQ(entry_comp->instructions().size(), 2);
+  EXPECT_EQ(entry_comp->instruction_count(), 2);
 
   // fused instruction contains the constant(2), the parameter, and 4 adds
-  EXPECT_EQ(entry_comp->root_instruction()->fused_instructions().size(), 6);
+  EXPECT_EQ(entry_comp->root_instruction()->fused_instruction_count(), 6);
 
   LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({8}),
           *ExecuteAndTransfer(std::move(hlo_module), {}));
@@ -690,26 +731,24 @@ XLA_TEST_F(FusionTest, Maximum2D) {
   TestElementwise2D<float, 2>(HloOpcode::kMaximum);
 }
 
-XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<uint8, 2>(HloOpcode::kEq); }
+XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<bool, 2>(HloOpcode::kEq); }
 
 XLA_TEST_F(FusionTest, Inequal2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kNe);
+  TestElementwise2D<bool, 2>(HloOpcode::kNe);
 }
 
 XLA_TEST_F(FusionTest, Greater2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGt);
+  TestElementwise2D<bool, 2>(HloOpcode::kGt);
 }
 
-XLA_TEST_F(FusionTest, Lesser2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLt);
-}
+XLA_TEST_F(FusionTest, Lesser2D) { TestElementwise2D<bool, 2>(HloOpcode::kLt); }
 
 XLA_TEST_F(FusionTest, GreaterOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kGe);
+  TestElementwise2D<bool, 2>(HloOpcode::kGe);
 }
 
 XLA_TEST_F(FusionTest, LesserOrEqual2D) {
-  TestElementwise2D<uint8, 2>(HloOpcode::kLe);
+  TestElementwise2D<bool, 2>(HloOpcode::kLe);
 }
 
 XLA_TEST_F(FusionTest, Clamp2D) {
@@ -724,47 +763,97 @@ void BM_ParallelFusion(int num_iters) {
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   StreamExecutorMemoryAllocator allocator(platform, executors);
 
-  const int64 intra_op_parallelism_threads = 16;
+  const int64 intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   client_options.set_intra_op_parallelism_threads(intra_op_parallelism_threads);
   auto client =
       ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
 
-  const int64 dim_size = 1024;
-  // Create a simple fusable elementwise computation.
+  int device_ordinal = client->default_device_ordinal();
+
+  // Computation shape parameters.
+  const int64 param0_dim0 = 1024;
+  const int64 param0_dim1 = 1024;
+  const int64 param1_dim0 = 1024;
+  const int64 param1_dim1 = 1024;
+  const int64 param2_dim0 = 1024;
+  const int64 param2_dim1 = 1024;
+
+  // Create computation.
   ComputationBuilder builder(client, "ParallelFusion");
-  Shape input_shape = ShapeUtil::MakeShape(F32, {dim_size, dim_size});
-  auto input0 = builder.Broadcast(builder.ConstantR0<float>(1.5f),
-                                  AsInt64Slice(input_shape.dimensions()));
-  auto input1 = builder.Broadcast(builder.ConstantR0<float>(2.0f),
-                                  AsInt64Slice(input_shape.dimensions()));
-  auto input2 = builder.Broadcast(builder.ConstantR0<float>(3.0f),
-                                  AsInt64Slice(input_shape.dimensions()));
-  auto x = builder.Mul(input0, input1);
-  auto y = builder.Add(x, input2);
+  Shape shape0 = ShapeUtil::MakeShape(F32, {param0_dim0, param0_dim1});
+  auto param0 = builder.Parameter(0, shape0, "param0");
+  Shape shape1 = ShapeUtil::MakeShape(F32, {param1_dim0, param1_dim1});
+  auto param1 = builder.Parameter(1, shape1, "param1");
+  Shape shape2 = ShapeUtil::MakeShape(F32, {param2_dim0, param2_dim1});
+  auto param2 = builder.Parameter(2, shape2, "param2");
+
+  auto x = builder.Mul(param0, param1);
+  auto y = builder.Add(x, param2);
   auto computation = builder.Build().ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, {}, ExecutableBuildOptions())
+  // Transfer literals to device.
+  auto param0_literal =
+      Literal::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
+  std::unique_ptr<ShapedBuffer> buffer0 =
+      client->LiteralToShapedBuffer(*param0_literal, device_ordinal)
           .ConsumeValueOrDie();
 
-  // Run some warm-up executions.
+  auto param1_literal =
+      Literal::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
+  std::unique_ptr<ShapedBuffer> buffer1 =
+      client->LiteralToShapedBuffer(*param1_literal, device_ordinal)
+          .ConsumeValueOrDie();
+
+  auto param2_literal =
+      Literal::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
+  std::unique_ptr<ShapedBuffer> buffer2 =
+      client->LiteralToShapedBuffer(*param2_literal, device_ordinal)
+          .ConsumeValueOrDie();
+
+  // Build executable.
+  std::unique_ptr<LocalExecutable> executable =
+      client
+          ->Compile(computation,
+                    {&buffer0->on_host_shape(), &buffer1->on_host_shape(),
+                     &buffer2->on_host_shape()},
+                    ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
+  se::Stream stream(executors[device_ordinal]);
+  stream.Init();
+
+  // Initialize thread pool.
+  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
+                                      intra_op_parallelism_threads);
+  tensorflow::EigenThreadPoolWrapper tp(&pool);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;
-  options.set_allocator(&allocator);
+  options.set_allocator(&allocator).set_stream(&stream);
+  options.set_intra_op_thread_pool(&device);
+
+  // Run some warm-up executions.
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = executable->Run({}, options);
+    auto result =
+        executable->Run({buffer0.get(), buffer1.get(), buffer2.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
-  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) * dim_size *
-                                      dim_size * sizeof(float));
+  const int64 total_bytes = param0_dim0 * param0_dim0 +
+                            param1_dim0 * param1_dim0 +
+                            param2_dim0 * param2_dim0;
+  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) *
+                                      total_bytes * sizeof(float));
   tensorflow::testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = executable->Run({}, options);
+    auto result =
+        executable->Run({buffer0.get(), buffer1.get(), buffer2.get()}, options);
     ASSERT_TRUE(result.ok());
   }
 }

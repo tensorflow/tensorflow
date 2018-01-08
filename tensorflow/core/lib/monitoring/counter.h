@@ -48,7 +48,7 @@ namespace monitoring {
 // This class is thread-safe.
 class CounterCell {
  public:
-  CounterCell(const int64 value) : value_(value) {}
+  CounterCell(int64 value) : value_(value) {}
   ~CounterCell() {}
 
   // Atomically increments the value by step.

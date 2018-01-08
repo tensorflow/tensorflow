@@ -88,7 +88,7 @@ fi
 # Print info
 echo "TF_BUILD_INFO = {"\
 "container_type: \"${CONTAINER_TYPE}\", "\
-"command: \"${COMMAND[@]}\", "\
+"command: \"${COMMAND[*]}\", "\
 "source_HEAD: \"${TF_HEAD}\", "\
 "source_remote_origin: \"${TF_FETCH_URL}\", "\
 "OS: \"${OS}\", "\

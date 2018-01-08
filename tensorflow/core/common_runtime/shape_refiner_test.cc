@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
@@ -64,6 +67,24 @@ namespace {
   do {                                                                \
     shape_inference::InferenceContext* ctx = M.GetContext(OP.node()); \
     EXPECT_EQ(EXPECTED, ctx->DebugString(ctx->output(IDX)));          \
+  } while (0);
+
+#define EXPECT_RESOURCE_SINGLE_SHAPE(EXPECTED, M, OP, IDX)            \
+  do {                                                                \
+    shape_inference::InferenceContext* ctx = M.GetContext(OP.node()); \
+    auto* v = ctx->output_handle_shapes_and_types(IDX);               \
+    EXPECT_NE(v, nullptr);                                            \
+    EXPECT_EQ(v->size(), 1);                                          \
+    EXPECT_EQ(EXPECTED, ctx->DebugString((*v)[0].shape));             \
+  } while (0);
+
+#define EXPECT_RESOURCE_SINGLE_TYPE(EXPECTED, M, OP, IDX)             \
+  do {                                                                \
+    shape_inference::InferenceContext* ctx = M.GetContext(OP.node()); \
+    auto* v = ctx->output_handle_shapes_and_types(IDX);               \
+    EXPECT_NE(v, nullptr);                                            \
+    EXPECT_EQ(v->size(), 1);                                          \
+    EXPECT_EQ(EXPECTED, (*v)[0].dtype);                               \
   } while (0);
 
 TEST_F(ShapeRefinerTest, Constant) {
@@ -1140,11 +1161,13 @@ TEST_F(ShapeRefinerTest, SameDefinedShape) {
   auto s_unknown_2 = ctx->MakeShape({-1, 2});
   auto s_unknown_2_b = ctx->MakeShape({-1, 2});
 
-  EXPECT_TRUE(SameDefinedShape(ctx, unknown, unknown_b));
+  EXPECT_TRUE(SameDefinedShape(ctx, unknown, unknown));
+  EXPECT_FALSE(SameDefinedShape(ctx, unknown, unknown_b));
   EXPECT_FALSE(SameDefinedShape(ctx, unknown, s_1_2));
   EXPECT_TRUE(SameDefinedShape(ctx, s_1_2, s_1_2_b));
   EXPECT_FALSE(SameDefinedShape(ctx, s_1_2, s_2_2));
-  EXPECT_TRUE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2_b));
+  EXPECT_TRUE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2));
+  EXPECT_FALSE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2_b));
 }
 
 TEST_F(ShapeRefinerTest, IsUpdatedShapesOrTypes) {
@@ -1157,14 +1180,15 @@ TEST_F(ShapeRefinerTest, IsUpdatedShapesOrTypes) {
   TF_ASSERT_OK(m.AddNode(test));
   shape_inference::InferenceContext* ctx = m.GetContext(test);
 
+  shape_inference::ShapeHandle unknown = ctx->UnknownShape();
   std::vector<shape_inference::ShapeAndType> t0{
       {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
-      {ctx->UnknownShape(), DT_INVALID},
+      {unknown, DT_INVALID},
       {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
 
   std::vector<shape_inference::ShapeAndType> t1{
       {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
-      {ctx->UnknownShape(), DT_INVALID},
+      {unknown, DT_INVALID},
       {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
 
   std::vector<shape_inference::ShapeAndType> t2{
@@ -1235,10 +1259,207 @@ TEST_F(ShapeRefinerTest, IncrementalUpdates) {
       0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
   refined = false;
   TF_ASSERT_OK(m.UpdateNode(dequeue, true /* relax */, &refined));
-  EXPECT_FALSE(refined);
+  EXPECT_TRUE(refined);
   ctx = m.GetContext(dequeue);
   EXPECT_EQ("[?,7]", ctx->DebugString(ctx->output(0)));
-  ASSERT_FALSE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
+  EXPECT_TRUE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
+
+  // Inject a shape of the same handle and expect refined to not change.
+  ctx = m.GetContext(queue);
+  shape_inference::ShapeHandle shp2 = shp;
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp2, DT_FLOAT}});
+  refined = false;
+  TF_ASSERT_OK(m.UpdateNode(dequeue, /*relax=*/false, &refined));
+  EXPECT_FALSE(refined);
+  EXPECT_TRUE(SameHandle(ctx->Dim(shp, 0), ctx->Dim(shp2, 0)));
+}
+
+void TestSimpleFunctionInference(bool enable_function_inference,
+                                 bool keep_nested_inferences) {
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = test::function::XTimesTwo();
+  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
+
+  Scope root = Scope::NewRootScope();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto x = ops::Const(root, {{1.0f, 2.0f}});
+  auto x2 = test::function::Call(&root, "x2", "XTimesTwo", {x});
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
+  if (enable_function_inference) {
+    m.set_function_library_for_shape_inference(&f_lib);
+  }
+  if (keep_nested_inferences) m.set_keep_nested_shape_inferences();
+
+  TF_ASSERT_OK(m.AddNode(x.node()));
+  TF_ASSERT_OK(m.AddNode(x2.node()));
+
+  EXPECT_SHAPE("[1,2]", m, x, 0);
+
+  if (enable_function_inference) {
+    EXPECT_SHAPE("[1,2]", m, x2, 0);
+
+    if (keep_nested_inferences) {
+      EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(),
+                test::function::XTimesTwo().node_def_size());
+    } else {
+      EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
+    }
+  } else {
+    // Default inference behavior: functions output shapes are unknown.
+    EXPECT_SHAPE("?", m, x2, 0);
+    EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
+  }
+}
+
+TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_Disabled) {
+  // Nesting flag doesn't matter, when function inference is disabled.
+  TestSimpleFunctionInference(false /* enable_function_inference */,
+                              false /* keep_nested_inferences */);
+}
+
+TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_NoNesting) {
+  TestSimpleFunctionInference(true /* enable_function_inference */,
+                              false /* keep_nested_inferences */);
+}
+
+TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_WithNesting) {
+  TestSimpleFunctionInference(true /* enable_function_inference */,
+                              true /* keep_nested_inferences */);
+}
+
+TEST_F(ShapeRefinerTest, FunctionShapeInferenceFallback) {
+  // Test that function inference falls back to returning unknown shapes,
+  // if the function lookup fails.
+
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = test::function::XTimesTwo();
+  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
+
+  Scope root = Scope::NewRootScope();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto x = ops::Const(root, {{.0f, .0f}});
+  auto x2 = test::function::Call(&root, "x2", "XTimesTwo", {x});
+
+  FunctionDefLibrary empty_f_lib_proto;
+  FunctionLibraryDefinition empty_f_lib(OpRegistry::Global(),
+                                        empty_f_lib_proto);
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
+  m.set_function_library_for_shape_inference(&empty_f_lib);
+  m.set_keep_nested_shape_inferences();
+
+  TF_ASSERT_OK(m.AddNode(x.node()));
+  TF_ASSERT_OK(m.AddNode(x2.node()));
+
+  EXPECT_SHAPE("[1,2]", m, x, 0);
+
+  // Default inference behavior: functions output shapes are unknown.
+  EXPECT_SHAPE("?", m, x2, 0);
+  EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
+}
+
+TEST_F(ShapeRefinerTest, NestedFunctionShapeInference) {
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = test::function::XTimesTwo();
+  *(f_lib_proto.add_function()) = test::function::XTimesFour();
+  // XTimes16 is defined with a bunch of nesting
+  *(f_lib_proto.add_function()) = test::function::XTimes16();
+  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
+
+  Scope root = Scope::NewRootScope();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto x = ops::Const(root, {{.0f, .0f}});
+  auto x16 = test::function::Call(&root, "x16", "XTimes16", {x});
+  auto x256 = test::function::Call(&root, "x256", "XTimes16", {x16});
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
+  m.set_function_library_for_shape_inference(&f_lib);
+  m.set_keep_nested_shape_inferences();
+
+  TF_ASSERT_OK(m.AddNode(x.node()));
+  TF_ASSERT_OK(m.AddNode(x16.node()));
+  TF_ASSERT_OK(m.AddNode(x256.node()));
+
+  EXPECT_SHAPE("[1,2]", m, x, 0);
+  EXPECT_SHAPE("[1,2]", m, x16, 0);
+  EXPECT_SHAPE("[1,2]", m, x256, 0);
+
+  EXPECT_EQ(m.GetExtendedContext(x16.node())->nested_inferences().size(),
+            test::function::XTimesFour().node_def_size());
+  auto* x4 =
+      m.GetExtendedContext(x16.node())->nested_inferences().at("x4").get();
+  auto* x4c = x4->get_context();
+  EXPECT_EQ("[1,2]", x4c->DebugString(x4c->output(0)));
+  auto* x2c = x4->nested_inferences().at("x2")->get_context();
+  EXPECT_EQ("[1,2]", x2c->DebugString(x2c->output(0)));
+}
+
+TEST_F(ShapeRefinerTest, ChainedFunctionShapeInferenceWithMultipleInputs) {
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = test::function::XTimesTwo();
+  *(f_lib_proto.add_function()) = test::function::XTimesFour();
+  *(f_lib_proto.add_function()) = test::function::XTimes16();
+  *(f_lib_proto.add_function()) = test::function::WXPlusB();
+  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
+
+  Scope root = Scope::NewRootScope();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto w = ops::Const(root, {{.0f}, {.0f}, {.0f}});
+  auto x = ops::Const(root, {{.0f, .0f, .0f}});
+  auto b = ops::Const(root, {{.0f}});
+
+  auto wxplusb = test::function::Call(&root, "wxplusb", "WXPlusB", {w, x, b});
+  auto wxplusb16 =
+      test::function::Call(&root, "wxplusb16", "XTimes16", {wxplusb});
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
+  m.set_function_library_for_shape_inference(&f_lib);
+
+  TF_ASSERT_OK(m.AddNode(w.node()));
+  TF_ASSERT_OK(m.AddNode(x.node()));
+  TF_ASSERT_OK(m.AddNode(b.node()));
+  TF_ASSERT_OK(m.AddNode(wxplusb.node()));
+  TF_ASSERT_OK(m.AddNode(wxplusb16.node()));
+
+  EXPECT_SHAPE("[3,1]", m, w, 0);
+  EXPECT_SHAPE("[1,3]", m, x, 0);
+  EXPECT_SHAPE("[1,1]", m, b, 0);
+  EXPECT_SHAPE("[3,3]", m, wxplusb, 0);
+  EXPECT_SHAPE("[3,3]", m, wxplusb16, 0);
+}
+
+TEST_F(ShapeRefinerTest, FunctionShapeInferenceWorksForResourceHandles) {
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = test::function::Swap();
+
+  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+
+  auto x1 = ops::VarHandleOp(root, DataType::DT_FLOAT, TensorShape({128, 256}));
+  auto x2 = ops::VarHandleOp(root, DataType::DT_DOUBLE, TensorShape({1024}));
+  auto swap = test::function::Call(&root, "swap", "Swap", {x1, x2});
+
+  EXPECT_EQ(swap.node()->num_outputs(), 2);
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
+  m.set_function_library_for_shape_inference(&f_lib);
+
+  TF_ASSERT_OK(m.AddNode(x1.node()));
+  TF_ASSERT_OK(m.AddNode(x2.node()));
+  TF_ASSERT_OK(m.AddNode(swap.node()));
+
+  EXPECT_EQ(m.GetContext(swap.node())->num_outputs(), 2);
+
+  EXPECT_RESOURCE_SINGLE_SHAPE("[128,256]", m, x1, 0);
+  EXPECT_RESOURCE_SINGLE_SHAPE("[1024]", m, x2, 0);
+  EXPECT_RESOURCE_SINGLE_SHAPE("[1024]", m, swap, 0);
+  EXPECT_RESOURCE_SINGLE_SHAPE("[128,256]", m, swap, 1);
+  EXPECT_RESOURCE_SINGLE_TYPE(DataType::DT_DOUBLE, m, swap, 0);
+  EXPECT_RESOURCE_SINGLE_TYPE(DataType::DT_FLOAT, m, swap, 1);
 }
 
 }  // namespace

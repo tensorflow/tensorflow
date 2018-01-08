@@ -56,7 +56,7 @@ TensorShapeProto GetTensorShape(const HloInstruction* instruction) {
   return tensor_shape;
 }
 
-}  // namespace
+string GetDeviceName(int device) { return StrCat("/device/XLA:", device); }
 
 void CleanNodeName(string* name) {
   name->erase(std::remove(name->begin(), name->end(), '%'), name->end());
@@ -68,15 +68,20 @@ void CleanNodeName(string* name) {
   std::replace_if(name->begin(), name->end(), pred, '_');
 }
 
+}  // namespace
+
+HloTfGraphBuilder::HloTfGraphBuilder(const DebugOptions& debug_options)
+    : debug_options_(debug_options) {}
+
 Status HloTfGraphBuilder::AddComputation(const HloComputation& computation) {
   VLOG(2) << "Adding computation " << computation.name();
   for (auto embedded : computation.MakeEmbeddedComputationsList()) {
-    for (auto& instruction : embedded->instructions()) {
-      TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
+    for (auto* instruction : embedded->instructions()) {
+      TF_RETURN_IF_ERROR(AddInstruction(instruction));
     }
   }
-  for (auto& instruction : computation.instructions()) {
-    TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
+  for (auto* instruction : computation.instructions()) {
+    TF_RETURN_IF_ERROR(AddInstruction(instruction));
   }
   return Status::OK();
 }
@@ -88,23 +93,38 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   if (ContainsKey(instruction_to_node_name_, instruction)) {
     return instruction_to_node_name_[instruction];
   }
+  auto append = [](string* str, const string& other) {
+    if (str->empty()) {
+      *str = other;
+    } else if (!other.empty()) {
+      StrAppend(str, "/", other);
+    }
+  };
   string node_name;
+  if (debug_options_.xla_hlo_tfgraph_device_scopes() &&
+      instruction->has_sharding() &&
+      instruction->sharding().HasUniqueDevice()) {
+    node_name = StrCat(
+        "dev", instruction->sharding().UniqueDevice().ConsumeValueOrDie());
+  }
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
-  if (instruction->IsFused()) {
-    node_name = GetNodeNameForInstruction(instruction->fusion_instruction());
+  const HloComputation* computation = instruction->parent();
+  if (computation->IsFusionComputation()) {
+    append(&node_name,
+           GetNodeNameForInstruction(computation->FusionInstruction()));
   } else {
-    node_name = instruction->parent()->name();
+    append(&node_name, computation->name());
     if (!instruction->metadata().op_name().empty()) {
       // Always make computations contain TF ops but not the other way around.
-      StrAppend(&node_name, "/", instruction->metadata().op_name());
+      append(&node_name, instruction->metadata().op_name());
     }
   }
   string instruction_name = instruction->name();
   if (instruction->opcode() == HloOpcode::kParameter) {
     StrAppend(&instruction_name, ".", instruction->parameter_number());
   }
-  StrAppend(&node_name, "/", instruction_name);
+  append(&node_name, instruction_name);
   CleanNodeName(&node_name);
   auto ret =
       instruction_to_node_name_.insert(std::make_pair(instruction, node_name));
@@ -146,7 +166,7 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
     } else {
       layout_string = StrCat(
-          "{", Join(instruction->shape().layout().minor_to_major(), ","), "}");
+          "{", Join(LayoutUtil::MinorToMajor(instruction->shape()), ","), "}");
     }
     attrs["layout"].set_s(layout_string);
   }
@@ -177,6 +197,10 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
     case HloOpcode::kCustomCall:
       attrs["custom_call_target"].set_s(instruction->custom_call_target());
       break;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      attrs["channel_id"].set_i(instruction->channel_id());
+      break;
     default:
       break;
   }
@@ -191,10 +215,15 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   NodeDef* node_def = graph_def_.add_node();
   node_def->set_name(GetNodeNameForInstruction(instruction));
   node_def->set_op(GetOpDefName(instruction));
+  if (instruction->has_sharding() &&
+      instruction->sharding().HasUniqueDevice()) {
+    TF_ASSIGN_OR_RETURN(int64 device, instruction->sharding().UniqueDevice());
+    node_def->set_device(GetDeviceName(device));
+  }
   SetNodeAttrs(instruction, node_def);
   if (instruction->opcode() == HloOpcode::kFusion) {
-    for (auto& fused_instruction : instruction->fused_instructions()) {
-      TF_RETURN_IF_ERROR(AddInstruction(fused_instruction.get()));
+    for (auto* fused_instruction : instruction->fused_instructions()) {
+      TF_RETURN_IF_ERROR(AddInstruction(fused_instruction));
     }
   }
   // Add all edges including control edges.

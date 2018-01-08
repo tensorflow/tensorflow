@@ -39,7 +39,6 @@ class TPUClusterResolver(ClusterResolver):
   """
 
   def __init__(self,
-               api_definition,
                project,
                zone,
                tpu_names,
@@ -52,8 +51,6 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      api_definition: (Alpha only) A copy of the JSON API definitions for
-        Cloud TPUs. This will be removed once Cloud TPU enters beta.
       project: Name of the GCP project containing Cloud TPUs
       zone: Zone where the TPUs are located
       tpu_names: A list of names of the target Cloud TPUs.
@@ -83,13 +80,30 @@ class TPUClusterResolver(ClusterResolver):
         raise ImportError('googleapiclient must be installed before using the '
                           'TPU cluster resolver')
 
-      # TODO(frankchn): Remove once Cloud TPU API Definitions are public and
-      # replace with discovery.build('tpu', 'v1')
-      self._service = discovery.build_from_document(
-          api_definition,
+      self._service = discovery.build(
+          'tpu', 'v1alpha1',
           credentials=self._credentials)
     else:
       self._service = service
+
+  def get_master(self):
+    """Get the ClusterSpec grpc master path.
+
+    This returns the grpc path (grpc://1.2.3.4:8470) of first instance in the
+    ClusterSpec returned by the cluster_spec function. This is suitable for use
+    for the `master` argument in tf.Session() when you are using one TPU.
+
+    Returns:
+      string, the grpc path of the first instance in the ClusterSpec.
+
+    Raises:
+      ValueError: If none of the TPUs specified exists.
+    """
+    job_tasks = self.cluster_spec().job_tasks(self._job_name)
+    if not job_tasks:
+      raise ValueError('No TPUs exists with the specified names exist.')
+
+    return 'grpc://' + job_tasks[0]
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.

@@ -27,16 +27,16 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 namespace xla {
 
 namespace {
 void DumpModule(const HloModule& module,
-
                 const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
-  VLOG(2) << "HLO " << message << ":";
-  XLA_VLOG_LINES(2, module.ToString());
+  VLOG(3) << "HLO " << message << ":";
+  XLA_VLOG_LINES(3, module.ToString());
 }
 }  // namespace
 
@@ -54,10 +54,21 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
             << tensorflow::str_util::Join(disabled_passes, ", ");
   }
 
-  auto run_invariant_checkers = [this, module]() -> Status {
+  auto run_invariant_checkers = [this,
+                                 module](const string& message) -> Status {
     for (auto& invariant_checker : invariant_checkers_) {
-      TF_ASSIGN_OR_RETURN(bool changed, invariant_checker->Run(module));
-      TF_RET_CHECK(!changed) << "invariant checkers must not change the graph";
+      VLOG(1) << "    Invariant checker " << invariant_checker->name();
+      StatusOr<bool> changed_status = invariant_checker->Run(module);
+      VLOG(1) << "    Invariant checker done " << invariant_checker->name();
+      if (!changed_status.ok()) {
+        VLOG(2) << "Module failed invariant check:";
+        XLA_VLOG_LINES(2, module->ToString());
+        return Status(changed_status.status().code(),
+                      StrCat(changed_status.status().error_message(),
+                             "\n\nFailed ", message));
+      }
+      TF_RET_CHECK(!changed_status.ValueOrDie())
+          << "invariant checkers must not change the graph";
     }
     return Status::OK();
   };
@@ -65,6 +76,8 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   string prefix = name().ToString() + ": pipeline start";
   bool changed = false;
   string message;
+  TF_RETURN_IF_ERROR(
+      run_invariant_checkers(StrCat("before running pipeline: ", name())));
   for (auto& pass : passes_) {
     if (disabled_passes.count(pass->name().ToString()) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
@@ -79,14 +92,14 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     StrAppend(&message, prefix, ", before ", pass->name());
     DumpModule(*module, message);
 
-    TF_RETURN_IF_ERROR(run_invariant_checkers());
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
+    TF_RETURN_IF_ERROR(
+        run_invariant_checkers(StrCat("after running pass: ", pass->name())));
 
     changed |= changed_this_pass;
     prefix.clear();
     StrAppend(&prefix, name(), ": after ", pass->name());
   }
-  TF_RETURN_IF_ERROR(run_invariant_checkers());
   DumpModule(*module, prefix + ", pipeline end");
   return changed;
 }

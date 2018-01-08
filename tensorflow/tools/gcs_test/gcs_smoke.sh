@@ -65,10 +65,6 @@ echo "Building in temporary directory: ${BUILD_DIR}"
 cp -r ${SCRIPT_DIR}/* "${BUILD_DIR}"/ || \
     die "Failed to copy files to ${BUILD_DIR}"
 
-# Download whl file into the build context directory.
-wget -P "${BUILD_DIR}" ${WHL_URL} || \
-    die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
-
 DOCKERFILE="${BUILD_DIR}/Dockerfile"
 if [[ ! -f "${DOCKERFILE}" ]]; then
   die "ERROR: Cannot find Dockerfile at expected path ${DOCKERFILE}"

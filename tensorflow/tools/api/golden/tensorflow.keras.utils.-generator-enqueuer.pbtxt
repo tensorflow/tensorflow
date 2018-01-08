@@ -1,0 +1,26 @@
+path: "tensorflow.keras.utils.GeneratorEnqueuer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.data_utils.GeneratorEnqueuer\'>"
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.data_utils.SequenceEnqueuer\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'generator\', \'use_multiprocessing\', \'wait_time\', \'seed\'], varargs=None, keywords=None, defaults=[\'False\', \'0.05\', \'None\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_running"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "start"
+    argspec: "args=[\'self\', \'workers\', \'max_queue_size\'], varargs=None, keywords=None, defaults=[\'1\', \'10\'], "
+  }
+  member_method {
+    name: "stop"
+    argspec: "args=[\'self\', \'timeout\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

@@ -22,14 +22,36 @@ limitations under the License.
 
 namespace tensorflow {
 
+class FakeDevice : public Device {
+ private:
+  explicit FakeDevice(const DeviceAttributes& device_attributes)
+      : Device(nullptr, device_attributes) {}
+
+ public:
+  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+
+  Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
+
+  static std::unique_ptr<Device> MakeCPU(const string& name) {
+    DeviceAttributes device_attributes;
+    device_attributes.set_name(name);
+    device_attributes.set_device_type(DeviceType("FakeCPU").type());
+    return std::unique_ptr<Device>(new FakeDevice(device_attributes));
+  }
+};
+
 class SessionMgrTest : public ::testing::Test {
  protected:
   SessionMgrTest()
-      : mgr_(&env_, "/job:mnist/replica:0/task:0",
-             std::unique_ptr<WorkerCacheInterface>(),
-             factory_),
-        legacy_session_(mgr_.WorkerSessionForSession("novel_session_id")) {}
+      : device_(FakeDevice::MakeCPU(
+            "/job:mnist/replica:0/task:0/device:fakecpu:0")),
+        mgr_(&env_, "/job:mnist/replica:0/task:0",
+             std::unique_ptr<WorkerCacheInterface>(), factory_),
+        legacy_session_(mgr_.WorkerSessionForSession("novel_session_id")) {
+    env_.local_devices = {device_.get()};
+  }
 
+  std::unique_ptr<Device> device_;
   WorkerEnv env_;
   SessionMgr::WorkerCacheFactory factory_ =
       [](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
@@ -42,12 +64,46 @@ class SessionMgrTest : public ::testing::Test {
 
 TEST_F(SessionMgrTest, CreateSessionSimple) {
   ServerDef server_def;
+  server_def.set_job_name("worker");
+  server_def.set_task_index(3);
+
   string session_handle = "test_session_handle";
-  TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def));
+  TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def, true));
   WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
   EXPECT_NE(mgr_.LegacySession(), session);
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
+}
+
+TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
+  ServerDef server_def;
+  server_def.set_job_name("worker");
+  server_def.set_task_index(3);
+
+  TF_EXPECT_OK(mgr_.CreateSession("handle_1", server_def, false));
+  WorkerSession* session_1 = mgr_.WorkerSessionForSession("handle_1");
+  std::vector<Device*> devices_1 = session_1->device_mgr->ListDevices();
+  EXPECT_EQ(1, devices_1.size());
+
+  TF_EXPECT_OK(mgr_.CreateSession("handle_2", server_def, false));
+  WorkerSession* session_2 = mgr_.WorkerSessionForSession("handle_2");
+  std::vector<Device*> devices_2 = session_2->device_mgr->ListDevices();
+  EXPECT_EQ(1, devices_2.size());
+
+  TF_EXPECT_OK(mgr_.CreateSession("handle_3", server_def, true));
+  WorkerSession* session_3 = mgr_.WorkerSessionForSession("handle_3");
+  std::vector<Device*> devices_3 = session_3->device_mgr->ListDevices();
+  EXPECT_EQ(1, devices_3.size());
+
+  TF_EXPECT_OK(mgr_.CreateSession("handle_4", server_def, true));
+  WorkerSession* session_4 = mgr_.WorkerSessionForSession("handle_4");
+  std::vector<Device*> devices_4 = session_4->device_mgr->ListDevices();
+  EXPECT_EQ(1, devices_4.size());
+
+  EXPECT_EQ(devices_1[0]->resource_manager(), devices_2[0]->resource_manager());
+  EXPECT_NE(devices_1[0]->resource_manager(), devices_3[0]->resource_manager());
+  EXPECT_NE(devices_1[0]->resource_manager(), devices_4[0]->resource_manager());
+  EXPECT_NE(devices_3[0]->resource_manager(), devices_4[0]->resource_manager());
 }
 
 TEST_F(SessionMgrTest, LegacySession) {

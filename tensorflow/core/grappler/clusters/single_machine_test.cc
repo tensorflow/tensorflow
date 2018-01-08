@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -49,12 +48,19 @@ class SingleMachineTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    if (cluster_) {
+      TF_CHECK_OK(cluster_->Shutdown());
+    }
     cluster_.reset();
   }
 
  protected:
   std::unique_ptr<SingleMachine> cluster_;
 };
+
+TEST_F(SingleMachineTest, ClusterType) {
+  CHECK_EQ("single_machine", cluster_->type());
+}
 
 TEST_F(SingleMachineTest, CostModel) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
@@ -179,8 +185,7 @@ TEST_F(SingleMachineTest, GraphOptimizations) {
   // With optimizations turned on, some nodes could have been optimized away,
   // and the cost model could be partial. Restart the cluster with optimizations
   // disabled and make sure we have all the information we're looking for.
-  cluster_.reset();
-  cluster_.reset(new SingleMachine(5, 3, 0));
+  TF_CHECK_OK(cluster_->Shutdown());
   cluster_->DisableOptimizer(true);
   TF_CHECK_OK(cluster_->Provision());
 
@@ -325,7 +330,7 @@ static void RunInfiniteTFLoop() {
 
 TEST_F(SingleMachineTest, InfiniteLoops) {
   // The RunInfiniteTFLoop function creates its own cluster.
-  cluster_.reset();
+  TF_CHECK_OK(cluster_->Shutdown());
 
   EXPECT_EXIT(RunInfiniteTFLoop(), ::testing::ExitedWithCode(0), ".*");
 }
@@ -579,7 +584,8 @@ TEST_F(SingleMachineTest, ReleaseMemoryAfterDestruction) {
   EXPECT_EQ(device_memory.size(), 1);
   EXPECT_GT(device_memory.begin()->second.bytes_in_use, 0);
 
-  // Reset cluster_ would release all memory.
+  // Shutting down the cluster_ would release all memory.
+  TF_CHECK_OK(cluster_->Shutdown());
   cluster_.reset();
   std::unordered_map<string, AllocatorStats> device_memory_after;
   TF_CHECK_OK(GetDeviceMemoryStats(options, &device_memory_after));

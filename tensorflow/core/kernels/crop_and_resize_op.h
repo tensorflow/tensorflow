@@ -55,12 +55,12 @@ struct CropAndResizeBackpropBoxes {
 };
 
 template <typename Device>
-struct CheckValidBoxIndHelper {
-  // Checks if all values in box_ind are in [0, batch).
+struct CheckValidBoxIndexHelper {
+  // Checks if all values in box_index are in [0, batch).
   void operator()(const Device& d,
-                  typename TTypes<int32, 1>::ConstTensor box_ind, int batch,
+                  typename TTypes<int32, 1>::ConstTensor box_index, int batch,
                   typename TTypes<bool, 0>::Tensor isvalid) {
-    isvalid.device(d) = ((box_ind >= 0) && (box_ind < batch)).all();
+    isvalid.device(d) = ((box_index >= 0) && (box_index < batch)).all();
   }
 };
 

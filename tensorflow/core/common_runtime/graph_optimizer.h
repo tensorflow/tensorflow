@@ -33,13 +33,19 @@ class GraphOptimizer {
   // Maybe replace *graph with a new graph object.  'device' is device
   // on which the 'graph' will execute. It's passed to the optimizers
   // so that they can respect constraints if any, that should be
-  // respected. If shape_map is not null it maps from nodes in graph
-  // to partially-known shapes of their outputs, and may be used,
-  // e.g., in the constant folding pass.
+  // respected.
+  //
+  // If shape_map is not null it maps from nodes in graph to partially-known
+  // shapes of their outputs, and may be used, e.g., in the constant folding
+  // pass. The use of shape_map implies that the mapping from node name to the
+  // vector of partial shapes of its outputs is stable, i.e., no optimization
+  // pass may replace a node with a different node of the same name that has a
+  // different number of outputs, or outputs with different known shapes.
+  // TODO(b/65453533) introduce a unique way to name nodes in a graph.
   void Optimize(
       FunctionLibraryRuntime* runtime, Env* env, Device* device,
       std::unique_ptr<Graph>* graph,
-      const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+      const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map);
 
  private:

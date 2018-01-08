@@ -42,9 +42,6 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.estimator import estimator as core_estimator
@@ -883,7 +880,7 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  @deprecated("2017-03-25",
+  @deprecation.deprecated("2017-03-25",
               "ExportMonitor is deprecated. Please pass an "
               "ExportStrategy to Experiment instead.")
   def __init__(self,

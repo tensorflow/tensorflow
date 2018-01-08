@@ -114,6 +114,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     // types.
     ENQUEUE_REQUEST(GetStatus, false);
     ENQUEUE_REQUEST(CreateWorkerSession, false);
+    ENQUEUE_REQUEST(DeleteWorkerSession, false);
     ENQUEUE_REQUEST(CleanupAll, false);
     ENQUEUE_REQUEST(RegisterGraph, false);
     ENQUEUE_REQUEST(DeregisterGraph, false);
@@ -190,6 +191,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
       call->SendResponse(ToGrpcStatus(s));
     });
     ENQUEUE_REQUEST(CreateWorkerSession, false);
+  }
+
+  void DeleteWorkerSessionHandler(
+      WorkerCall<DeleteWorkerSessionRequest, DeleteWorkerSessionResponse>*
+          call) {
+    Schedule([this, call]() {
+      Status s = worker_->DeleteWorkerSession(&call->request, &call->response);
+      call->SendResponse(ToGrpcStatus(s));
+    });
+    ENQUEUE_REQUEST(DeleteWorkerSession, false);
   }
 
   void CleanupAllHandler(

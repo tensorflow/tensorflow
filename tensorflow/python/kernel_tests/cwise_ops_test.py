@@ -416,7 +416,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
-    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
@@ -460,7 +460,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
-    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
@@ -1927,15 +1927,17 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    np_zeros = np_real * 0
+    with self.test_session(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_real = math_ops.real(inx)
       tf_imag = math_ops.imag(inx)
-      tf_real_val, tf_imag_val = sess.run([tf_real, tf_imag])
-    self.assertAllEqual(np_real, tf_real_val)
-    self.assertAllEqual(np_imag, tf_imag_val)
-    self.assertShapeEqual(np_real, tf_real)
-    self.assertShapeEqual(np_imag, tf_imag)
+      tf_real_real = math_ops.real(tf_real)
+      tf_imag_real = math_ops.imag(tf_real)
+      self.assertAllEqual(np_real, tf_real.eval())
+      self.assertAllEqual(np_imag, tf_imag.eval())
+      self.assertAllEqual(np_real, tf_real_real.eval())
+      self.assertAllEqual(np_zeros, tf_imag_real.eval())
 
   def testRealImag64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
@@ -1956,7 +1958,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run([tf_angle])
+      tf_angle_val = sess.run(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -2015,7 +2017,8 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(TypeError, r"Expected numeric tensor"):
+    with self.assertRaisesRegexp(
+        TypeError, r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):
@@ -2115,21 +2118,21 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(ValueError):
         a = variables.Variable(0.2)
         b = variables.Variable(0.1)
-        tf_val = math_ops.accumulate_n([a,b], shape=[2,2]) # Should be shape=[]
+        math_ops.accumulate_n([a, b], shape=[2, 2])  # Should be shape=[]
 
   def testWrongType(self):
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
-        tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
+        math_ops.accumulate_n([a, b], tensor_dtype=np.int32)
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
-        tf_val = math_ops.accumulate_n([a], tensor_dtype=np.int32) 
+        math_ops.accumulate_n([a], tensor_dtype=np.int32)
 
 
 if __name__ == "__main__":

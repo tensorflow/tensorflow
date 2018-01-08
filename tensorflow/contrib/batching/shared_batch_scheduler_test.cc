@@ -429,6 +429,7 @@ TEST(SharedBatchSchedulerTest, ConstMethods) {
     queue_options.max_enqueued_batches = max_enqueued_batches;
     std::unique_ptr<BatchScheduler<FakeTask>> queue;
     TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &queue));
+    EXPECT_EQ(2, queue->max_task_size());
     EXPECT_EQ(0, queue->NumEnqueuedTasks());
     EXPECT_EQ(max_enqueued_batches * 2, queue->SchedulingCapacity());
 

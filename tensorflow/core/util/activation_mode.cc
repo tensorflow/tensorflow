@@ -22,7 +22,9 @@ namespace tensorflow {
 
 Status GetActivationModeFromString(const string& str_value,
                                    ActivationMode* value) {
-  if (str_value == "Sigmoid") {
+  if (str_value == "None") {
+    *value = NONE;
+  } else if (str_value == "Sigmoid") {
     *value = SIGMOID;
   } else if (str_value == "Relu") {
     *value = RELU;

@@ -82,6 +82,25 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
                              {});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, NegConstantZeroElementC64) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>({});
+  auto result = builder.Neg(a);
+
+  ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NegConstantC64) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>(
+      {{-2.5f, 1.0f}, {0.0f, 3.14f}, {2.25f, -1.0f}, {-10.0f, 0.0f}});
+  auto result = builder.Neg(a);
+
+  ComputeAndCompareR1<complex64>(
+      &builder, {{2.5f, -1.0f}, {0.0f, -3.14f}, {-2.25f, 1.0f}, {10.0f, 0.0f}},
+      {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({});
@@ -143,6 +162,28 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantZeroElementF32s) {
   auto add = builder.Add(a, b);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>(
+      {{-2.5f, 0.0f}, {0.0f, 3.14f}, {2.25f, 0.0f}, {1.0f, -10.0f}});
+  auto b = builder.ConstantR1<complex64>(
+      {{100.0f, 0.0f}, {3.13f, 0.0f}, {2.75f, 1.0f}, {-2.0f, 10.5f}});
+  auto add = builder.Add(a, b);
+
+  ComputeAndCompareR1<complex64>(
+      &builder, {97.5f, {3.13f, 3.14f}, {5.0f, 1.0f}, {-1.0f, 0.5f}}, {},
+      error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantZeroElementC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>({});
+  auto b = builder.ConstantR1<complex64>({});
+  auto add = builder.Add(a, b);
+
+  ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
@@ -220,6 +261,28 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantZeroElementS32s) {
   auto add = builder.Sub(a, b);
 
   ComputeAndCompareR1<int32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>(
+      {{-2.5f, 0.0f}, {0.0f, 3.14f}, {3.0f, 2.25f}});
+  auto b = builder.ConstantR1<complex64>(
+      {{0.0f, 10.0f}, {3.13f, 0.0f}, {2.75f, -0.25f}});
+  auto add = builder.Sub(a, b);
+
+  ComputeAndCompareR1<complex64>(
+      &builder, {{-2.5f, -10.0f}, {-3.13f, 3.14f}, {0.25f, 2.5f}}, {},
+      error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantZeroElementC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>({});
+  auto b = builder.ConstantR1<complex64>({});
+  auto add = builder.Sub(a, b);
+
+  ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF32s) {
@@ -385,6 +448,27 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivU32s) {
   }
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>(
+      {{-2.5f, 1.0f}, {-25.5f, 0.0f}, {2.0f, -1.0f}});
+  auto b = builder.ConstantR1<complex64>(
+      {{10.0f, 0.0f}, {0.0f, 1.0f}, {2.0f, -1.0f}});
+  auto div = builder.Div(a, b);
+
+  ComputeAndCompareR1<complex64>(
+      &builder, {{-0.25f, 0.1f}, {0.0f, 25.5f}, {1.0f, 0.0f}}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>({});
+  auto b = builder.ConstantR1<complex64>({});
+  auto div = builder.Div(a, b);
+
+  ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, RemF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>(
@@ -496,56 +580,335 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantU32s) {
   ComputeAndCompareR1<uint32>(&builder, expected, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalAnd) {
+XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>(
+      {{-2.5f, 0.0f}, {0.0f, 25.5f}, {2.0f, -10.0f}});
+  auto b = builder.ConstantR1<complex64>(
+      {{0.0f, 10.0f}, {5.0f, 1.0f}, {10.0f, -6.0f}});
+  auto add = builder.Mul(a, b);
+
+  ComputeAndCompareR1<complex64>(
+      &builder, {{0.0f, -25.0f}, {-25.5f, 127.5f}, {-40.0f, -112.0}}, {},
+      error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantZeroElementC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<complex64>({});
+  auto b = builder.ConstantR1<complex64>({});
+  auto add = builder.Mul(a, b);
+
+  ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, false, true, true});
   auto b = builder.ConstantR1<bool>({false, true, false, true});
-  auto out = builder.LogicalAnd(a, b);
+  auto out = builder.And(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {false, false, false, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalAndZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, AndPredR2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<bool>({{false, false}, {true, true}});
+  auto b = builder.ConstantR2<bool>({{false, true}, {false, true}});
+  auto out = builder.And(a, b);
+
+  Array2D<bool> expected_array({{false, false}, {false, true}});
+  ComputeAndCompareR2<bool>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
   auto b = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalAnd(a, b);
+  auto out = builder.And(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalOr) {
+XLA_TEST_F(ArrayElementwiseOpTest, AndS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({0, -1, -8});
+  auto b = builder.ConstantR1<int32>({5, -7, 12});
+  auto out = builder.And(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {0, -7, 8}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndS32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<int32>({{0, -5}, {-1, 5}});
+  auto b = builder.ConstantR2<int32>({{1, -6}, {4, 5}});
+  auto out = builder.And(a, b);
+
+  Array2D<int32> expected_array({{0, -6}, {4, 5}});
+  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({});
+  auto b = builder.ConstantR1<int32>({});
+  auto out = builder.And(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({0, 1, 8});
+  auto b = builder.ConstantR1<int32>({5, 7, 12});
+  auto out = builder.And(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {0, 1, 8}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndU32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<uint32>({{0, 1}, {3, 8}});
+  auto b = builder.ConstantR2<uint32>({{1, 0}, {7, 6}});
+  auto out = builder.And(a, b);
+
+  Array2D<uint32> expected_array({{0, 0}, {3, 0}});
+  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({});
+  auto b = builder.ConstantR1<uint32>({});
+  auto out = builder.And(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, false, true, true});
   auto b = builder.ConstantR1<bool>({false, true, false, true});
-  auto out = builder.LogicalOr(a, b);
+  auto out = builder.Or(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalOrZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, OrPredR2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<bool>({{false, false}, {true, true}});
+  auto b = builder.ConstantR2<bool>({{false, true}, {false, true}});
+  auto out = builder.Or(a, b);
+
+  Array2D<bool> expected_array({{false, true}, {true, true}});
+  ComputeAndCompareR2<bool>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
   auto b = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalOr(a, b);
+  auto out = builder.Or(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalNot) {
+XLA_TEST_F(ArrayElementwiseOpTest, OrS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({0, -1, 8});
+  auto b = builder.ConstantR1<int32>({5, -7, 4});
+  auto out = builder.Or(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {5, -1, 12}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrS32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<int32>({{0, -1}, {8, 8}});
+  auto b = builder.ConstantR2<int32>({{5, -7}, {4, 1}});
+  auto out = builder.Or(a, b);
+
+  Array2D<int32> expected_array({{5, -1}, {12, 9}});
+  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({});
+  auto b = builder.ConstantR1<int32>({});
+  auto out = builder.Or(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({0, 1, 8});
+  auto b = builder.ConstantR1<uint32>({5, 7, 4});
+  auto out = builder.Or(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {5, 7, 12}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrU32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<uint32>({{0, 1}, {8, 8}});
+  auto b = builder.ConstantR2<uint32>({{5, 7}, {4, 1}});
+  auto out = builder.Or(a, b);
+
+  Array2D<uint32> expected_array({{5, 7}, {12, 9}});
+  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({});
+  auto b = builder.ConstantR1<uint32>({});
+  auto out = builder.Or(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, true, true, false});
-  auto out = builder.LogicalNot(a);
+  auto out = builder.Not(a);
 
   ComputeAndCompareR1<bool>(&builder, {true, false, false, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalNotZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, NotPredR2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<bool>({{false, true}, {true, false}});
+  auto out = builder.Not(a);
+
+  Array2D<bool> expected_array({{true, false}, {false, true}});
+  ComputeAndCompareR2<bool>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementPredR1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalNot(a);
+  auto out = builder.Not(a);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({-1, 0, 1});
+  auto out = builder.Not(a);
+
+  ComputeAndCompareR1<int32>(&builder, {0, -1, -2}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotS32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<int32>({{-1, 0}, {1, 8}});
+  auto out = builder.Not(a);
+
+  Array2D<int32> expected_array({{0, -1}, {-2, -9}});
+  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementS32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<int32>({});
+  auto out = builder.Not(a);
+
+  ComputeAndCompareR1<int32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({0, 4294967295});
+  auto out = builder.Not(a);
+
+  ComputeAndCompareR1<uint32>(&builder, {4294967295, 0}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotU32R2) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<uint32>({{0, 4294967295}, {1, 4294967294}});
+  auto out = builder.Not(a);
+
+  Array2D<uint32> expected_array({{4294967295, 0}, {4294967294, 1}});
+  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementU32R1) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({});
+  auto out = builder.Not(a);
+
+  ComputeAndCompareR1<uint32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR1<int32>({static_cast<int32>(0x12345678),
+                                 static_cast<int32>(0xF0001000), 1, 3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 15});
+  auto out = builder.ShiftLeft(a, b);
+
+  ComputeAndCompareR1<int32>(
+      &builder,
+      {static_cast<int32>(0x23456780), 0x00100000, 0x4, 0x180, 2523136}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticS32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                 static_cast<int32>(0x10001000), 1, 3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 2});
+  auto out = builder.ShiftRightArithmetic(a, b);
+
+  ComputeAndCompareR1<int32>(&builder,
+                             {static_cast<int32>(0xF9234567),
+                              static_cast<int32>(0x00100010), 0, 0, 19},
+                             {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalS32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR1<int32>({static_cast<int32>(0x92345678),
+                                 static_cast<int32>(0x10001000), 1, 3, 77});
+  auto b = builder.ConstantR1<int32>({4, 8, 2, 7, 5});
+  auto out = builder.ShiftRightLogical(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftU32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({0x12345678, 0xF0001000, 1, 3, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 15});
+  auto out = builder.ShiftLeft(a, b);
+
+  ComputeAndCompareR1<uint32>(
+      &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticU32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 2});
+  auto out = builder.ShiftRightArithmetic(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {0xF9234567, 0x00100010, 0, 0, 19}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalU32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<uint32>({0x92345678, 0x10001000, 1, 3, 77});
+  auto b = builder.ConstantR1<uint32>({4, 8, 2, 7, 5});
+  auto out = builder.ShiftRightLogical(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {0x09234567, 0x00100010, 0, 0, 2}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
@@ -627,6 +990,53 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementS32s) {
   auto compare = builder.Eq(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CompareEqC64s) {
+  SetFastMathDisabled(true);
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<complex64>({{-2.5f, 10.0f},
+                                            {1.0f, 25.5f},
+                                            {2.25f, -3.0f},
+                                            {NAN, 0.0f},
+                                            {1.0f, 6.0f}});
+  auto rhs = builder.ConstantR1<complex64>({{0.0f, 10.0f},
+                                            {1.0f, 5.0f},
+                                            {2.25f, -3.0f},
+                                            {10.0f, 0.0f},
+                                            {1.0f, NAN}});
+  auto compare = builder.Eq(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {false, false, true, false, false}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementC64s) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<complex64>({});
+  auto rhs = builder.ConstantR1<complex64>({});
+  auto compare = builder.Eq(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CompareNeC64s) {
+  // Disable fast-math because we're operating on NaNs.
+  SetFastMathDisabled(true);
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<complex64>({{-2.5f, 10.0f},
+                                            {1.0f, 25.5f},
+                                            {2.25f, -3.0f},
+                                            {NAN, 0.0f},
+                                            {1.0f, 6.0f}});
+  auto rhs = builder.ConstantR1<complex64>({{0.0f, 10.0f},
+                                            {1.0f, 5.0f},
+                                            {2.25f, -3.0f},
+                                            {10.0f, 0.0f},
+                                            {1.0f, NAN}});
+  auto compare = builder.Ne(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {true, true, false, true, true}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareNeF32s) {
@@ -1561,6 +1971,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({0.0f, 5.0f, 0.0f, -3.0f, 2.0f, -8.0f});
+  auto b = builder.ConstantR1<float>({6.0f, 0.0f, -4.0f, 0.0f, 2.0f, 8.0f});
+  auto atan = builder.Atan2(a, b);
+
+  ComputeAndCompareR1<float>(
+      &builder,
+      {0.0f, 1.57079633f, 3.14159265f, -1.57079633f, 0.78539816f, -0.78539816f},
+      {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({-2.5f, 3.14f, 2.25f});
@@ -1770,7 +2192,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
 
   const string expected = R"(pred[2,2] {
   { 00 },
-  { 01 },
+  { 01 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -1784,7 +2206,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
 
   const string expected = R"(pred[2,4] {
   { 1100 },
-  { 0001 },
+  { 0001 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -1798,7 +2220,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
 
   const string expected = R"(pred[2,4] {
   { 0100 },
-  { 0000 },
+  { 0000 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -1812,7 +2234,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
 
   const string expected = R"(pred[2,4] {
   { 1011 },
-  { 1111 },
+  { 1111 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -1826,7 +2248,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
 
   const string expected = R"(pred[2,4] {
   { 0011 },
-  { 1110 },
+  { 1110 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2140,6 +2562,33 @@ XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::ContainsRegex(
                   "Expected non-opaque argument for lhs of binary operation"));
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
+  auto b =
+      builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
+  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{0, 1});
+
+  Array2D<float> expected_array(
+      {{-4.0f, 11.28f, 43.0f}, {1.25f, -14.0f, 8.88f}});
+  ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
+  auto b =
+      builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
+  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{1, 0});
+
+  StatusOr<Computation> computation_status = builder.Build();
+  ASSERT_FALSE(computation_status.ok());
+  EXPECT_THAT(computation_status.status().error_message(),
+              ::testing::ContainsRegex("must.*be the identity"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit

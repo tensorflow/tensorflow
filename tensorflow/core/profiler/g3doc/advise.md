@@ -1,6 +1,6 @@
 ## Auto Detect and Advise
 
-tfprof analyzes profiles and generates advises for common issues.
+tfprof analyzes profiles and generates advice for common issues.
 
 ### Run Advise.
 
@@ -86,7 +86,7 @@ For example:
 *   Checks RecvTensor RPC latency and bandwidth.
 *   Checks CPU/Memory utilization of the job.
 
-####AcceleratorUtilization Checker
+#### AcceleratorUtilization Checker
 * Checks what percentage of time the accelerator spends on computation.
 
 #### OperationChecker
@@ -100,7 +100,7 @@ For example:
 *   Checks the most expensive graph nodes.
 *   Checks the most expensive graph-building Python codes.
 
-####Contribute Your Checker
+#### Contribute Your Checker
 
 Follow examples of accelerator_utilization_checker.h
 

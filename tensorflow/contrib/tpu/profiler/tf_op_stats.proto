@@ -1,0 +1,169 @@
+// This proto describes the format of tensorflow operation level stats for
+// profiling (in tensorboard) purpose.
+
+syntax = "proto2";
+
+package tensorflow.tpu;
+
+// Result proto for OpMetrics.
+message OpMetricsResult {
+  // True if this OP is executed on the device; False if it is executed on the
+  // host.
+  optional bool on_device = 1;
+  reserved 2;  // was uint32 id.
+  // Name of this OP.
+  optional string name = 3;
+  // Rank of this OP.
+  optional uint64 rank = 4;
+  // The starting time in cycles of the last instance of this OP executed.
+  optional double last_starttime_in_cycles = 5;
+  // The ending time in cycles of the last instance of this OP executed.
+  optional double last_endtime_in_cycles = 6;
+  // If this OP (say A), is an immediate child of another OP (say B), this field
+  // stores the sum of duration in microseconds of A inside B. If A appears more
+  // than once in B, the duration of all A's appearances will be added together.
+  // This sum will be reset after the self-time of B is calculated so that it
+  // can be reused for a new parent OP.
+  optional double sum_of_duration_in_us_as_children = 7;
+  // Number of instances that this OP occurred.
+  optional uint64 occurrences = 8;
+  // Total time in microseconds spent in this OP (accumulated
+  // over all of its occurrences).
+  optional double total_time_in_us = 9;
+  // Total self time in microseconds spent in this OP
+  // (accumulated over all of its occurrences).
+  optional double total_self_time_in_us = 10;
+  // The total self time as a fraction of sum of all OP's
+  // total self time on the host.
+  optional double host_total_self_time_as_fraction_of_all_op_time = 11;
+  // Cumulative total self time in fraction on the host.
+  optional double host_cumulative_total_self_time_as_fraction_of_all_op_time =
+      12;
+  // The total self time as a fraction of sum of all OP's
+  // total self time on the device.
+  optional double device_total_self_time_as_fraction_of_all_op_time = 13;
+  // Cumulative total self time in fraction on the device.
+  optional double device_cumulative_total_self_time_as_fraction_of_all_op_time =
+      14;
+  // Total number of FLOPs incurred by this OP.
+  optional double total_flops = 15;
+  // Total number of bytes accessed by this OP.
+  optional double total_bytes_accessed = 16;
+  // Total time in microseconds that special hw unit 1 is occupied by this OP.
+  optional double unit1_occupancy_in_us = 17;
+  // Total time in microseconds that special hw unit 2 is occupied by this OP.
+  optional double unit2_occupancy_in_us = 18;
+  // Total memory stall time in microseconds.
+  optional double total_memory_stall_in_us = 19;
+}
+
+// Result proto for OpMetricsDb.
+message OpMetricsDbResult {
+  // A bunch of OpMetricsResults.
+  repeated OpMetricsResult metrics_db = 1;
+}
+
+// Result proto for StepInfo.
+message StepInfoResult {
+  // The (micro) step number.
+  optional uint32 step_num = 1;
+  // The step duration in picoseconds.
+  optional uint64 duration_ps = 2;
+  // The infeed duration in picoseconds.
+  // Can turn into a map if we want a variable number of ops.
+  optional uint64 infeed_duration_ps = 3;
+}
+
+// Result proto for a sequence of steps.
+message StepSequenceResult {
+  // A sequence of StepInfoResults.
+  repeated StepInfoResult step_sequence = 1;
+}
+
+// Result proto for a StepDatabase.
+message StepDatabaseResult {
+  // A map from core_id to StepSequenceResult.
+  map<uint32, StepSequenceResult> step_sequence_per_core = 1;
+}
+
+// Result proto for looping-related metrics.
+message LoopingResult {
+  // The total iteration time in nanoseconds.
+  optional double iteration_time_ns = 1;
+  // The total number of iterations.
+  optional int32 num_iterations = 2;
+  // The total computation time in nanoseconds.
+  optional double computation_time_ns = 3;
+  // The total number of computations.
+  optional int32 num_computations = 4;
+}
+
+// Result proto for HloExtraInfo.
+message HloExtraInfoResult {
+  // Category of the HLO op given by the compiler.
+  optional string category = 1;
+  // The long name of the HLO that includes the dimensions.
+  optional string long_name = 2;
+  // The per-TPU-core batch size inferred from this HLO.
+  optional int64 per_core_batch_size = 3;
+}
+
+// Result proto for HloExtraInfoMap.
+message HloExtraInfoMapResult {
+  // A map from HLO name to HloExtraInfo.
+  map<string, HloExtraInfoResult> hlo_extrainfo_map = 1;
+}
+
+// Result proto for host-independent job information.
+message HostIndependentJobInfoResult {
+  // The change-list number of this build.
+  optional int64 change_list = 1;
+  // The time of this build.
+  optional int64 build_time = 2;
+  // The target of this build.
+  optional string build_target = 3;
+}
+
+// Result proto for host-dependent job information.
+message HostDependentJobInfoResult {
+  // This ID of the host where the job was run on.
+  optional string host_id = 1;
+  // The command line used to run the job.
+  optional string command_line = 2;
+  // The start time of the job on this host.
+  optional int64 start_time = 3;
+}
+
+// Result proto for RunEnvironment (the run environment of a profiling session).
+message RunEnvironmentResult {
+  // Number of hosts used.
+  optional int32 host_count = 1;
+  // The type of TPU used.
+  optional string tpu_type = 2;
+  // The number of TPU cores used.
+  optional int32 tpu_core_count = 3;
+  // The per-TPU-core batch size.
+  optional int32 per_core_batch_size = 4;
+  // Host-independent job information.
+  optional HostIndependentJobInfoResult host_independent_job_info = 5;
+  // Host-dependent job information.
+  repeated HostDependentJobInfoResult host_dependent_job_info = 6;
+}
+
+// Result proto for TfStatsHelper.
+message TfOpStats {
+  // The result for the TF-metric database.
+  optional OpMetricsDbResult tf_metrics_db = 1;
+  // The result for the HLO-metric database.
+  optional OpMetricsDbResult hlo_metrics_db = 2;
+  // The result for the step database.
+  optional StepDatabaseResult step_db = 3;
+  // The result for the looping-related metrics.
+  optional LoopingResult looping = 4;
+  // The result for the HloExtraInfoMap.
+  optional HloExtraInfoMapResult hlo_extrainfo_map = 5;
+  // Overall matrix unit utilization in percentage.
+  optional double matrix_unit_utilization_percent = 6;
+  // The run environment of this profiling session.
+  optional RunEnvironmentResult run_environment = 7;
+}

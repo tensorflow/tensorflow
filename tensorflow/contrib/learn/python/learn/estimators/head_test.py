@@ -1703,7 +1703,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1728,7 +1728,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1755,7 +1755,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:

@@ -195,9 +195,8 @@ The usual method for training a network to perform N-way classification is
 aka. *softmax regression*. Softmax regression applies a
 @{tf.nn.softmax$softmax} nonlinearity to the
 output of the network and calculates the
-@{tf.nn.softmax_cross_entropy_with_logits$cross-entropy}
-between the normalized predictions and a
-@{tf.sparse_to_dense$1-hot encoding} of the label.
+@{tf.nn.sparse_softmax_cross_entropy_with_logits$cross-entropy}
+between the normalized predictions and the label index.
 For regularization, we also apply the usual
 @{tf.nn.l2_loss$weight decay} losses to all learned
 variables.  The objective function for the model is the sum of the cross entropy

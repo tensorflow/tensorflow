@@ -39,6 +39,7 @@ from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.util import compat
 
 
 class SummaryWriterTestCase(test.TestCase):
@@ -334,11 +335,11 @@ class SummaryWriterTestCase(test.TestCase):
     # should strip the metadata from the second one.
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
     value.metadata.plugin_data.plugin_name = "bar"
-    value.metadata.plugin_data.content = "... content ..."
+    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
     value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
     value.metadata.plugin_data.plugin_name = "bar"
-    value.metadata.plugin_data.content = "... content ..."
+    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
     sw.add_summary(summary_pb2.Summary(value=[value]), 10)
 
     sw.close()

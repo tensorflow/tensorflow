@@ -1,0 +1,55 @@
+path: "tensorflow.keras.callbacks"
+tf_module {
+  member {
+    name: "BaseLogger"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CSVLogger"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Callback"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "EarlyStopping"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "History"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LambdaCallback"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LearningRateScheduler"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ModelCheckpoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ProgbarLogger"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ReduceLROnPlateau"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RemoteMonitor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorBoard"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TerminateOnNaN"
+    mtype: "<type \'type\'>"
+  }
+}

@@ -24,6 +24,7 @@ import uuid
 import six
 
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import variables
@@ -34,7 +35,7 @@ _gradient_debuggers = {}
 
 
 def _tensor_to_grad_debug_op_name(tensor, grad_debugger_uuid):
-  op_name, slot = debug_data.parse_node_or_tensor_name(tensor.name)
+  op_name, slot = debug_graphs.parse_node_or_tensor_name(tensor.name)
   return "%s_%d/%s%s" % (op_name, slot, _GRADIENT_DEBUG_TAG, grad_debugger_uuid)
 
 
@@ -407,7 +408,7 @@ def gradient_values_from_dump(grad_debugger, x_tensor, dump):
         (grad_debugger.graph, dump.python_graph))
 
   gradient_tensor = grad_debugger.gradient_tensor(x_tensor)
-  node_name, output_slot = debug_data.parse_node_or_tensor_name(
+  node_name, output_slot = debug_graphs.parse_node_or_tensor_name(
       gradient_tensor.name)
 
   try:

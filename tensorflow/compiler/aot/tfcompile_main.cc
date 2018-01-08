@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
-#include "tensorflow/compiler/aot/tfcompile.pb.h"
-#include "tensorflow/compiler/aot/tfcompile_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
@@ -54,8 +54,7 @@ const char kUsageHeader[] =
     "--cpp_class=\"mynamespace::MyComputation\"\n"
     "\n";
 
-Status ReadProtoFile(const string& kind, const string& fname,
-                     protobuf::Message* proto) {
+Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
   if (StringPiece(fname).ends_with(".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
@@ -63,23 +62,17 @@ Status ReadProtoFile(const string& kind, const string& fname,
   }
 }
 
-void ParseTensorId(const string& name, TensorId* id) {
-  const std::pair<StringPiece, int> name_index = ParseTensorName(name);
-  id->set_node_name(name_index.first.ToString());
-  id->set_output_index(name_index.second);
-}
-
 Status Main(const MainFlags& flags) {
   // Process config.
-  Config config;
+  tf2xla::Config config;
   if (flags.config.empty()) {
     return errors::InvalidArgument("Must specify --config");
   }
-  TF_RETURN_IF_ERROR(ReadProtoFile("config", flags.config, &config));
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
     std::set<string> nodes;
-    for (const Fetch& fetch : config.fetch()) {
+    for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << str_util::Join(nodes, ",");
@@ -91,12 +84,9 @@ Status Main(const MainFlags& flags) {
     return errors::InvalidArgument("Must specify --graph");
   }
   GraphDef graph_def;
-  TF_RETURN_IF_ERROR(ReadProtoFile("graph", flags.graph, &graph_def));
-  std::unique_ptr<Graph> graph;
-  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &graph));
-
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(CompileGraph(std::move(graph), flags, &compile_result));
+  TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
 
   // Write output files.
   Env* env = Env::Default();
@@ -104,6 +94,8 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_object,
                                        StringPiece(obj.data(), obj.size())));
   HeaderOpts header_opts;
+  header_opts.gen_name_to_index = flags.gen_name_to_index;
+  header_opts.gen_program_shape = flags.gen_program_shape;
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }

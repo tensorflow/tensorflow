@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 __all__ = ["absolute_difference",
            "add_loss",
@@ -623,8 +624,9 @@ def mean_pairwise_squared_error(
 
 
 @deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
-    predictions, labels=None, dim=None, weights=1.0, scope=None):
+    predictions, labels=None, axis=None, weights=1.0, scope=None, dim=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -633,10 +635,11 @@ def cosine_distance(
   Args:
     predictions: An arbitrary matrix.
     labels: A `Tensor` whose shape matches 'predictions'
-    dim: The dimension along which the cosine distance is computed.
+    axis: The dimension along which the cosine distance is computed.
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
+    dim: The old (deprecated) name for `axis`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
@@ -645,8 +648,12 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `weights` is `None`.
   """
-  if dim is None:
-    raise ValueError("`dim` cannot be None.")
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'axis' and 'dim'")
+    axis = dim
+  if axis is None and dim is None:
+    raise ValueError("You must specify 'axis'.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -655,5 +662,5 @@ def cosine_distance(
     labels = math_ops.to_float(labels)
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
+    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[axis,])
     return compute_weighted_loss(losses, weights, scope=scope)

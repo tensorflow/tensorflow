@@ -44,13 +44,12 @@ export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:clic
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/java:libtensorflow_jni.so"
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:jnilicenses_generate"
 
-clean_output_base
 run_configure_for_cpu_build
 
 # build_libtensorflow_tarball in ../builds/libtensorflow.sh
 # cannot be used on Windows since it relies on pkg_tar rules.
 # So we do something special here
-bazel build -c opt ${BUILD_OPTS} \
+bazel build -c opt \
   tensorflow:libtensorflow.so \
   tensorflow/tools/lib_package:clicenses_generate \
   tensorflow/java:libtensorflow_jni.so \
@@ -74,13 +73,16 @@ rm -f ${DIR}/tensorflow_jni.dll
 
 # Zip up the .dll, LICENSE and include files for the C library.
 mkdir -p ${DIR}/include/tensorflow/c
+mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/libtensorflow.so ${DIR}/lib/tensorflow.dll
 cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
 zip -j libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
+  include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/LICENSE
 rm -rf lib include

@@ -73,6 +73,7 @@ TEST(BasicBatchSchedulerTest, Basic) {
     std::unique_ptr<BasicBatchScheduler<FakeTask>> scheduler;
     TF_ASSERT_OK(
         BasicBatchScheduler<FakeTask>::Create(options, callback, &scheduler));
+    EXPECT_EQ(10, scheduler->max_task_size());
     EXPECT_EQ(0, scheduler->NumEnqueuedTasks());
     EXPECT_EQ(3 * 10, scheduler->SchedulingCapacity());
     TF_ASSERT_OK(ScheduleTask(3, scheduler.get()));

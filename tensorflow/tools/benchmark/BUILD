@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cc_test",
+    "tf_cc_binary",
 )
 
 exports_files(["LICENSE"])
@@ -64,7 +65,7 @@ tf_cc_test(
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-cc_binary(
+tf_cc_binary(
     name = "benchmark_model",
     testonly = 1,
     srcs = ["benchmark_model_main.cc"],
@@ -74,6 +75,7 @@ cc_binary(
             "-pie",
             "-s",
             "-landroid",
+            "-latomic",
             "-ljnigraphics",
             "-llog",
             "-lm",
@@ -86,4 +88,13 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [":benchmark_model_lib"],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = ["**/OWNERS"],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

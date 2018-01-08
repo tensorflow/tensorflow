@@ -31,6 +31,14 @@ namespace {
 
 using InstructionFusionTest = HloTestBase;
 
+std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
+                                        HloInstruction* rhs) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums);
+}
+
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -40,8 +48,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kExp, arg0));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1024, 1}), HloOpcode::kDot, exp0, arg1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), exp0, arg1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -59,8 +67,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {256, 1024}), HloOpcode::kExp, arg1));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1, 1024}), HloOpcode::kDot, arg0, exp1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1, 1024}), arg0, exp1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -80,8 +88,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
       ShapeUtil::MakeShape(S32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* bitcast0 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kBitcast, exp0));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1024, 1}), HloOpcode::kDot, bitcast0, arg1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), bitcast0, arg1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -102,8 +110,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
   HloInstruction* reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(S32, {1024, 256}), exp0));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1024, 1}), HloOpcode::kDot, reshape0, arg1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), reshape0, arg1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -121,8 +129,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {256, 32 * 1024}), HloOpcode::kExp, arg1));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1, 32 * 1024}), HloOpcode::kDot, arg0, exp1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1, 32 * 1024}), arg0, exp1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -140,8 +148,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {256, 1024}), HloOpcode::kExp, arg1));
-  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {2, 1024}), HloOpcode::kDot, arg0, exp1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {2, 1024}), arg0, exp1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -162,8 +170,8 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion) {
   HloInstruction* transpose1 =
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(S32, {256, 1024}), exp1, {1, 0}));
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {1, 1024}), HloOpcode::kDot, arg0, transpose1));
+  builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1, 1024}), arg0, transpose1));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -188,7 +196,9 @@ class OpcodeFusionTest : public InstructionFusionTest {
   // Runs CPU instruction fusion on the given module, and tests that the result
   // contains a fused op at the root with exactly the given multiset of opcodes.
   void RunFusionAndCheckOpcodesWereFused(
-      HloModule* module, const std::multiset<HloOpcode>& expected_opcodes) {
+      HloModule* module, const std::multiset<HloOpcode>& expected_opcodes,
+      HloInstruction::FusionKind fusion_kind =
+          HloInstruction::FusionKind::kLoop) {
     auto computation = module->entry_computation();
     auto did_fusion = CpuInstructionFusion().Run(module);
     ASSERT_TRUE(did_fusion.ok());
@@ -196,18 +206,41 @@ class OpcodeFusionTest : public InstructionFusionTest {
 
     HloInstruction* root = computation->root_instruction();
     ASSERT_THAT(root, op::Fusion());
-    EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
+    EXPECT_EQ(root->fusion_kind(), fusion_kind);
 
-    std::vector<HloOpcode> fused_opcodes(root->fused_instructions().size());
+    std::vector<HloOpcode> fused_opcodes(root->fused_instruction_count());
     std::transform(root->fused_instructions().begin(),
                    root->fused_instructions().end(), fused_opcodes.begin(),
-                   [](const std::unique_ptr<HloInstruction>& hlo) {
-                     return hlo->opcode();
-                   });
+                   [](const HloInstruction* hlo) { return hlo->opcode(); });
 
     EXPECT_EQ(
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
         expected_opcodes);
+  }
+
+  HloComputation* CreateAdderToOne(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* one = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
+    return module->AddEmbeddedComputation(builder.Build());
+  }
+
+  HloComputation* CreateMax(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* arg1 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(F32, {}), "arg1"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, arg0, arg1));
+    return module->AddEmbeddedComputation(builder.Build());
   }
 };
 
@@ -402,10 +435,271 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
                      HloOpcode::kParameter});
 }
 
+TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp}, CreateAdderToOne(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kExp, HloOpcode::kMap});
+}
+
+TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param"));
+
+  HloInstruction* exp0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param1));
+
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp0, exp1}, CreateMax(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kExp, HloOpcode::kExp, HloOpcode::kMap});
+}
+
+TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
+
+  HloInstruction* slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          slice_shape,
+          builder.AddInstruction(
+              HloInstruction::CreateParameter(0, full_shape, "slice_from")),
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          /*slice_sizes=*/{10, 1, 1000}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(2, full_shape, "to_update")),
+      slice,
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+                     HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
+
+  auto loop_idx = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(S32, {}), "param0"))));
+
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(S32, {1}), "param1"));
+  auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
+      ShapeUtil::MakeShape(S32, {5}),
+      {loop_idx, param1, param1, param1, param1}, /*dimension=*/0));
+
+  auto idx_choice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {4}), "param2")),
+      loop_idx,
+      /*slice_sizes=*/{1}));
+
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_edge_padding_high(4);
+  auto pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(S32, {5}), idx_choice,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+      padding_config));
+
+  auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
+      pad, /*slice_sizes=*/{1, 100, 10, 100, 50}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(4, full_shape, "param4")),
+      slice, concat));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kConcatenate, HloOpcode::kPad, HloOpcode::kDynamicSlice,
+       HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+// Tests that we do not fuse instructions in cases where instructions in the
+// fusion would reuse elements from its operand due to an implicit broadcast.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastUnary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(large_shape, HloOpcode::kExp, small_exp));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto did_fusion = CpuInstructionFusion().Run(module.get());
+  ASSERT_TRUE(did_fusion.ok());
+  EXPECT_FALSE(did_fusion.ValueOrDie());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+// Like ReuseViaImplicitBroadcastUnary but with a binary operation.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastBinary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* large_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, large_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      large_shape, HloOpcode::kAdd, small_exp, large_param));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto did_fusion = CpuInstructionFusion().Run(module.get());
+  ASSERT_TRUE(did_fusion.ok());
+  EXPECT_FALSE(did_fusion.ValueOrDie());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+void CreateComputationForDotAddOutputFusionTest(const string& test_name,
+                                                HloModule* module, int m, int k,
+                                                int n,
+                                                bool add_extra_use_for_dot) {
+  HloComputation::Builder builder(test_name);
+
+  Shape dot_lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
+  Shape dot_rhs_shape = ShapeUtil::MakeShape(F32, {k, n});
+  Shape dot_shape = ShapeUtil::MakeShape(F32, {m, n});
+
+  auto* dot_lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, dot_lhs_shape, "param0"));
+  auto* dot_rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, dot_rhs_shape, "param1"));
+  auto* addend = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, dot_shape, "param2"));
+
+  auto* dot = builder.AddInstruction(
+      HloInstruction::CreateCanonicalDot(dot_shape, dot_lhs, dot_rhs));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(dot_shape, HloOpcode::kAdd, dot, addend));
+
+  if (add_extra_use_for_dot) {
+    builder.AddInstruction(
+        HloInstruction::CreateOutfeed(dot_shape, dot, "no_config"));
+  }
+
+  module->AddEntryComputation(builder.Build());
+}
+
+TEST_F(OpcodeFusionTest, DotAddOutputFusion_1x50x19) {
+  auto module = CreateNewModule();
+  CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/1,
+                                             /*k=*/50, /*n=*/19,
+                                             /*add_extra_use_for_dot=*/false);
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kDot, HloOpcode::kAdd, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter},
+      HloInstruction::FusionKind::kOutput);
+}
+
+TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1) {
+  auto module = CreateNewModule();
+  CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
+                                             /*k=*/50, /*n=*/1,
+                                             /*add_extra_use_for_dot=*/false);
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kDot, HloOpcode::kAdd, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter},
+      HloInstruction::FusionKind::kOutput);
+}
+
+TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x19) {
+  auto module = CreateNewModule();
+  CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
+                                             /*k=*/50, /*n=*/19,
+                                             /*add_extra_use_for_dot=*/false);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1_multi_use) {
+  auto module = CreateNewModule();
+  CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
+                                             /*k=*/50, /*n=*/1,
+                                             /*add_extra_use_for_dot=*/true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -80,6 +80,8 @@ class TimeSeriesModel(object):
     self.dtype = dtype
     self._input_statistics = None
     self._graph_initialized = False
+    self._stats_means = None
+    self._stats_sigmas = None
 
   # TODO(allenl): Move more of the generic machinery for generating and
   # predicting into TimeSeriesModel, and possibly share it between generate()
@@ -120,6 +122,38 @@ class TimeSeriesModel(object):
     """
     self._graph_initialized = True
     self._input_statistics = input_statistics
+    if self._input_statistics:
+      self._stats_means, variances = (
+          self._input_statistics.overall_feature_moments)
+      self._stats_sigmas = math_ops.sqrt(variances)
+
+  def _scale_data(self, data):
+    """Scale data according to stats (input scale -> model scale)."""
+    if self._input_statistics is not None:
+      return (data - self._stats_means) / self._stats_sigmas
+    else:
+      return data
+
+  def _scale_variance(self, variance):
+    """Scale variances according to stats (input scale -> model scale)."""
+    if self._input_statistics is not None:
+      return variance / self._input_statistics.overall_feature_moments.variance
+    else:
+      return variance
+
+  def _scale_back_data(self, data):
+    """Scale back data according to stats (model scale -> input scale)."""
+    if self._input_statistics is not None:
+      return (data * self._stats_sigmas) + self._stats_means
+    else:
+      return data
+
+  def _scale_back_variance(self, variance):
+    """Scale back variances according to stats (model scale -> input scale)."""
+    if self._input_statistics is not None:
+      return variance * self._input_statistics.overall_feature_moments.variance
+    else:
+      return variance
 
   def _check_graph_initialized(self):
     if not self._graph_initialized:
@@ -304,6 +338,7 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
                train_output_names,
                predict_output_names,
                num_features,
+               normalize_features=False,
                dtype=dtypes.float32,
                exogenous_feature_columns=None,
                exogenous_update_condition=None,
@@ -316,6 +351,12 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
       predict_output_names: A list of products/predictions returned from
           _prediction_step.
       num_features: Number of features for the time series
+      normalize_features: Boolean. If True, `values` are passed normalized to
+          the model (via self._scale_data). Scaling is done for the whole window
+          as a batch, which is slightly more efficient than scaling inside the
+          window loop. The model must then define _scale_back_predictions, which
+          may use _scale_back_data or _scale_back_variance to return predictions
+          to the input scale.
       dtype: The floating point datatype to use.
       exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
           objects. See `TimeSeriesModel`.
@@ -344,8 +385,24 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
     self._exogenous_update_condition = exogenous_update_condition
     self._train_output_names = train_output_names
     self._predict_output_names = predict_output_names
+    self._normalize_features = normalize_features
     self._static_unrolling_window_size_threshold = (
         static_unrolling_window_size_threshold)
+
+  def _scale_back_predictions(self, predictions):
+    """Return a window of predictions to input scale.
+
+    Args:
+      predictions: A dictionary mapping from prediction names to Tensors.
+    Returns:
+      A dictionary with values corrected for input normalization (e.g. with
+      self._scale_back_mean and possibly self._scale_back_variance). May be a
+      mutated version of the argument.
+    """
+    raise NotImplementedError(
+        "SequentialTimeSeriesModel normalized input data"
+        " (normalize_features=True), but no method was provided to transform "
+        "the predictions back to the input scale.")
 
   @abc.abstractmethod
   def _filtering_step(self, current_times, current_values, state, predictions):
@@ -524,6 +581,8 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
     self._check_graph_initialized()
     times = math_ops.cast(features[TrainEvalFeatures.TIMES], dtype=dtypes.int64)
     values = math_ops.cast(features[TrainEvalFeatures.VALUES], dtype=self.dtype)
+    if self._normalize_features:
+      values = self._scale_data(values)
     exogenous_regressors = self._process_exogenous_features(
         times=times,
         features={key: value for key, value in features.items()
@@ -556,6 +615,8 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
     # Since we have window-level additions to the loss, its per-step value is
     # misleading, so we avoid returning it.
     del outputs["loss"]
+    if self._normalize_features:
+      outputs = self._scale_back_predictions(outputs)
     return per_observation_loss, state, outputs
 
   def predict(self, features):
@@ -583,6 +644,8 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
         times=predict_times, state=start_state,
         state_update_fn=_call_prediction_step,
         outputs=self._predict_output_names)
+    if self._normalize_features:
+      predictions = self._scale_back_predictions(predictions)
     return predictions
 
   class _FakeTensorArray(object):

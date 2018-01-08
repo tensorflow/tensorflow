@@ -37,8 +37,10 @@ namespace test {
   while (stream->Read(&event)) {
     if (event.has_log_message()) {
       debug_metadata_strings.push_back(event.log_message().message());
+      stream->Write(EventReply());
     } else if (!event.graph_def().empty()) {
       encoded_graph_defs.push_back(event.graph_def());
+      stream->Write(EventReply());
     } else if (event.has_summary()) {
       const Summary::Value& val = event.summary().value(0);
 

@@ -84,40 +84,67 @@ string RunProfile(const string& command, const string& options,
 }  // namespace
 
 bool NewProfiler(const string* graph, const string* op_log) {
-  CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
   CHECK(graph) << "graph mustn't be null";
   std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
-  graph_ptr->ParseFromString(*graph);
+  if (!graph_ptr->ParseFromString(*graph)) {
+    if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
+      fprintf(stderr, "Failed to parse graph\n");
+      return false;
+    }
+  }
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
     op_log_ptr.reset(new OpLogProto());
-    op_log_ptr->ParseFromString(*op_log);
+    if (!op_log_ptr->ParseFromString(*op_log)) {
+      fprintf(stderr, "Failed to parse OpLogProto.\n");
+      return false;
+    }
   }
   tf_stat = new TFStats(std::move(graph_ptr), nullptr, std::move(op_log_ptr),
                         nullptr);
   return true;
 }
 
-void DeleteProfiler() {
-  delete tf_stat;
-  tf_stat = nullptr;
+void ProfilerFromFile(const string* filename) {
+  CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
+  CHECK(filename) << "Missing profile filename to init profiler from file";
+  tf_stat = new TFStats(*filename, nullptr);
 }
 
-void AddStep(int64 step, const string* run_meta, const string* op_log) {
+void DeleteProfiler() {
+  if (tf_stat) {
+    delete tf_stat;
+    tf_stat = nullptr;
+  }
+}
+
+double AddStep(int64 step, const string* graph, const string* run_meta,
+               const string* op_log) {
   CHECK(tf_stat);
+
+  CHECK(graph && !graph->empty());
+  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+  if (!graph_ptr->ParseFromString(*graph)) {
+    if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
+      fprintf(stderr, "Failed to parse graph\n");
+    }
+  }
+  tf_stat->AddGraph(std::move(graph_ptr));
+
   CHECK(run_meta && !run_meta->empty());
   // TODO(xpan): Better error handling.
   std::unique_ptr<RunMetadata> run_meta_ptr(new RunMetadata());
   run_meta_ptr->ParseFromString(*run_meta);
   tf_stat->AddRunMeta(step, std::move(run_meta_ptr));
 
-  std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
+    std::unique_ptr<OpLogProto> op_log_ptr;
     op_log_ptr.reset(new OpLogProto());
     op_log_ptr->ParseFromString(*op_log);
+    tf_stat->AddOpLogProto(std::move(op_log_ptr));
   }
-  tf_stat->AddOpLogProto(std::move(op_log_ptr));
+  return tf_stat->run_coverage();
 }
 
 string Profile(const string* command, const string* options) {
@@ -125,6 +152,12 @@ string Profile(const string* command, const string* options) {
   CHECK(command) << "command mustn't be null";
   CHECK(options) << "options mustn't be null";
   return RunProfile(*command, *options, tf_stat);
+}
+
+void WriteProfile(const string* filename) {
+  CHECK(tf_stat);
+  CHECK(filename) << "empty file name when asking to write profile.";
+  tf_stat->WriteProfile(*filename);
 }
 
 string PrintModelAnalysis(const string* graph, const string* run_meta,

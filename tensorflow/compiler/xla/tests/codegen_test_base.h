@@ -17,42 +17,25 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_TESTS_CODEGEN_TEST_BASE_H_
 
 #include <memory>
-#include <string>
 
+#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 
-// Tests that verify IR emitted by the CPU/GPU backend is as expected.
+// Provides access to both the JIT and the AOT compiler for testing.
 class CodegenTestBase : public HloTestBase {
  protected:
-  // Like HloTestBase::CreateNewModule, but also sets the "embed ir in
-  // executable" flag to true, since this is needed for codegen tests.
-  // The optional ftz flags configures whether these modules have their ftz
-  // option turned on.
-  std::unique_ptr<HloModule> CreateNewModuleWithEmbeddedIr(bool ftz = false);
-
-  // Returns the embedded LLVM IR from the given executable. Codegen tests must
-  // override this method, but execution tests do not have to because they do
-  // not examine the embedded IR.
-  virtual string GetIrFromExecutable(const Executable& executable) = 0;
-
-  // Compiles the given HLO module to LLVM IR and verifies the IR matches the
-  // given pattern. `pattern` is in the FileCheck pattern matching syntax
-  // (http://llvm.org/docs/CommandGuide/FileCheck.html).
-  void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                          const string& pattern);
-
- protected:
-  // Compiles hlo_module to an executable, CHECK-failing if this fails.
-  std::unique_ptr<Executable> CompileToExecutable(
+  // Compiles hlo_module with the JIT compiler.
+  StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
       std::unique_ptr<HloModule> hlo_module);
 
-  // Runs FileCheck with the given pattern over the given string and EXPECTs
-  // that FileCheck succeeded in matching the input.
-  void RunFileCheck(const string& input, const string& pattern);
+  // Compiles hlo_module with the AOT compiler.
+  StatusOr<std::unique_ptr<AotCompilationResult>> CompileToAotCompilationResult(
+      std::unique_ptr<HloModule> hlo_module,
+      const AotCompilationOptions& options);
 };
 
 }  // namespace xla

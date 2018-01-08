@@ -89,6 +89,7 @@ See the @{$python/math_ops} guide.
 @@matrix_inverse
 @@cholesky
 @@cholesky_solve
+@@matrix_exponential
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
@@ -147,6 +148,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -168,28 +170,30 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
-from tensorflow.python.util.deprecation import deprecated
-from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util import deprecation
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
-arg_max = deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
-arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 
 
 def _set_doc(doc):
+
   def _decorator(func):
     func.__doc__ = doc
     return func
+
   return _decorator
 
 
 # pylint: disable=redefined-builtin
-@deprecated_args(None, "Use the `axis` argument instead", "dimension")
-@_set_doc(gen_math_ops.arg_max.__doc__
-          .replace("dimensions", "axes")
-          .replace("dimension", "axis"))
+@deprecation.deprecated_args(None, "Use the `axis` argument instead",
+                             "dimension")
+@_set_doc(
+    gen_math_ops.arg_max.__doc__.replace("dimensions", "axes").replace(
+        "dimension", "axis"))
 def argmax(input,
            axis=None,
            name=None,
@@ -204,10 +208,11 @@ def argmax(input,
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-@deprecated_args(None, "Use the `axis` argument instead", "dimension")
-@_set_doc(gen_math_ops.arg_min.__doc__
-          .replace("dimensions", "axes")
-          .replace("dimension", "axis"))
+@deprecation.deprecated_args(None, "Use the `axis` argument instead",
+                             "dimension")
+@_set_doc(
+    gen_math_ops.arg_min.__doc__.replace("dimensions", "axes").replace(
+        "dimension", "axis"))
 def argmin(input,
            axis=None,
            name=None,
@@ -247,12 +252,12 @@ def abs(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
-    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+    Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
-      if x.values.dtype in (dtypes.complex64, dtypes.complex128):
+      if x.values.dtype.is_complex:
         x_abs = gen_math_ops._complex_abs(
             x.values, Tout=x.values.dtype.real_dtype, name=name)
         return sparse_tensor.SparseTensor(
@@ -262,7 +267,7 @@ def abs(x, name=None):
           indices=x.indices, values=x_abs, dense_shape=x.dense_shape)
     else:
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype in (dtypes.complex64, dtypes.complex128):
+      if x.dtype.is_complex:
         return gen_math_ops._complex_abs(x, Tout=x.dtype.real_dtype, name=name)
       return gen_math_ops._abs(x, name=name)
 
@@ -273,6 +278,8 @@ def abs(x, name=None):
 # pylint: disable=redefined-builtin
 def _bucketize(input, boundaries, name=None):
   return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+
+
 # pylint: enable=redefined-builtin
 
 
@@ -318,15 +325,15 @@ multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
+@deprecation.deprecated(
     "2016-12-30",
     "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
 
 
-_mul.__doc__ = (gen_math_ops._mul.__doc__ +
-                ("" if _mul.__doc__ is None else _mul.__doc__))
+_mul.__doc__ = (
+    gen_math_ops._mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
 def subtract(x, y, name=None):
@@ -337,15 +344,15 @@ subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
+@deprecation.deprecated(
     "2016-12-30",
     "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
 def _sub(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
 
 
-_sub.__doc__ = (gen_math_ops._sub.__doc__ +
-                ("" if _sub.__doc__ is None else _sub.__doc__))
+_sub.__doc__ = (
+    gen_math_ops._sub.__doc__ + ("" if _sub.__doc__ is None else _sub.__doc__))
 
 
 # pylint: disable=g-docstring-has-escape
@@ -375,8 +382,9 @@ def negative(x, name=None):
 
 
 # pylint: disable=g-docstring-has-escape
-@deprecated("2016-12-30",
-            "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
+@deprecation.deprecated(
+    "2016-12-30",
+    "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
 def _neg(x, name=None):
   """Computes numerical negative value element-wise.
 
@@ -588,13 +596,10 @@ def complex(real, imag, name=None):
 
 
 def real(input, name=None):
-  r"""Returns the real part of a complex number.
+  r"""Returns the real part of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the real part of each element in `input`.
-  All elements in `input` must be complex numbers of the form \\(a + bj\\),
-  where *a* is the real part returned by this operation and *b* is the
-  imaginary part.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the real part of each element in `input` considered as a complex number.
 
   For example:
 
@@ -613,19 +618,19 @@ def real(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
-    real_dtype = input.dtype.real_dtype
-    if input.dtype.base_dtype == real_dtype:
+    if input.dtype.is_complex:
+      real_dtype = input.dtype.real_dtype
+      return gen_math_ops.real(input, Tout=real_dtype, name=name)
+    else:
       return input
-    return gen_math_ops.real(input, Tout=real_dtype, name=name)
 
 
 def imag(input, name=None):
-  r"""Returns the imaginary part of a complex number.
+  r"""Returns the imaginary part of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float` that is the argument of each element in `input`. All elements in
-  `input` must be complex numbers of the form \\(a + bj\\), where *a*
-  is the real part and *b* is the imaginary part returned by the operation.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the imaginary part of each element in `input` considered as a complex
+  number. If `input` is real, a tensor of all zeros is returned.
 
   For example:
 
@@ -635,26 +640,32 @@ def imag(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-      `complex128`.
+    input: A `Tensor`. Must be one of the following types: `float`, `double`,
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
-    return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+    if input.dtype.is_complex:
+      return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+    else:
+      return array_ops.zeros_like(input)
 
 
 def angle(input, name=None):
-  r"""Returns the argument of a complex number.
+  r"""Returns the element-wise argument of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the argument of each element in `input`.
-  All elements in `input` must be complex numbers of the form \\(a + bj\\),
-  where *a* is the real part and *b* is the imaginary part.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the argument of each element in `input` considered as a complex number.
+
+  The elements in `input` are considered to be complex numbers of the form
+  \\(a + bj\\), where *a* is the real part and *b* is the imaginary part.
+  If `input` is real then *b* is zero by definition.
 
   The argument returned by this function is of the form \\(atan2(b, a)\\).
+  If `input` is real, a tensor of all zeros is returned.
 
   For example:
 
@@ -664,15 +675,18 @@ def angle(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-      `complex128`.
+    input: A `Tensor`. Must be one of the following types: `float`, `double`,
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Angle", [input]) as name:
-    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
+    if input.dtype.is_complex:
+      return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
+    else:
+      return array_ops.zeros_like(input)
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
@@ -734,10 +748,9 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
-      # TODO(touts): Handle what Josh said.
-      #
-      # Could return ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
-      # allows some conversions that cast() can't do, e.g.  casting numbers to
+      # TODO(josh11b): If x is not already a Tensor, we could return
+      # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
+      # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype == base_type:
@@ -937,6 +950,7 @@ _TRUEDIV_TABLE = {
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
+    dtypes.bfloat16: None,
     dtypes.float16: None,
     dtypes.float32: None,
     dtypes.float64: None,
@@ -950,8 +964,8 @@ _TRUEDIV_TABLE = {
 # to explicitly use the "/" operator to invoke either truediv or div.
 def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
   """Internal helper function for 'sp_t / dense_t'."""
-  with ops.name_scope(name, "truediv", [sp_indices, sp_values, sp_shape,
-                                        y]) as name:
+  with ops.name_scope(name, "truediv",
+                      [sp_indices, sp_values, sp_shape, y]) as name:
     sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
     y = ops.convert_to_tensor(y, name="y")
     x_dtype = sp_values.dtype.base_dtype
@@ -1258,16 +1272,27 @@ def _ReductionDims(x, axis, reduction_indices):
     return range(0, array_ops.rank(x))
 
 
+def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
+  """Set a reduction's output's shape to be a scalar if we are certain."""
+  if (not output.shape.is_fully_defined()) and (not keepdims) and (
+      axis is None) and (reduction_indices is None):
+    output.set_shape(())
+  return output
+
+
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_sum(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the sum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1280,7 +1305,7 @@ def reduce_sum(input_tensor,
   tf.reduce_sum(x)  # 6
   tf.reduce_sum(x, 0)  # [2, 2, 2]
   tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keep_dims=True)  # [[3], [3]]
+  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
   tf.reduce_sum(x, [0, 1])  # 6
   ```
 
@@ -1289,9 +1314,10 @@ def reduce_sum(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1300,24 +1326,34 @@ def reduce_sum(input_tensor,
   Equivalent to np.sum
   @end_compatibility
   """
-  return gen_math_ops._sum(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._sum(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def count_nonzero(input_tensor,
                   axis=None,
-                  keep_dims=False,
+                  keepdims=None,
                   dtype=dtypes.int64,
                   name=None,
-                  reduction_indices=None):
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1334,7 +1370,7 @@ def count_nonzero(input_tensor,
   tf.count_nonzero(x)  # 3
   tf.count_nonzero(x, 0)  # [1, 2, 0]
   tf.count_nonzero(x, 1)  # [1, 2]
-  tf.count_nonzero(x, 1, keep_dims=True)  # [[1], [2]]
+  tf.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
   tf.count_nonzero(x, [0, 1])  # 3
   ```
 
@@ -1343,14 +1379,20 @@ def count_nonzero(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor (number of nonzero values).
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+
   with ops.name_scope(name, "count_nonzero", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     zero = input_tensor.dtype.as_numpy_dtype()
@@ -1359,21 +1401,24 @@ def count_nonzero(input_tensor,
             # int64 reduction happens on GPU
             to_int64(gen_math_ops.not_equal(input_tensor, zero)),
             axis=axis,
-            keep_dims=keep_dims,
+            keepdims=keepdims,
             reduction_indices=reduction_indices),
         dtype=dtype)
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_mean(input_tensor,
                 axis=None,
-                keep_dims=False,
+                keepdims=None,
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keep_dims=None):
   """Computes the mean of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1392,35 +1437,59 @@ def reduce_mean(input_tensor,
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+      `[-rank(input_tensor), rank(input_tensor)]`.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
 
   @compatibility(numpy)
   Equivalent to np.mean
+
+  Please note that `np.mean` has a `dtype` parameter that could be used to
+  specify the output type. By default this is `dtype=float64`. On the other
+  hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`,
+  for example:
+
+  ```python
+  x = tf.constant([1, 0, 1, 0])
+  tf.reduce_mean(x)  # 0
+  y = tf.constant([1., 0., 1., 0.])
+  tf.reduce_mean(y)  # 0.5
+  ```
+
   @end_compatibility
   """
-  return gen_math_ops._mean(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._mean(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_prod(input_tensor,
                 axis=None,
-                keep_dims=False,
+                keepdims=None,
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keep_dims=None):
   """Computes the product of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1431,9 +1500,10 @@ def reduce_prod(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1442,23 +1512,33 @@ def reduce_prod(input_tensor,
   Equivalent to np.prod
   @end_compatibility
   """
-  return gen_math_ops._prod(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._prod(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_min(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1469,9 +1549,10 @@ def reduce_min(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1480,23 +1561,32 @@ def reduce_min(input_tensor,
   Equivalent to np.min
   @end_compatibility
   """
-  return gen_math_ops._min(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._min(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_max(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1507,9 +1597,10 @@ def reduce_max(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1518,23 +1609,32 @@ def reduce_max(input_tensor,
   Equivalent to np.max
   @end_compatibility
   """
-  return gen_math_ops._max(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._max(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_all(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1554,9 +1654,10 @@ def reduce_all(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1565,23 +1666,32 @@ def reduce_all(input_tensor,
   Equivalent to np.all
   @end_compatibility
   """
-  return gen_math_ops._all(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._all(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_any(input_tensor,
                axis=None,
-               keep_dims=False,
+               keepdims=None,
                name=None,
-               reduction_indices=None):
+               reduction_indices=None,
+               keep_dims=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1601,9 +1711,10 @@ def reduce_any(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
@@ -1612,23 +1723,32 @@ def reduce_any(input_tensor,
   Equivalent to np.any
   @end_compatibility
   """
-  return gen_math_ops._any(
-      input_tensor,
-      _ReductionDims(input_tensor, axis, reduction_indices),
-      keep_dims,
-      name=name)
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
+  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
+                               gen_math_ops._any(
+                                   input_tensor,
+                                   _ReductionDims(input_tensor, axis,
+                                                  reduction_indices),
+                                   keepdims,
+                                   name=name))
 
 
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_logsumexp(input_tensor,
                      axis=None,
-                     keep_dims=False,
+                     keepdims=None,
                      name=None,
-                     reduction_indices=None):
+                     reduction_indices=None,
+                     keep_dims=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
   Reduces `input_tensor` along the dimensions given in `axis`.
-  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keep_dims` is true, the reduced dimensions
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
@@ -1645,7 +1765,7 @@ def reduce_logsumexp(input_tensor,
   tf.reduce_logsumexp(x)  # log(6)
   tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
   tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
-  tf.reduce_logsumexp(x, 1, keep_dims=True)  # [[log(3)], [log(3)]]
+  tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
   tf.reduce_logsumexp(x, [0, 1])  # log(6)
   ```
 
@@ -1654,35 +1774,39 @@ def reduce_logsumexp(input_tensor,
     axis: The dimensions to reduce. If `None` (the default),
       reduces all dimensions. Must be in the range
       `[-rank(input_tensor), rank(input_tensor))`.
-    keep_dims: If true, retains reduced dimensions with length 1.
+    keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
+    keep_dims: Deprecated alias for `keepdims`.
 
   Returns:
     The reduced tensor.
   """
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keepdims is None:
+    keepdims = False
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
         axis=axis,
         reduction_indices=reduction_indices,
-        keep_dims=True)
+        keepdims=True)
     my_max = array_ops.stop_gradient(
         array_ops.where(
-            gen_math_ops.is_finite(raw_max),
-            raw_max,
+            gen_math_ops.is_finite(raw_max), raw_max,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
             axis,
-            keep_dims=True,
+            keepdims=True,
             reduction_indices=reduction_indices)) + my_max
-    if not keep_dims:
+    if not keepdims:
       if isinstance(axis, int):
         axis = [axis]
       result = array_ops.squeeze(result, axis)
-    return result
+    return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
 def trace(x, name=None):
@@ -1843,11 +1967,12 @@ def matmul(a,
 
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
-    a_shape = a.get_shape()
-    b_shape = b.get_shape()
-    if (not a_is_sparse and not b_is_sparse) and (
-        (a_shape.ndims is None or a_shape.ndims > 2) and
-        (b_shape.ndims is None or b_shape.ndims > 2)):
+    # TODO(apassos) remove _shape_tuple here when it is not needed.
+    a_shape = a._shape_tuple()  # pylint: disable=protected-access
+    b_shape = b._shape_tuple()  # pylint: disable=protected-access
+    if (not a_is_sparse and
+        not b_is_sparse) and ((a_shape is None or len(a_shape) > 2) and
+                              (b_shape is None or len(b_shape) > 2)):
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -1869,11 +1994,12 @@ def matmul(a,
       b = conj(b)
       transpose_b = True
 
-    sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
-    use_sparse_matmul = (a.dtype in sparse_matmul_types and
-                         b.dtype in sparse_matmul_types and
-                         (a_is_sparse or b_is_sparse))
-    if dtypes.bfloat16 in (a.dtype, b.dtype):
+    use_sparse_matmul = False
+    if a_is_sparse or b_is_sparse:
+      sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
+      use_sparse_matmul = (
+          a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
+    if a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16:
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
@@ -1963,8 +2089,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
   for o in outputs:
     if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values,
-                            cast(o.indices, dtypes.int64), o.dense_shape))
+          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
+                            o.dense_shape))
     else:
       casted_outputs.append(o)
   return casted_outputs
@@ -2039,6 +2165,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  if context.in_eager_mode():
+    # TODO(apassos) remove this once the lifetime of eager variables gets
+    # addressed.
+    raise ValueError("accumulate_n not supported in eager mode")
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise ValueError("inputs must be a list of at least one Tensor with the "
                      "same dtype and shape")
@@ -2059,8 +2189,8 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
   if tensor_dtype != inputs[0].dtype:
-    raise TypeError("tensor_dtype is {}, but input is of type {}"
-                     .format(tensor_dtype, inputs[0].dtype))
+    raise TypeError("tensor_dtype is {}, but input is of type {}".format(
+        tensor_dtype, inputs[0].dtype))
   if len(inputs) == 1:
     return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
@@ -2085,13 +2215,12 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
 
   Args:
-    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-      or `qint32`.
+    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`,
+      or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32`
-      otherwise the return type is `quint8`.
+    A Tensor with the same type as `x`.
 
   @compatibility(numpy)
   Equivalent to np.scipy.special.expit
@@ -2124,8 +2253,8 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, or `int64`.
+    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
+      `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2179,8 +2308,10 @@ def bincount(arr,
     maxlength = ops.convert_to_tensor(
         maxlength, name="maxlength", dtype=dtypes.int32)
     output_size = gen_math_ops.minimum(maxlength, output_size)
-  weights = (ops.convert_to_tensor(weights, name="weights")
-             if weights is not None else constant_op.constant([], dtype))
+  if weights is not None:
+    weights = ops.convert_to_tensor(weights, name="weights")
+    return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
+  weights = constant_op.constant([], dtype)
   return gen_math_ops.bincount(arr, output_size, weights)
 
 
@@ -2304,7 +2435,7 @@ def conj(x, name=None):
   If `x` is real, it is returned unchanged.
 
   Args:
-    x: `Tensor` to conjugate.  Must have numeric type.
+    x: `Tensor` to conjugate.  Must have numeric or variant type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2313,14 +2444,19 @@ def conj(x, name=None):
   Raises:
     TypeError: If `x` is not a numeric tensor.
   """
+  if isinstance(x, ops.Tensor):
+    dt = x.dtype
+    if dt.is_floating or dt.is_integer:
+      return x
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype.is_complex:
+    if x.dtype.is_complex or x.dtype == dtypes.variant:
       return gen_math_ops._conj(x, name=name)
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
+      raise TypeError(
+          "Expected numeric or variant tensor, got dtype %r" % x.dtype)
 
 
 def _BroadcastShape(op):
@@ -2338,7 +2474,7 @@ def reduced_shape(input_shape, axes):
     input_shape: 1-D Tensor, the shape of the Tensor being reduced.
     axes: 1-D Tensor, the reduction axes.
   Returns:
-    A 1-D Tensor, the output shape as if keep_dims were set to True.
+    A 1-D Tensor, the output shape as if keepdims were set to True.
   """
   # Example:
   # cast needed for SparseTensor reductions
@@ -2357,6 +2493,159 @@ def reduced_shape(input_shape, axes):
           input_shape,  # [2, 3, 5, 7]
           array_ops.fill(axes_shape, 1)
       ])  # [1, 1]
+
+
+def sparse_segment_sum(data, indices, segment_ids, name=None,
+                       num_segments=None):
+  r"""Computes the sum along sparse segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  For example:
+
+  ```python
+  c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+  # Select two rows, one segment.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+  # => [[0 0 0 0]]
+
+  # Select two rows, two segment.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+  # => [[ 1  2  3  4]
+  #     [-1 -2 -3 -4]]
+
+  # With missing segment ids.
+  tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 2]),
+                        num_segments=4)
+  # => [[ 1  2  3  4]
+  #     [ 0  0  0  0]
+  #     [-1 -2 -3 -4]
+  #     [ 0  0  0  0]]
+
+  # Select all rows, two segments.
+  tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+  # => [[0 0 0 0]
+  #     [5 6 7 8]]
+
+  # Which is equivalent to:
+  tf.segment_sum(c, tf.constant([0, 0, 1]))
+  ```
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_sum_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_sum(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
+
+
+def sparse_segment_mean(data, indices, segment_ids, name=None,
+                        num_segments=None):
+  r"""Computes the mean along sparse segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_mean_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_mean(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
+
+
+def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
+                          num_segments=None):
+  r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
+
+  `N` is the size of the segment being reduced.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`.
+      Values should be sorted and can be repeated.
+    name: A name for the operation (optional).
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  if num_segments is not None:
+    return gen_math_ops.sparse_segment_sqrt_n_with_num_segments(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        num_segments=num_segments,
+        name=name)
+  else:
+    return gen_math_ops.sparse_segment_sqrt_n(
+        data=data,
+        indices=indices,
+        segment_ids=segment_ids,
+        name=name)
 
 
 def tensordot(a, b, axes, name=None):
@@ -2455,7 +2744,8 @@ def tensordot(a, b, axes, name=None):
       rank_a = array_ops.rank(a)
       axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
       axes = cast(axes >= 0, dtypes.int32) * axes + cast(
-          axes < 0, dtypes.int32) * (axes + rank_a)
+          axes < 0, dtypes.int32) * (
+              axes + rank_a)
       free, _ = array_ops.setdiff1d(range(rank_a), axes)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
@@ -2481,8 +2771,8 @@ def tensordot(a, b, axes, name=None):
         return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
       else:
         rank = array_ops.rank(a)
-        return (range(rank - axes, rank, dtype=dtypes.int32), range(
-            axes, dtype=dtypes.int32))
+        return (range(rank - axes, rank, dtype=dtypes.int32),
+                range(axes, dtype=dtypes.int32))
     elif isinstance(axes, (list, tuple)):
       if len(axes) != 2:
         raise ValueError("'axes' must be an integer or have length 2.")
@@ -2494,8 +2784,8 @@ def tensordot(a, b, axes, name=None):
         b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
         raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s.",
-            len(a_axes), len(b_axes))
+            "Different number of contraction axes 'a' and 'b', %s != %s." %
+            (len(a_axes), len(b_axes)))
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)
@@ -2506,8 +2796,8 @@ def tensordot(a, b, axes, name=None):
     b = ops.convert_to_tensor(b, name="b")
     a_axes, b_axes = _tensordot_axes(a, axes)
     a_reshape, a_free_dims, a_free_dims_static = _tensordot_reshape(a, a_axes)
-    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(b, b_axes,
-                                                                    True)
+    b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(
+        b, b_axes, True)
     ab_matmul = matmul(a_reshape, b_reshape)
     if isinstance(a_free_dims, list) and isinstance(b_free_dims, list):
       return array_ops.reshape(ab_matmul, a_free_dims + b_free_dims, name=name)

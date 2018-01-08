@@ -51,7 +51,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
-    HloInstruction* instruction = inst_it->get();
+    HloInstruction* instruction = *inst_it;
 
     // Advance list iterator before loop body because iterator may be
     // invalidated due to deletion.
@@ -68,7 +68,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
       auto range = constants.equal_range(shape_string);
       HloInstruction* match = nullptr;
       for (auto it = range.first; it != range.second; ++it) {
-        if (instruction->literal().Equal(it->second->literal())) {
+        if (instruction->literal() == it->second->literal()) {
           match = it->second;
           break;
         }
@@ -77,7 +77,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
         constants.emplace(shape_string, instruction);
       } else {
         // Match found, replace this instruction with the one in the multimap.
-        TF_CHECK_OK(computation->ReplaceUsesOfInstruction(instruction, match));
+        TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
         TF_CHECK_OK(computation->RemoveInstruction(instruction));
         changed = true;
       }
@@ -91,11 +91,8 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    changed |= CombineConstants(computation.get(), is_layout_sensitive_);
+  for (auto* computation : module->computations()) {
+    changed |= CombineConstants(computation, is_layout_sensitive_);
 
     std::list<HloInstruction*> post_order =
         computation->MakeInstructionPostOrder();
@@ -124,8 +121,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
 
       // Replace all equivalent instructions with this instruction.
       for (HloInstruction* equivalent_instruction : equivalent_instructions) {
-        TF_RETURN_IF_ERROR(computation->ReplaceUsesOfInstruction(
-            equivalent_instruction, instruction));
+        TF_RETURN_IF_ERROR(
+            equivalent_instruction->ReplaceAllUsesWith(instruction));
         TF_RETURN_IF_ERROR(
             computation->RemoveInstruction(equivalent_instruction));
         removed_instructions.insert(equivalent_instruction);

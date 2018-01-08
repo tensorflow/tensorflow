@@ -27,12 +27,16 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -179,11 +183,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("op_type", "name")
+        node_def_orig = ops._NodeDef("op_type_orig", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
@@ -324,6 +330,142 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+
+class GarbageCollectionTest(test_util.TensorFlowTestCase):
+
+  def test_no_reference_cycle_decorator(self):
+
+    class ReferenceCycleTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_garbage_created
+      def test_has_cycle(self):
+        a = []
+        a.append(a)
+
+      @test_util.assert_no_garbage_created
+      def test_has_no_cycle(self):
+        pass
+
+    with self.assertRaises(AssertionError):
+      ReferenceCycleTest().test_has_cycle()
+
+    ReferenceCycleTest().test_has_no_cycle()
+
+  def test_no_leaked_tensor_decorator(self):
+
+    class LeakedTensorTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.])
+
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.])
+
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
+
+
+@test_util.with_c_api
+class IsolationTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_variable_reuse_exception(self):
+    with test_util.IsolateTest(), session.Session():
+      first_container_variable = resource_variable_ops.ResourceVariable(
+          name="first_container_variable",
+          initial_value=1)
+      if context.in_graph_mode():
+        self.evaluate([variables.global_variables_initializer()])
+    with test_util.IsolateTest():
+      if context.in_graph_mode():
+        with self.assertRaises(RuntimeError):
+          self.evaluate(first_container_variable.read_value())
+      else:
+        with self.assertRaises(ValueError):
+          first_container_variable.read_value()
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_variable_reuse_exception_nested(self):
+    with test_util.IsolateTest(), session.Session():
+      first_container_variable = resource_variable_ops.ResourceVariable(
+          name="first_container_variable",
+          initial_value=1)
+      if context.in_graph_mode():
+        self.evaluate([variables.global_variables_initializer()])
+      with test_util.IsolateTest(), session.Session():
+        if context.in_graph_mode():
+          with self.assertRaises(RuntimeError):
+            self.evaluate(first_container_variable.read_value())
+        else:
+          with self.assertRaises(ValueError):
+            first_container_variable.read_value()
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_no_sharing(self):
+    with test_util.IsolateTest(), session.Session():
+      first_container_variable = resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1)
+      if context.in_graph_mode():
+        self.evaluate([variables.global_variables_initializer()])
+      with test_util.IsolateTest(), session.Session():
+        second_container_variable = resource_variable_ops.ResourceVariable(
+            name="same_name",
+            initial_value=2)
+        if context.in_graph_mode():
+          self.evaluate([variables.global_variables_initializer()])
+        self.assertEqual(
+            2, self.evaluate(second_container_variable.read_value()))
+      self.assertEqual(1, self.evaluate(first_container_variable.read_value()))
+
+  def test_graph_mode_isolation(self):
+    with context.graph_mode():
+      # Even if we've (accidentally) called IsolateTest in Graph mode, it should
+      # provide Eager isolation.
+      with test_util.IsolateTest():
+        with context.eager_mode():
+          first_container_variable = resource_variable_ops.ResourceVariable(
+              name="first_container_variable",
+              initial_value=1)
+      with context.eager_mode():
+        with self.assertRaises(ValueError):
+          first_container_variable.read_value()
 
 if __name__ == "__main__":
   googletest.main()

@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cuda_cc_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -10,13 +11,15 @@ load(
 
 tf_cuda_library(
     name = "c_api",
-    srcs = ["c_api.cc"],
+    srcs = [
+        "c_api.cc",
+        "c_api_internal.h",
+    ],
     hdrs = ["c_api.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
@@ -30,12 +33,32 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
         ],
-    }),
+    }) + ["//tensorflow/core:gpu_runtime"],
 )
 
-tf_cc_test(
+tf_cuda_library(
+    name = "c_api_internal",
+    hdrs = ["c_api_internal.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api",
+        ":runtime",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
+    tags = [
+        "guitar",
+        "multi_gpu",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/core:lib",
@@ -53,7 +76,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
@@ -79,7 +101,25 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "tape",
+    hdrs = ["tape.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+filegroup(
+    name = "headers",
+    srcs = ["c_api.h"],
+    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -1,6 +1,35 @@
 #ifndef THIRD_PARTY_EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
 #define THIRD_PARTY_EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
 
+#ifdef _MSC_VER
+
+#include <immintrin.h>
+#include <emmintrin.h>
+#include <smmintrin.h>
+
+#endif
+
+inline int _mm256_extract_epi16_N0(const __m256i X)
+{
+	return _mm_extract_epi16(_mm256_extractf128_si256(X, 0 >> 3), 0 % 8);
+}
+
+inline int _mm256_extract_epi16_N1(const __m256i X)
+{
+	return _mm_extract_epi16(_mm256_extractf128_si256(X, 1 >> 3), 1 % 8);
+}
+
+inline int _mm256_extract_epi8_N0(const __m256i X)
+{
+	return _mm_extract_epi8(_mm256_extractf128_si256((X), 0 >> 4), 0 % 16);
+}
+
+inline int _mm256_extract_epi8_N1(const __m256i X)
+{
+	return _mm_extract_epi8(_mm256_extractf128_si256((X), 1 >> 4), 1 % 16);
+}
+
+
 namespace Eigen {
 namespace internal {
 
@@ -271,15 +300,15 @@ EIGEN_STRONG_INLINE QInt32 pfirst<Packet8q32i>(const Packet8q32i& a) {
 }
 template <>
 EIGEN_STRONG_INLINE QInt16 pfirst<Packet16q16i>(const Packet16q16i& a) {
-  return _mm256_extract_epi16(a.val, 0);
+  return _mm256_extract_epi16_N0(a.val);
 }
 template <>
 EIGEN_STRONG_INLINE QUInt8 pfirst<Packet32q8u>(const Packet32q8u& a) {
-  return static_cast<uint8_t>(_mm256_extract_epi8(a.val, 0));
+  return static_cast<uint8_t>(_mm256_extract_epi8_N0(a.val));
 }
 template <>
 EIGEN_STRONG_INLINE QInt8 pfirst<Packet32q8i>(const Packet32q8i& a) {
-  return _mm256_extract_epi8(a.val, 0);
+  return _mm256_extract_epi8_N0(a.val);
 }
 
 // Initialize to constant value.
@@ -391,7 +420,7 @@ EIGEN_STRONG_INLINE QInt16 predux_min<Packet16q16i>(const Packet16q16i& a) {
   tmp =
       _mm256_min_epi16(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
   tmp = _mm256_min_epi16(tmp, _mm256_shuffle_epi32(tmp, 1));
-  return std::min(_mm256_extract_epi16(tmp, 0), _mm256_extract_epi16(tmp, 1));
+  return std::min(_mm256_extract_epi16_N0(tmp), _mm256_extract_epi16_N1(tmp));
 }
 template <>
 EIGEN_STRONG_INLINE QInt16 predux_max<Packet16q16i>(const Packet16q16i& a) {
@@ -399,7 +428,7 @@ EIGEN_STRONG_INLINE QInt16 predux_max<Packet16q16i>(const Packet16q16i& a) {
   tmp =
       _mm256_max_epi16(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
   tmp = _mm256_max_epi16(tmp, _mm256_shuffle_epi32(tmp, 1));
-  return std::max(_mm256_extract_epi16(tmp, 0), _mm256_extract_epi16(tmp, 1));
+  return std::max(_mm256_extract_epi16_N0(tmp), _mm256_extract_epi16_N1(tmp));
 }
 
 template <>
@@ -410,8 +439,8 @@ EIGEN_STRONG_INLINE QUInt8 predux_min<Packet32q8u>(const Packet32q8u& a) {
   tmp = _mm256_min_epu8(tmp, _mm256_shuffle_epi32(tmp, 1));
   tmp = _mm256_min_epu8(tmp,
                         _mm256_shufflelo_epi16(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
-  return std::min(static_cast<uint8_t>(_mm256_extract_epi8(tmp, 0)),
-                  static_cast<uint8_t>(_mm256_extract_epi8(tmp, 1)));
+  return std::min(static_cast<uint8_t>(_mm256_extract_epi8_N0(tmp)),
+                  static_cast<uint8_t>(_mm256_extract_epi8_N1(tmp)));
 }
 template <>
 EIGEN_STRONG_INLINE QUInt8 predux_max<Packet32q8u>(const Packet32q8u& a) {
@@ -421,8 +450,8 @@ EIGEN_STRONG_INLINE QUInt8 predux_max<Packet32q8u>(const Packet32q8u& a) {
   tmp = _mm256_max_epu8(tmp, _mm256_shuffle_epi32(tmp, 1));
   tmp = _mm256_max_epu8(tmp,
                         _mm256_shufflelo_epi16(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
-  return std::max(static_cast<uint8_t>(_mm256_extract_epi8(tmp, 0)),
-                  static_cast<uint8_t>(_mm256_extract_epi8(tmp, 1)));
+  return std::max(static_cast<uint8_t>(_mm256_extract_epi8_N0(tmp)),
+                  static_cast<uint8_t>(_mm256_extract_epi8_N1(tmp)));
 }
 
 template <>
@@ -431,7 +460,7 @@ EIGEN_STRONG_INLINE QInt8 predux_min<Packet32q8i>(const Packet32q8i& a) {
   tmp = _mm256_min_epi8(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
   tmp = _mm256_min_epi8(tmp, _mm256_shuffle_epi32(tmp, 1));
   tmp = _mm256_min_epi8(tmp, _mm256_shufflelo_epi16(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
-  return std::min(_mm256_extract_epi8(tmp, 0), _mm256_extract_epi8(tmp, 1));
+  return std::min(_mm256_extract_epi8_N0(tmp), _mm256_extract_epi8_N1(tmp));
 }
 template <>
 EIGEN_STRONG_INLINE QInt8 predux_max<Packet32q8i>(const Packet32q8i& a) {
@@ -439,7 +468,7 @@ EIGEN_STRONG_INLINE QInt8 predux_max<Packet32q8i>(const Packet32q8i& a) {
   tmp = _mm256_max_epi8(tmp, _mm256_shuffle_epi32(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
   tmp = _mm256_max_epi8(tmp, _mm256_shuffle_epi32(tmp, 1));
   tmp = _mm256_max_epi8(tmp, _mm256_shufflelo_epi16(tmp, _MM_SHUFFLE(1, 0, 3, 2)));
-  return std::max(_mm256_extract_epi8(tmp, 0), _mm256_extract_epi8(tmp, 1));
+  return std::max(_mm256_extract_epi8_N0(tmp), _mm256_extract_epi8_N1(tmp));
 }
 
 // Vectorized scaling of Packet32q8i by float.

@@ -605,6 +605,7 @@ class TimeDependentStateSpaceModel(state_space_model.StateSpaceModel):
     super(TimeDependentStateSpaceModel, self).__init__(
         configuration=state_space_model.StateSpaceModelConfiguration(
             use_observation_noise=False,
+            transition_covariance_initial_log_scale_bias=5.,
             static_unrolling_window_size_threshold=
             static_unrolling_window_size_threshold))
 

@@ -21,9 +21,11 @@ from __future__ import print_function
 
 import platform
 
+from tensorflow.python.framework import ops
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
+  from tensorflow.contrib.tpu.ops import gen_tpu_ops
   from tensorflow.contrib.tpu.ops.gen_tpu_ops import *
 
   from tensorflow.contrib.util import loader
@@ -32,6 +34,12 @@ if platform.system() != "Windows":
 
   _tpu_ops = loader.load_op_library(
       resource_loader.get_path_to_datafile("_tpu_ops.so"))
+
+  @ops.RegisterGradient("CrossReplicaSum")
+  def _cross_replica_sum_grad(op, grad):
+    del op  # Unused
+    # The gradient of a cross replica sum is also a cross-replica sum.
+    return gen_tpu_ops.cross_replica_sum(grad)
 else:
   # We have already built the appropriate libraries into the binary via CMake
   # if we have built contrib, so we don't need this

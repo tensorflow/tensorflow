@@ -37,7 +37,14 @@ REGISTER_OP("_XLARecv")
     .Attr("tensor_name: string")
     .Attr("shape: shape")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      TensorShape shape_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation.
 

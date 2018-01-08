@@ -45,13 +45,13 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
 )
 
 tf_py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["python/summaries_test.py"],
     additional_deps = [
         ":specs",

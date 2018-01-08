@@ -59,7 +59,6 @@ py_library(
 
 py_test(
     name = "dataset_data_provider_test",
-    size = "small",
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -69,13 +68,13 @@ py_test(
         ":tfexample_decoder",
         "//tensorflow/contrib/slim:queues",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
     ],
 )
 
@@ -188,6 +187,7 @@ py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//third_party/py/numpy",

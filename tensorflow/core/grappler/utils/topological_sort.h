@@ -17,12 +17,13 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // Sort a graph in topological order.
-void TopologicalSort(GraphDef* graph);
+Status TopologicalSort(GraphDef* graph);
 
 }  // namespace grappler
 }  // namespace tensorflow

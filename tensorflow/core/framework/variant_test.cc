@@ -42,50 +42,50 @@ using Float = Wrapper<float>;
 
 TEST(VariantTest, Int) {
   Variant x;
-  EXPECT_EQ(x.MaybeDecodeAndGet<void>(), nullptr);
+  EXPECT_EQ(x.get<void>(), nullptr);
   x = 3;
-  EXPECT_NE(x.MaybeDecodeAndGet<void>(), nullptr);
-  EXPECT_EQ(*x.MaybeDecodeAndGet<int>(), 3);
+  EXPECT_NE(x.get<void>(), nullptr);
+  EXPECT_EQ(*x.get<int>(), 3);
   EXPECT_EQ(x.TypeName(), "int");
 }
 
 TEST(VariantTest, Basic) {
   Variant x;
-  EXPECT_EQ(x.MaybeDecodeAndGet<void>(), nullptr);
+  EXPECT_EQ(x.get<void>(), nullptr);
 
   x = Int{42};
 
-  EXPECT_NE(x.MaybeDecodeAndGet<void>(), nullptr);
-  EXPECT_NE(x.MaybeDecodeAndGet<Int>(), nullptr);
-  EXPECT_EQ(x.MaybeDecodeAndGet<Int>()->value, 42);
+  EXPECT_NE(x.get<void>(), nullptr);
+  EXPECT_NE(x.get<Int>(), nullptr);
+  EXPECT_EQ(x.get<Int>()->value, 42);
   EXPECT_EQ(x.TypeName(), "POD");
 }
 
 TEST(VariantTest, ConstGet) {
   Variant x;
-  EXPECT_EQ(x.MaybeDecodeAndGet<void>(), nullptr);
+  EXPECT_EQ(x.get<void>(), nullptr);
 
   x = Int{42};
 
   const Variant y = x;
 
-  EXPECT_NE(y.MaybeDecodeAndGet<void>(), nullptr);
-  EXPECT_NE(y.MaybeDecodeAndGet<Int>(), nullptr);
-  EXPECT_EQ(y.MaybeDecodeAndGet<Int>()->value, 42);
+  EXPECT_NE(y.get<void>(), nullptr);
+  EXPECT_NE(y.get<Int>(), nullptr);
+  EXPECT_EQ(y.get<Int>()->value, 42);
 }
 
 TEST(VariantTest, Clear) {
   Variant x;
-  EXPECT_EQ(x.MaybeDecodeAndGet<void>(), nullptr);
+  EXPECT_EQ(x.get<void>(), nullptr);
 
   x = Int{42};
 
-  EXPECT_NE(x.MaybeDecodeAndGet<void>(), nullptr);
-  EXPECT_NE(x.MaybeDecodeAndGet<Int>(), nullptr);
-  EXPECT_EQ(x.MaybeDecodeAndGet<Int>()->value, 42);
+  EXPECT_NE(x.get<void>(), nullptr);
+  EXPECT_NE(x.get<Int>(), nullptr);
+  EXPECT_EQ(x.get<Int>()->value, 42);
 
   x.clear();
-  EXPECT_EQ(x.MaybeDecodeAndGet<void>(), nullptr);
+  EXPECT_EQ(x.get<void>(), nullptr);
 }
 
 TEST(VariantTest, Tensor) {
@@ -94,10 +94,10 @@ TEST(VariantTest, Tensor) {
   t.flat<float>()(0) = 42.0f;
   x = t;
 
-  EXPECT_NE(x.MaybeDecodeAndGet<Tensor>(), nullptr);
-  EXPECT_EQ(x.MaybeDecodeAndGet<Tensor>()->flat<float>()(0), 42.0f);
-  x.MaybeDecodeAndGet<Tensor>()->flat<float>()(0) += 1.0f;
-  EXPECT_EQ(x.MaybeDecodeAndGet<Tensor>()->flat<float>()(0), 43.0f);
+  EXPECT_NE(x.get<Tensor>(), nullptr);
+  EXPECT_EQ(x.get<Tensor>()->flat<float>()(0), 42.0f);
+  x.get<Tensor>()->flat<float>()(0) += 1.0f;
+  EXPECT_EQ(x.get<Tensor>()->flat<float>()(0), 43.0f);
   EXPECT_EQ(x.TypeName(), "tensorflow::Tensor");
 }
 
@@ -109,10 +109,9 @@ TEST(VariantTest, TensorProto) {
   x = t;
 
   EXPECT_EQ(x.TypeName(), "tensorflow.TensorProto");
-  EXPECT_NE(x.MaybeDecodeAndGet<TensorProto>(), nullptr);
-  EXPECT_EQ(x.MaybeDecodeAndGet<TensorProto>()->dtype(), DT_FLOAT);
-  EXPECT_EQ(x.MaybeDecodeAndGet<TensorProto>()->tensor_shape().unknown_rank(),
-            true);
+  EXPECT_NE(x.get<TensorProto>(), nullptr);
+  EXPECT_EQ(x.get<TensorProto>()->dtype(), DT_FLOAT);
+  EXPECT_EQ(x.get<TensorProto>()->tensor_shape().unknown_rank(), true);
 }
 
 TEST(VariantTest, CopyValue) {
@@ -120,9 +119,8 @@ TEST(VariantTest, CopyValue) {
   x = Int{10};
   y = x;
 
-  EXPECT_EQ(x.MaybeDecodeAndGet<Int>()->value, 10);
-  EXPECT_EQ(x.MaybeDecodeAndGet<Int>()->value,
-            y.MaybeDecodeAndGet<Int>()->value);
+  EXPECT_EQ(x.get<Int>()->value, 10);
+  EXPECT_EQ(x.get<Int>()->value, y.get<Int>()->value);
 }
 
 TEST(VariantTest, MoveValue) {
@@ -132,15 +130,15 @@ TEST(VariantTest, MoveValue) {
     y = Int{10};
     return y;
   }();
-  EXPECT_EQ(x.MaybeDecodeAndGet<Int>()->value, 10);
+  EXPECT_EQ(x.get<Int>()->value, 10);
 }
 
 TEST(VariantTest, TypeMismatch) {
   Variant x;
   x = Int{10};
-  EXPECT_EQ(x.MaybeDecodeAndGet<float>(), nullptr);
-  EXPECT_EQ(x.MaybeDecodeAndGet<int>(), nullptr);
-  EXPECT_NE(x.MaybeDecodeAndGet<Int>(), nullptr);
+  EXPECT_EQ(x.get<float>(), nullptr);
+  EXPECT_EQ(x.get<int>(), nullptr);
+  EXPECT_NE(x.get<Int>(), nullptr);
 }
 
 struct TensorList {
@@ -155,13 +153,6 @@ struct TensorList {
 
   std::vector<Tensor> vec;
 };
-
-TEST(VariantTest, AccessingVariantTensorDataFails) {
-  const Variant x = VariantTensorDataProto();
-  EXPECT_DEATH(x.MaybeDecodeAndGet<int>(),
-               "Cannot call MaybeDecodeAndGet on const Variant holding "
-               "serialized data.");
-}
 
 TEST(VariantTest, TensorListTest) {
   Variant x;
@@ -183,7 +174,7 @@ TEST(VariantTest, TensorListTest) {
 
   EXPECT_EQ(x.TypeName(), "TensorList");
   EXPECT_EQ(x.DebugString(), "Variant<type: TensorList value: ?>");
-  const TensorList& stored_vec = *x.MaybeDecodeAndGet<TensorList>();
+  const TensorList& stored_vec = *x.get<TensorList>();
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(stored_vec.vec[i].flat<int>()(0), i);
   }
@@ -197,7 +188,7 @@ TEST(VariantTest, TensorListTest) {
   Variant y = TensorList();
   y.Decode(serialized);
 
-  const TensorList& decoded_vec = *y.MaybeDecodeAndGet<TensorList>();
+  const TensorList& decoded_vec = *y.get<TensorList>();
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(decoded_vec.vec[i].flat<int>()(0), i);
   }
@@ -207,26 +198,21 @@ TEST(VariantTest, TensorListTest) {
 
   VariantTensorDataProto data;
   serialized.ToProto(&data);
-  Variant y_unknown = data;
+  const Variant y_unknown = data;
   EXPECT_EQ(y_unknown.TypeName(), "TensorList");
   EXPECT_EQ(y_unknown.TypeId(), MakeTypeIndex<VariantTensorDataProto>());
   EXPECT_EQ(y_unknown.DebugString(),
             strings::StrCat(
                 "Variant<type: TensorList value: ", data.DebugString(), ">"));
 
-  // Now call a get that internally performs a decode.
-  const TensorList& unknown_decoded_vec =
-      *y_unknown.MaybeDecodeAndGet<TensorList>();
+  TensorList unknown_decoded_vec;
+  EXPECT_TRUE(y_unknown.MaybeDecodeAndCopy(&unknown_decoded_vec));
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(unknown_decoded_vec.vec[i].flat<int>()(0), i);
   }
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(unknown_decoded_vec.vec[i + 4].flat<float>()(0), 2 * i);
   }
-
-  // After the MaybeDecodeAndGet<>() which decoded the DataProto to a
-  // TensorList, we can no longer access the original data proto
-  EXPECT_EQ(y_unknown.TypeId(), MakeTypeIndex<TensorList>());
 }
 
 TEST(VariantTest, VariantArray) {
@@ -234,8 +220,8 @@ TEST(VariantTest, VariantArray) {
   x[0] = Int{2};
   x[1] = Float{2.0f};
 
-  EXPECT_EQ(x[0].MaybeDecodeAndGet<Int>()->value, 2);
-  EXPECT_EQ(x[1].MaybeDecodeAndGet<Float>()->value, 2.0f);
+  EXPECT_EQ(x[0].get<Int>()->value, 2);
+  EXPECT_EQ(x[1].get<Float>()->value, 2.0f);
 }
 
 TEST(VariantTest, PodUpdate) {
@@ -247,12 +233,12 @@ TEST(VariantTest, PodUpdate) {
   };
 
   Variant x = Pod{10, 20.f};
-  EXPECT_NE(x.MaybeDecodeAndGet<Pod>(), nullptr);
+  EXPECT_NE(x.get<Pod>(), nullptr);
   EXPECT_EQ(x.TypeName(), "POD");
   EXPECT_EQ(x.DebugString(), "Variant<type: POD value: ?>");
 
-  x.MaybeDecodeAndGet<Pod>()->x += x.MaybeDecodeAndGet<Pod>()->y;
-  EXPECT_EQ(x.MaybeDecodeAndGet<Pod>()->x, 30);
+  x.get<Pod>()->x += x.get<Pod>()->y;
+  EXPECT_EQ(x.get<Pod>()->x, 30);
 }
 
 TEST(VariantTest, EncodeDecodePod) {
@@ -274,8 +260,8 @@ TEST(VariantTest, EncodeDecodePod) {
   y = Pod();
   y.Decode(serialized);
 
-  EXPECT_EQ(p.x, y.MaybeDecodeAndGet<Pod>()->x);
-  EXPECT_EQ(p.y, y.MaybeDecodeAndGet<Pod>()->y);
+  EXPECT_EQ(p.x, y.get<Pod>()->x);
+  EXPECT_EQ(p.y, y.get<Pod>()->y);
 }
 
 TEST(VariantTest, EncodeDecodeTensor) {
@@ -292,8 +278,7 @@ TEST(VariantTest, EncodeDecodeTensor) {
   EXPECT_EQ(y.DebugString(),
             "Variant<type: tensorflow::Tensor value: Tensor<type: int32 shape: "
             "[] values: 42>>");
-  EXPECT_EQ(x.MaybeDecodeAndGet<Tensor>()->flat<int>()(0),
-            y.MaybeDecodeAndGet<Tensor>()->flat<int>()(0));
+  EXPECT_EQ(x.get<Tensor>()->flat<int>()(0), y.get<Tensor>()->flat<int>()(0));
 }
 
 }  // end namespace tensorflow

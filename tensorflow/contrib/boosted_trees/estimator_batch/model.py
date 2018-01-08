@@ -92,7 +92,8 @@ def model_builder(features, labels, mode, params, config):
       examples_per_layer=examples_per_layer,
       learner_config=learner_config,
       feature_columns=feature_columns,
-      features=features)
+      logits_dimension=head.logits_dimension,
+      features=training_features)
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     predictions_dict = gbdt_model.predict(mode)
     logits = predictions_dict["predictions"]

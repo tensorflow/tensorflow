@@ -110,6 +110,37 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
     }                                                                     \
   } while (false)
 
+bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
+  auto capture_begin = sp->begin();
+  if (sp->Consume("numbertype") || sp->Consume("numerictype") ||
+      sp->Consume("quantizedtype") || sp->Consume("realnumbertype") ||
+      sp->Consume("realnumberictype")) {
+    *out = StringPiece(capture_begin, sp->begin() - capture_begin);
+    return true;
+  }
+  return false;
+}
+
+bool ProcessCompoundType(const StringPiece type_string, AttrValue* allowed) {
+  if (type_string == "numbertype" || type_string == "numerictype") {
+    for (DataType dt : NumberTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else if (type_string == "quantizedtype") {
+    for (DataType dt : QuantizedTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else if (type_string == "realnumbertype" ||
+             type_string == "realnumerictype") {
+    for (DataType dt : RealNumberTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void FinalizeAttr(StringPiece spec, OpDef* op_def,
                   std::vector<string>* errors) {
   OpDef::AttrDef* attr = op_def->add_attr();
@@ -123,6 +154,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   // Read "<type>" or "list(<type>)".
   bool is_list = ConsumeListPrefix(&spec);
   string type;
+  StringPiece type_string;  // Used if type == "type"
   if (spec.Consume("string")) {
     type = "string";
   } else if (spec.Consume("int")) {
@@ -139,29 +171,15 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
     type = "tensor";
   } else if (spec.Consume("func")) {
     type = "func";
-  } else if (spec.Consume("numbertype") || spec.Consume("numerictype")) {
+  } else if (ConsumeCompoundAttrType(&spec, &type_string)) {
     type = "type";
     AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : NumberTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
-  } else if (spec.Consume("quantizedtype")) {
-    type = "type";
-    AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : QuantizedTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
-  } else if (spec.Consume("realnumbertype") ||
-             spec.Consume("realnumerictype")) {
-    type = "type";
-    AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : RealNumberTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
+    VERIFY(ProcessCompoundType(type_string, allowed),
+           "Expected to see a compound type, saw: ", type_string);
   } else if (spec.Consume("{")) {
     // e.g. "{ int32, float, bool }" or "{ \"foo\", \"bar\" }"
-    str_util::RemoveLeadingWhitespace(&spec);
     AttrValue* allowed = attr->mutable_allowed_values();
+    str_util::RemoveLeadingWhitespace(&spec);
     if (spec.starts_with("\"") || spec.starts_with("'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
@@ -172,8 +190,8 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
         string unescaped;
         string error;
         VERIFY(str_util::CUnescape(escaped_string, &unescaped, &error),
-               "Trouble unescaping \"", escaped_string, "\", got error: ",
-               error);
+               "Trouble unescaping \"", escaped_string,
+               "\", got error: ", error);
         allowed->mutable_list()->add_s(unescaped);
         if (spec.Consume(",")) {
           str_util::RemoveLeadingWhitespace(&spec);
@@ -184,16 +202,19 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
           break;
         }
       }
-    } else {  // "{ int32, float, bool }"
+    } else {  // "{ bool, numbertype, string }"
       type = "type";
       while (true) {
-        StringPiece type_string;
         VERIFY(ConsumeAttrType(&spec, &type_string),
                "Trouble parsing type string at '", spec, "'");
-        DataType dt;
-        VERIFY(DataTypeFromString(type_string, &dt),
-               "Unrecognized type string '", type_string, "'");
-        allowed->mutable_list()->add_type(dt);
+        if (ProcessCompoundType(type_string, allowed)) {
+          // Processed a compound type.
+        } else {
+          DataType dt;
+          VERIFY(DataTypeFromString(type_string, &dt),
+                 "Unrecognized type string '", type_string, "'");
+          allowed->mutable_list()->add_type(dt);
+        }
         if (spec.Consume(",")) {
           str_util::RemoveLeadingWhitespace(&spec);
           if (spec.Consume("}")) break;  // Allow ending with ", }".
@@ -204,7 +225,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
         }
       }
     }
-  } else {
+  } else {  // if spec.Consume("{")
     VERIFY(false, "Trouble parsing type string at '", spec, "'");
   }
   str_util::RemoveLeadingWhitespace(&spec);

@@ -49,7 +49,7 @@ these two lines of code which will download and read in the data automatically:
 
 ```python
 from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+mnist = input_data.read_data_sets('MNIST_data')
 ```
 
 Here `mnist` is a lightweight class which stores the training, validation, and
@@ -172,8 +172,7 @@ between the target and the softmax activation function applied to the model's
 prediction.  As in the beginners tutorial, we use the stable formulation:
 
 ```python
-cross_entropy = tf.reduce_mean(
-    tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
+cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=y))
 ```
 
 Note that `tf.nn.softmax_cross_entropy_with_logits` internally applies the

@@ -48,7 +48,9 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
   """Function builder for a dnn logit_fn.
 
   Args:
-    units: An int indicating the dimension of the logit layer.
+    units: An int indicating the dimension of the logit layer.  In the
+      MultiHead case, this should be the sum of all component Heads' logit
+      dimensions.
     hidden_units: Iterable of integer number of hidden units per layer.
     feature_columns: Iterable of `feature_column._FeatureColumn` model inputs.
     activation_fn: Activation function applied to each layer.
@@ -59,7 +61,12 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
   Returns:
     A logit_fn (see below).
 
+  Raises:
+    ValueError: If units is not an int.
   """
+  if not isinstance(units, int):
+    raise ValueError('units must be an int.  Given type: {}'.format(
+        type(units)))
 
   def dnn_logit_fn(features, mode):
     """Deep Neural Network logit_fn.
@@ -72,7 +79,8 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
             `ModeKeys`.
 
     Returns:
-      A `Tensor` representing the logits.
+      A `Tensor` representing the logits, or a list of `Tensor`'s representing
+      multiple logits in the MultiHead case.
     """
     with variable_scope.variable_scope(
         'input_from_feature_columns',
@@ -102,7 +110,6 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
           kernel_initializer=init_ops.glorot_uniform_initializer(),
           name=logits_scope)
     _add_hidden_layer_summary(logits, logits_scope.name)
-
     return logits
 
   return dnn_logit_fn
@@ -188,22 +195,22 @@ class DNNClassifier(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -238,6 +245,10 @@ class DNNClassifier(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using softmax cross entropy.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -321,22 +332,22 @@ class DNNRegressor(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -371,6 +382,10 @@ class DNNRegressor(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using mean squared error.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,

@@ -18,33 +18,12 @@
 # TODO(cais): Remove this file once we upgrade to ubuntu:16.04 docker images for
 # Python 3.5 builds.
 
+# LINT.IfChange
+
 # fkrull/deadsnakes is for Python3.5
 add-apt-repository -y ppa:fkrull/deadsnakes
 apt-get update
 
-set +e
-# Upgrade swig to 3.0.8
-SWIG_VERSION="3.0.8"
-swig_ver_flat=$(echo $SWIG_VERSION | sed 's/\.//g' | sed 's/^0*//g')
-local_swig_ver=$(swig -version | grep -i version | awk '{print $3}')
-local_swig_ver_flat=$(echo $local_swig_ver | sed 's/\.//g' | sed 's/^0*//g')
-if [[ -z $local_swig_ver_flat ]]; then
-  local_swig_ver_flat=0
-fi
-if (( $local_swig_ver_flat < $swig_ver_flat )); then
-  set -e
-  wget -q http://downloads.sourceforge.net/swig/swig-3.0.8.tar.gz
-  tar xzf swig-3.0.8.tar.gz
-  pushd swig-3.0.8
-  apt-get install -y --no-install-recommends libpcre3-dev
-  ./configure
-  make
-  make install
-  rm -f /usr/bin/swig
-  ln -s /usr/local/bin/swig /usr/bin/swig
-  popd
-  rm -rf swig-3.0.8 swig-3.0.8.tar.gz
-fi
 set -e
 # Install Python 3.5 and dev library
 apt-get install -y --no-install-recommends python3.5 libpython3.5-dev
@@ -60,7 +39,10 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
+pip3.5 install --upgrade virtualenv
+
 # Install six.
+pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
@@ -92,5 +74,9 @@ pip3.5 install werkzeug
 
 pip3.5 install grpcio
 
-# Eager execution needs autograd:
-pip3.5 install --upgrade autograd
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip3.5 install --upgrade astor
+pip3.5 install --upgrade gast
+pip3.5 install --upgrade termcolor
+
+# LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

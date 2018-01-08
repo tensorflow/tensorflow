@@ -24,6 +24,7 @@ from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.session_run_hook import SessionRunArgs
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.summary_io import SummaryWriterCache
@@ -114,8 +115,7 @@ class FeatureImportanceSummarySaver(session_run_hook.SessionRunHook):
       summary_writer = SummaryWriterCache.get(output_dir)
       usage_count_summary = Summary(value=[
           Summary.Value(
-              tag="feature_importance/usage_counts",
-              simple_value=usage_count)
+              tag="feature_importance/usage_counts", simple_value=usage_count)
       ])
       usage_fraction_summary = Summary(value=[
           Summary.Value(
@@ -124,14 +124,14 @@ class FeatureImportanceSummarySaver(session_run_hook.SessionRunHook):
       ])
       summary_writer.add_summary(usage_count_summary, global_step)
       summary_writer.add_summary(usage_fraction_summary, global_step)
-      gains_summary = Summary(
-          value=[Summary.Value(
-              tag="feature_importance/gains",
-              simple_value=gain)])
-      gains_fraction_summary = Summary(
-          value=[Summary.Value(
+      gains_summary = Summary(value=[
+          Summary.Value(tag="feature_importance/gains", simple_value=gain)
+      ])
+      gains_fraction_summary = Summary(value=[
+          Summary.Value(
               tag="feature_importance/gains_fraction",
-              simple_value=gain * gain_norm)])
+              simple_value=gain * gain_norm)
+      ])
       summary_writer.add_summary(gains_summary, global_step)
       summary_writer.add_summary(gains_fraction_summary, global_step)
 
@@ -144,8 +144,7 @@ class FeedFnHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):
     del run_context  # unused by FeedFnHook.
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn)
+    return session_run_hook.SessionRunArgs(fetches=None, feed_dict=self.feed_fn)
 
 
 class StopAfterNTrees(session_run_hook.SessionRunHook):
@@ -170,8 +169,47 @@ class StopAfterNTrees(session_run_hook.SessionRunHook):
     num_finalized_trees = run_values.results["num_finalized_trees"]
     assert num_attempted_trees is not None
     assert num_finalized_trees is not None
+    # Stop when the required number of finalized trees is reached, or when we
+    # try enough times to build a tree but keep failing.
     if (num_finalized_trees >= self._num_trees or
-        num_attempted_trees > self._num_trees):
+        num_attempted_trees > 2 * self._num_trees):
       logging.info("Requesting stop since we have reached %d trees.",
                    num_finalized_trees)
       run_context.request_stop()
+
+
+class SwitchTrainOp(session_run_hook.SessionRunHook):
+  """Hook that switches the train op after specified number of steps.
+
+  Hook that replaces the train op depending on the number of steps of training
+  that have taken place. The first_train_op is used till train_steps steps
+  are reached. Thereafter the second_train_op is used.
+  """
+
+  def __init__(self, first_train_op, train_steps, second_train_op):
+    """Initializes a `SwitchTrainOp`."""
+    self._first_train_op = first_train_op
+    self._second_train_op = second_train_op
+    self._train_steps = train_steps
+
+  def _get_train_op_for_global_step(self, current_step):
+    """Gets train_op for current global step."""
+    if current_step < self._train_steps:
+      return self._first_train_op
+    return self._second_train_op
+
+  def begin(self):
+    self._global_step_tensor = training_util.get_global_step()
+    self._current_train_op = control_flow_ops.no_op()
+    if self._global_step_tensor is None:
+      raise RuntimeError(
+          "Global step should be created to use SwitchTrainOp.")
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        {"global_step": self._global_step_tensor,
+         "train_op": self._current_train_op})
+
+  def after_run(self, run_context, run_values):
+    self._current_train_op = self._get_train_op_for_global_step(
+        run_values.results["global_step"])

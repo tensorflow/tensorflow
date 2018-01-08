@@ -1,0 +1,15 @@
+path: "tensorflow.keras.preprocessing.text"
+tf_module {
+  member {
+    name: "Tokenizer"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "one_hot"
+    argspec: "args=[\'text\', \'n\', \'filters\', \'lower\', \'split\'], varargs=None, keywords=None, defaults=[\'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \'], "
+  }
+  member_method {
+    name: "text_to_word_sequence"
+    argspec: "args=[\'text\', \'filters\', \'lower\', \'split\'], varargs=None, keywords=None, defaults=[\'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \'], "
+  }
+}

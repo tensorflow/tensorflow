@@ -89,9 +89,12 @@ class SummaryImageOp : public OpKernel {
     } else if (tensor.dtype() == DT_HALF) {
       NormalizeAndAddImages<Eigen::half>(c, tensor, h, w, hw, depth, batch_size,
                                          base_tag, &s);
-    } else {  // tensor.dtype() == DT_FLOAT
+    } else if (tensor.dtype() == DT_FLOAT) {
       NormalizeAndAddImages<float>(c, tensor, h, w, hw, depth, batch_size,
                                    base_tag, &s);
+    } else {  // tensor.dtype() = DT_DOUBLE
+      NormalizeAndAddImages<double>(c, tensor, h, w, hw, depth, batch_size,
+                                    base_tag, &s);
     }
 
     Tensor* summary_tensor = nullptr;

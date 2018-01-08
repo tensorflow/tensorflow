@@ -20,7 +20,6 @@ py_library(
 
 py_test(
     name = "public_api_test",
-    size = "small",
     srcs = ["public_api_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -38,7 +37,6 @@ py_library(
 
 py_test(
     name = "traverse_test",
-    size = "small",
     srcs = ["traverse_test.py"],
     srcs_version = "PY2AND3",
     deps = [

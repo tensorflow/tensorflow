@@ -111,7 +111,7 @@ TEST_F(MatOpsSimpleTest, MapTwoByTwo) {
       {1.0, 0.0},   // row 0
       {-1.0, 0.5},  // row 1
   });
-  auto map = builder.Map({data}, add_half);
+  auto map = builder.Map({data}, add_half, {0, 1});
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2<float>({{1.5, 0.5},     // row 0

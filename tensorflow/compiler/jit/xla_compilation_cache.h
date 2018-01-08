@@ -46,7 +46,7 @@ struct OptionalTensor {
 // bound.
 class XlaCompilationCache : public ResourceBase {
  public:
-  XlaCompilationCache(xla::Client* client, DeviceType device_type);
+  XlaCompilationCache(xla::LocalClient* client, DeviceType device_type);
   ~XlaCompilationCache() override;
 
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
@@ -68,13 +68,19 @@ class XlaCompilationCache : public ResourceBase {
                  const XlaCompiler::CompilationResult** compilation_result,
                  xla::LocalExecutable** executable);
 
-  xla::Client* client() const { return client_; }
+  xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
 
   string DebugString() override;
 
  private:
-  xla::Client* const client_;
+  // Takes `result` which has been compiled from a Tensorflow subgraph to a
+  // XLA computation already, and generates an XLA LocalExecutable `executable`.
+  Status BuildExecutable(const XlaCompiler::Options& options,
+                         const XlaCompiler::CompilationResult& result,
+                         std::unique_ptr<xla::LocalExecutable>* executable);
+
+  xla::LocalClient* const client_;
   const DeviceType device_type_;
 
   // Describes the types, shapes and any compile-time constant arguments

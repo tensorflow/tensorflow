@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_LLVM_IR_RUNTINE_H_
 
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace cpu {

@@ -27,13 +27,6 @@ py_library(
         "__init__.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [
-        "custom_export_strategy",
-        ":custom_loss_head",
-        ":estimator",
-        ":model",
-        ":trainer_hooks",
-    ],
 )
 
 py_library(
@@ -41,7 +34,12 @@ py_library(
     srcs = ["model.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/boosted_trees:model_ops_py",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -51,6 +49,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/learn",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -61,6 +64,15 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":trainer_hooks",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -69,6 +81,10 @@ py_library(
     srcs = ["custom_loss_head.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -82,6 +98,11 @@ py_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_py",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -90,13 +111,11 @@ py_test(
     size = "small",
     srcs = ["custom_export_strategy_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":custom_export_strategy",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_py",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -106,6 +125,39 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":model",
+        "//tensorflow/contrib/boosted_trees:losses",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+py_library(
+    name = "dnn_tree_combined_estimator",
+    srcs = ["dnn_tree_combined_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":trainer_hooks",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/boosted_trees:model_ops_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "dnn_tree_combined_estimator_test",
+    size = "small",
+    srcs = ["dnn_tree_combined_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":dnn_tree_combined_estimator",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )

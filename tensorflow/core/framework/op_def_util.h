@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -41,6 +42,10 @@ Status ValidateAttrValue(const AttrValue& attr_value,
 // Returns nullptr if no such attr is found.
 const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def);
 OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
+
+// Searches op_def for input argument with the indicated name.
+// Returns nullptr if no such attr is found.
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
 
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
@@ -64,6 +69,28 @@ void RemoveDescriptionsFromOpList(OpList* op_list);
 
 // Remove docs from *op_def but leave explanations of deprecations.
 void RemoveNonDeprecationDescriptionsFromOpDef(OpDef* op_def);
+
+// Returns true if `a1` is equal to `a2`.
+// Equality includes all the fields.
+bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2);
+
+// Returns hash of `a` that is consistent with AttrDefEqual.
+uint64 AttrDefHash(const OpDef::AttrDef& a);
+
+// Returns true if all AttrDefs in `a1` equal corresponding AttrDefs in
+// `a2`. Corrspondence is established by name.
+bool RepeatedAttrDefEqual(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
+                          const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2);
+
+// Returns hash of `a` that is consistent with RepeatedAttrDefEqual
+uint64 RepeatedAttrDefHash(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a);
+
+// Returns true if `o1` is equal to `o2`.
+// Equality includes all the fields. OpDef.attr field is treated as a set.
+bool OpDefEqual(const OpDef& o1, const OpDef& o2);
+
+// Returns hash of `o` that is consistent with AttrDefEqual.
+uint64 OpDefHash(const OpDef& o);
 
 }  // namespace tensorflow
 

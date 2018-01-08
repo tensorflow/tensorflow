@@ -20,6 +20,7 @@
 @@ARModel
 
 @@CSVReader
+@@NumpyReader
 @@RandomWindowInputFn
 @@WholeDatasetInputFn
 @@predict_continuation_input_fn

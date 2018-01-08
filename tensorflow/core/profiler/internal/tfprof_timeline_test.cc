@@ -70,8 +70,8 @@ TEST_F(TFProfTimelineTest, GraphView) {
   tf_stats_->ShowGraphNode("graph", opts);
 
   string dump_str;
-  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
-  EXPECT_EQ(1754536562981488144ull, Hash64(dump_str));
+  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
+  EXPECT_EQ(16556121177519539380ull, Hash64(dump_str));
 }
 
 TEST_F(TFProfTimelineTest, ScopeView) {
@@ -84,7 +84,7 @@ TEST_F(TFProfTimelineTest, ScopeView) {
   tf_stats_->ShowGraphNode("scope", opts);
 
   string dump_str;
-  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
+  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
   EXPECT_EQ(17545174915963890413ull, Hash64(dump_str));
 }
 

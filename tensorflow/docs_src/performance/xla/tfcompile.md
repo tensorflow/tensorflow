@@ -47,7 +47,7 @@ This section details high level steps for generating an executable binary with
 
 Identify the feeds and fetches that correspond to the input and output
 arguments for the generated function. Then configure the `feeds` and `fetches`
-in a [`tensorflow.tfcompile.Config`](https://www.tensorflow.org/code/tensorflow/compiler/aot/tfcompile.proto)
+in a [`tensorflow.tf2xla.Config`](https://www.tensorflow.org/code/tensorflow/compiler/tf2xla/tf2xla.proto)
 proto.
 
 ```textproto

@@ -7,18 +7,18 @@ licenses(["notice"])
 exports_files(["LICENSE.TXT"])
 
 load(
-    "@%ws%//third_party/llvm:llvm.bzl",
+    "@org_tensorflow//third_party/llvm:llvm.bzl",
     "gentbl",
     "expand_cmake_vars",
     "llvm_target_cmake_vars",
     "cmake_var_string",
 )
 load(
-    "@%ws%//third_party:common.bzl",
+    "@org_tensorflow//third_party:common.bzl",
     "template_rule",
 )
 
-package(default_visibility = ["@%ws%//tensorflow/compiler/xla:internal"])
+package(default_visibility = ["//visibility:public"])
 
 llvm_host_triple = "x86_64-unknown-linux_gnu"
 
@@ -145,11 +145,11 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-    "@%ws%//tensorflow:darwin": cmake_var_string(
+    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
-    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
@@ -251,6 +251,7 @@ cc_library(
         "LLVM_ENABLE_STATS",
         "__STDC_LIMIT_MACROS",
         "__STDC_CONSTANT_MACROS",
+        "__STDC_FORMAT_MACROS",
         "_DEBUG",
         "LLVM_BUILD_GLOBAL_ISEL",
     ],
@@ -962,7 +963,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
-        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
+        "include/llvm/CodeGen/GlobalISel/*.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -1216,11 +1217,11 @@ cc_library(
         "lib/IR/*.h",
     ]),
     hdrs = glob([
-        "include/llvm/Analysis/*.def",
         "include/llvm/IR/*.h",
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
+        "include/llvm/Analysis/*.def",
     ]),
     deps = [
         ":attributes_compat_gen",
@@ -2033,11 +2034,10 @@ cc_library(
         "lib/Target/*.h",
     ]),
     hdrs = glob([
-        "include/llvm/CodeGen/*.h",
-        "include/llvm/CodeGen/*.def",
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
+        "include/llvm/CodeGen/*.def",
     ]),
     deps = [
         ":analysis",
@@ -2115,6 +2115,7 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+        ":x86_asm_printer",
         ":x86_desc",
         ":x86_info",
     ],

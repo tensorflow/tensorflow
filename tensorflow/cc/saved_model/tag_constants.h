@@ -21,6 +21,9 @@ namespace tensorflow {
 /// Tag for the `gpu` graph.
 constexpr char kSavedModelTagGpu[] = "gpu";
 
+/// Tag for the `tpu` graph.
+constexpr char kSavedModelTagTpu[] = "tpu";
+
 /// Tag for the `serving` graph.
 constexpr char kSavedModelTagServe[] = "serve";
 

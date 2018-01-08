@@ -20,7 +20,9 @@ enum StatsModelType {
   STATS_DENSE_GINI = 0;
   STATS_SPARSE_GINI = 1;
   STATS_LEAST_SQUARES_REGRESSION = 2;
+  // STATS_SPARSE_THEN_DENSE_GINI is deprecated and no longer supported.
   STATS_SPARSE_THEN_DENSE_GINI = 3;
+  STATS_FIXED_SIZE_SPARSE_GINI = 4;
 }
 
 // Allows selection of operations on the collection of split candidates.
@@ -145,4 +147,8 @@ message TensorForestParams {
   // --------- Parameters for experimental features ---------------------- //
   string graph_dir = 16;
   int32 num_select_features = 17;
+
+  // When using a FixedSizeSparseClassificationGrowStats, keep track of
+  // this many classes.
+  int32 num_classes_to_track = 24;
 }

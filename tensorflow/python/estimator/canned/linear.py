@@ -140,18 +140,20 @@ class LinearClassifier(estimator.Estimator):
   Example:
 
   ```python
-  sparse_column_a = sparse_column_with_hash_bucket(...)
-  sparse_column_b = sparse_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
 
   # Estimator using the default optimizer.
   estimator = LinearClassifier(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b])
 
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearClassifier(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
       optimizer=tf.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
@@ -182,6 +184,10 @@ class LinearClassifier(estimator.Estimator):
       whose `value` is a `Tensor`.
 
   Loss is calculated by using softmax cross entropy.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -264,13 +270,14 @@ class LinearRegressor(estimator.Estimator):
   Example:
 
   ```python
-  sparse_column_a = sparse_column_with_hash_bucket(...)
-  sparse_column_b = sparse_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
 
   estimator = LinearRegressor(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b])
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -297,6 +304,10 @@ class LinearRegressor(estimator.Estimator):
         key=column.name, value=a `Tensor`
 
   Loss is calculated by using mean squared error.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,

@@ -34,8 +34,8 @@ TensorId ParseTensorName(StringPiece name) {
   // whole name string forms the first part of the tensor name.
   const char* base = name.data();
   const char* p = base + name.size() - 1;
-  int index = 0;
-  int mul = 1;
+  unsigned int index = 0;
+  unsigned int mul = 1;
   while (p > base && (*p >= '0' && *p <= '9')) {
     index += ((*p - '0') * mul);
     mul *= 10;

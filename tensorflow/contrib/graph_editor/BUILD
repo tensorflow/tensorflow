@@ -64,7 +64,6 @@ py_library(
 
 py_test(
     name = "util_test",
-    size = "small",
     srcs = ["tests/util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -77,7 +76,6 @@ py_test(
 
 py_test(
     name = "select_test",
-    size = "small",
     srcs = ["tests/select_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -90,7 +88,6 @@ py_test(
 
 py_test(
     name = "match_test",
-    size = "small",
     srcs = ["tests/match_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -103,7 +100,6 @@ py_test(
 
 py_test(
     name = "subgraph_test",
-    size = "small",
     srcs = ["tests/subgraph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -116,7 +112,6 @@ py_test(
 
 py_test(
     name = "reroute_test",
-    size = "small",
     srcs = ["tests/reroute_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -130,7 +125,6 @@ py_test(
 
 py_test(
     name = "edit_test",
-    size = "small",
     srcs = ["tests/edit_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -144,19 +138,18 @@ py_test(
 
 py_test(
     name = "transform_test",
-    size = "small",
     srcs = ["tests/transform_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":graph_editor_py",
         ":match",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

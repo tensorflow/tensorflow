@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -116,7 +117,9 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 // the caller takes the ownership of returned executors.
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, Item* item) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          Item* item) {
   item->session = session;
   item->lib_def.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
@@ -131,7 +134,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options()));
+      item->lib_def.get(), graph_options.optimizer_options(), cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -205,8 +208,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     }
 
     // Give the device an opportunity to rewrite its subgraph.
-    TF_RETURN_IF_ERROR(
-        unit->device->MaybeRewriteGraph(gdef.library(), &subgraph));
+    TF_RETURN_IF_ERROR(unit->device->MaybeRewriteGraph(&subgraph));
 
     // Top-level nodes in the graph uses the op segment to cache
     // kernels. Therefore, as long as the executor is alive, we need
@@ -226,8 +228,14 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     params.function_library = lib;
     params.create_kernel = [session, lib, opseg](const NodeDef& ndef,
                                                  OpKernel** kernel) {
-      // Caches the kernel only if the node is stateful.
-      if (!lib->IsStateful(ndef.op())) {
+      // We do not share the kernel via the OpSegment if the node is
+      // stateless, or a function.
+      // NOTE(mrry): We must not share function kernels (implemented
+      // using `CallOp`) between subgraphs, because `CallOp::handle_`
+      // is tied to a particular subgraph. Even if the function itself
+      // is stateful, the `CallOp` that invokes it is not.
+      if (!lib->IsStateful(ndef.op()) ||
+          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -270,9 +278,12 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, string* handle) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          string* handle) {
   Item* item = new Item;
-  Status s = InitItem(session, gdef, graph_options, debug_options, item);
+  Status s =
+      InitItem(session, gdef, graph_options, debug_options, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;
@@ -321,116 +332,25 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::SendInputsToRendezvous(Rendezvous* rendezvous,
-                                        const NamedTensors& in) {
-  Rendezvous::ParsedKey parsed;
-  for (const auto& p : in) {
-    const string& key = p.first;
-    const Tensor& val = p.second;
-
-    Status s = Rendezvous::ParseKey(key, &parsed);
-    if (s.ok()) {
-      s = rendezvous->Send(parsed, Rendezvous::Args(), val, false);
-    }
-    if (!s.ok()) {
-      return s;
-    }
-  }
-  return Status::OK();
-}
-
-Status GraphMgr::RecvOutputsFromRendezvous(Rendezvous* rendezvous,
-                                           NamedTensors* out) {
-  // Receives values requested by the caller.
-  Rendezvous::ParsedKey parsed;
-  for (auto& p : *out) {
-    const string& key = p.first;
-    Tensor* val = &p.second;
-    bool is_dead = false;
-    Status s = Rendezvous::ParseKey(key, &parsed);
-    if (s.ok()) {
-      s = rendezvous->Recv(parsed, Rendezvous::Args(), val, &is_dead);
-    }
-    if (is_dead) {
-      s = errors::InvalidArgument("The tensor returned for ", key,
-                                  " was not valid.");
-    }
-    if (!s.ok()) return s;
-  }
-  return Status::OK();
-}
-
-void GraphMgr::RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
-                                              NamedTensors* out,
-                                              const StatusCallback& done) {
-  if (out->empty()) {
-    done(Status::OK());
-    return;
-  }
-  // We compute the args before calling RecvAsync because we need to ensure that
-  // out isn't being iterated over after done is called, since done deletes out.
-  std::vector<std::tuple<string, Tensor*, Rendezvous::ParsedKey>> args;
-  for (auto& p : *out) {
-    Rendezvous::ParsedKey parsed;
-    Status s = Rendezvous::ParseKey(p.first, &parsed);
-    if (!s.ok()) {
-      done(s);
-      return;
-    }
-    args.push_back(std::make_tuple(p.first, &p.second, parsed));
-  }
-
-  typedef struct {
-    mutex mu;
-    int done_counter;
-    Status shared_status = Status::OK();
-  } CallState;
-  CallState* call_state = new CallState;
-  call_state->done_counter = out->size();
-  for (auto& p : args) {
-    const string& key = std::get<0>(p);
-    Tensor* val = std::get<1>(p);
-    Rendezvous::ParsedKey parsed = std::get<2>(p);
-    rendezvous->RecvAsync(
-        parsed, Rendezvous::Args(),
-        [val, done, key, call_state](const Status& s,
-                                     const Rendezvous::Args& send_args,
-                                     const Rendezvous::Args& recv_args,
-                                     const Tensor& v, const bool is_dead) {
-          Status status = s;
-          if (status.ok()) {
-            *val = v;
-            if (is_dead) {
-              status = errors::InvalidArgument("The tensor returned for ", key,
-                                               " was not valid.");
-            }
-          }
-          call_state->mu.lock();
-          call_state->shared_status.Update(status);
-          call_state->done_counter--;
-          // If we are the last async call to return, call the done callback.
-          if (call_state->done_counter == 0) {
-            const Status& final_status = call_state->shared_status;
-            call_state->mu.unlock();
-            done(final_status);
-            delete call_state;
-            return;
-          }
-          call_state->mu.unlock();
-        });
-  }
-}
-
 Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
-  Status s = SendInputsToRendezvous(rendezvous, in);
+  std::vector<string> keys;
+  std::vector<Tensor> tensors_to_send;
+  keys.reserve(in.size());
+  tensors_to_send.reserve(in.size());
+  for (const auto& p : in) {
+    keys.push_back(p.first);
+    tensors_to_send.push_back(p.second);
+  }
+  Status s =
+      SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   rendezvous->Unref();
   return s;
 }
 
 Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
-  Status s = RecvOutputsFromRendezvous(rendezvous, out);
+  Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
   return s;
 }
@@ -438,11 +358,24 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
 void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
                                 StatusCallback done) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
-  RecvOutputsFromRendezvousAsync(rendezvous, out,
-                                 [done, rendezvous](const Status s) {
-                                   rendezvous->Unref();
-                                   done(s);
-                                 });
+  std::vector<string> keys;
+  std::vector<Tensor>* received_keys = new std::vector<Tensor>;
+  keys.reserve(out->size());
+  received_keys->reserve(out->size());
+  for (const auto& p : *out) {
+    keys.push_back(p.first);
+    received_keys->push_back(p.second);
+  }
+  RecvOutputsFromRendezvousAsync(
+      rendezvous, nullptr, {}, keys, received_keys,
+      [done, rendezvous, received_keys, out, keys](const Status s) {
+        rendezvous->Unref();
+        for (int i = 0; i < keys.size(); ++i) {
+          (*out)[keys[i]] = (*received_keys)[i];
+        }
+        delete received_keys;
+        done(s);
+      });
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
@@ -484,7 +417,15 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   // Sends values specified by the caller.
   if (s.ok()) {
-    s = SendInputsToRendezvous(rendezvous, in);
+    std::vector<string> keys;
+    std::vector<Tensor> tensors_to_send;
+    keys.reserve(in.size());
+    tensors_to_send.reserve(in.size());
+    for (auto& p : in) {
+      keys.push_back(p.first);
+      tensors_to_send.push_back(p.second);
+    }
+    s = SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   }
 
   if (!s.ok()) {
@@ -540,8 +481,18 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
   using std::placeholders::_1;
   // Line below is equivalent to this code, but does one less indirect call:
   //  args.runner = [pool](std::function<void()> fn) { pool->Schedule(fn); };
-  args.runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
+  auto default_runner = std::bind(&thread::ThreadPool::Schedule, pool, _1);
   for (const auto& unit : item->units) {
+    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    //     less threads to the main compute pool by default.
+    thread::ThreadPool* device_thread_pool =
+        unit.device->tensorflow_device_thread_pool();
+    if (!device_thread_pool) {
+      args.runner = default_runner;
+    } else {
+      args.runner =
+          std::bind(&thread::ThreadPool::Schedule, device_thread_pool, _1);
+    }
     unit.root->RunAsync(args, barrier->Get());
   }
 }

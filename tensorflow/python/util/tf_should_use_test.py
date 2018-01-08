@@ -46,6 +46,7 @@ def reroute_error(captured):
 class TfShouldUseTest(test.TestCase):
 
   def testAddShouldUseWarningWhenNotUsed(self):
+    self.skipTest('b/65412899')
     c = constant_op.constant(0, name='blah0')
     captured = []
     with reroute_error(captured):
@@ -70,6 +71,7 @@ class TfShouldUseTest(test.TestCase):
     self.assertNotIn('%s:0' % name, '\n'.join(captured))
 
   def testAddShouldUseWarningWhenUsedWithAdd(self):
+    self.skipTest('b/65412899')
     def add(h):
       _ = h + 1
     self._testAddShouldUseWarningWhenUsed(add, name='blah_add')
@@ -77,6 +79,7 @@ class TfShouldUseTest(test.TestCase):
     self.assertFalse(gc.garbage)
 
   def testAddShouldUseWarningWhenUsedWithGetName(self):
+    self.skipTest('b/65412899')
     def get_name(h):
       _ = h.name
     self._testAddShouldUseWarningWhenUsed(get_name, name='blah_get_name')
@@ -84,6 +87,7 @@ class TfShouldUseTest(test.TestCase):
     self.assertFalse(gc.garbage)
 
   def testShouldUseResult(self):
+    self.skipTest('b/65412899')
     @tf_should_use.should_use_result
     def return_const(value):
       return constant_op.constant(value, name='blah2')
@@ -97,6 +101,7 @@ class TfShouldUseTest(test.TestCase):
     self.assertFalse(gc.garbage)
 
   def testShouldUseResultWhenNotReallyUsed(self):
+    self.skipTest('b/65412899')
     @tf_should_use.should_use_result
     def return_const(value):
       return constant_op.constant(value, name='blah3')
@@ -114,6 +119,13 @@ class TfShouldUseTest(test.TestCase):
     gc.collect()
     self.assertFalse(gc.garbage)
 
+  # Tests that mark_used is available in the API.
+  def testMarkUsed(self):
+    @tf_should_use.should_use_result
+    def return_const(value):
+      return constant_op.constant(value, name='blah3')
+    with self.test_session():
+      return_const(0.0).mark_used()
 
 if __name__ == '__main__':
   test.main()

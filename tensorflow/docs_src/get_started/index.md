@@ -24,8 +24,6 @@ To learn about the high-level API, read the following guides:
     API.
   * @{$get_started/input_fn$Building Input Functions},
     which takes you into a somewhat more sophisticated use of this API.
-  * @{$get_started/monitors$Logging and Monitoring Basics with tf.contrib.learn},
-    which explains how to audit the progress of model training.
 
 TensorBoard is a utility to visualize different aspects of machine learning.
 The following guides explain how to use TensorBoard:

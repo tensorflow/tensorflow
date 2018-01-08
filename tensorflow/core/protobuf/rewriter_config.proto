@@ -23,14 +23,20 @@ message RewriterConfig {
     DEFAULT = 0;
     ON = 1;
     OFF = 2;
+    // Enable some aggressive optimizations that use assumptions that TF graphs
+    // may break. For example, assume the shape of a placeholder matches its
+    // actual feed.
+    AGGRESSIVE = 3;
   }
 
   // Optimize tensor layouts
-  bool optimize_tensor_layout = 1;
+  Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
   Toggle constant_folding = 3;
-  // Arithmetic optimizations (default is OFF)
+  // Arithmetic optimizations (default is ON)
   Toggle arithmetic_optimization = 7;
+  // Control dependency optimizations (default is ON).
+  Toggle dependency_optimization = 8;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
 
@@ -42,9 +48,12 @@ message RewriterConfig {
     // Driven by manual op-level annotations.
     MANUAL = 2;
     // Driven by heuristics. The behavior of these heuristics is subject to
-    // change. Currently includes an experimental recomputation
-    // heuristic. Manual annotations are respected, but additional nodes are
+    // change. Currently includes an experimental recomputation and swapping
+    // heuristics. Manual annotations are respected, but additional nodes are
     // selected automatically.
+    SWAPPING_HEURISTICS = 4;
+    RECOMPUTATION_HEURISTICS = 5;
+    // Use any combination of swapping and recomputation heuristics.
     HEURISTICS = 3;
   }
   // Configures memory optimization passes through the meta-optimizer. Has no

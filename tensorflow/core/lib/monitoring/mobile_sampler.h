@@ -18,7 +18,10 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
 
+#include <memory>
+
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -38,6 +41,33 @@ class SamplerCell {
   TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
 };
 
+// Buckets which has a null implementation.
+class Buckets {
+ public:
+  Buckets() = default;
+  ~Buckets() = default;
+
+  static std::unique_ptr<Buckets> Explicit(
+      std::initializer_list<double> bucket_limits) {
+    return std::unique_ptr<Buckets>(new Buckets());
+  }
+
+  static std::unique_ptr<Buckets> Exponential(double scale,
+                                              double growth_factor,
+                                              int bucket_count) {
+    return std::unique_ptr<Buckets>(new Buckets());
+  }
+
+  const std::vector<double>& explicit_bounds() const {
+    return explicit_bounds_;
+  }
+
+ private:
+  std::vector<double> explicit_bounds_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(Buckets);
+};
+
 // Sampler which has a null implementation.
 template <int NumLabels>
 class Sampler {
@@ -47,8 +77,8 @@ class Sampler {
   template <typename... MetricDefArgs>
   static Sampler* New(const MetricDef<MetricKind::kCumulative, HistogramProto,
                                       NumLabels>& metric_def,
-                      const std::vector<double>& explicit_bucket_limits) {
-    return new Sampler<NumLabels>();
+                      std::unique_ptr<Buckets> buckets) {
+    return new Sampler<NumLabels>(std::move(buckets));
   }
 
   template <typename... Labels>
@@ -57,9 +87,10 @@ class Sampler {
   }
 
  private:
-  Sampler() {}
+  Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
 
   SamplerCell default_sampler_cell_;
+  std::unique_ptr<Buckets> buckets_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
 };

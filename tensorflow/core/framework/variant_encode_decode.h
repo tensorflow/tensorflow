@@ -76,7 +76,6 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     false /* protobuf */>,
                        VariantTensorData* data) {
-  data->set_type_name(TypeNameVariant(value));
   value.Encode(data);
 }
 
@@ -221,6 +220,7 @@ string DebugStringVariant(const T& value) {
 template <typename T>
 void EncodeVariant(const T& value, VariantTensorData* data) {
   EncodeVariantImpl(value, TypeResolver<T>(), data);
+  data->set_type_name(TypeNameVariant(value));
 }
 
 template <typename T>
@@ -232,6 +232,8 @@ template <typename T>
 void EncodeVariant(const T& value, string* buf) {
   VariantTensorData data;
   EncodeVariantImpl(value, TypeResolver<T>(), &data);
+  data.set_type_name(TypeNameVariant(value));
+  DCHECK(buf != nullptr);
   data.SerializeToString(buf);
 }
 

@@ -213,7 +213,7 @@ struct LaunchPoolingOp<SYCLDevice, T, MAX> {
   }
 };
 // MaxPool3DGrad SYCL kernel. Expects the number of threads to be equal to the
-// number of elements in the output backprop tenor (i.e. the number of elements
+// number of elements in the output backprop tensor (i.e. the number of elements
 // in the input data tensor).
 //
 // For each output backprop element we compute the possible window of values in

@@ -37,6 +37,8 @@ class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
   void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
+
+  template <typename T>
   void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
@@ -60,37 +62,6 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
-}
-
-void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
-  ComputationBuilder builder(client_, TestName());
-  auto shape = ShapeUtil::MakeShape(U32, dims);
-  builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
-  ExecutionOptions execution_options = execution_options_;
-  execution_options.set_seed(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto actual, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                               &execution_options));
-  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  int32 sum = 0;
-  actual->EachCell<uint32>(
-      [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
-        EXPECT_TRUE(value == 0 || value == 1);
-        sum += value;
-      });
-  int32 total = ShapeUtil::ElementsIn(shape);
-  float p_tilde = sum / static_cast<float>(total);
-
-  // Test within expected range using normal approximation. The test uses a
-  // fixed seed and has a fixed output per p and backend. Using the normal
-  // approximation as this test is invoked for different `p` and the different
-  // backends could use different random number generators and produce different
-  // values. Choose 95% confidence level, so that z_{1-\alpha/2} = 1.96.
-  float normal_approximation_term = 1.96 * sqrt(p * (1 - p) / total);
-  EXPECT_GE(p_tilde, p - normal_approximation_term);
-  EXPECT_LE(p_tilde, p + normal_approximation_term);
 }
 
 // Uniform random number generation tests
@@ -170,7 +141,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto fn = build_sum_rng(builder);
-  builder.Map({param0}, fn);
+  builder.Map({param0}, fn, {0});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
@@ -249,10 +220,6 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   LiteralTestUtil::ExpectNotEqual(*result4, *result5);
   LiteralTestUtil::ExpectNotEqual(*result5, *result6);
 }
-
-// Bernoulli random number generation tests
-XLA_TEST_F(PrngTest, HundredValuesB10p5) { BernoulliTest(0.5, {100}); }
-XLA_TEST_F(PrngTest, HundredValuesB10p1) { BernoulliTest(0.1, {100}); }
 
 XLA_TEST_F(PrngTest, TenValuesN01) {
   ComputationBuilder builder(client_, TestName());

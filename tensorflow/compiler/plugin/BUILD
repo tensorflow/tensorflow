@@ -14,14 +14,18 @@
 # ==============================================================================
 
 """Configuration file for an XLA plugin.
-- please don't check in changes to this file
-- to prevent changes appearing in git status, use:
+
+  please don't check in changes to this file. to prevent changes appearing
+  in git status, use:
+
   git update-index --assume-unchanged tensorflow/compiler/plugin/BUILD
 
-To add additional devices to the XLA subsystem, add targets to the
-dependency list in the 'plugin' target. For instance:
+  To add additional devices to the XLA subsystem, add targets to the
+  dependency list in the 'plugin' target. For instance:
 
     deps = ["//tensorflow/compiler/plugin/example:plugin_lib"],
+
+  ** Please don't remove this file - it is supporting some 3rd party plugins **
 """
 
 licenses(["notice"])
@@ -33,6 +37,20 @@ package(
 cc_library(
     name = "plugin",
     deps = [
-        "//tensorflow/compiler/plugin/executor:plugin_lib",
+        #"//tensorflow/compiler/plugin/example:example_lib",
     ],
+)
+
+#-----------------------------------------------------------------------------
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

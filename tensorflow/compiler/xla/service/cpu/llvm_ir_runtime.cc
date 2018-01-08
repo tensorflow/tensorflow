@@ -30,29 +30,6 @@ const char* const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
 const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
 
 namespace {
-llvm::Value* EmitFMinOrMax(llvm::IRBuilder<>* ir_builder, llvm::Module* module,
-                           llvm::Type* vector_type, llvm::Value* lhs,
-                           llvm::Value* rhs, bool is_min,
-                           bool enable_fast_math) {
-  if (enable_fast_math) {
-    // Using an unordered comparison lets LLVM generate a vminps / vmaxps
-    // instruction on x86.  vminps/vmaxps choose the second operand if either
-    // operand is a NaN and thus don't accurately implement the semantics of the
-    // minnum and maxnum intrinsics, necessitating different IR emission.
-    //
-    // We can _probably_ do this even when fast math is disabled, but we can
-    // certainly do this if fast math is enabled (and nnan applies).
-    auto* compare = ir_builder->CreateFCmp(
-        is_min ? llvm::FCmpInst::FCMP_ULE : llvm::FCmpInst::FCMP_UGE, lhs, rhs);
-    return ir_builder->CreateSelect(compare, lhs, rhs);
-  } else {
-    llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
-        module, is_min ? llvm::Intrinsic::minnum : llvm::Intrinsic::maxnum,
-        vector_type);
-    return ir_builder->CreateCall(intrinsic, {lhs, rhs});
-  }
-}
-
 llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
                                           llvm::StringRef function_name,
                                           int vector_width,
@@ -75,36 +52,26 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   llvm::IRBuilder<> ir_builder(vector_tanh_body);
 
   llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setUnsafeAlgebra();
+  fast_math_flags.setFast();
   ir_builder.setFastMathFlags(fast_math_flags);
-
-  auto emit_fmin = [&](llvm::Value* lhs, llvm::Value* rhs) {
-    return EmitFMinOrMax(&ir_builder, module, vector_type, lhs, rhs,
-                         /*is_min=*/true,
-                         /*enable_fast_math=*/enable_fast_math);
-  };
-  auto emit_fmax = [&](llvm::Value* lhs, llvm::Value* rhs) {
-    return EmitFMinOrMax(&ir_builder, module, vector_type, lhs, rhs,
-                         /*is_min=*/false,
-                         /*enable_fast_math=*/enable_fast_math);
-  };
 
   llvm::Value* input = &*vector_tanh_function->arg_begin();
   CHECK_EQ(input->getType(), vector_type);
 
   // This implements the same rational interpolant as implemented in Eigen3.
-  llvm::Value* input_clamped =
-      emit_fmin(emit_fmax(input, llvm::ConstantFP::get(vector_type, -9.0)),
-                llvm::ConstantFP::get(vector_type, 9.0));
+  llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
+      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(vector_type, -9.0),
+                            &ir_builder),
+      llvm::ConstantFP::get(vector_type, 9.0), &ir_builder);
 
-  std::array<float, 7> numerator_coeffs(
-      {{-2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
-        5.12229709037114e-08f, 1.48572235717979e-05f, 6.37261928875436e-04f,
-        4.89352455891786e-03f}});
+  std::array<float, 7> numerator_coeffs{
+      -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
+      5.12229709037114e-08f,  1.48572235717979e-05f, 6.37261928875436e-04f,
+      4.89352455891786e-03f};
 
-  std::array<float, 4> denominator_coeffs(
-      {{1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
-        4.89352518554385e-03f}});
+  std::array<float, 4> denominator_coeffs{
+      1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
+      4.89352518554385e-03f};
 
   llvm::Value* input_squared =
       ir_builder.CreateFMul(input_clamped, input_clamped);

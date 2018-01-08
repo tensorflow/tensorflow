@@ -2,6 +2,7 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 all_backends = ["cpu", "cpu_parallel", "gpu"] + plugins.keys()
 
@@ -28,6 +29,7 @@ def xla_test(name,
              deps,
              xla_test_library_deps=[],
              backends=[],
+             blacklisted_backends=[],
              args=[],
              tags=[],
              copts=[],
@@ -91,16 +93,23 @@ def xla_test(name,
     backends: A list of backends to generate tests for. Supported
       values: "cpu", "cpu_parallel", "gpu". If this list is empty, the test will
       be generated for all supported backends.
+    blacklisted_backends: A list of backends to NOT generate tests for.
     args: Test arguments for the target.
     tags: Tags for the target.
-    backend_args: A dict mapping backend name to list of additional args to
-      use for that target.
+    copts: Additional copts to pass to the build.
+    data: Additional data to pass to the build.
     backend_tags: A dict mapping backend name to list of additional tags to
       use for that target.
+    backend_args: A dict mapping backend name to list of additional args to
+      use for that target.
+    **kwargs: Additional keyword arguments to pass to native.cc_test.
   """
   test_names = []
   if not backends:
     backends = all_backends
+
+  backends = [backend for backend in backends
+              if backend not in blacklisted_backends]
 
   native.cc_library(
       name="%s_lib" % name,
@@ -140,11 +149,11 @@ def xla_test(name,
       for lib_dep in xla_test_library_deps:
         backend_deps += ["%s_%s" % (lib_dep, backend)]
 
-    native.cc_test(
+    tf_cc_test(
         name=test_name,
         srcs=srcs,
         tags=tags + backend_tags.get(backend, []) + this_backend_tags,
-        copts=copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
+        extra_copts=copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
         this_backend_copts,
         args=args + this_backend_args,
         deps=deps + backend_deps,
@@ -247,5 +256,6 @@ def generate_backend_test_macros(backends=[]):
         deps = [
             "//tensorflow/compiler/xla:types",
             "//tensorflow/core:lib",
+            "//tensorflow/core:regexp_internal",
             "//tensorflow/core:test",
         ])

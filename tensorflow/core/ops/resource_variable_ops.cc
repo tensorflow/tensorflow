@@ -106,23 +106,6 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
-REGISTER_OP("_UnsafeReadVariable")
-    .Input("resource: resource")
-    .Output("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(ReadVariableShapeFn)
-    .Doc(R"(
-Reads the value of a variable without any memory model.
-
-The tensor returned by this operation aliases a mutable Tensor, and its value
-can be observed to be different by different ops.
-
-Internal and private to the tensorflow implementation.
-
-resource: handle to the resource in which to store the variable.
-dtype: the dtype of the value.
-)");
-
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
     .Attr("ignore_lookup_error: bool = true")
@@ -221,7 +204,10 @@ Status VariableShapeShapeFn(InferenceContext* c) {
   if (handle_data == nullptr || handle_data->empty()) {
     return errors::InvalidArgument("Handle doesn't have shape information.");
   }
-  c->set_output(0, (*handle_data)[0].shape);
+  ShapeHandle var_shape = (*handle_data)[0].shape;
+  int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
+                                       : InferenceContext::kUnknownDim;
+  c->set_output(0, c->Vector(rank));
   return Status::OK();
 }
 
@@ -328,12 +314,116 @@ the same location, their contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+<img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
 </div>
 
 resource: Should be from a `Variable` node.
 indices: A tensor of indices into the first dimension of `ref`.
 updates: A tensor of updated values to add to `ref`.
+)doc");
+
+REGISTER_OP("ResourceScatterUpdate")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Input("updates: dtype")
+    .Attr("dtype: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeAndType handle_shape_and_type;
+      TF_RETURN_IF_ERROR(
+          ValidateVariableResourceHandle(c, &handle_shape_and_type));
+      ShapeHandle var_shape = handle_shape_and_type.shape;
+      ShapeHandle indices_shape = c->input(1);
+
+      ShapeHandle unused_updates_shape;
+      ShapeHandle concat;
+      ShapeHandle var_subshape;
+      TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Assigns sparse updates to the variable referenced by `resource`.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] = updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] = updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]
+
+resource: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of updated values to add to `ref`.
+)doc");
+
+REGISTER_OP("CriticalSectionOp")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Output("resource: resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"(
+Creates a handle to a CriticalSection resource.
+
+container: the container this critical section is placed in.
+shared_name: the name by which this critical section is referred to.
+)");
+
+REGISTER_OP("ExecuteInCriticalSection")
+    .Input("critical_section: resource")
+    .Input("arguments: Targuments")
+    .Output("outputs: output_types")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](InferenceContext* c) {
+      std::vector<PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      for (int i = 0; i < output_shapes.size(); ++i) {
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(output_shapes[i], &s));
+        c->set_output(i, s);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Executes function `f` within critical section `critical_section`.
+
+While `f` is running in `critical_section`, no other functions which wish to
+use this critical section may run.
+
+Often the use case is that two executions of the same graph, in parallel,
+wish to run `f`; and we wish to ensure that only one of them executes
+at a time.  This is especially important if `f` modifies one or more
+variables at a time.
+
+It is also useful if two separate functions must share a resource, but we
+wish to ensure the usage is exclusive.
+
+The signature of `f` is expected to be:
+
+```
+  outputs <- F(arguments)
+```
+Typically, but this is not required, `arguments` contain resources.  The
+primary purpose of this op is to limit access to these resources to one
+execution of `F` at a time.
+
+critical_section: The handle of the `critical_section`.
+arguments: Arguments for `f`, including any captured inputs appended at the end.
+outputs: The outputs of `f`.
+f: The `Function` to execute.
 )doc");
 
 }  // namespace tensorflow

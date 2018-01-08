@@ -23,13 +23,16 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -50,69 +53,25 @@ string DeviceName(tensorflow::Device* d) {
 }
 }  // namespace
 
-struct TFE_Context {
-  explicit TFE_Context(TF_Session* s) : session(s) {}
-
-  // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
-  TF_Session* session;
-  tensorflow::Rendezvous* rendezvous;
-
-  tensorflow::mutex functions_mu;
-  tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
-      tensorflow::OpRegistry::Global(), {}};
-
-  // One FunctionLibraryRuntime per device.
-  // func_libs[i] is the FunctionLibraryRuntime corresponding to
-  // session->devices[i].
-  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
-
-  std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
-                     tensorflow::Fprint128Hasher>
-      kernel_cache;
-
-  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
-    return pflr->GetFLR(d->name());
-  }
-
-  const std::vector<tensorflow::Device*>& devices() { return session->devices; }
-};
-
-struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
-
-  tensorflow::Tensor t;
-  // TODO(ashankar): d == nullptr iff local CPU
-  // This was expedient, but perhaps worth revisiting ('d' should always be a
-  // valid pointer?)
-  // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
-  // provided with the appropriate TFE_Context.
-  //
-  // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
-  // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* d;
-};
-
-struct TFE_Op {
-  TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : ctx(ctx), name(op), attrs(op), attr_types(t), device(nullptr) {}
-
-  bool const is_function() const { return attr_types == nullptr; }
-
-  TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const char* name;
-  tensorflow::AttrBuilder attrs;
-  const tensorflow::AttrTypeMap* attr_types;
-  std::vector<tensorflow::Tensor> inputs;
-  std::vector<tensorflow::Device*> input_devices;
-  tensorflow::Device* device;
-};
-
 extern "C" {
 
-TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
+TFE_ContextOptions* TFE_NewContextOptions() { return new TFE_ContextOptions; }
+
+void TFE_ContextOptionsSetConfig(TFE_ContextOptions* options, const void* proto,
+                                 size_t proto_len, TF_Status* status) {
+  TF_SetConfig(&options->session_options, proto, proto_len, status);
+}
+
+void TFE_ContextOptionsSetDevicePlacementPolicy(
+    TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
+  options->policy = policy;
+}
+
+void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
+
+TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   TF_Graph* graph = TF_NewGraph();
-  TF_Session* session = TF_NewSession(graph, opts, status);
+  TF_Session* session = TF_NewSession(graph, &opts->session_options, status);
   if (status->status.ok()) {
     if (session->device_mgr == nullptr || session->devices.empty()) {
       status->status = tensorflow::errors::InvalidArgument(
@@ -127,9 +86,10 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
   }
 
   TFE_Context* ret = new TFE_Context(session);
+  ret->policy = opts->policy;
   ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
-      ret->session->device_mgr, opts->options.env, TF_GRAPH_DEF_VERSION,
-      &ret->func_lib_def, {}));
+      ret->session->device_mgr, opts->session_options.options.env,
+      TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {}));
   ret->rendezvous =
       new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
 
@@ -138,7 +98,10 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
   status->status = tensorflow::Status::OK();
-  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+  {
+    tensorflow::mutex_lock ml(ctx->cache_mu);
+    tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+  }
   TF_Graph* graph = ctx->session->graph;
   TF_DeleteSession(ctx->session, status);
   TF_DeleteGraph(graph);
@@ -150,10 +113,16 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t) {
-  return new TFE_TensorHandle(
-      tensorflow::TensorCApi::MakeTensor(t->dtype, t->shape, t->buffer),
-      nullptr);
+void TFE_ContextClearCaches(TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->cache_mu);
+  tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
+}
+
+TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+  tensorflow::Tensor tensor;
+  status->status = tensorflow::TF_TensorToTensor(t, &tensor);
+  if (!status->status.ok()) return nullptr;
+  return new TFE_TensorHandle(tensor, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }
@@ -207,36 +176,29 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
-  const bool src_cpu = IsCPU(srcd);
-  if (src_cpu == dst_cpu) {
+  tensorflow::Tensor* src = &(h->t);
+  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat(
-            "TFE_TensorHandleCopyToDevice requires either the source "
-            "TFE_TensorHandle be on or the destination device be on CPU "
-            "or be the same (they are ",
-            DeviceName(srcd), " and ", DeviceName(dstd), " in this call)")
+        tensorflow::strings::StrCat("Can't copy Tensor with type ",
+                                    tensorflow::DataTypeString(src->dtype()),
+                                    " to device ", DeviceName(dstd), ".")
             .c_str());
     return nullptr;
   }
-  tensorflow::Tensor* src = &(h->t);
-  if (src_cpu) {
-    tensorflow::Tensor dst(
-        dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
-        src->shape());
-    tensorflow::Notification n;
-    dstd->tensorflow_gpu_device_info()->default_context->CopyCPUTensorToDevice(
-        src, dstd, &dst, [status, &n](const tensorflow::Status& s) {
-          status->status = s;
-          n.Notify();
-        });
-    n.WaitForNotification();
-    return (TF_GetCode(status) == TF_OK) ? new TFE_TensorHandle(dst, dstd)
-                                         : nullptr;
+  tensorflow::Tensor dst(dstd->GetAllocator(tensorflow::AllocatorAttributes()),
+                         src->dtype(), src->shape());
+  if (src->shape().num_elements() == 0) {
+    return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
-  CHECK(dst_cpu);
-  tensorflow::Tensor dst(src->dtype(), src->shape());
-  tensorflow::Notification n;
+  tensorflow::DeviceContext* src_device_context = nullptr;
+  if (!IsCPU(srcd)) {
+    src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
+  }
+  tensorflow::DeviceContext* dst_device_context = nullptr;
+  if (!dst_cpu) {
+    dst_device_context = dstd->tensorflow_gpu_device_info()->default_context;
+  }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that
   // GPU devices are implemented using 3 streams - one for host->device copies,
@@ -245,16 +207,18 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   // but more than necessary (since it waits for operations that might have
   // nothing to do with this tensor to complete).
   status->status = srcd->Sync();
-  if (!status->status.ok()) return nullptr;
-  srcd->tensorflow_gpu_device_info()->default_context->CopyDeviceTensorToCPU(
-      src, "IGNORE_MY_TENSOR_NAME", srcd, &dst,
-      [status, &n](const tensorflow::Status& s) {
-        status->status = s;
-        n.Notify();
-      });
+  tensorflow::Notification n;
+  tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
+                                 srcd, dstd, tensorflow::AllocatorAttributes(),
+                                 tensorflow::AllocatorAttributes(), src, &dst,
+                                 [status, &n](const tensorflow::Status& s) {
+                                   status->status = s;
+                                   n.Notify();
+                                 });
   n.WaitForNotification();
-  return (TF_GetCode(status) == TF_OK) ? new TFE_TensorHandle(dst, nullptr)
-                                       : nullptr;
+  return (TF_GetCode(status) == TF_OK)
+             ? new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd)
+             : nullptr;
 }
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
@@ -284,11 +248,11 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
   }
 }
 
-void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
-                     TF_Status* status) {
+void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status =
+        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   TFE_OpSetDeviceHelper(op, d, status);
@@ -313,6 +277,20 @@ TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
   }
   status->status =
       tensorflow::AttrTypeByName(op->attr_types, attr_name, &ret, is_list);
+  return ret;
+}
+
+TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
+                                  const char* op_or_function_name,
+                                  const char* attr_name, unsigned char* is_list,
+                                  TF_Status* status) {
+  TF_AttrType ret;
+  TFE_Op* op = TFE_NewOp(ctx, op_or_function_name, status);
+  if (!status->status.ok()) {
+    return TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
+  }
+  ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
+  TFE_DeleteOp(op);
   return ret;
 }
 
@@ -356,6 +334,15 @@ void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name, const int64_t* dims,
     }
   }
   op->attrs.Set(attr_name, proto);
+}
+
+void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
+                           const TFE_Op* value) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(value->name);
+  value->attrs.FillAttrValueMap(func->mutable_attr());
+  op->attrs.Set(attr_name, attr_value);
 }
 
 #define TFE_OP_SET_ATTR_LIST(fn, type)                                \
@@ -428,8 +415,10 @@ void TFE_OpSetAttrShapeList(TFE_Op* op, const char* attr_name,
 namespace {
 
 tensorflow::Status ValidateInputTypeAndPlacement(
-    tensorflow::Device* host_device, tensorflow::Device* op_device, TFE_Op* op,
-    const tensorflow::OpKernel* kernel) {
+    TFE_Context* ctx, tensorflow::Device* host_device,
+    tensorflow::Device* op_device, TFE_Op* op,
+    const tensorflow::OpKernel* kernel,
+    std::vector<TFE_TensorHandle*>* copied_tensors) {
   const tensorflow::MemoryTypeVector& memtypes = kernel->input_memory_types();
   if (memtypes.size() != op->inputs.size()) {
     return tensorflow::errors::InvalidArgument(
@@ -441,18 +430,58 @@ tensorflow::Status ValidateInputTypeAndPlacement(
     const tensorflow::Device* actual_device =
         op->input_devices[i] == nullptr ? host_device : op->input_devices[i];
     if (expected_device != actual_device) {
-      return tensorflow::errors::InvalidArgument(
-          "cannot compute ", op->name, " as input #", i,
-          " was expected to be on ", expected_device->name(),
-          " but is actually on ", actual_device->name(),
-          " (operation running on ", op_device->name(), ")");
+      switch (ctx->policy) {
+        case TFE_DEVICE_PLACEMENT_EXPLICIT:
+          // TODO(xpan): See if we could bubble python related error up
+          // to python level.
+          return tensorflow::errors::InvalidArgument(
+              "Tensors on conflicting devices:"
+              " cannot compute ",
+              op->name, " as input #", i, " was expected to be on ",
+              expected_device->name(), " but is actually on ",
+              actual_device->name(), " (operation running on ",
+              op_device->name(), ")",
+              " Tensors can be copied explicitly using .gpu() or .cpu(),"
+              " or transparently copied by using tfe.enable_eager_execution("
+              "tfe.DEVICE_PLACEMENT_SILENT). Copying tensors between devices"
+              " may slow down your model");
+        case TFE_DEVICE_PLACEMENT_WARN:
+          LOG(WARNING) << "before computing " << op->name << " input #" << i
+                       << " was expected to be on " << expected_device->name()
+                       << " but is actually on " << actual_device->name()
+                       << " (operation running on " << op_device->name()
+                       << "). This triggers a copy which can be a performance "
+                          "bottleneck.";
+          break;
+        case TFE_DEVICE_PLACEMENT_SILENT:  // Do nothing.
+          break;
+      }
+      // We are only here if the policy is warn or silent copies, so we should
+      // trigger a copy.
+      TFE_TensorHandle original{op->inputs[i], op->input_devices[i]};
+      TF_Status* s = TF_NewStatus();
+      TFE_TensorHandle* copied_tensor = TFE_TensorHandleCopyToDevice(
+          &original, ctx, expected_device->name().c_str(), s);
+      if (!s->status.ok()) {
+        tensorflow::Status status = s->status;
+        delete s;
+        return tensorflow::errors::Internal(
+            "Failed copying input tensor from ", actual_device->name(), " to ",
+            expected_device->name(), " in order to run ", op->name, ": ",
+            status.error_message());
+      }
+      op->inputs[i] = copied_tensor->t;
+      copied_tensors->push_back(copied_tensor);
+      op->input_devices[i] = copied_tensor->d;
+      delete s;
     }
     if (op->inputs[i].dtype() != kernel->input_type(i)) {
       return tensorflow::errors::InvalidArgument(
           "cannot compute ", op->name, " as input #", i,
           " was expected to be a ",
-          tensorflow::DataType_Name(kernel->input_type(i)), " tensor but is a ",
-          tensorflow::DataType_Name(op->inputs[i].dtype()), " tensor");
+          tensorflow::DataTypeString(kernel->input_type(i)),
+          " tensor but is a ",
+          tensorflow::DataTypeString(op->inputs[i].dtype()), " tensor");
     }
   }
   return tensorflow::Status::OK();
@@ -468,34 +497,47 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   std::vector<tensorflow::Tensor> outputs(1);
   const tensorflow::MemoryTypeVector* output_memory_types = nullptr;
   tensorflow::Fprint128 cache_key = op->attrs.CacheKey(device->name());
-  tensorflow::KernelAndDevice* kernel =
-      tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
+  tensorflow::KernelAndDevice* kernel;
+  {
+    tensorflow::tf_shared_lock l(ctx->cache_mu);
+    kernel = tensorflow::gtl::FindPtrOrNull(ctx->kernel_cache, cache_key);
+  }
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
-    if (!op->is_function()) {
-      status->status =
-          tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);
-    } else {
-      // Knowledge of the implementation of InitFn (and in-turn
-      // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-      // will be accessed, so grab on to the lock.
-      // See WARNING comment below - would be nice to rework to avoid this
-      // subtlety.
-      tensorflow::mutex_lock l(ctx->functions_mu);
-      status->status = tensorflow::KernelAndDevice::InitFn(
-          ndef, ctx->func_lib(device), kernel);
-    }
+    // Knowledge of the implementation of Init (and in-turn
+    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
+    // will be accessed, so grab on to the lock.
+    // See WARNING comment below - would be nice to rework to avoid this
+    // subtlety.
+    tensorflow::tf_shared_lock l(ctx->functions_mu);
+    status->status =
+        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
     if (!status->status.ok()) {
+      delete kernel;
       return;
     }
+    tensorflow::mutex_lock ml(ctx->cache_mu);
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);
   }
-  status->status = ValidateInputTypeAndPlacement(ctx->devices()[0], device, op,
-                                                 kernel->kernel());
+  std::vector<TFE_TensorHandle*> copied_tensors;
+  status->status = ValidateInputTypeAndPlacement(
+      ctx, ctx->devices()[0], device, op, kernel->kernel(), &copied_tensors);
   output_memory_types = &kernel->kernel()->output_memory_types();
   if (!status->status.ok()) {
+    for (auto* t : copied_tensors) {
+      TFE_DeleteTensorHandle(t);
+    }
     return;
+  }
+  std::unique_ptr<tensorflow::NodeExecStats> maybe_stats;
+  if (ctx->should_store_metadata.load()) {
+    maybe_stats.reset(new tensorflow::NodeExecStats);
+    maybe_stats->set_node_name(op->name);
+    maybe_stats->set_all_start_micros(tensorflow::Env::Default()->NowMicros());
+    maybe_stats->set_op_start_rel_micros(0);
+    maybe_stats->set_scheduled_micros(tensorflow::Env::Default()->NowMicros());
+    // TODO(apassos) track referenced tensors
   }
   // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
   // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def,
@@ -504,9 +546,38 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
   // This is quite subtle. Re-work things to make this better?  (Would it make
   // sense for FunctionLibraryRuntime to ensure thread-safe access to
-  // FunctionLibraryDefinition?).
-  status->status = kernel->Run(&op->inputs, &outputs);
+  // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
+  // for ops which are a part of functions.
+  status->status = kernel->Run(&op->inputs, &outputs, maybe_stats.get());
+  for (auto* t : copied_tensors) {
+    TFE_DeleteTensorHandle(t);
+  }
   if (!status->status.ok()) return;
+  if (maybe_stats != nullptr) {
+    maybe_stats->set_op_end_rel_micros(tensorflow::Env::Default()->NowMicros() -
+                                       maybe_stats->all_start_micros());
+    tensorflow::mutex_lock ml(ctx->metadata_mu);
+    if (ctx->should_store_metadata.load()) {
+      auto* step_stats = ctx->run_metadata.mutable_step_stats();
+      // Lazily initialize the RunMetadata with information about all devices if
+      // this is the first call.
+      while (step_stats->dev_stats_size() < ctx->devices().size()) {
+        step_stats->add_dev_stats();
+      }
+      // Find the current device's index.
+      int device_idx = 0;
+      for (int i = 0; i < ctx->devices().size(); ++i) {
+        if (ctx->devices()[i] == device) {
+          device_idx = i;
+          break;
+        }
+      }
+      // Populate the device stats for this device.
+      auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
+      dev_stats->set_device(device->name());
+      *dev_stats->add_node_stats() = *maybe_stats;
+    }
+  }
   *num_retvals = std::min<int>(*num_retvals, outputs.size());
   for (int i = 0; i < *num_retvals; ++i) {
     tensorflow::Device* d = IsCPU(device) ? nullptr : device;
@@ -531,6 +602,12 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
   status->status = ctx->func_lib_def.AddFunctionDef(function_def);
 }
 
+void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
+                            TF_Status* status) {
+  tensorflow::mutex_lock l(ctx->functions_mu);
+  status->status = ctx->func_lib_def.AddFunctionDef(function->fdef);
+}
+
 }  // extern "C"
 
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
@@ -546,4 +623,21 @@ const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     return nullptr;
   }
   return &h->t;
+}
+
+void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
+  ctx->should_store_metadata.store(true);
+}
+
+void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->metadata_mu);
+  ctx->should_store_metadata.store(false);
+  ctx->run_metadata.Clear();
+}
+
+void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
+                                  TF_Status* status) {
+  tensorflow::mutex_lock ml(ctx->metadata_mu);
+  status->status = MessageToBuffer(ctx->run_metadata, buf);
+  ctx->run_metadata.Clear();
 }

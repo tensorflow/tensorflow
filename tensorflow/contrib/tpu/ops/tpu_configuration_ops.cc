@@ -107,7 +107,7 @@ in a host.
 
 REGISTER_OP("_WaitForDistributedTPU")
     .Input("inputs: N * int32")
-    .Output("global_tpu_array: int32")
+    .Output("topology: string")
     .Attr("host_specs: list(string)")
     .Attr("startup_timeout_sec: int = 20")
     .Attr("N: int")
@@ -118,7 +118,7 @@ REGISTER_OP("_WaitForDistributedTPU")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &input));
       }
-      c->set_output(0, c->UnknownShapeOfRank(2));
+      c->set_output(0, c->Scalar());
       return ::tensorflow::Status::OK();
     })
     .Doc(R"doc(
@@ -129,30 +129,26 @@ _InitializeHostForDistributedTPU Ops.
 
 inputs: For each initialized host, a vector giving the global TPU id
 of each TPU on the host.
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
-host_specs: For each initialized host, the partial device specification
-indicating job, replica, and task. Combining this spec with
-'/device:TPU:k' gives the full device name of the k'th TPU on the
-host.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
 startup_timeout_sec: The number of seconds to wait for the TPU system
 to stabilize.
 )doc");
 
 REGISTER_OP("_SetGlobalTPUArray")
-    .Input("global_tpu_array: int32")
+    .Input("topology: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       return ::tensorflow::Status::OK();
     })
     .Doc(R"doc(
 An op that informs a host of the global ids of all the of TPUs in the
 system.
 
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
 )doc");
 
 REGISTER_OP("_ShutdownDistributedTPU")
@@ -198,7 +194,7 @@ chips on the host.
 )doc");
 
 REGISTER_OP("ConfigureDistributedTPU")
-    .Output("global_tpu_array: int32")
+    .Output("topology: string")
     .Attr("embedding_config: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
@@ -206,9 +202,8 @@ REGISTER_OP("ConfigureDistributedTPU")
 An op that sets up the centralized structures for a distributed TPU
 system.
 
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
-embedding_config: Internal use.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
 )doc");
 
 REGISTER_OP("ShutdownDistributedTPU")

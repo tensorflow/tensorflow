@@ -28,6 +28,8 @@ namespace ops {
 
 Output Const(const Scope& scope, const Input::Initializer& val);
 
+Output ConstFromProto(const Scope& scope, const TensorProto& proto);
+
 NodeBuilder::NodeOut AsNodeOut(const Scope& scope, const Input& inp);
 
 template <typename T>

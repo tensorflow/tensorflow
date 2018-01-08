@@ -27,7 +27,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "util_test",
-    size = "small",
+    size = "medium",
     srcs = ["util_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/distributions",
@@ -193,6 +193,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["manual"],  # b/69001419
 )
 
 cuda_py_test(

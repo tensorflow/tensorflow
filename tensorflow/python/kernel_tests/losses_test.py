@@ -40,6 +40,7 @@ from tensorflow.python.training import momentum as momentum_lib
 class AbsoluteDifferenceLossTest(test.TestCase):
 
   def setUp(self):
+    super(AbsoluteDifferenceLossTest, self).setUp()
     self._predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
@@ -608,6 +609,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
 class LogLossTest(test.TestCase):
 
   def setUp(self):
+    super(LogLossTest, self).setUp()
     predictions = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
     labels = np.asarray([1.0, 0.0, 1.0, 1.0, 0.0, 0.0]).reshape((2, 3))
 
@@ -868,6 +870,7 @@ class HuberLossTest(test.TestCase):
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
+    super(MeanSquaredErrorTest, self).setUp()
     self._predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
@@ -941,6 +944,7 @@ class MeanSquaredErrorTest(test.TestCase):
 class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
+    super(MeanPairwiseSquaredErrorTest, self).setUp()
     self._predictions = np.array([[4, 8, 12], [8, 1, 3]])
     self._labels = np.array([[1, 9, 2], [-5, -5, 7]])
 
@@ -1167,6 +1171,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
 class CosineDistanceLossTest(test.TestCase):
 
   def setUp(self):
+    super(CosineDistanceLossTest, self).setUp()
     self._predictions = np.asarray([
         [1, 0, 0],  # Batch 1
         [0, 0, -1],
@@ -1290,6 +1295,7 @@ class AddLossTest(test.TestCase):
 class ComputeWeightedLossTest(test.TestCase):
 
   def setUp(self):
+    super(ComputeWeightedLossTest, self).setUp()
     self._shape = (3, 2, 4)
     raw_losses = np.zeros(self._shape)
     next_loss = 0.0

@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace functor {
 
 // Generic helper functor for the Random Poisson Op.
-template <typename Device, typename T>
+template <typename Device, typename T /* rate */, typename U /* output */>
 struct PoissonFunctor;
 
 }  // namespace functor

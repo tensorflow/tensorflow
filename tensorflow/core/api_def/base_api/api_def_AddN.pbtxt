@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "AddN"
+  in_arg {
+    name: "inputs"
+    description: <<END
+Must all be the same size and shape.
+END
+  }
+  summary: "Add all input tensors element wise."
+}

@@ -158,6 +158,13 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
 }
 
+TEST(ArrayOpsTest, GuaranteeConst_ShapeFn) {
+  ShapeInferenceTestOp op("GuaranteeConst");
+  INFER_OK(op, "?", "in0");
+  INFER_OK(op, "[]", "in0");
+  INFER_OK(op, "[1,2,?,4,5]", "in0");
+}
+
 TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   const char* op_name = "Identity";
   ShapeInferenceTestOp op(op_name);
@@ -186,21 +193,20 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
 TEST(ArrayOpsTest, Diag_ShapeFn) {
   ShapeInferenceTestOp op("Diag");
   INFER_OK(op, "?", "?");
-  INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,3]", "[d0_0,d0_1,d0_2,d0_0,d0_1,d0_2]");
-  INFER_ERROR("Shape must be at most rank 3 but is rank 4", op, "[?,1,2,3]");
+  INFER_OK(op, "[?,1,2,3]", "[d0_0,d0_1,d0_2,d0_3,d0_0,d0_1,d0_2,d0_3]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
 }
 
 TEST(ArrayOpsTest, DiagPart_ShapeFn) {
   ShapeInferenceTestOp op("DiagPart");
   INFER_OK(op, "?", "?");
-  INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_3]");
   INFER_OK(op, "[1,?,3,?,4,3]", "[d0_0,d0_4,d0_2|d0_5]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 1", op, "[?]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 3", op, "[1,2,3]");
-  INFER_ERROR("Input must have even rank <= 6, input rank is 8", op,
-              "[1,2,3,?,?,?,?,?]");
+  INFER_OK(op, "[1,2,3,?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_7]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[?]");
+  INFER_ERROR("Input must have even and non-zero rank", op, "[1,2,3]");
   INFER_ERROR("Dimensions must be equal, but are 2 and 10", op, "[1,2,?,10]");
 }
 
@@ -247,6 +253,7 @@ TEST(ArrayOpsTest, ReverseV2_ShapeFn) {
 
 TEST(ArrayOpsTest, Fill_ShapeFn) {
   ShapeInferenceTestOp op("Fill");
+  AddNodeAttr("index_type", DT_INT32, &op.node_def);
   op.input_tensors.resize(2);
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");
@@ -515,7 +522,7 @@ TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
   INFER_ERROR("Dimensions must be equal, but are 2 and 3", op, "[2,3];[3]");
 
   // Output matches input.
-  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;?", "in0");
   INFER_OK(op, "[1,2,2];[1,2]", "in0");
   INFER_OK(op, "[1,2,3];?", "in0");
   INFER_OK(op, "[1,3,2];?", "in0");
@@ -1613,7 +1620,7 @@ TEST(ArrayOpsTest, UnchangedWithQuantizationScalars_ShapeFn) {
 TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannel) {
   ShapeInferenceTestOp op("FakeQuantWithMinMaxVarsPerChannel");
 
-  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[?];?;?", "in0");
   INFER_OK(op, "[1,?,3];[3];[3]", "in0");
   INFER_OK(op, "[3];[3];[3]", "in0");
@@ -1632,7 +1639,7 @@ TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannel) {
 TEST(ArrayOpsTest, FakeQuantWithMinMaxVarsPerChannelGradient) {
   ShapeInferenceTestOp op("FakeQuantWithMinMaxVarsPerChannelGradient");
 
-  INFER_OK(op, "?;?;?;?", "?;[?];[?]");
+  INFER_OK(op, "?;?;?;?", "in0;[?];[?]");
   INFER_OK(op, "[3];[3];[3];[3]", "in0;in3;in3");
   INFER_OK(op, "[1,3];[1,3];[3];[3]", "in0;in3;in3");
   INFER_OK(op, "[1,2,3,4];[1,2,3,4];[4];[4]", "in0;in3;in3");

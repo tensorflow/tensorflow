@@ -1,0 +1,15 @@
+path: "tensorflow.keras.applications.vgg19"
+tf_module {
+  member_method {
+    name: "VGG19"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "decode_predictions"
+    argspec: "args=[\'preds\', \'top\'], varargs=None, keywords=None, defaults=[\'5\'], "
+  }
+  member_method {
+    name: "preprocess_input"
+    argspec: "args=[\'x\', \'data_format\', \'mode\'], varargs=None, keywords=None, defaults=[\'None\', \'caffe\'], "
+  }
+}

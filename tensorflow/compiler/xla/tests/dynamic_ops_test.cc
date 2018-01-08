@@ -250,9 +250,6 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {5},
                          {0, 1, 2, 3, 4, 8, 9, 10});
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
-                         {0, 1, 2, 3, 4, 5, 8, 9});
     // Zero-sized update.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {}, {2},
                          {0, 1, 2, 3, 4, 5, 6, 7});
@@ -269,9 +266,6 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 1},
                          {{1, 2, 3}, {4, 5, 6}, {7, 10, 11}});
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
-                         {{1, 2, 3}, {4, 5, 6}, {7, 8, 10}});
     // Zero-sized update.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{}}, {2, 1},
                          {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
@@ -289,10 +283,20 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     RunR3<IndexT, DataT>(
         {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
         {1, 1, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 13}, {11, 15}}});
+  }
+
+  template <typename IndexT, typename DataT>
+  void TestWrap() {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
+                         {10, 1, 2, 3, 4, 5, 8, 9});
+    // R2 Shape: [3, 3]
+    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
+                         {{1, 2, 3}, {4, 5, 6}, {11, 8, 10}});
+    // R3 Shape: [2, 3, 2]
     RunR3<IndexT, DataT>(
         {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
-        {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 13}}});
+        {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 15}, {9, 10}, {11, 13}}});
   }
 
   template <typename IndexT, typename DataT>
@@ -425,6 +429,12 @@ XLA_TEST_F(DynamicUpdateSliceTest, Int64R3) { TestR3<int64, int64>(); }
 
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64, uint64>(); }
 
+XLA_TEST_F(DynamicUpdateSliceTest, Int32Wrap) { TestWrap<int32, float>(); }
+
+XLA_TEST_F(DynamicUpdateSliceTest, Int64Wrap) { TestWrap<int64, int64>(); }
+
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64Wrap) { TestWrap<uint64, uint64>(); }
+
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1Pred) {
   // Slice at dimension start.
   RunR1<int32, bool>({false, false, true, true, false, true, true, false},
@@ -497,19 +507,13 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElements) {
   RunR3Contiguous(operand_shape, /*index=*/1, /*size=*/2);
 }
 
-// TODO(b/34128753) CPU and GPU failed on 2016-01-06.  Appears not to handle
-// wrapping as expected.
-XLA_TEST_F(DynamicUpdateSliceTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(R3ContiguousMultipleWrapping))) {
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
   // Multiple element, wrapping.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous(operand_shape, /*index=*/3, /*size=*/2);
 }
 
-// TODO(b/34128753) CPU and GPU failed on 2016-01-06.  Appears not to handle
-// wrapping as expected.
-XLA_TEST_F(DynamicUpdateSliceTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(R3ContiguousTooLarge))) {
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
   // Multiple element, update size larger than operand.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous(operand_shape, /*index=*/5, /*size=*/2);
@@ -555,17 +559,20 @@ void BM_DynamicSlice(int num_iters) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Initialize and transfer parameter buffer.
-  auto buffer = ScopedShapedBuffer::MakeScopedShapedBuffer(start_indices_shape,
-                                                           &allocator, 0)
+  auto buffer = client->backend()
+                    .transfer_manager()
+                    ->AllocateScopedShapedBuffer(
+                        start_indices_shape, &allocator, /*device_ordinal=*/0)
                     .ConsumeValueOrDie();
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal,
-      buffer->mutable_buffer({})));
+      executors[device_ordinal], *start_indices_literal, *buffer));
 
   std::unique_ptr<LocalExecutable> executable =
-      client->Compile(computation, {&buffer->shape()}, ExecutableBuildOptions())
+      client
+          ->Compile(computation, {&buffer->on_host_shape()},
+                    ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
   // Run some warm-up executions.

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -76,7 +77,7 @@ class PrintOp : public OpKernel {
       strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
                          "]");
     }
-    LOG(INFO) << msg;
+    std::cerr << msg << std::endl;
   }
 
  private:

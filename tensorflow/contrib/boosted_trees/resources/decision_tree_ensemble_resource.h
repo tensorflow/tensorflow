@@ -44,14 +44,90 @@ class DecisionTreeEnsembleResource : public StampedResource {
     return *decision_tree_ensemble_;
   }
 
-  boosted_trees::trees::DecisionTreeEnsembleConfig*
-  mutable_decision_tree_ensemble() {
-    return decision_tree_ensemble_;
+  int32 num_trees() const { return decision_tree_ensemble_->trees_size(); }
+
+  bool InitFromSerialized(const string& serialized, const int64 stamp_token) {
+    CHECK_EQ(stamp(), -1) << "Must Reset before Init.";
+    if (ParseProtoUnlimited(decision_tree_ensemble_, serialized)) {
+      set_stamp(stamp_token);
+      return true;
+    }
+    return false;
+  }
+
+  string SerializeAsString() const {
+    return decision_tree_ensemble_->SerializeAsString();
+  }
+
+  // Increment num_layers_attempted and num_trees_attempted in growing_metadata
+  // if the tree is finalized.
+  void IncrementAttempts() {
+    boosted_trees::trees::GrowingMetadata* const growing_metadata =
+        decision_tree_ensemble_->mutable_growing_metadata();
+    growing_metadata->set_num_layers_attempted(
+        growing_metadata->num_layers_attempted() + 1);
+    const int num_trees = decision_tree_ensemble_->trees_size();
+    if (num_trees <= 0 || LastTreeMetadata()->is_finalized()) {
+      growing_metadata->set_num_trees_attempted(
+          growing_metadata->num_trees_attempted() + 1);
+    }
+  }
+
+  boosted_trees::trees::DecisionTreeConfig* AddNewTree(const float weight) {
+    // Adding a tree as well as a weight and a tree_metadata.
+    decision_tree_ensemble_->add_tree_weights(weight);
+    boosted_trees::trees::DecisionTreeMetadata* const metadata =
+        decision_tree_ensemble_->add_tree_metadata();
+    metadata->set_num_layers_grown(1);
+    return decision_tree_ensemble_->add_trees();
+  }
+
+  void RemoveLastTree() {
+    QCHECK_GT(decision_tree_ensemble_->trees_size(), 0);
+    decision_tree_ensemble_->mutable_trees()->RemoveLast();
+    decision_tree_ensemble_->mutable_tree_weights()->RemoveLast();
+    decision_tree_ensemble_->mutable_tree_metadata()->RemoveLast();
+  }
+
+  boosted_trees::trees::DecisionTreeConfig* LastTree() {
+    const int32 tree_size = decision_tree_ensemble_->trees_size();
+    QCHECK_GT(tree_size, 0);
+    return decision_tree_ensemble_->mutable_trees(tree_size - 1);
+  }
+
+  boosted_trees::trees::DecisionTreeMetadata* LastTreeMetadata() {
+    const int32 metadata_size = decision_tree_ensemble_->tree_metadata_size();
+    QCHECK_GT(metadata_size, 0);
+    return decision_tree_ensemble_->mutable_tree_metadata(metadata_size - 1);
+  }
+
+  // Retrieves tree weights and returns as a vector.
+  std::vector<float> GetTreeWeights() const {
+    return {decision_tree_ensemble_->tree_weights().begin(),
+            decision_tree_ensemble_->tree_weights().end()};
+  }
+
+  float GetTreeWeight(const int32 index) const {
+    return decision_tree_ensemble_->tree_weights(index);
+  }
+
+  // Sets the weight of i'th tree, and increment num_updates in tree_metadata.
+  void SetTreeWeight(const int32 index, const float weight,
+                     const int32 increment_num_updates) {
+    QCHECK_GE(index, 0);
+    QCHECK_LT(index, num_trees());
+    decision_tree_ensemble_->set_tree_weights(index, weight);
+    if (increment_num_updates != 0) {
+      const int32 num_updates = decision_tree_ensemble_->tree_metadata(index)
+                                    .num_tree_weight_updates();
+      decision_tree_ensemble_->mutable_tree_metadata(index)
+          ->set_num_tree_weight_updates(num_updates + increment_num_updates);
+    }
   }
 
   // Resets the resource and frees the protos in arena.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
+  virtual void Reset() {
     // Reset stamp.
     set_stamp(-1);
 
@@ -64,7 +140,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
 
   mutex* get_mutex() { return &mu_; }
 
- private:
+ protected:
   protobuf::Arena arena_;
   mutex mu_;
   boosted_trees::trees::DecisionTreeEnsembleConfig* decision_tree_ensemble_;

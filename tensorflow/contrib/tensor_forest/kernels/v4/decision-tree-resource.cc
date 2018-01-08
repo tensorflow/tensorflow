@@ -21,6 +21,11 @@ using decision_trees::DecisionTree;
 using decision_trees::Leaf;
 using decision_trees::TreeNode;
 
+DecisionTreeResource::DecisionTreeResource(const TensorForestParams& params)
+    : params_(params), decision_tree_(new decision_trees::Model()) {
+  model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
+}
+
 int32 DecisionTreeResource::TraverseTree(
     const std::unique_ptr<TensorDataSet>& input_data, int example,
     int32* leaf_depth, TreePath* path) const {

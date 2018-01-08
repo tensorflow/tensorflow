@@ -32,6 +32,7 @@ REGISTER_OP("Copy")
     .Attr("tensor_name: string = ''")
     .Attr("debug_ops_spec: list(string) = []")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Copy Op.
 
@@ -61,6 +62,7 @@ REGISTER_OP("CopyHost")
     .Attr("tensor_name: string = ''")
     .Attr("debug_ops_spec: list(string) = []")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Copy Host Op.
 
@@ -118,6 +120,7 @@ REGISTER_OP("DebugNanCount")
     .Attr("debug_urls: list(string) = []")
     .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Debug NaN Value Counter Op
 
@@ -148,6 +151,8 @@ REGISTER_OP("DebugNumericSummary")
     .Attr("mute_if_healthy: bool = false")
     .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
+    // Note: this could return a more specific shape if needed in future.
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Debug Numeric Summary Op.
 

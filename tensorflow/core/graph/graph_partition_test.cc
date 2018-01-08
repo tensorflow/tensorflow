@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
+#include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -42,14 +43,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-using strings::StrCat;
-
 // from graph_partition.cc
 extern Status TopologicalSortNodesWithTimePriority(
     const GraphDef* gdef, std::vector<std::pair<const NodeDef*, int64>>* nodes,
     std::unordered_map<const NodeDef*, int64>* node_to_start_time_out);
 
 namespace {
+
+using ops::_Recv;
+using ops::_Send;
+using ops::Const;
+using ops::Identity;
+using ops::LoopCond;
+using ops::NextIteration;
+using strings::StrCat;
 
 const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
@@ -72,10 +79,13 @@ void Partition(const GraphDef& graph_def,
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &g));
 
-  // Assigns devices to each node. Uses 1st letter of the node name as
-  // the device index.
+  // Assigns devices to each node. Uses 1st letter of the node name as the
+  // device index if no device is specified.
   for (Node* node : g.nodes()) {
-    node->set_assigned_device_name(DeviceName(node));
+    string device_name = !node->requested_device().empty()
+                             ? node->requested_device()
+                             : DeviceName(node);
+    node->set_assigned_device_name(device_name);
   }
 
   PartitionOptions popts;
@@ -87,10 +97,9 @@ void Partition(const GraphDef& graph_def,
   Status s = Partition(popts, &g, partitions);
   CHECK(s.ok()) << s;
 
-  // Check versions
+  // Check versions.
   EXPECT_EQ(graph_def.versions().producer(), TF_GRAPH_DEF_VERSION);
-  EXPECT_EQ(graph_def.versions().min_consumer(),
-            TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+  // Partitions must inherit the versions of the original graph.
   for (auto& it : *partitions) {
     EXPECT_EQ(graph_def.versions().producer(), it.second.versions().producer());
     EXPECT_EQ(graph_def.versions().min_consumer(),
@@ -229,7 +238,6 @@ class GraphPartitionTest : public ::testing::Test {
 };
 
 TEST_F(GraphPartitionTest, SingleDevice) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   Combine(in_.WithOpName("A2"), a1, a1);
 
@@ -242,7 +250,6 @@ TEST_F(GraphPartitionTest, SingleDevice) {
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceData) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
@@ -264,7 +271,6 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceControl) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2").WithControlDependencies(a1), b1, b1);
@@ -288,7 +294,6 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
@@ -312,7 +317,6 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
 }
 
 TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2").WithControlDependencies(a1), b1, b1);
@@ -338,7 +342,6 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
 }
 
 TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   Combine(in_.WithOpName("B2"), a1, b1);
@@ -368,8 +371,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   ExpectMatchB();
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple) {
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
@@ -382,8 +384,7 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   CheckLoopConstruction(ToGraphDef());
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple1) {
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
   auto a3 = ::tensorflow::ops::Merge(in_.WithOpName("A3"),
@@ -405,6 +406,29 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
       }
     }
   }
+}
+
+TEST_F(GraphPartitionTest, CrossDeviceLoopFull) {
+  Scope cpu0 = in_.WithDevice("/job:a/replica:0/task:0/cpu:0");
+  auto p1 = ops::Placeholder(cpu0, DT_INT32);
+  auto p2 = ops::Placeholder(cpu0, DT_INT32);
+  OutputList outputs;
+  // while i1 < 10: i1 += i2
+  TF_ASSERT_OK(ops::BuildWhileLoop(
+      cpu0, {p1, p2},
+      [](const Scope& s, const std::vector<Output>& inputs, Output* output) {
+        *output = ops::Less(s, inputs[0], 10);
+        return s.status();
+      },
+      [](const Scope& s, const std::vector<Output>& inputs,
+         std::vector<Output>* outputs) {
+        Scope cpu1 = s.WithDevice("/job:a/replica:0/task:0/cpu:1");
+        outputs->push_back(ops::AddN(cpu1, {inputs[0], inputs[1]}));
+        outputs->push_back(inputs[1]);
+        return s.status();
+      },
+      "test_loop", &outputs));
+  CheckLoopConstruction(ToGraphDef());
 }
 
 TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {

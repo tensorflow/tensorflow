@@ -19,7 +19,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 
 REGISTER_RESOURCE_HANDLE_OP(DecisionTreeEnsembleResource);
 
@@ -110,5 +110,5 @@ stamp_token: Token to use as the new value of the resource stamp.
 tree_ensemble_config: Serialized proto of the ensemble.
 )doc");
 
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

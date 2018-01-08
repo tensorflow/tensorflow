@@ -26,6 +26,13 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
+// The number of exponent bits in a BF16 value.
+const int kBFloat16ExponentBits = 8;
+
+// The number of mantissa bits in a BF16 value. There is an implicit leading
+// 1, so there is an implicit additional bit of precision.
+const int kBFloat16MantissaBits = 7;
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
@@ -77,8 +84,16 @@ template <>
 PrimitiveType NativeToPrimitiveType<double>();
 template <>
 PrimitiveType NativeToPrimitiveType<half>();
+template <>
+PrimitiveType NativeToPrimitiveType<bfloat16>();
+
+// Complex
+template <>
+PrimitiveType NativeToPrimitiveType<complex64>();
 
 bool IsFloatingPointType(PrimitiveType type);
+
+bool IsComplexType(PrimitiveType type);
 
 bool IsSignedIntegralType(PrimitiveType type);
 
@@ -88,6 +103,10 @@ bool IsIntegralType(PrimitiveType type);
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
+
+// Returns the real, imag component type underlying the given complex type.
+// LOG(FATAL)'s if complex_type is not complex.
+PrimitiveType ComplexComponentType(PrimitiveType complex_type);
 
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).
@@ -157,6 +176,16 @@ struct PrimitiveTypeToNative<F16> {
   using type = half;
 };
 
+template <>
+struct PrimitiveTypeToNative<BF16> {
+  using type = bfloat16;
+};
+
+// Complex
+template <>
+struct PrimitiveTypeToNative<C64> {
+  using type = complex64;
+};
 }  // namespace primitive_util
 }  // namespace xla
 

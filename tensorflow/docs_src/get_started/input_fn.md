@@ -11,7 +11,7 @@ median house values.
 The `input_fn` is used to pass feature and target data to the `train`,
 `evaluate`, and `predict` methods of the `Estimator`.
 The user can do feature engineering or pre-processing inside the `input_fn`.
-Here's an example taken from the @{$estimator$tf.estimator Quickstart tutorial}:
+Here's an example taken from the @{$get_started/estimator$tf.estimator Quickstart tutorial}:
 
 ```python
 import numpy as np
@@ -191,7 +191,7 @@ import pandas as pd
 
 def get_input_fn_from_pandas(data_set, num_epochs=None, shuffle=True):
   return tf.estimator.inputs.pandas_input_fn(
-      x=pdDataFrame(...),
+      x=pd.DataFrame(...),
       y=pd.Series(...),
       num_epochs=num_epochs,
       shuffle=shuffle)
@@ -211,8 +211,8 @@ def get_input_fn_from_numpy(data_set, num_epochs=None, shuffle=True):
 ### A Neural Network Model for Boston House Values
 
 In the remainder of this tutorial, you'll write an input function for
-preprocessing a subset of Boston housing data pulled from the [UCI Housing Data
-Set](https://archive.ics.uci.edu/ml/datasets/Housing) and use it to feed data to
+preprocessing a subset of Boston housing data pulled from the UCI Housing Data
+Set and use it to feed data to
 a neural network regressor for predicting median house values.
 
 The [Boston CSV data sets](#setup) you'll use to train your neural network
@@ -249,7 +249,7 @@ here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/input_fn/bos
 
 ### Importing the Housing Data
 
-To start, set up your imports (including `pandas` and `tensorflow`) and @{$monitors#enabling-logging-with-tensorflow$set logging verbosity} to
+To start, set up your imports (including `pandas` and `tensorflow`) and set logging verbosity to
 `INFO` for more detailed log output:
 
 ```python
@@ -267,8 +267,8 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 Define the column names for the data set in `COLUMNS`. To distinguish features
 from the label, also define `FEATURES` and `LABEL`. Then read the three CSVs
-(@{tf.train},
-@{tf.test}, and
+([train](http://download.tensorflow.org/data/boston_train.csv),
+[test](http://download.tensorflow.org/data/boston_test.csv), and
 [predict](http://download.tensorflow.org/data/boston_predict.csv)) into _pandas_
 `DataFrame`s:
 
@@ -292,7 +292,7 @@ prediction_set = pd.read_csv("boston_predict.csv", skipinitialspace=True,
 Next, create a list of `FeatureColumn`s for the input data, which formally
 specify the set of features to use for training. Because all features in the
 housing data set contain continuous values, you can create their
-`FeatureColumn`s using the `tf.contrib.layers.real_valued_column()` function:
+`FeatureColumn`s using the `tf.feature_column.numeric_column()` function:
 
 ```python
 feature_cols = [tf.feature_column.numeric_column(k) for k in FEATURES]

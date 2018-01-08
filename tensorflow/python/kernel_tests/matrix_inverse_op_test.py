@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -134,6 +135,19 @@ class InverseOpTest(test.TestCase):
               low=-1.0, high=1.0,
               size=np.prod(shape)).reshape(shape).astype(dtype)
           self._verifyInverseReal(matrix)
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for adjoint_ in True, False:
+        matrix1 = random_ops.random_normal([5, 5], seed=42)
+        matrix2 = random_ops.random_normal([5, 5], seed=42)
+        inv1 = linalg_ops.matrix_inverse(matrix1, adjoint=adjoint_)
+        inv2 = linalg_ops.matrix_inverse(matrix2, adjoint=adjoint_)
+        all_ops += [inv1, inv2]
+      inv = sess.run(all_ops)
+      self.assertAllEqual(inv[0], inv[1])
+      self.assertAllEqual(inv[2], inv[3])
 
 
 class MatrixInverseBenchmark(test.Benchmark):

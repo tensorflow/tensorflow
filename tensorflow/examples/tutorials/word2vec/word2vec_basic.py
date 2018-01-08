@@ -86,6 +86,12 @@ def build_dataset(words, n_words):
   reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
   return data, count, dictionary, reversed_dictionary
 
+# Filling 4 global variables:
+# data - list of codes (integers from 0 to vocabulary_size-1).
+#   This is the original text but words are replaced by their codes
+# count - map of words(strings) to count of occurrences
+# dictionary - map of words(strings) to their codes(integers)
+# reverse_dictionary - maps codes(integers) to words(strings)
 data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
                                                             vocabulary_size)
 del vocabulary  # Hint to reduce memory.
@@ -109,14 +115,12 @@ def generate_batch(batch_size, num_skips, skip_window):
   data_index += span
   for i in range(batch_size // num_skips):
     context_words = [w for w in range(span) if w != skip_window]
-    random.shuffle(context_words)
-    words_to_use = collections.deque(context_words)
-    for j in range(num_skips):
+    words_to_use = random.sample(context_words, num_skips)
+    for j, context_word in enumerate(words_to_use):
       batch[i * num_skips + j] = buffer[skip_window]
-      context_word = words_to_use.pop()
       labels[i * num_skips + j, 0] = buffer[context_word]
     if data_index == len(data):
-      buffer[:] = data[:span]
+      buffer.extend(data[0:span])
       data_index = span
     else:
       buffer.append(data[data_index])
@@ -136,14 +140,16 @@ batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
 skip_window = 1       # How many words to consider left and right.
 num_skips = 2         # How many times to reuse an input to generate a label.
+num_sampled = 64      # Number of negative examples to sample.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
 # validation samples to the words that have a low numeric ID, which by
-# construction are also the most frequent.
+# construction are also the most frequent. These 3 variables are used only for
+# displaying model accuracy, they don't affect calculation.
 valid_size = 16     # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
-num_sampled = 64    # Number of negative examples to sample.
+
 
 graph = tf.Graph()
 
@@ -170,6 +176,8 @@ with graph.as_default():
   # Compute the average NCE loss for the batch.
   # tf.nce_loss automatically draws a new sample of the negative labels each
   # time we evaluate the loss.
+  # Explanation of the meaning of NCE loss:
+  #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
   loss = tf.reduce_mean(
       tf.nn.nce_loss(weights=nce_weights,
                      biases=nce_biases,

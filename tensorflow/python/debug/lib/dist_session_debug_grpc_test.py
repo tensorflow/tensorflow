@@ -155,8 +155,6 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
           debug_urls=[self.debug_server_url])
 
       for i in xrange(4):
-        # N.B.: These requests will be fulfilled not in this debugged
-        # Session.run() invocation, but in the next one.
         if i % 2 == 0:
           self.debug_server.request_watch("p", 0, "DebugIdentity")
         else:
@@ -184,12 +182,12 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
         # Due to the gRPC gating of the debug op for "p", the debug tensor
         # should be available on odd-indexed runs.
         if i % 2 == 0:
-          self.assertNotIn("p:0:DebugIdentity",
-                           self.debug_server.debug_tensor_values)
-        else:
           self.assertAllClose(
               [expected_p],
               self.debug_server.debug_tensor_values["p:0:DebugIdentity"])
+        else:
+          self.assertNotIn("p:0:DebugIdentity",
+                           self.debug_server.debug_tensor_values)
 
         self.assertNotIn("b:0:DebugIdentity",
                          self.debug_server.debug_tensor_values)

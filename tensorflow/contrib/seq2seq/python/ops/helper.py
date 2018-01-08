@@ -309,7 +309,7 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
           gen_array_ops.fill([self.batch_size], -1))
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
-    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
+    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperNextInputs",
                         [time, outputs, state, sample_ids]):
       (finished, base_next_inputs, state) = (
           super(ScheduledEmbeddingTrainingHelper, self).next_inputs(
@@ -540,8 +540,7 @@ class GreedyEmbeddingHelper(Helper):
     if not isinstance(outputs, ops.Tensor):
       raise TypeError("Expected outputs to be a single Tensor, got: %s" %
                       type(outputs))
-    sample_ids = math_ops.cast(
-        math_ops.argmax(outputs, axis=-1), dtypes.int32)
+    sample_ids = math_ops.argmax(outputs, axis=-1, output_type=dtypes.int32)
     return sample_ids
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):

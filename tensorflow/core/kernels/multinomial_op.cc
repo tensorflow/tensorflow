@@ -40,7 +40,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename OutputType>
 struct MultinomialFunctor {
   void operator()(OpKernelContext* ctx, const Device& d,
                   typename TTypes<T>::ConstMatrix logits,
@@ -49,11 +49,11 @@ struct MultinomialFunctor {
                   typename TTypes<float>::Flat scratch, int batch_size,
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output);
+                  typename TTypes<OutputType>::Matrix output);
 };
 
-template <typename T>
-struct MultinomialFunctor<CPUDevice, T> {
+template <typename T, typename OutputType>
+struct MultinomialFunctor<CPUDevice, T, OutputType> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<float>::Flat /* noises */,
@@ -61,7 +61,7 @@ struct MultinomialFunctor<CPUDevice, T> {
                   typename TTypes<float>::Flat /* scratch */, int batch_size,
                   int num_classes, int num_samples,
                   const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output) {
+                  typename TTypes<OutputType>::Matrix output) {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     // The implementation only parallelizes by batch.
@@ -128,7 +128,7 @@ struct MultinomialFunctor<CPUDevice, T> {
 }  // namespace functor
 
 // Samples from a multinomial distribution.
-template <typename Device, typename T>
+template <typename Device, typename T, typename OutputType>
 class MultinomialOp : public OpKernel {
  public:
   explicit MultinomialOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -195,11 +195,11 @@ class MultinomialOp : public OpKernel {
       if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
       auto rng =
           generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
-      functor::MultinomialFunctor<Device, T>()(
+      functor::MultinomialFunctor<Device, T, OutputType>()(
           ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
           noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
           batch_size, num_classes, num_samples, rng,
-          samples_t->matrix<int64>());
+          samples_t->matrix<OutputType>());
     }
   }
 
@@ -209,10 +209,17 @@ class MultinomialOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MultinomialOp);
 };
 
-#define REGISTER(TYPE)                                                  \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("Multinomial").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      MultinomialOp<CPUDevice, TYPE>);
+#define REGISTER(TYPE)                                                   \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT32), \
+                          MultinomialOp<CPUDevice, TYPE, int32>);        \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT64), \
+                          MultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
@@ -220,12 +227,20 @@ TF_CALL_double(REGISTER);
 #undef REGISTER
 
 #if GOOGLE_CUDA
-#define REGISTER(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(Name("Multinomial")             \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("num_samples")  \
-                              .TypeConstraint<TYPE>("T"), \
-                          MultinomialOp<GPUDevice, TYPE>)
+#define REGISTER(TYPE)                                                   \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_GPU)                        \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT32), \
+                          MultinomialOp<GPUDevice, TYPE, int32>)         \
+  REGISTER_KERNEL_BUILDER(Name("Multinomial")                            \
+                              .Device(DEVICE_GPU)                        \
+                              .HostMemory("num_samples")                 \
+                              .TypeConstraint<TYPE>("T")                 \
+                              .TypeConstraint("output_dtype", DT_INT64), \
+                          MultinomialOp<GPUDevice, TYPE, int64>)
+
 TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);

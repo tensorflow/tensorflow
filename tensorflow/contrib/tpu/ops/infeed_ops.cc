@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -26,14 +27,7 @@ REGISTER_OP("InfeedDequeue")
     .Attr("dtype: type")
     .Attr("shape: shape")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
-      c->set_output(0, out);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 

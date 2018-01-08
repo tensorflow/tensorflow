@@ -112,7 +112,7 @@ const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -124,7 +124,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
 
 Status OpKernel::OutputRange(StringPiece output_name, int* start,
                              int* stop) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -191,6 +191,10 @@ OpKernelConstruction::OpKernelConstruction(
       output_memory_types_(output_memory_types),
       graph_def_version_(graph_def_version),
       status_(status) {}
+
+bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+  return HasNodeAttr(def(), attr_name);
+}
 
 void OpKernelConstruction::SetStatus(const Status& status) {
   status_->Update(status);
@@ -622,8 +626,10 @@ Status OpKernelContext::allocate_tensor(
   Tensor new_tensor(a, type, shape, logged_attr);
 
   if (!new_tensor.IsInitialized()) {
-    return errors::ResourceExhausted("OOM when allocating tensor with shape",
-                                     shape.DebugString());
+    return errors::ResourceExhausted(
+        "OOM when allocating tensor with shape", shape.DebugString(),
+        " and type ", DataTypeString(type), " on ", params_->device->name(),
+        " by allocator ", a->Name());
   }
   if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),

@@ -16,61 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
 #define TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
 
-// Generator definition for MatrixBandPartOp, must be compilable by nvcc.
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-namespace generator {
-
-template <typename T>
-class MatrixBandPartGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE MatrixBandPartGenerator(
-      Eigen::DenseIndex num_lower, Eigen::DenseIndex num_upper,
-      typename TTypes<T, 3>::ConstTensor input)
-      : num_lower_(num_lower), num_upper_(num_upper), input_(input) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 3>& coords) const {
-    return (((num_lower_ < 0 || coords[1] - coords[2] <= num_lower_) &&
-             (num_upper_ < 0 || coords[2] - coords[1] <= num_upper_))
-                ? input_(coords)
-                : T());
-  }
-
- private:
-  const Eigen::DenseIndex num_lower_;
-  const Eigen::DenseIndex num_upper_;
-  typename TTypes<T, 3>::ConstTensor input_;
-};
-
-}  // namespace generator
-
 namespace functor {
 
-template <typename Device, typename T>
-struct MatrixBandPart {
-  EIGEN_ALWAYS_INLINE static void Compute(
-      const Device& d, Eigen::DenseIndex num_lower, Eigen::DenseIndex num_upper,
-      typename TTypes<T, 3>::ConstTensor input,
-      typename TTypes<T, 3>::Tensor output) {
-    if ((num_lower < 0 || num_lower >= input.dimension(1)) &&
-        (num_upper < 0 || num_upper >= input.dimension(2))) {
-      output.device(d) = input;
-    } else {
-      generator::MatrixBandPartGenerator<T> generator(num_lower, num_upper,
-                                                      input);
-      output.device(d) = output.generate(generator);
-    }
-  }
+template <typename Device, typename Scalar>
+struct MatrixBandPartFunctor {
+  void operator()(OpKernelContext* context, const Device& device,
+                  int num_upper_diags, int num_lower_diags,
+                  typename TTypes<Scalar, 3>::ConstTensor input,
+                  typename TTypes<Scalar, 3>::Tensor output);
 };
 
 }  // namespace functor
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_

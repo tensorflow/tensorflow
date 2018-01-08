@@ -9,9 +9,13 @@ option java_package = "org.tensorflow.framework";
 import "tensorflow/core/framework/allocation_description.proto";
 import "tensorflow/core/framework/tensor_description.proto";
 
-// TODO(tucker): The next 4 message defs are very similar to
-// the *LogEntry messages in profile.proto.  They should be
-// unified in one place.
+// An allocation/de-allocation operation performed by the allocator.
+message AllocationRecord {
+  // The timestamp of the operation.
+  int64 alloc_micros = 1;
+  // Number of bytes allocated, or de-allocated if negative.
+  int64 alloc_bytes = 2;
+}
 
 message AllocatorMemoryUsed {
   string allocator_name = 1;
@@ -20,6 +24,8 @@ message AllocatorMemoryUsed {
   int64 peak_bytes = 3;
   // The bytes that are not deallocated.
   int64 live_bytes = 4;
+  // The allocation and deallocation timeline.
+  repeated AllocationRecord allocation_records = 6;
 
   // These are snapshots of the overall allocator memory stats.
   // The number of live bytes currently allocated by the allocator.

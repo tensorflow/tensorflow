@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "DenseToSparseBatchDataset"
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A handle to an input dataset. Must have a single component.
+END
+  }
+  in_arg {
+    name: "batch_size"
+    description: <<END
+A scalar representing the number of elements to accumulate in a
+batch.
+END
+  }
+  in_arg {
+    name: "row_shape"
+    description: <<END
+A vector representing the dense shape of each row in the produced
+SparseTensor. The shape may be partially specified, using `-1` to indicate
+that a particular dimension should use the maximum size of all batch elements.
+END
+  }
+  summary: "Creates a dataset that batches input elements into a SparseTensor."
+}

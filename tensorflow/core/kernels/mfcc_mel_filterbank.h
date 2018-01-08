@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Basic class for applying a mel-scale filterbank to an input.
+// Basic class for applying a mel-scale mapping to a power spectrum.
 
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
@@ -32,8 +32,9 @@ class MfccMelFilterbank {
                   double lower_frequency_limit,
                   double upper_frequency_limit);
 
-  // Takes a magnitude spectrogram slice as input, computes a
-  // traingular mel filterbank and places the result in output.
+  // Takes a squared-magnitude spectrogram slice as input, computes a
+  // triangular-mel-weighted linear-magnitude filterbank, and places the result
+  // in output.
   void Compute(const std::vector<double>& input,
                std::vector<double>* output) const;
 

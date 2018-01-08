@@ -234,6 +234,15 @@ class CollectNamedOutputsTest(test.TestCase):
     self.assertEqual(end_points['a21'], t2)
     self.assertEqual(end_points['a22'], t2)
 
+  def test_convert_collection_to_dict_clear_collection(self):
+    t1 = constant_op.constant(1.0, name='t1')
+    t2 = constant_op.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a21', t2)
+    utils.collect_named_outputs('end_points', 'a22', t2)
+    utils.convert_collection_to_dict('end_points', clear_collection=True)
+    self.assertEqual(ops.get_collection('end_points'), [])
+
 
 class NPositiveIntegersTest(test.TestCase):
 

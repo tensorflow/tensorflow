@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
@@ -48,7 +50,6 @@ class ReadVariableOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
-REGISTER_XLA_OP(Name("_UnsafeReadVariable"), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -112,14 +113,36 @@ class ResourceGatherOp : public XlaOpKernel {
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
+    DataType index_type = ctx->input_type(1);
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, resource_handle, resource_shape, indices, indices_shape,
-        resource_dtype, builder);
+        ctx, resource_handle, resource_shape, indices, indices_shape, 0,
+        resource_dtype, index_type, builder);
     ctx->SetOutput(0, gather);
   }
 };
 REGISTER_XLA_OP(Name("ResourceGather").TypeConstraint("dtype", kNumericTypes),
                 ResourceGatherOp);
 
+class VariableShapeOp : public XlaOpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType variable_dtype;
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetVariableTypeAndShape(0, &variable_dtype, &shape));
+    Tensor shape_constant(out_dtype_, TensorShape({shape.dims()}));
+    OP_REQUIRES_OK(ctx, TensorShapeToConstant(shape, &shape_constant));
+    ctx->SetConstantOutput(0, shape_constant);
+  }
+
+ private:
+  DataType out_dtype_;
+};
+
+REGISTER_XLA_OP(Name("VariableShape"), VariableShapeOp);
 }  // namespace
 }  // namespace tensorflow

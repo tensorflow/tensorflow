@@ -20,13 +20,13 @@ import java.util.Objects;
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *
- * <p>An Output is a symbolic handle to a tensor. The value of the Tensor is computed by executing
- * the {@link Operation} in a {@link Session}.
+ * <p>An {@code Output<T>} is a symbolic handle to a {@code Tensor<T>}. The value of the tensor is
+ * computed by executing the {@link Operation} in a {@link Session}.
  *
  * <p>By implementing the {@link Operand} interface, instances of this class also act as operands to
  * {@link org.tensorflow.op.Op Op} instances.
  */
-public final class Output implements Operand {
+public final class Output<T> implements Operand<T> {
 
   /** Handle to the idx-th output of the Operation {@code op}. */
   public Output(Operation op, int idx) {
@@ -55,7 +55,7 @@ public final class Output implements Operand {
   }
 
   @Override
-  public Output asOutput() {
+  public Output<T> asOutput() {
     return this;
   }
 
@@ -69,8 +69,8 @@ public final class Output implements Operand {
     if (o == this) {
       return true;
     }
-    if (o instanceof Output) {
-      Output that = (Output) o;
+    if (o instanceof Output<?>) {
+      Output<?> that = (Output<?>) o;
       return index == that.index && operation.equals(that.operation);
     }
     return false;

@@ -133,17 +133,23 @@ num_partitions: The number of partitions to output.
 namespace {
 
 Status DynamicStitchShapeFunction(InferenceContext* c) {
-  int64 num_partitions;
+  int32 num_partitions;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
+  bool all_indices_constant = true;
+  int32 max_index = 0;
   ShapeHandle extra_shape = c->UnknownShape();
-  for (int64 i = 0; i < num_partitions; ++i) {
+  for (int i = 0; i < num_partitions; ++i) {
+    const Tensor* indices_t = c->input_tensor(i);
+    if (indices_t == nullptr) {
+      all_indices_constant = false;
+    }
+
     ShapeHandle indices_shape = c->input(i);
     ShapeHandle data_shape = c->input(i + num_partitions);
     if (!c->RankKnown(indices_shape)) {
       continue;
     }
-
     const int64 indices_rank = c->Rank(indices_shape);
 
     // Assert that data_shape starts with indices_shape.
@@ -155,9 +161,21 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     ShapeHandle rest;
     TF_RETURN_IF_ERROR(c->Subshape(data_shape, indices_rank, &rest));
     TF_RETURN_IF_ERROR(c->Merge(extra_shape, rest, &extra_shape));
+
+    if (indices_t != nullptr) {
+      // The length is based on the highest index from flattened indices.
+      const int32* indices = indices_t->flat<int32>().data();
+      int64 count = indices_t->NumElements();
+      for (int64 i = 0; i < count; ++i) {
+        if (indices[i] > max_index) {
+          max_index = indices[i];
+        }
+      }
+    }
   }
 
-  ShapeHandle output_shape = c->Vector(c->UnknownDim());
+  ShapeHandle output_shape = c->Vector(
+      all_indices_constant ? c->MakeDim(max_index + 1) : c->UnknownDim());
   TF_RETURN_IF_ERROR(c->Concatenate(output_shape, extra_shape, &output_shape));
   c->set_output(0, output_shape);
   return Status::OK();
@@ -1328,6 +1346,7 @@ REGISTER_OP("TensorArrayV3")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .Attr("dynamic_size: bool = false")
     .Attr("clear_after_read: bool = true")
+    .Attr("identical_element_shapes: bool = false")
     .Attr("tensor_array_name: string = ''")
     .Output("handle: resource")
     .Output("flow: float")
@@ -1337,6 +1356,19 @@ REGISTER_OP("TensorArrayV3")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(2));
       c->set_output(1, c->Scalar());
+      bool identical_shapes;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("identical_element_shapes", &identical_shapes));
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
+      PartialTensorShape p;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &p));
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
+      if (c->FullyDefined(s) || identical_shapes) {
+        c->set_output_handle_shapes_and_types(
+            0, std::vector<shape_inference::ShapeAndType>{{s, t}});
+      }
       return Status::OK();
     })
     .Doc(R"doc(
@@ -1356,6 +1388,12 @@ dynamic_size: A boolean that determines whether writes to the TensorArray
 clear_after_read: If true (default), Tensors in the TensorArray are cleared
   after being read.  This disables multiple read semantics but allows early
   release of memory.
+identical_element_shapes: If true (default is false), then all
+  elements in the TensorArray will be expected to have have identical shapes.
+  This allows certain behaviors, like dynamically checking for
+  consistent shapes on write, and being able to fill in properly
+  shaped zero tensors on stack -- even if the element_shape attribute
+  is not fully defined.
 tensor_array_name: Overrides the name used for the temporary tensor_array
   resource. Default value is the name of the 'TensorArray' op (which
   is guaranteed unique).
@@ -1375,6 +1413,10 @@ REGISTER_OP("TensorArrayGradV3")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
       c->set_output(1, c->Scalar());
+      if (c->input_handle_shapes_and_types(0)) {
+        c->set_output_handle_shapes_and_types(
+            0, *c->input_handle_shapes_and_types(0));
+      }
       return Status::OK();
     })
     .Doc(R"doc(
@@ -1439,6 +1481,15 @@ REGISTER_OP("TensorArrayWriteV3")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr && !handle_data->empty()) {
+        shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
+        ShapeHandle value_shape = c->input(2);
+        TF_RETURN_IF_ERROR(
+            c->Merge(shape_and_type.shape, value_shape, &unused));
+      }
+
       return shape_inference::ScalarShape(c);
     })
     .Doc(R"doc(
@@ -1465,7 +1516,14 @@ REGISTER_OP("TensorArrayReadV3")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      return shape_inference::UnknownShape(c);
+      auto shapes = c->input_handle_shapes_and_types(0);
+      if (shapes != nullptr && !shapes->empty()) {
+        ShapeHandle tensor_shape = shapes->at(0).shape;
+        c->set_output(0, tensor_shape);
+        return Status::OK();
+      } else {
+        return shape_inference::UnknownShape(c);
+      }
     })
     .Doc(R"doc(
 Read an element from the TensorArray into output `value`.
@@ -2096,6 +2154,7 @@ REGISTER_OP("GetSessionHandle")
     .Input("value: T")
     .Output("handle: string")
     .Attr("T: type")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Store the input tensor in the state of the current session.
@@ -2109,6 +2168,7 @@ REGISTER_OP("GetSessionHandleV2")
     .Input("value: T")
     .Output("handle: resource")
     .Attr("T: type")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Store the input tensor in the state of the current session.
@@ -2122,6 +2182,7 @@ REGISTER_OP("GetSessionTensor")
     .Input("handle: string")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -2137,6 +2198,7 @@ dtype: The type of the output value.
 
 REGISTER_OP("DeleteSessionTensor")
     .Input("handle: string")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -2206,7 +2268,6 @@ underlying container does not contain sufficient elements
 this op will block until it does.   This Op is optimized for
 performance.
     )doc");
-
 
 REGISTER_OP("StageSize")
     .Output("size: int32")
@@ -2336,7 +2397,6 @@ REGISTER_OP("MapIncompleteSize")
 Op returns the number of incomplete elements in the underlying container.
     )doc");
 
-
 REGISTER_OP("MapClear")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2348,7 +2408,6 @@ REGISTER_OP("MapClear")
     .Doc(R"doc(
 Op removes all elements in the underlying container.
     )doc");
-
 
 // OrderedMap
 REGISTER_OP("OrderedMapStage")
@@ -2475,6 +2534,7 @@ REGISTER_OP("RecordInput")
     .Attr("file_buffer_size: int = 10000")
     .Attr("file_parallelism: int = 16")
     .Attr("batch_size: int = 32")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2488,6 +2548,8 @@ file_shuffle_shift_ratio: Shifts the list of files after the list is randomly
 file_buffer_size: The randomization shuffling buffer.
 file_parallelism: How many sstables are opened and concurrently iterated over.
 batch_size: The batch size.
+compression_type: The type of compression for the file. Currently ZLIB and
+    GZIP are supported. Defaults to none.
 )doc");
 
 }  // namespace tensorflow

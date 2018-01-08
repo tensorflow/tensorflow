@@ -28,10 +28,12 @@ namespace tfprof {
 
 typedef std::map<string, string> Event;
 
+// Class for generating timeline json output.
 class ChromeTraceFormatter {
  public:
   ChromeTraceFormatter() {}
-
+  // The following methods creates timeline nodes. See chrome tracing format
+  // document for details.
   Json::Value CreateEvent(const string& ph, const string& category,
                           const string& name, int64 pid, int64 tid, int64 ts);
 
@@ -47,22 +49,27 @@ class ChromeTraceFormatter {
                    int64 flow_id);
 
   void EmitCounter(const string& category, const string& name, int64 pid,
-                   int64 ts, const string& device, int64 bytes);
+                   int64 ts, const string& device, int64 bytes,
+                   const std::map<int64, std::vector<string>>& tensor_mem);
 
   string Format();
 
  private:
+  // A event is a visualization unit in timeline.
   std::vector<Json::Value> events_;
   std::vector<Json::Value> metadata_;
 };
 
+// A process (time series of events) in the timeline.
 class Process {
  public:
   Process(const string& device, int64 pid) : device(device), pid(pid) {}
 
   // Each lane is a map from start_time to end_time.
   std::vector<std::map<int64, int64>> lanes;
+  // device for the time series.
   string device;
+  // unique id for the time series.
   int64 pid;
 };
 
@@ -96,18 +103,15 @@ class MemoryTracker {
  public:
   class Device {
    public:
-    // The first 3 fields are predicted.
-    std::map<string, int64> tensor_size;
-    std::map<string, int64> earliest_ref;
-    std::map<string, int64> latest_ref;
+    // map from tensor name to a pair of <alloc time, bytes_in_use>.
+    std::map<string, std::map<int64, int64>> tensor_allocs;
     // ground truth memory stats. time->bytes.
-    std::map<int64, int64> allocator_stats;
+    std::map<int64, int64> allocations;
+    // tracked allocations, might miss some bytes.
+    std::map<int64, int64> tracked_allocations;
   };
 
   void TrackNode(int64 step, const GraphNode* node);
-
-  void TrackNodeConnection(int64 step, const GraphNode* node,
-                           const GraphNode* src);
 
   const std::map<string, Device>& devices() const { return devices_; }
 
@@ -130,13 +134,9 @@ class Timeline {
 
   void GenerateCodeTimeline(const CodeNode* node);
 
+ private:
   void TrackNode(const GraphNode* node) { mem_tracker_.TrackNode(step_, node); }
 
-  void TrackNodeConnection(GraphNode* node, GraphNode* src) {
-    mem_tracker_.TrackNodeConnection(step_, node, src);
-  }
-
- private:
   void OutputTimeline();
 
   template <typename Node>

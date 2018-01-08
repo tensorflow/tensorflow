@@ -44,8 +44,10 @@ using tensorflow::int64;
 %unignore tensorflow::tfprof;
 %unignore tensorflow::tfprof::PrintModelAnalysis;
 %unignore tensorflow::tfprof::NewProfiler;
+%unignore tensorflow::tfprof::ProfilerFromFile;
 %unignore tensorflow::tfprof::DeleteProfiler;
 %unignore tensorflow::tfprof::AddStep;
+%unignore tensorflow::tfprof::WriteProfile;
 %unignore tensorflow::tfprof::Profile;
 
 %include "tensorflow/core/profiler/internal/print_model_analysis.h"

@@ -33,21 +33,26 @@ def StopOnEvent(coord, wait_for_stop, set_when_stopped):
   set_when_stopped.set()
 
 
-def RaiseInN(coord, n_secs, ex, report_exception):
+def RaiseOnEvent(coord, wait_for_stop, set_when_stopped, ex, report_exception):
   try:
-    time.sleep(n_secs)
+    wait_for_stop.wait()
     raise ex
   except RuntimeError as e:
     if report_exception:
       coord.request_stop(e)
     else:
       coord.request_stop(sys.exc_info())
+  finally:
+    if set_when_stopped:
+      set_when_stopped.set()
 
 
-def RaiseInNUsingContextHandler(coord, n_secs, ex):
+def RaiseOnEventUsingContextHandler(coord, wait_for_stop, set_when_stopped, ex):
   with coord.stop_on_exception():
-    time.sleep(n_secs)
+    wait_for_stop.wait()
     raise ex
+  if set_when_stopped:
+    set_when_stopped.set()
 
 
 def SleepABit(n_secs, coord=None):
@@ -167,80 +172,113 @@ class CoordinatorTest(test.TestCase):
 
   def testJoinRaiseReportExcInfo(self):
     coord = coordinator.Coordinator()
+    ev_1 = threading.Event()
+    ev_2 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01, RuntimeError("First"), False)),
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.05, RuntimeError("Too late"), False))]
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, ev_2, RuntimeError("First"), False)),
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_2, None, RuntimeError("Too late"), False))]
     for t in threads:
       t.start()
+
+    ev_1.set()
+
     with self.assertRaisesRegexp(RuntimeError, "First"):
       coord.join(threads)
 
   def testJoinRaiseReportException(self):
     coord = coordinator.Coordinator()
+    ev_1 = threading.Event()
+    ev_2 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01, RuntimeError("First"), True)),
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.05, RuntimeError("Too late"), True))]
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, ev_2, RuntimeError("First"), True)),
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_2, None, RuntimeError("Too late"), True))]
     for t in threads:
       t.start()
+
+    ev_1.set()
     with self.assertRaisesRegexp(RuntimeError, "First"):
       coord.join(threads)
 
   def testJoinIgnoresOutOfRange(self):
     coord = coordinator.Coordinator()
+    ev_1 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01,
-                               errors_impl.OutOfRangeError(None, None, "First"),
-                               True))
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, None,
+                  errors_impl.OutOfRangeError(None, None, "First"),
+                  True))
         ]
     for t in threads:
       t.start()
+
+    ev_1.set()
     coord.join(threads)
 
   def testJoinIgnoresMyExceptionType(self):
     coord = coordinator.Coordinator(clean_stop_exception_types=(ValueError,))
+    ev_1 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01, ValueError("Clean stop"), True))
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, None, ValueError("Clean stop"), True))
         ]
     for t in threads:
       t.start()
+
+    ev_1.set()
     coord.join(threads)
 
   def testJoinRaiseReportExceptionUsingHandler(self):
     coord = coordinator.Coordinator()
+    ev_1 = threading.Event()
+    ev_2 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInNUsingContextHandler,
-                         args=(coord, 0.01, RuntimeError("First"))),
-        threading.Thread(target=RaiseInNUsingContextHandler,
-                         args=(coord, 0.05, RuntimeError("Too late")))]
+        threading.Thread(
+            target=RaiseOnEventUsingContextHandler,
+            args=(coord, ev_1, ev_2, RuntimeError("First"))),
+        threading.Thread(
+            target=RaiseOnEventUsingContextHandler,
+            args=(coord, ev_2, None, RuntimeError("Too late")))]
     for t in threads:
       t.start()
+
+    ev_1.set()
     with self.assertRaisesRegexp(RuntimeError, "First"):
       coord.join(threads)
 
   def testClearStopClearsExceptionToo(self):
     coord = coordinator.Coordinator()
+    ev_1 = threading.Event()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01, RuntimeError("First"), True)),
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, None, RuntimeError("First"), True)),
         ]
     for t in threads:
       t.start()
+
     with self.assertRaisesRegexp(RuntimeError, "First"):
+      ev_1.set()
       coord.join(threads)
     coord.clear_stop()
     threads = [
-        threading.Thread(target=RaiseInN,
-                         args=(coord, 0.01, RuntimeError("Second"), True)),
+        threading.Thread(
+            target=RaiseOnEvent,
+            args=(coord, ev_1, None, RuntimeError("Second"), True)),
         ]
     for t in threads:
       t.start()
     with self.assertRaisesRegexp(RuntimeError, "Second"):
+      ev_1.set()
       coord.join(threads)
 
   def testRequestStopRaisesIfJoined(self):

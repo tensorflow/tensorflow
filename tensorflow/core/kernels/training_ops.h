@@ -161,6 +161,29 @@ struct ApplyCenteredRMSProp {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad);
 };
+
+template <typename Device, typename T>
+struct ApplyAddSign {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar alpha,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T>
+struct ApplyPowerSign {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar logbase,
+                  typename TTypes<T>::ConstScalar sign_decay,
+                  typename TTypes<T>::ConstScalar beta,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 
