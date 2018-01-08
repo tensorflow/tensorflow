@@ -836,8 +836,8 @@ def mean_per_class_accuracy(labels,
       shape is [batch size] and type `int32` or `int64`. The tensor will be
       flattened if its rank > 1.
     num_classes: The possible number of labels the prediction task can
-      have. This value must be provided, since a confusion matrix of
-      dimension = [num_classes, num_classes] will be allocated.
+      have. This value must be provided, since two variables with shape =
+      [num_classes] will be allocated.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -865,27 +865,38 @@ def mean_per_class_accuracy(labels,
 
   with variable_scope.variable_scope(name, 'mean_accuracy',
                                      (predictions, labels, weights)):
+    # Flatten the input if its rank > 1.
+    if labels.get_shape().ndims > 1:
+      labels = array_ops.reshape(labels, [-1])
+
+    if predictions.get_shape().ndims > 1:
+      predictions = array_ops.reshape(predictions, [-1])
+
     # Check if shape is compatible.
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    total_cm, update_op = _streaming_confusion_matrix(
-        labels, predictions, num_classes, weights=weights)
+    total = metric_variable([num_classes], dtypes.float32, name='total')
+    count = metric_variable([num_classes], dtypes.float32, name='count')
 
-    def compute_mean_accuracy(name):
-      """Compute the mean per class accuracy via the confusion matrix."""
-      per_row_sum = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
-      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
-      denominator = per_row_sum
+    ones = array_ops.ones([array_ops.size(labels)], dtypes.float32)
 
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = array_ops.where(
-          math_ops.greater(denominator, 0), denominator,
-          array_ops.ones_like(denominator))
-      accuracies = math_ops.div(cm_diag, denominator)
-      return math_ops.reduce_mean(accuracies, name=name)
+    if labels.dtype != predictions.dtype:
+      predictions = math_ops.cast(predictions, labels.dtype)
+    is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
 
-    mean_accuracy_v = compute_mean_accuracy('mean_accuracy')
+    if weights is not None:
+      is_correct = is_correct * weights
+
+    update_total_op = state_ops.scatter_add(total, labels, ones)
+    update_count_op = state_ops.scatter_add(count, labels, is_correct)
+
+    per_class_accuracy = _safe_div(count, total, None)
+    per_class_accuracy_update = _safe_div(update_count_op, update_total_op,
+                                          None)
+
+    mean_accuracy_v = math_ops.reduce_mean(per_class_accuracy, name='value')
+    update_op = math_ops.reduce_mean(per_class_accuracy_update,
+                                     name='update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_accuracy_v)
