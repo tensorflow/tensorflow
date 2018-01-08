@@ -158,15 +158,13 @@ bool ComputationBuilder::MakeWindow(
   return true;
 }
 
-ComputationDataHandle ComputationBuilder::ConstantOp(
-    const PopulateLiteral& populate) {
+ComputationDataHandle ComputationBuilder::ConstantLiteral(
+    const Literal& literal) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
 
   ConstantRequest request;
-  Literal literal;
-  populate(&literal);
   *request.mutable_literal() = literal.ToProto();
   VLOG(3) << "created constant: " << request.literal().ShortDebugString();
   OpRequest op_request;
@@ -178,12 +176,6 @@ ComputationDataHandle ComputationBuilder::ConstantOp(
   VLOG(2) << "making constant request";
   Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
-}
-
-ComputationDataHandle ComputationBuilder::ConstantLiteral(
-    const Literal& literal) {
-  return ConstantOp(
-      [literal](Literal* mutable_literal) { *mutable_literal = literal; });
 }
 
 ComputationDataHandle ComputationBuilder::Parameter(int64 parameter_number,
@@ -1456,7 +1448,7 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
         "no computed literal in the provided response in ComputeConstant "
         "request");
   }
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(response.literal());
 }
 
 ComputationDataHandle ComputationBuilder::Map(

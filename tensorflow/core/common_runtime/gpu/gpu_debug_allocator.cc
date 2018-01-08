@@ -139,6 +139,8 @@ void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
   base_allocator_->GetStats(stats);
 }
 
+void GPUDebugAllocator::ClearStats() { base_allocator_->ClearStats(); }
+
 bool GPUDebugAllocator::CheckHeader(void* ptr) {
   return CheckMask(stream_exec_, static_cast<char*>(ptr) - MASK_BYTES,
                    before_mask);
@@ -210,5 +212,7 @@ size_t GPUNanResetAllocator::AllocatedSize(void* ptr) {
 void GPUNanResetAllocator::GetStats(AllocatorStats* stats) {
   base_allocator_->GetStats(stats);
 }
+
+void GPUNanResetAllocator::ClearStats() { base_allocator_->ClearStats(); }
 
 }  // namespace tensorflow

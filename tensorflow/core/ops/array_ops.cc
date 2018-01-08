@@ -1822,6 +1822,21 @@ Identity op for gradient debugging.
 
 This op is hidden from public in Python. It is used by TensorFlow Debugger to
 register gradient tensors for gradient debugging.
+This op operates on non-reference-type tensors.
+)Doc");
+
+REGISTER_OP("DebugGradientRefIdentity")
+    .Input("input: Ref(T)")
+    .Output("output: Ref(T)")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetAllowsUninitializedInput()
+    .Doc(R"Doc(
+Identity op for gradient debugging.
+
+This op is hidden from public in Python. It is used by TensorFlow Debugger to
+register gradient tensors for gradient debugging.
+This op operates on reference-type tensors.
 )Doc");
 
 // --------------------------------------------------------------------------

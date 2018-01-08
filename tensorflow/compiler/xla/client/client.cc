@@ -60,7 +60,7 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(*response.mutable_literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
@@ -142,7 +142,7 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(response.literal());
 }
 
 Status Client::ResetDevice() {

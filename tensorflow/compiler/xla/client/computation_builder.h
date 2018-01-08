@@ -830,8 +830,6 @@ class ComputationBuilder {
   Status first_error() const { return first_error_; }
 
  private:
-  using PopulateLiteral = std::function<void(Literal*)>;
-
   // Limited checking of convolution parameters. Returns false on
   // error.
   bool VerifyConvolution(const Shape& lhs_shape, const Shape& rhs_shape,
@@ -849,11 +847,6 @@ class ComputationBuilder {
                   tensorflow::gtl::ArraySlice<int64> lhs_dilation,
                   tensorflow::gtl::ArraySlice<int64> rhs_dilation,
                   Window* window);
-
-  // Internal helper method that makes a request for a constant operation -- the
-  // provided function is used to populate the literal before sending the
-  // request.
-  ComputationDataHandle ConstantOp(const PopulateLiteral& populate);
 
   // Internal helper method that does the building for an arbitrary unary op.
   ComputationDataHandle UnaryOp(UnaryOperation binop,
@@ -930,68 +923,66 @@ class ComputationBuilder {
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR0(NativeT value) {
-  return ConstantOp([value](Literal* literal) { literal->PopulateR0(value); });
+  return ConstantLiteral(*Literal::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR1(values); });
+  return ConstantLiteral(*Literal::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(int64 length,
                                                      NativeT value) {
-  return ConstantOp([length, value](Literal* literal) {
-    literal->PopulateWithValue(value, {length});
-  });
+  Literal literal(ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<NativeT>(), {length}));
+  literal.PopulateWithValue(value);
+  return ConstantLiteral(literal);
 }
 
 inline ComputationDataHandle ComputationBuilder::ConstantR1(
     const tensorflow::core::Bitmap& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR1(values); });
+  return ConstantLiteral(*Literal::CreateR1(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR2(values); });
+  return ConstantLiteral(*Literal::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateFromArrayWithLayout(values, layout);
-  });
+  return ConstantLiteral(
+      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantFromArray(
     const Array<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateFromArray(values); });
+  return ConstantLiteral(*Literal::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
+  return ConstantLiteral(
+      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantFromArray(values);
+  return ConstantLiteral(*Literal::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
+  return ConstantLiteral(
+      *Literal::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>

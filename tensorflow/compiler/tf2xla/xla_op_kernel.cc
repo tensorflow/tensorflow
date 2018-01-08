@@ -206,15 +206,15 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   switch (literal.shape().element_type()) {
-    case xla::S32:
-      out->Clear();
-      *out->mutable_shape() = literal.shape();
-      out->mutable_shape()->set_element_type(xla::S64);
-      for (int32 x : literal.s32s()) {
-        out->add_s64s(x);
+    case xla::S32: {
+      *out = xla::Literal(
+          xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
+      auto src_data = literal.data<int32>();
+      for (int64 i = 0; i < src_data.size(); ++i) {
+        out->data<int64>()[i] = src_data[i];
       }
       return Status::OK();
-
+    }
     case xla::S64:
       *out = std::move(literal);
       return Status::OK();

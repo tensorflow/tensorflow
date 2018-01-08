@@ -311,7 +311,7 @@ tensorflow::ImportNumpy();
   const int size = PySequence_Size($input);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    temps.push_back(*numpy::XlaLiteralFromPyObject(o));
+    temps.push_back(std::move(*numpy::XlaLiteralFromPyObject(o)));
     Py_DECREF(o);
   }
   $1 = &temps;

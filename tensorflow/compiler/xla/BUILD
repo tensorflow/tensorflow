@@ -300,6 +300,7 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":shape_tree",
         ":shape_util",
         ":status_macros",
         ":types",

@@ -59,6 +59,11 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return out;
 }
 
+std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index) {
+  out << shape_index.ToString();
+  return out;
+}
+
 namespace {
 
 // Recursive helper for comparing the equality of two shapes. Returns true if
@@ -148,7 +153,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ int64 ShapeUtil::Rank(const Shape& shape) {
-  CHECK(!ShapeUtil::IsTuple(shape)) << "Tuples do not have a rank";
+  CHECK(!ShapeUtil::IsTuple(shape))
+      << "Tuples do not have a rank, shape: " << shape;
   return shape.dimensions_size();
 }
 
@@ -735,7 +741,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                                                  ShapeIndexView index) {
   const Shape* return_shape = &shape;
   for (auto i : index) {
-    CHECK(IsTuple(*return_shape));
+    CHECK(IsTuple(*return_shape))
+        << "Invalid index " << index << " for shape " << shape;
     return_shape = &return_shape->tuple_shapes(i);
   }
   return *return_shape;
@@ -1350,6 +1357,11 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
+}
+
+std::ostream& operator<<(std::ostream& out, const Shape& shape) {
+  out << ShapeUtil::HumanString(shape);
+  return out;
 }
 
 }  // namespace xla
