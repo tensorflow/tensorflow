@@ -506,6 +506,25 @@ class SpaceToDepth
   }
 };
 
+class Transpose
+    : public BuiltinOperator<TransposeOperator, ::tflite::TransposeOptions,
+                             ::tflite::BuiltinOptions_TransposeOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateTransposeOptions(*builder,
+                                            builder->CreateVector(op.perm));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->perm.insert(op->perm.end(), options.perm()->begin(),
+                    options.perm()->end());
+  }
+};
+
 class Split : public CustomOperator<TensorFlowSplitOperator> {
  public:
   using CustomOperator::CustomOperator;
@@ -670,6 +689,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                     OperatorType::kSpaceToDepth));
   ops.emplace_back(
       new Svdf(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
+  ops.emplace_back(new Transpose(::tflite::BuiltinOperator_TRANSPOSE,
+                                 OperatorType::kTranspose));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));
