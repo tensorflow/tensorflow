@@ -117,7 +117,7 @@ class TestGatherTree(test.TestCase):
     array = tensor_array_ops.TensorArray(
         array.dtype, size=0, dynamic_size=True).unstack(array)
     sorted_array = beam_search_decoder.gather_tree_from_array(
-        array, parent_ids, sequence_length).stack()
+        array, parent_ids, sequence_length)
 
     with self.test_session() as sess:
       sorted_array = sess.run(sorted_array)

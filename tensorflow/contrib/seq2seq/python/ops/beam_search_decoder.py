@@ -132,8 +132,8 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
     sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
   Returns:
-    A `TensorArray` of the same size and type as `t` and where beams are sorted
-    in each `Tensor` according to `parent_ids`.
+    A `Tensor` which is a stacked `TensorArray` of the same size and type as
+    `t` and where beams are sorted in each `Tensor` according to `parent_ids`.
   """
   max_time = parent_ids.shape[0].value or array_ops.shape(parent_ids)[0]
   batch_size = parent_ids.shape[1].value or array_ops.shape(parent_ids)[1]
@@ -179,12 +179,7 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
   ordered = array_ops.gather_nd(gather_from, indices)
   ordered = array_ops.reshape(ordered, final_shape)
 
-  # Return the result as a TensorArray.
-  ordered_ta = tensor_array_ops.TensorArray(
-      t.dtype, size=t.size(), dynamic_size=False)
-  ordered_ta = ordered_ta.unstack(ordered)
-
-  return ordered_ta
+  return ordered
 
 
 def _check_maybe(t):
@@ -253,7 +248,9 @@ class BeamSearchDecoder(decoder.Decoder):
         to storing the result or sampling.
       length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
       reorder_tensor_arrays: If `True`, `TensorArray`s' elements within the cell
-        state will be reordered according to the beam search path. Set this to
+        state will be reordered according to the beam search path. If the
+        `TensorArray` can be reordered, the stacked form will be returned.
+        Otherwise, the `TensorArray` will be returned as is. Set this flag to
         `False` if the cell state contains `TensorArray`s that are not amenable
         to reordering.
 
