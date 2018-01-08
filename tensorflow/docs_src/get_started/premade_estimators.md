@@ -305,7 +305,7 @@ features, we can build the estimator.
 
 ## Instantiate an Estimator
 
-The Iris problem is a classic classifier problem. Fortunately, TensorFlow
+The Iris problem is a classic classification problem. Fortunately, TensorFlow
 provides several pre-made classifier Estimators, including:
 
 * @{tf.estimator.DNNClassifier}—for deep models that perform multi-class
