@@ -228,7 +228,7 @@ class TestBeamStep(test.TestCase):
 class TestLargeBeamStep(test.TestCase):
   """
   Tests a single step of beam search in such
-  case that beam size is less than vocabulary size.
+  case that beam size is larger than vocabulary size.
   """
 
   def setUp(self):
