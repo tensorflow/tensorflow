@@ -266,6 +266,12 @@ AddTensor(poplar::Graph& graph,
         }
         break;
       }
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      {
+        TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        break;
+      }
       default:
         return tensorflow::errors::FailedPrecondition(
                 port::StrCat("unknown special tensor target on ",
@@ -325,6 +331,7 @@ Add64BitConstantTensor(poplar::Graph&graph,
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
+                  const TensorSource& src,
                   const xla::Shape& shape,
                   const xla::Literal& literal,
                   CompilerResources& resources) {
