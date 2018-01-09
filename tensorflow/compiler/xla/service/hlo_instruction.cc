@@ -2258,26 +2258,9 @@ string HloInstruction::ToCategory() const {
   }
 
   if (opcode() == HloOpcode::kFusion) {
-    if (operands().size() == 2) {
-      bool saw_rank_1 = false;
-      bool saw_higher_rank = false;
-      for (const auto* operand : operands()) {
-        if (!ShapeUtil::IsTuple(operand->shape())) {
-          saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
-          saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
-        }
-      }
-      if (saw_rank_1 && saw_higher_rank) {
-        return "rank-1-broadcast binary fusion";
-      }
-    }
     switch (fusion_kind()) {
       case FusionKind::kLoop:
-        if (IsElementwise()) {
-          return "elementwise fusion";
-        } else {
-          return "non-elementwise fusion";
-        }
+        return "loop fusion";
       case FusionKind::kInput:
         return "input fusion";
       case FusionKind::kOutput:
@@ -2292,7 +2275,7 @@ string HloInstruction::ToCategory() const {
     }
   }
 
-  if (IsElementwise() && opcode() != HloOpcode::kFusion) {
+  if (IsElementwise()) {
     return "non-fusion elementwise";
   }
 
