@@ -5922,6 +5922,7 @@ func RandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, output_types [
 //
 // This op is hidden from public in Python. It is used by TensorFlow Debugger to
 // register gradient tensors for gradient debugging.
+// This op operates on non-reference-type tensors.
 func DebugGradientIdentity(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
