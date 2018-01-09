@@ -430,6 +430,118 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
                                                 losses.Reduction.NONE)
 
 
+class ReplicateAcrossASingleDeviceWithoutTowerOptimizer(
+    test_util.TensorFlowTestCase):
+
+  def model_fn(self, mode, features, labels, params):
+    c = variable_scope.get_variable(
+        'c',
+        initializer=constant_op.constant(10, dtype=dtypes.float64),
+        dtype=dtypes.float64)
+
+    predictions = math_ops.multiply(features, c)
+
+    loss = losses.absolute_difference(
+        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
+    loss = math_ops.reduce_sum(loss)
+
+    metrics = {
+        'accuracy': metrics_lib.accuracy(labels, predictions),
+        'auc': metrics_lib.auc(labels, predictions)
+    }
+
+    optimizer = gradient_descent.GradientDescentOptimizer(
+        params['learning_rate'])
+
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        loss=loss,
+        eval_metric_ops=metrics,
+        predictions={'probabilities': predictions},
+        train_op=optimizer.minimize(loss))
+
+  @property
+  def params(self):
+    params = {}
+    params['learning_rate'] = 1.0
+    return params
+
+  def test_train_single_tower(self):
+    features = np.array([[1.0], [2.0]])
+    labels = np.array([[1.0], [2.0]])
+
+    with self.test_session() as session:
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/gpu:0'])
+      estimator_spec = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
+      session.run(variables.global_variables_initializer())
+
+      # loss = feature * c - label
+      total_loss = (1.0 * 10 - 1.0) + (2.0 * 10 - 2.0)
+      self.assertEqual(total_loss, session.run(estimator_spec.loss))
+
+      # loss' of c is 3.
+      # new value of c = 10 - learning rate * 3 = 7.0.
+      session.run(estimator_spec.train_op)
+      with variable_scope.variable_scope('', reuse=True):
+        c = variable_scope.get_variable('c', dtype=dtypes.float64)
+        self.assertEqual(7.0, session.run(c))
+
+
+class UseTowerEstimatorWithoutReplication(test_util.TensorFlowTestCase):
+
+  def model_fn(self, mode, features, labels, params):
+    c = variable_scope.get_variable(
+        'c',
+        initializer=constant_op.constant(10, dtype=dtypes.float64),
+        dtype=dtypes.float64)
+
+    features = features['features']
+    predictions = math_ops.multiply(features, c)
+
+    loss = losses.absolute_difference(
+        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
+    loss = math_ops.reduce_sum(loss)
+
+    metrics = {
+        'accuracy': metrics_lib.accuracy(labels, predictions),
+        'auc': metrics_lib.auc(labels, predictions)
+    }
+
+    optimizer = replicate_model_fn.TowerOptimizer(
+        gradient_descent.GradientDescentOptimizer(params['learning_rate']))
+
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        loss=loss,
+        eval_metric_ops=metrics,
+        predictions={'probabilities': predictions},
+        train_op=optimizer.minimize(loss))
+
+  @property
+  def params(self):
+    params = {}
+    params['learning_rate'] = 1.0
+    return params
+
+  def test_train_single_tower(self):
+    features = np.array([[1.0], [2.0]])
+    labels = np.array([[1.0], [2.0]])
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'features': features}, y=labels, batch_size=2, shuffle=False)
+
+    with self.test_session():
+      estimator = estimator_lib.Estimator(
+          model_fn=self.model_fn,
+          model_dir=tempfile.mkdtemp(),
+          params=self.params)
+      estimator.train(train_input_fn, steps=1)
+
+      self.assertEqual(7.0, estimator.get_variable_value('c'))
+
+
 class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
 
   def model_fn(self, mode, features, labels, params):

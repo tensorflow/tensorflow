@@ -69,7 +69,7 @@ def replicate_model_fn(model_fn,
 
   Two modes of local replication over available GPUs are supported:
     1)  If exactly 1 GPU is detected, then variables and operations are placed
-        onto GPU.
+        onto the GPU.
     2)  If more than 1 GPU is detected, then variables are going to be placed on
         the CPU.  Replicas of operations are placed on each individual GPU.
 
@@ -99,8 +99,8 @@ def replicate_model_fn(model_fn,
   `model_fn` returns `EstimatorSpec.train_op` for
   `tf.estimator.GraphKeys.TRAIN`. It is typically derived using an optimizer.
   Towers are expected to populate it in the same way.  Gradients from all towers
-  are reduced and applied in the last tower.  To achieve that, `TowerOptimizer`
-  needs to be used. See `TowerOptimizer`.
+  are reduced and applied in the last tower.  To achieve that in the case of
+  multiple towers, `TowerOptimizer` needs to be used.  See `TowerOptimizer`.
 
   On sharding input features and labels:
   Input features and labels are split for consumption by each tower. They are
@@ -121,9 +121,14 @@ def replicate_model_fn(model_fn,
   Variables are not duplicated between towers.  Instead, they are placed on a
   single device as defined above and shared across towers.
 
-  Other current limitations:
-    - `predictions` are not supported for `ModeKeys.EVAL`.  That is required for
-      `tf.contrib.estimator.add_metrics`.
+  On overhead:
+  If only one device is specified, then aggregation of loss and gradients
+  doesn't happen. Replication consists of placing `model_fn` onto the
+  specified device.
+
+  On current limitations:
+    - `predictions` are not supported for `ModeKeys.EVAL`.  They are required
+       for `tf.contrib.estimator.add_metrics`.
 
   Args:
     model_fn: `model_fn` as defined in `Estimator`.  See the section above about
@@ -187,8 +192,7 @@ def _replicate_model_fn_with_mode(
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
   is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
-  consolidation_device = '/{}:0'.format('GPU'
-                                        if is_a_single_gpu_case else 'CPU')
+  consolidation_device = devices[0] if is_a_single_gpu_case else '/CPU:0'
 
   ps_devices = [consolidation_device]
   if mode == _VariableDistributionMode.SHARED_ROUND_ROBIN:
@@ -197,6 +201,19 @@ def _replicate_model_fn_with_mode(
   tf_logging.info('Replicating the `model_fn` across {}.  Variables are going '
                   'to be placed on {}.  Consolidation device is going to be {}.'
                   .format(devices, ps_devices, consolidation_device))
+
+  def single_device_model_fn(features, labels, mode, params=None, config=None):
+    """`model_fn` on a single device without reduction overhead."""
+    return _get_loss_towers(
+        model_fn=model_fn,
+        mode=mode,
+        features=[features],
+        labels=[labels],
+        params=params,
+        loss_reduction=loss_reduction,
+        config=config,
+        devices=devices,
+        local_ps_devices=ps_devices)[0]  # One device, so one spec is out.
 
   def replicated_model_fn(features, labels, mode, params=None, config=None):
     """Replicated version of `model_fn` to be used instead."""
@@ -222,7 +239,10 @@ def _replicate_model_fn_with_mode(
     elif mode == model_fn_lib.ModeKeys.PREDICT:
       return _predict_spec(tower_specs, aggregation_device=consolidation_device)
 
-  return replicated_model_fn
+  if len(devices) == 1:
+    return single_device_model_fn
+  else:
+    return replicated_model_fn
 
 
 class TowerOptimizer(optimizer_lib.Optimizer):
@@ -237,6 +257,10 @@ class TowerOptimizer(optimizer_lib.Optimizer):
     order.
 
     Multiple optimizers that use the same or different losses are supported.
+
+    If TowerOptimizer is used but `replicate_model_fn` isn't, then no
+    aggregation will happen.  All calls will simply be forwarded to the
+    underlying optimizer. The behavior is similar if there is only one tower.
 
     Args:
       optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
@@ -270,6 +294,15 @@ class TowerOptimizer(optimizer_lib.Optimizer):
 
   def apply_gradients(self, grads_and_vars, global_step=None, **kwargs):
     """Collect gradients updates to apply them with the last tower."""
+    if self._graph_state().number_of_towers == 1:
+      # Avoid the overhead of reduction if there's only one tower.
+      #
+      # There assumed to be only one tower if aggregation-related methods were
+      # not called by `_get_loss_towers`, for example if the model_fn uses
+      # TowerEstimator, but `replicate_model_fn` isn't used.
+      return self._get_optimizer().apply_gradients(grads_and_vars, global_step,
+                                                   **kwargs)
+
     self._graph_state().collect_gradients(grads_and_vars)
 
     if not self._graph_state().is_the_last_tower:
@@ -337,8 +370,8 @@ class TowerOptimizer(optimizer_lib.Optimizer):
 
     def __init__(self):
       self._collected_grads_and_vars = defaultdict(list)
-      self._current_tower_index = -1
-      self._number_of_towers = 0
+      self._current_tower_index = 0
+      self._number_of_towers = 1
       self._loss_reduction = None
       # Scopes of the first tower that don't have a prefix:
       self._variable_scope = None
@@ -371,7 +404,6 @@ class TowerOptimizer(optimizer_lib.Optimizer):
         self._name_scope = name_scope
       self._current_tower_index = tower_id
       yield
-      self._current_tower_index = -1
 
     @property
     def scopes_of_the_first_tower(self):
@@ -507,10 +539,11 @@ def _get_loss_towers(model_fn,
                 labels=labels_shard,
                 **optional_params)
 
-            if (tower_spec.train_op is not None and
+            if (tower_spec.train_op is not None and len(devices) > 1 and
                 not TowerOptimizer.has_been_used()):
               raise ValueError('Please wrap optimizers with TowerOptimizer'
-                               ' in order to use replicate_model_fn.')
+                               ' in order to use replicate_model_fn with'
+                               ' multiple `devices`.')
 
             # Scaling the loss here doesn't actually affect gradients.  Another
             # instance of scaling happens inside the TowerOptimizer.
@@ -564,6 +597,8 @@ def _scale_loss(loss, loss_reduction, number_of_towers):
   """If needed, scale down the loss for averaging loss by summing."""
   if loss is None:
     return None
+  if number_of_towers == 1:
+    return loss
 
   if loss_reduction != losses.Reduction.SUM:
     return math_ops.div(loss, 1.0 * number_of_towers, name='averaged_loss')
@@ -762,3 +797,4 @@ def _asdict(namedtuple):
     A dictionary version of the tuple.
   """
   return {k: getattr(namedtuple, k) for k in namedtuple._fields}
+
