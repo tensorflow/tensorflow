@@ -6545,7 +6545,27 @@ op {
     type: "type"
   }
   summary: "Identity op for gradient debugging."
-  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging."
+  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging.\nThis op operates on non-reference-type tensors."
+  allows_uninitialized_input: true
+}
+op {
+  name: "DebugGradientRefIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Identity op for gradient debugging."
+  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging.\nThis op operates on reference-type tensors."
   allows_uninitialized_input: true
 }
 op {
