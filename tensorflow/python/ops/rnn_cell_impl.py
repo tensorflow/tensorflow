@@ -904,6 +904,7 @@ class DropoutWrapper(RNNCell):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
+    super(DropoutWrapper, self).__init__()
     if not _like_rnncell(cell):
       raise TypeError("The parameter cell is not a RNNCell.")
     if (dropout_state_filter_visitor is not None
