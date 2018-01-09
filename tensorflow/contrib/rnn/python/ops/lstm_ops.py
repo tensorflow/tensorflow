@@ -598,7 +598,12 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
                cell_clip=None,
                use_peephole=False,
                reuse=None,
-               name="lstm_fused_cell"):
+               name="lstm_fused_cell",
+               input_keep_prob=1.0,
+               variational_recurrent=False,
+               input_size=None,
+               dtype=None,
+               seed=None):
     """Initialize the LSTM cell.
 
     Args:
@@ -613,6 +618,18 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
         with `tf.nn.rnn_cell.LSTMCell`.
+      input_keep_prob: unit Tensor or float between 0 and 1, input keep
+        probability; if it is constant and 1, no input dropout will be added.
+      variational_recurrent: Python bool.  If `True`, then the same
+        dropout pattern is applied across all time steps per run call.
+        If this parameter is set, `input_size` **must** be provided.
+      input_size: (optional) (possibly nested tuple of) `TensorShape` objects
+        containing the depth(s) of the input tensors expected to be passed in to
+        the `LSTMBlockFusedCell`.  Required and used **iff**
+         `variational_recurrent = True` and `input_keep_prob < 1`.
+      dtype: (optional) The `dtype` of the input, state, and output tensors.
+        Required and used **iff** `variational_recurrent = True`.
+      seed: (optional) integer, the randomness seed.
     """
     super(LSTMBlockFusedCell, self).__init__(_reuse=reuse, name=name)
     self._num_units = num_units
@@ -622,6 +639,25 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
 
     # Inputs must be 3-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=3)
+
+    # Dropout parameter.
+    class DummyRNNCell(object):
+      def __init__(self):
+        # unused but necessary attributes
+        self.output_size = 1
+        self.state_size = 1
+        self.zero_state = None
+      def __call__(self, inputs):
+        return inputs
+
+    self._dropout_params = {
+      'cell': DummyRNNCell(),
+      'input_keep_prob': input_keep_prob,
+      'variational_recurrent': variational_recurrent,
+      'input_size': input_size,
+      'dtype': dtype,
+      'seed': seed
+    }
 
   @property
   def num_units(self):
@@ -639,6 +675,11 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       self._w_i_diag = self.add_variable("w_i_diag", [self._num_units])
       self._w_f_diag = self.add_variable("w_f_diag", [self._num_units])
       self._w_o_diag = self.add_variable("w_o_diag", [self._num_units])
+
+    if self._dropout_params:
+      self._dropout_wrapper = rnn_cell_impl.DropoutWrapper(**self._dropout_params)
+    else:
+      self._dropout_wrapper = None
 
     self.built = True
 
@@ -674,6 +715,9 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     time_len = inputs_shape[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
+
+    if self._dropout_wrapper:
+      inputs = self._dropout_wrapper(inputs, None)
 
     if self._use_peephole:
       wci = self._w_i_diag
