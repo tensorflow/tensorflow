@@ -33,9 +33,9 @@ import numpy as np
 # White-listed layer operations, which do not affect the receptive field
 # computation.
 _UNCHANGED_RF_LAYER_OPS = [
-    "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor", "Identity",
-    "Log", "Mul", "Pow", "RealDiv", "Relu", "Relu6", "Round", "Rsqrt",
-    "Softplus", "Sub", "VariableV2"
+    "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor",
+    "FusedBatchNorm", "Identity", "Log", "Mul", "Pow", "RealDiv", "Relu",
+    "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2"
 ]
 
 # Different ways in which padding modes may be spelled.
