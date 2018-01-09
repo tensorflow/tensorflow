@@ -58,7 +58,6 @@ limitations under the License.
 
 #include <poplar/exceptions.hpp>
 #include <popstd/exceptions.hpp>
-#include <xgraph_core/exceptions.hpp>
 #include <poplar/IPUModel.hpp>
 
 #include <popconv/codelets.hpp>
