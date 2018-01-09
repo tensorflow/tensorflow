@@ -169,6 +169,7 @@ sh_binary(
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/py2tf/convert:convert",
             "//tensorflow/contrib/py2tf/pyct:pyct",
             "//tensorflow/contrib/py2tf/pyct/static_analysis:static_analysis",
             "//tensorflow/contrib/receptive_field:receptive_field_pip",

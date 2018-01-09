@@ -369,6 +369,15 @@ TEST_F(OperatorTest, Svdf) {
   EXPECT_EQ(op.rank, output_toco_op->rank);
 }
 
+TEST_F(OperatorTest, Transpose) {
+  TransposeOperator op;
+  op.perm = {0, 1, 2, 3};
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TRANSPOSE", OperatorType::kTranspose), op);
+  EXPECT_EQ(op.perm, output_toco_op->perm);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

@@ -85,6 +85,9 @@ std::map<string, string> kBrokenTests = {
 
     // ResizeBilinear looks completely incompatible with Tensorflow
     {R"(resize_bilinear)", "67964336"},
+
+    // Transpose only supports 1D-4D input tensors.
+    {R"(transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -270,6 +273,7 @@ INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_depth)
+INSTANTIATE_TESTS(transpose)
 
 }  // namespace testing
 }  // namespace tflite

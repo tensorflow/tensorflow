@@ -2485,8 +2485,8 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-void Transpose(const T* input, Dims<4>& input_dims, T* output,
-               Dims<4>& output_dims, int* permuted_axes) {
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, int* permuted_axes) {
   int out_sizes[4];
   // Compute the inverse permutation array so we can do an output centered
   // transpose. Also, check to make sure output_dims is matching input_dims.

@@ -366,8 +366,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   contents[kContentsSize - 1] = '\0';
 
   if (retcode != 0) {
-    LOG(INFO) << "driver version file contents: \"\"\"" << contents.begin()
-              << "\"\"\"";
+    VLOG(1) << "driver version file contents: \"\"\"" << contents.begin()
+            << "\"\"\"";
     fclose(driver_version_file);
     return FindKernelModuleVersion(contents.begin());
   }

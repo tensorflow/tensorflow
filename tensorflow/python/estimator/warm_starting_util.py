@@ -420,5 +420,10 @@ def _warmstart(warmstart_settings):
       if warmstart_settings.vars_to_warmstart:
         logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
+        # Because we use a default empty list in grouped_variables, single
+        # unpartitioned variables will be lists here, which we rectify in order
+        # for init_from_checkpoint logic to work correctly.
+        if len(variable) == 1:
+          variable = variable[0]
         _warmstart_var(variable, warmstart_settings.ckpt_to_initialize_from,
                        prev_var_name)
