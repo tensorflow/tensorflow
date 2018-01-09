@@ -5,3 +5,4 @@ ReduceOpsTest.testReduceMeanC64           # No support for C64
 DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare      # Too slow at the moment
 DepthwiseConv2DTest.testDepthwiseConv2DFilterGradCompare     # Too slow at the moment
 Pooling3DTest.testMaxPool3dSamePaddingDifferentStrides  # Too slow at the moment
+FFTTest # No support for FFT
