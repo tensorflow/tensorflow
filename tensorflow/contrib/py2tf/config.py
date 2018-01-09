@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Py2TF compiles Python code into equivalent TensorFlow code.
-
-Equivalent here means that they have the same effect when executed.
-"""
+"""Global configuration."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.api import to_code
-from tensorflow.contrib.py2tf.api import to_graph
-from tensorflow.python.util.all_util import remove_undocumented
+PYTHON_LITERALS = {
+    'None': None,
+}
 
+DEFAULT_UNCOMPILED_MODULES = set(('tensorflow',))
 
-_allowed_symbols = ['to_graph', 'to_code']
+NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
-remove_undocumented(__name__, _allowed_symbols)
+# TODO(mdan): Also allow controlling the generated names (for testability).
+COMPILED_IMPORT_STATEMENTS = (
+    'import tensorflow as tf',
+)
