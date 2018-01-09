@@ -22,6 +22,7 @@ import math
 import os.path
 import random
 import shutil
+import sys
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -765,9 +766,14 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
     # with the collection.
     graph = ops.Graph()
     with self.test_session(graph=graph) as sess:
-      meta_graph.import_scoped_meta_graph(
-          test.test_src_dir_path(
-              "python/framework/testdata/metrics_export_meta_graph.pb"))
+      if sys.byteorder == "big":
+        meta_graph.import_scoped_meta_graph(
+            test.test_src_dir_path(
+                "python/framework/testdata/metrics_export_meta_graph_be.pb"))
+      else:
+        meta_graph.import_scoped_meta_graph(
+            test.test_src_dir_path(
+                "python/framework/testdata/metrics_export_meta_graph.pb"))
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
       with self.assertRaisesRegexp(
