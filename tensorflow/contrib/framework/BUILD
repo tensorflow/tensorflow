@@ -33,6 +33,7 @@ tf_custom_op_py_library(
         "python/ops/checkpoint_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
+        "python/ops/script_ops.py",
         "python/ops/sort_ops.py",
         "python/ops/variables.py",
     ],
