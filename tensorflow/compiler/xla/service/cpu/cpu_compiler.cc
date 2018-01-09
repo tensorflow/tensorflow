@@ -572,7 +572,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       if (instruction->opcode() == HloOpcode::kConstant) {
         // Copy the constant out of the ProtocolBuffer so that we can give it a
         // higher alignment.
-        const void* data = instruction->literal().InternalData();
+        const void* data = instruction->literal().untyped_data();
         int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
             instruction, xla::MakeUnique<unsigned char[]>(size));

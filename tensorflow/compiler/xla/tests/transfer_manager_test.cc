@@ -119,7 +119,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1U8) {
                           transfer_manager_->TransferLiteralFromDevice(
                               stream_executor_, *device_buffer));
 
-  EXPECT_EQ(result->u8s_string(), test_string);
+  EXPECT_EQ(result->GetR1U8AsString(), test_string);
 }
 
 XLA_TEST_F(TransferManagerTest, TransferR2F32) {

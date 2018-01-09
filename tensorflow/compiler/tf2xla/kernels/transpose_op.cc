@@ -54,7 +54,8 @@ class TransposeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {dims}, &literal));
 
     std::vector<int32> perm(dims);
-    std::copy(literal.s32s().begin(), literal.s32s().end(), perm.begin());
+    std::copy(literal.data<int32>().begin(), literal.data<int32>().end(),
+              perm.begin());
 
     std::vector<int64> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).

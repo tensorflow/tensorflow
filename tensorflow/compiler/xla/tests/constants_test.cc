@@ -141,11 +141,12 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
       {5.0f, 4.4f},   // p2
   });
   input_array.FillWithPZ(pz);
-  Literal input_literal = *Literal::CreateR4FromArray4D(input_array);
+  std::unique_ptr<Literal> input_literal =
+      Literal::CreateR4FromArray4D(input_array);
 
   {
     ComputationBuilder builder(client_, TestName());
-    builder.ConstantLiteral(input_literal);
+    builder.ConstantLiteral(*input_literal);
     ComputeAndCompareR4<float>(&builder, input_array, {}, error_spec_);
   }
 
@@ -165,10 +166,10 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
 
   std::unique_ptr<Literal> result = ExecuteAndTransferOrDie(&builder, {});
 
-  LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
-                                       result->tuple_literals(0), error_spec_);
-  LiteralTestUtil::ExpectR1Near<float>({2.0, 42.0}, result->tuple_literals(1),
-                                       error_spec_);
+  LiteralTestUtil::ExpectR2Near<float>(
+      {{1.0}, {2.0}}, LiteralView::Create(*result, {0}), error_spec_);
+  LiteralTestUtil::ExpectR1Near<float>(
+      {2.0, 42.0}, LiteralView::Create(*result, {1}), error_spec_);
 }
 
 }  // namespace

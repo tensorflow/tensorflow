@@ -236,7 +236,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    return result.ValueOrDie()->GetArraySlice<bool>() ==
+    return result.ValueOrDie()->data<bool>() ==
            tensorflow::gtl::ArraySlice<bool>{true};
   };
 
