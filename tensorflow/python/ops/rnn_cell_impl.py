@@ -980,6 +980,10 @@ class DropoutWrapper(RNNCell):
     return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
   @property
+  def wrapped_cell(self):
+    return self._cell
+
+  @property
   def state_size(self):
     return self._cell.state_size
 
