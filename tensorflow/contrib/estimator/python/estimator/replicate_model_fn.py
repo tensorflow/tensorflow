@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import defaultdict
 from contextlib import contextmanager
 import copy
 
@@ -78,7 +79,7 @@ def replicate_model_fn(model_fn,
        def model_fn(...):  # See `model_fn` in `Estimator`.
          loss = ...
          optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-         optimizer = tf.contrib.estimator.GatheringOptimizer(optimizer)
+         optimizer = tf.contrib.estimator.TowerOptimizer(optimizer)
          if mode == tf.estimator.ModeKeys.TRAIN:
            #  See the section below on `EstimatorSpec.train_op`.
            return EstimatorSpec(mode=mode, loss=loss,
@@ -91,12 +92,15 @@ def replicate_model_fn(model_fn,
          model_fn=tf.contrib.estimator.replicate_model_fn(model_fn))
     ```
 
+  Please see `DNNClassifierIntegrationTest` for an example with a canned
+  Estimator.
+
   On `EstimatorSpec.train_op`:
   `model_fn` returns `EstimatorSpec.train_op` for
   `tf.estimator.GraphKeys.TRAIN`. It is typically derived using an optimizer.
   Towers are expected to populate it in the same way.  Gradients from all towers
-  are reduced and applied in the last tower.  To achieve that,
-  `GatheringOptimizer` needs to be used. See `GatheringOptimizer`.
+  are reduced and applied in the last tower.  To achieve that, `TowerOptimizer`
+  needs to be used. See `TowerOptimizer`.
 
   On sharding input features and labels:
   Input features and labels are split for consumption by each tower. They are
@@ -221,7 +225,7 @@ def _replicate_model_fn_with_mode(
   return replicated_model_fn
 
 
-class GatheringOptimizer(optimizer_lib.Optimizer):
+class TowerOptimizer(optimizer_lib.Optimizer):
   """Gathers gradients from all towers and reduces them in the last one."""
 
   COLLECTION_FOR_GRAPH_STATES = 'replicate_model_fn_graph_states'
@@ -229,11 +233,10 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
   def __init__(self, optimizer_or_optimizer_fn):
     """Wrap an existing optimizer for gathering gradients across towers.
 
-    Each invocation of model_fn has to call optimizers in the same order.
+    Each invocation of model_fn has to call the same optimizers in the same
+    order.
 
     Multiple optimizers that use the same or different losses are supported.
-    Optimizers, however, need to be of different type as per `__class__`
-    in order to increment the global_step correctly.
 
     Args:
       optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
@@ -244,7 +247,7 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
 
   @staticmethod
   def has_been_used():
-    return GatheringOptimizer._graph_state().has_gathering_optimizer_been_used
+    return TowerOptimizer._graph_state().has_tower_optimizer_been_used
 
   def get_slot(self, *args, **kwargs):
     return self._get_optimizer().get_slot(*args, **kwargs)
@@ -267,11 +270,11 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
 
   def apply_gradients(self, grads_and_vars, global_step=None, **kwargs):
     """Collect gradients updates to apply them with the last tower."""
-    self._graph_state().collect_gradients(grads_and_vars,
-                                          self._get_optimizer())
+    self._graph_state().collect_gradients(grads_and_vars)
 
     if not self._graph_state().is_the_last_tower:
-      return self._construct_no_op_train_op()
+      with ops_lib.control_dependencies(_extract_tensors(grads_and_vars)):
+        return self._construct_no_op_train_op()
     else:
       # Gradients need to be gathered and applied in the scope of the first
       # tower, so that the tensors are accessible via names without prefixes.
@@ -283,11 +286,9 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
   def _apply_gathered_gradients(self, global_step, **kwargs):
     graph_state = self._graph_state()
     optimizer = self._get_optimizer()
-    train_ops = []
 
     grad_lists = {}
-    # Only aggregate gradients for `optimizer.__class__` type of Optimizer.
-    for grad, var in graph_state.get_grad_and_vars_for_optimizer(optimizer):
+    for grad, var in graph_state.get_latest_gradients_from_all_towers():
       if grad is not None:
         grad_lists.setdefault(var, []).append(grad)
 
@@ -296,24 +297,16 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
       for var, grads in six.iteritems(grad_lists):
         grad = _compute_sum_on_device(grads, var.device)
         aggregated_grads.append((grad, var))
-    train_ops.append(optimizer.apply_gradients(aggregated_grads))
-
-    # A model might use multiple optimizers.  We only want to increment global
-    # step after apply_gradients of the last optimizer inside the tower.
-    if global_step and graph_state.is_the_last_optimizer_within_a_tower(
-        optimizer):
-      with ops_lib.control_dependencies(train_ops):
-        with ops_lib.colocate_with(global_step):
-          return state_ops.assign_add(global_step, 1)
-    else:
-      return control_flow_ops.group(train_ops)
+    return optimizer.apply_gradients(
+        aggregated_grads, global_step=global_step, **kwargs)
 
   def _get_optimizer(self):
-    if not isinstance(self._optimizer_or_optimizer_fn, optimizer_lib.Optimizer):
+    if callable(self._optimizer_or_optimizer_fn):
       # If optimizer is given as a function then we need to wait till we are
-      # under the right graph context before constructing it.
+      # under the right graph context before constructing it.  That's why the
+      # optimizer is constructed in _get_optimizer() rather than __init__().
       self._optimizer_or_optimizer_fn = self._optimizer_or_optimizer_fn()
-    self._graph_state().has_gathering_optimizer_been_used = True
+    self._graph_state().has_tower_optimizer_been_used = True
     return self._optimizer_or_optimizer_fn
 
   def _construct_no_op_train_op(self):
@@ -322,44 +315,50 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
   @staticmethod
   def _graph_state():
     graph_states = ops_lib.get_default_graph().get_collection_ref(
-        GatheringOptimizer.COLLECTION_FOR_GRAPH_STATES)
+        TowerOptimizer.COLLECTION_FOR_GRAPH_STATES)
     if not graph_states:
-      graph_states.append(GatheringOptimizer._PerGraphState())
+      graph_states.append(TowerOptimizer._PerGraphState())
     return graph_states[-1]
+
+  @staticmethod
+  def _did_towers_have_same_optimizer_calls():
+    graph_state = TowerOptimizer._graph_state()
+    return graph_state.did_towers_have_same_optimizer_calls()
 
   @staticmethod
   def _clear_graph_state():
     # Clearing the Graph collection will prevent _PerGraphState from being
     # serialized.
     ops_lib.get_default_graph().clear_collection(
-        GatheringOptimizer.COLLECTION_FOR_GRAPH_STATES)
+        TowerOptimizer.COLLECTION_FOR_GRAPH_STATES)
 
   class _PerGraphState(object):
     """Gradient reduction related state of a Tensorflow graph."""
 
     def __init__(self):
-      # For every type of optimizer, collect all gradients and variables.
-      self._optimizer_grads_and_vars = {}
-      # In what order were optimizers invoked within each tower?
-      self._ordered_optimizer_types = []
+      self._collected_grads_and_vars = defaultdict(list)
+      self._current_tower_index = -1
       self._number_of_towers = 0
-      self._is_the_last_tower = False
       self._loss_reduction = None
       # Scopes of the first tower that don't have a prefix:
       self._variable_scope = None
       self._name_scope = None
-      # If needed, alert that GatheringOptimizer needs to be used with model_fn.
-      self._has_gathering_optimizer_been_used = False
+      # If needed, alert that TowerOptimizer needs to be used with model_fn.
+      self._has_tower_optimizer_been_used = False
 
-    def collect_gradients(self, grads_and_vars, optimizer):
-      if optimizer.__class__ not in self._ordered_optimizer_types:
-        self._ordered_optimizer_types.append(optimizer.__class__)
+    def collect_gradients(self, grads_and_vars):
+      self._collected_grads_and_vars[self._current_tower_index].append(
+          grads_and_vars)
 
-      self._optimizer_grads_and_vars.setdefault(optimizer.__class__,
-                                                []).extend(grads_and_vars)
-
-    def get_grad_and_vars_for_optimizer(self, optimizer):
-      return self._optimizer_grads_and_vars[optimizer.__class__]
+    def get_latest_gradients_from_all_towers(self):
+      """Get gradients across towers for the last called optimizer."""
+      grads_and_vars = []
+      index_of_last_gradients = len(
+          self._collected_grads_and_vars[self._current_tower_index]) - 1
+      for tower_id in range(self._current_tower_index + 1):
+        grads_and_vars.extend(
+            self._collected_grads_and_vars[tower_id][index_of_last_gradients])
+      return grads_and_vars
 
     def set_reduction_across_towers(self, loss_reduction, number_of_towers):
       self._loss_reduction = loss_reduction
@@ -370,10 +369,9 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
       if tower_id == 0:
         self._variable_scope = var_scope
         self._name_scope = name_scope
-      if tower_id == (self._number_of_towers - 1):
-        self._is_the_last_tower = True
+      self._current_tower_index = tower_id
       yield
-      self._is_the_last_tower = False
+      self._current_tower_index = -1
 
     @property
     def scopes_of_the_first_tower(self):
@@ -381,10 +379,7 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
 
     @property
     def is_the_last_tower(self):
-      return self._is_the_last_tower
-
-    def is_the_last_optimizer_within_a_tower(self, optimizer):
-      return optimizer.__class__ == self._ordered_optimizer_types[-1]
+      return self._current_tower_index == (self._number_of_towers - 1)
 
     @property
     def number_of_towers(self):
@@ -395,12 +390,19 @@ class GatheringOptimizer(optimizer_lib.Optimizer):
       return self._loss_reduction
 
     @property
-    def has_gathering_optimizer_been_used(self):
-      return self._has_gathering_optimizer_been_used
+    def has_tower_optimizer_been_used(self):
+      return self._has_tower_optimizer_been_used
 
-    @has_gathering_optimizer_been_used.setter
-    def has_gathering_optimizer_been_used(self, value):
-      self._has_gathering_optimizer_been_used = value
+    @has_tower_optimizer_been_used.setter
+    def has_tower_optimizer_been_used(self, value):
+      self._has_tower_optimizer_been_used = value
+
+    def did_towers_have_same_optimizer_calls(self):
+      total_number_of_grads = sum([
+          len(grads)
+          for _, grads in six.iteritems(self._collected_grads_and_vars)
+      ])
+      return total_number_of_grads % self._number_of_towers == 0
 
 
 def _get_local_devices(device_type):
@@ -471,7 +473,7 @@ def _get_loss_towers(model_fn,
   # pylint: disable=protected-access
   round_robin_strategy = device_setter_lib._RoundRobinStrategy(
       num_tasks=len(local_ps_devices))
-  GatheringOptimizer._graph_state().set_reduction_across_towers(
+  TowerOptimizer._graph_state().set_reduction_across_towers(
       loss_reduction, len(devices))
 
   for i, device in enumerate(devices):
@@ -492,7 +494,7 @@ def _get_loss_towers(model_fn,
     with variable_scope.variable_scope(
         '', reuse=not is_the_first_tower) as var_scope:
       with ops_lib.name_scope(name_scope.format(i)) as name_scope:
-        with GatheringOptimizer._graph_state().tower(
+        with TowerOptimizer._graph_state().tower(
             tower_id=i, var_scope=var_scope, name_scope=name_scope):
           with ops_lib.device(device_setter):
             labels_shard = None
@@ -506,17 +508,20 @@ def _get_loss_towers(model_fn,
                 **optional_params)
 
             if (tower_spec.train_op is not None and
-                not GatheringOptimizer.has_been_used()):
-              raise ValueError('Please wrap optimizers with GatheringOptimizer'
+                not TowerOptimizer.has_been_used()):
+              raise ValueError('Please wrap optimizers with TowerOptimizer'
                                ' in order to use replicate_model_fn.')
 
             # Scaling the loss here doesn't actually affect gradients.  Another
-            # instance of scaling happens inside the GatheringOptimizer.
+            # instance of scaling happens inside the TowerOptimizer.
             tower_spec = _scale_tower_loss(
                 tower_spec, loss_reduction, number_of_towers=len(devices))
             tower_specs.append(tower_spec)
 
-  GatheringOptimizer._clear_graph_state()
+  if not TowerOptimizer._did_towers_have_same_optimizer_calls():
+    raise ValueError('Each invocation of model_fn was supposed to make the same'
+                     ' optimizer calls.')
+  TowerOptimizer._clear_graph_state()
   # pylint: enable=protected-access
   return tower_specs
 
@@ -719,6 +724,17 @@ def _concat_tensor_dicts(*tensor_dicts):
       name: array_ops.concat(tensors, axis=0, name=name)
       for name, tensors in six.iteritems(_dict_concat(*tensor_dicts))
   }
+
+
+def _extract_tensors(tensors_and_vars):
+  tensors = []
+  for tensor_and_var in tensors_and_vars:
+    tensor, _ = tensor_and_var
+    if isinstance(tensor, ops_lib.IndexedSlices):
+      tensors.append(tensor.values)
+    else:
+      tensors.append(tensor)
+  return tensors
 
 
 def _dict_concat(*dicts):
