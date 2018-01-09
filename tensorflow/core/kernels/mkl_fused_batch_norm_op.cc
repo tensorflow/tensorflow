@@ -715,15 +715,18 @@ class MklFusedBatchNormOp : public OpKernel {
       const Tensor& est_mean_tensor     = MklGetInput(context, mean_index);
       const Tensor& est_variance_tensor = MklGetInput(context, var_index);
 
+      TensorShape tf_shape_src;
       MklDnnShape dnn_shape_src;
       GetMklShape(context, src_index, &dnn_shape_src);
 
       if (dnn_shape_src.IsMklTensor()) {
+        tf_shape_src = dnn_shape_src.GetTfShape();
         OP_REQUIRES(context, dnn_shape_src.GetDimension() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
                         src_tensor.shape().DebugString()));
       } else {
+        tf_shape_src = src_tensor.shape();
         OP_REQUIRES(context, src_tensor.dims() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
@@ -756,6 +759,12 @@ class MklFusedBatchNormOp : public OpKernel {
                         est_variance_tensor.shape().DebugString()));
       }
 
+      // special case: input with 0 element and 0 batch size
+      if (tf_shape_src.num_elements() == 0) {
+         HandleEmptyInput(context, tf_shape_src, scale_tensor.shape());
+         return;
+      }
+
       if (dnn_shape_src.IsMklTensor())
         depth_ = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
       else
@@ -768,27 +777,8 @@ class MklFusedBatchNormOp : public OpKernel {
       const size_t saved_mean_index = 3;
       const size_t saved_variance_index = 4;
 
-      // allocate batch mean output tensor
-      Tensor* batch_mean_tensor = nullptr;
-      MklDnnShape mkl_shape_batch_mean;
-      mkl_shape_batch_mean.SetMklTensor(false);
-      AllocateOutputSetMklShape(context,
-                                batch_mean_index,
-                                &batch_mean_tensor,
-                                scale_tensor.shape(),
-                                mkl_shape_batch_mean);
-      CHECK_NOTNULL(batch_mean_tensor);
-
-      // Batch variance
-      Tensor* batch_variance_tensor = nullptr;
-      MklDnnShape mkl_shape_batch_variance;
-      mkl_shape_batch_variance.SetMklTensor(false);
-      AllocateOutputSetMklShape(context,
-                                batch_variance_index,
-                                &batch_variance_tensor,
-                                scale_tensor.shape(),
-                                mkl_shape_batch_variance);
-      CHECK_NOTNULL(batch_variance_tensor);
+      // allocate 4 output TF tensors
+      AllocateTFOutputs(context, scale_tensor.shape());
 
       if (is_training_)
         SetMeanVariance(*batch_mean_tensor, *batch_variance_tensor);
@@ -844,26 +834,6 @@ class MklFusedBatchNormOp : public OpKernel {
         weights_data[k + depth_] = shift_tf[k];
       }
 
-      // Mean and variance (without Bessel's correction) saved for backward
-      // computation to serve as pre-computed mean and variance.
-      Tensor* saved_mean_tensor = nullptr;
-      MklDnnShape mkl_shape_saved_mean;
-      mkl_shape_saved_mean.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, saved_mean_index,
-                                &saved_mean_tensor,
-                                scale_tensor.shape(),
-                                mkl_shape_saved_mean);
-      CHECK_NOTNULL(saved_mean_tensor);
-
-      Tensor* saved_variance_tensor = nullptr;
-      MklDnnShape mkl_shape_saved_variance;
-      mkl_shape_saved_variance.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, saved_variance_index,
-                                &saved_variance_tensor,
-                                scale_tensor.shape(),
-                                mkl_shape_saved_variance);
-      CHECK_NOTNULL(saved_variance_tensor);
-
       // set mean primitive
       auto mean_desc = memory::desc({1, depth_},
                                     MklDnnType<T>(),
@@ -902,7 +872,6 @@ class MklFusedBatchNormOp : public OpKernel {
       // allocate dst tensor
       MklDnnShape dnn_shape_dst;
       TensorShape tf_shape_dst;
-      Tensor* dst_tensor = nullptr;
       if (dnn_shape_src.IsMklTensor()) {
         dnn_shape_dst.SetMklTensor(true);
         auto dst_pd = bnrm_fwd_pd.dst_primitive_desc();
@@ -983,6 +952,12 @@ class MklFusedBatchNormOp : public OpKernel {
   T* variance_values_;
   size_t depth_;          // batch normalization is done for per channel.
 
+  Tensor* dst_tensor = nullptr;
+  Tensor* batch_mean_tensor = nullptr;
+  Tensor* batch_variance_tensor = nullptr;
+  Tensor* saved_variance_tensor = nullptr;
+  Tensor* saved_mean_tensor = nullptr;
+
   void ExtractParams(OpKernelContext* context) {
     const Tensor& input = MklGetInput(context, 0);
     depth_ = static_cast<int>(GetTensorDim(input, tensor_format_, 'C'));
@@ -994,8 +969,89 @@ class MklFusedBatchNormOp : public OpKernel {
     variance_values_ = reinterpret_cast<T*>(
                        const_cast<T*>(variance.flat<T>().data()));
   }
-};
 
+  void HandleEmptyInput(OpKernelContext* context,
+                        TensorShape tf_shape_src,
+                        TensorShape tf_shape_scale) {
+    const size_t dst_index = 0;
+
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              tf_shape_src, dnn_shape_dst);
+    CHECK_NOTNULL(dst_tensor);
+    memset(const_cast<char*>(dst_tensor->tensor_data().data()), 0,
+           dst_tensor->tensor_data().size());
+
+    AllocateTFOutputs(context, tf_shape_scale);
+  }
+
+  void AllocateTFOutputs(OpKernelContext* context,
+                        TensorShape tf_shape_scale) {
+    const size_t batch_mean_index = 1;
+    const size_t batch_variance_index = 2;
+    const size_t saved_mean_index = 3;
+    const size_t saved_variance_index = 4;
+
+    // allocate batch mean output tensor
+    MklDnnShape mkl_shape_batch_mean;
+    mkl_shape_batch_mean.SetMklTensor(false);
+    AllocateOutputSetMklShape(context,
+                              batch_mean_index,
+                              &batch_mean_tensor,
+                              tf_shape_scale,
+                              mkl_shape_batch_mean);
+    CHECK_NOTNULL(batch_mean_tensor);
+    float* bmean_data = const_cast<float*>(
+               static_cast<const float*>(
+               batch_mean_tensor->flat<float>().data()));
+    for (int k=0; k < tf_shape_scale.num_elements(); k++)
+      bmean_data[k] = NAN;
+
+    // allocate batch variance output tensor
+    MklDnnShape mkl_shape_batch_variance;
+    mkl_shape_batch_variance.SetMklTensor(false);
+    AllocateOutputSetMklShape(context,
+                              batch_variance_index,
+                              &batch_variance_tensor,
+                              tf_shape_scale,
+                              mkl_shape_batch_variance);
+    CHECK_NOTNULL(batch_variance_tensor);
+    float* bvariance_data = const_cast<float*>(
+             static_cast<const float*>(
+             batch_variance_tensor->flat<float>().data()));
+    for (int k=0; k < tf_shape_scale.num_elements(); k++)
+      bvariance_data[k] = NAN;
+
+    // Mean and variance (without Bessel's correction) saved for backward
+    // computation to serve as pre-computed mean and variance.
+    MklDnnShape mkl_shape_saved_mean;
+    mkl_shape_saved_mean.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, saved_mean_index,
+                              &saved_mean_tensor,
+                              tf_shape_scale,
+                              mkl_shape_saved_mean);
+    CHECK_NOTNULL(saved_mean_tensor);
+    float* smean_data = const_cast<float*>(
+             static_cast<const float*>(
+             saved_mean_tensor->flat<float>().data()));
+    for (int k=0; k < tf_shape_scale.num_elements(); k++)
+      smean_data[k] = NAN;
+
+    MklDnnShape mkl_shape_saved_variance;
+    mkl_shape_saved_variance.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, saved_variance_index,
+                              &saved_variance_tensor,
+                              tf_shape_scale,
+                              mkl_shape_saved_variance);
+    CHECK_NOTNULL(saved_variance_tensor);
+    float* svariance_data = const_cast<float*>(
+           static_cast<const float*>(
+           saved_variance_tensor->flat<float>().data()));
+    for (int k=0; k < tf_shape_scale.num_elements(); k++)
+      svariance_data[k] = NAN;
+  }
+};
 
 template <typename Device, typename T>
 class MklFusedBatchNormGradOp : public OpKernel {
@@ -1009,6 +1065,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1030,13 +1087,16 @@ class MklFusedBatchNormGradOp : public OpKernel {
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, src_index, &dnn_shape_src);
       GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+      TensorShape tf_shape_src, tf_shape_diff_dst;
 
       if (dnn_shape_diff_dst.IsMklTensor()) {
+        tf_shape_diff_dst = dnn_shape_diff_dst.GetTfShape();
         OP_REQUIRES(context, dnn_shape_diff_dst.GetDimension() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
                         diff_dst_tensor.shape().DebugString()));
       } else {
+        tf_shape_diff_dst = diff_dst_tensor.shape();
         OP_REQUIRES(context, diff_dst_tensor.dims() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
@@ -1044,11 +1104,13 @@ class MklFusedBatchNormGradOp : public OpKernel {
       }
 
       if (dnn_shape_src.IsMklTensor()) {
+        tf_shape_src = dnn_shape_src.GetTfShape();
         OP_REQUIRES(context, dnn_shape_src.GetDimension() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
                          src_tensor.shape().DebugString()));
       } else {
+        tf_shape_src = src_tensor.shape();
         OP_REQUIRES(context, src_tensor.dims() == 4,
                     errors::InvalidArgument(
                         "input must be 4-dimensional",
@@ -1068,6 +1130,12 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   errors::InvalidArgument(
                       "saved variance must be 1-dimensional",
                       saved_variance_tensor.shape().DebugString()));
+
+      if (tf_shape_src.num_elements() == 0 ||
+          tf_shape_diff_dst.num_elements() == 0) {
+         HandleEmptyInput(context, tf_shape_src, scale_tensor.shape());
+         return;
+      }
 
       if (dnn_shape_src.IsMklTensor())
         depth_ = dnn_shape_src.DimSize(MklDnnDims::Dim_C);
@@ -1212,7 +1280,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
                                diff_src.GetUsrMemDesc(),
                                src.GetUsrMemDesc(),
                                epsilon_,
-                               use_scale_shift);
+                               is_training_ ? use_scale_shift :
+                               (use_scale_shift | use_global_stats));
       auto bnrm_bwd_pd = batch_normalization_backward::primitive_desc(
                                bnrm_bwd_desc,
                                cpu_engine,
@@ -1232,19 +1301,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
       net.push_back(bnrm_bwd_op);
       stream(stream::kind::eager).submit(net).wait();
 
-      // separate out scale and shift grad and copy to individual tensors
-      const TensorShape& tf_shape_scale_shift = scale_tensor.shape();
-      Tensor* diff_scale_tensor = nullptr;
-      MklDnnShape mkl_shape_diff_scale;
-      mkl_shape_diff_scale.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, diff_scale_index, &diff_scale_tensor,
-                                tf_shape_scale_shift, mkl_shape_diff_scale);
-
-      Tensor* diff_shift_tensor = nullptr;
-      MklDnnShape mkl_shape_diff_shift;
-      mkl_shape_diff_shift.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, diff_shift_index, &diff_shift_tensor,
-                                tf_shape_scale_shift, mkl_shape_diff_shift);
+      // allocate 4 output TF tensors
+      AllocateTFOutputs(context, scale_tensor.shape());
 
       // copy data: diff_scale and diff_shift
       T* diff_weights_data_dnn = reinterpret_cast<T*>
@@ -1257,16 +1315,6 @@ class MklFusedBatchNormGradOp : public OpKernel {
         diff_scale_data_tf[i] = diff_weights_data_dnn[i];
         diff_shift_data_tf[i] = diff_weights_data_dnn[i + depth_];
       }
-
-      // Placeholders for estimated_mean and estimated_variance, which are
-      // used for inference and thus not needed here for gradient computation.
-      Tensor* p1_tensor = nullptr, *p2_tensor = nullptr;
-      MklDnnShape mkl_shape_p;
-      mkl_shape_p.SetMklTensor(false);
-      AllocateOutputSetMklShape(context, p1_index, &p1_tensor,
-                                TensorShape({}), mkl_shape_p);
-      AllocateOutputSetMklShape(context, p2_index, &p2_tensor,
-                                TensorShape({}), mkl_shape_p);
     } catch (mkldnn::error &e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                           ", message: " + string(e.message) +
@@ -1282,10 +1330,64 @@ class MklFusedBatchNormGradOp : public OpKernel {
   T epsilon_;
   TensorFormat tensor_format_;
   int depth_;             // batch normalization is done for per channel.
+  bool is_training_;
+
+  Tensor* diff_src_tensor = nullptr;
+  Tensor* diff_scale_tensor = nullptr;
+  Tensor* diff_shift_tensor = nullptr;
+  Tensor* p1_tensor = nullptr, *p2_tensor = nullptr;
 
   void ExtractParams(OpKernelContext* context) {
       const Tensor& input = MklGetInput(context, 0);
       depth_ = static_cast<int>(GetTensorDim(input, tensor_format_, 'C'));
+  }
+
+  void HandleEmptyInput(OpKernelContext* context,
+                        TensorShape tf_shape_src,
+                        TensorShape tf_shape_scale_shift) {
+    const size_t diff_src_index = 0;
+
+    Tensor* diff_src_tensor = nullptr;
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                                tf_shape_src, dnn_shape_diff_src);
+    memset(const_cast<char*>(diff_src_tensor->tensor_data().data()), 0,
+           diff_src_tensor->tensor_data().size());
+
+    AllocateTFOutputs(context, tf_shape_scale_shift);
+  }
+
+  void AllocateTFOutputs(OpKernelContext* context,
+                        TensorShape tf_shape_scale_shift) {
+    const size_t diff_scale_index = 1;
+    const size_t diff_shift_index = 2;
+    const size_t p1_index = 3;
+    const size_t p2_index = 4;
+
+    // separate out scale and shift grad and copy to individual tensors
+    MklDnnShape mkl_shape_diff_scale;
+    mkl_shape_diff_scale.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_scale_index, &diff_scale_tensor,
+                              tf_shape_scale_shift, mkl_shape_diff_scale);
+    memset(const_cast<char*>(diff_scale_tensor->tensor_data().data()), 0,
+           diff_scale_tensor->tensor_data().size());
+
+    MklDnnShape mkl_shape_diff_shift;
+    mkl_shape_diff_shift.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_shift_index, &diff_shift_tensor,
+                              tf_shape_scale_shift, mkl_shape_diff_shift);
+    memset(const_cast<char*>(diff_shift_tensor->tensor_data().data()), 0,
+           diff_shift_tensor->tensor_data().size());
+
+    // Placeholders for estimated_mean and estimated_variance, which are
+    // used for inference and thus not needed here for gradient computation.
+    MklDnnShape mkl_shape_p;
+    mkl_shape_p.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, p1_index, &p1_tensor,
+                              TensorShape({}), mkl_shape_p);
+    AllocateOutputSetMklShape(context, p2_index, &p2_tensor,
+                              TensorShape({}), mkl_shape_p);
   }
 
   memory::dims GetMeanVarianceDims() {
