@@ -110,11 +110,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
     lang = "c++"
   else:
     lang = "c"
-  # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
-  #       but in cuda_clang CROSSTOOL file that is a `feature` and we should
-  #       handle the case when it's disabled and no flag is passed
-  result = repository_ctx.execute([cc, "-no-canonical-prefixes",
-                                   "-E", "-x" + lang, "-", "-v"])
+  result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"])
   index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
   if index1 == -1:
     return []
