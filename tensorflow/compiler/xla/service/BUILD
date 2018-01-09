@@ -1101,6 +1101,8 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":hlo_pass",
+        ":tuple_util",
+        ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
@@ -2252,6 +2254,78 @@ cc_library(
     deps = [
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
+    name = "tuple_util",
+    srcs = ["tuple_util.cc"],
+    hdrs = ["tuple_util.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "tuple_util_test",
+    srcs = ["tuple_util_test.cc"],
+    deps = [
+        ":tuple_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
+cc_library(
+    name = "while_util",
+    srcs = ["while_util.cc"],
+    hdrs = ["while_util.h"],
+    deps = [
+        ":call_inliner",
+        ":hlo",
+        ":tuple_util",
+    ],
+)
+
+tf_cc_test(
+    name = "while_util_test",
+    srcs = ["while_util_test.cc"],
+    deps = [
+        ":while_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
+cc_library(
+    name = "while_loop_invariant_code_motion",
+    srcs = ["while_loop_invariant_code_motion.cc"],
+    hdrs = ["while_loop_invariant_code_motion.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":tuple_util",
+        ":while_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_invariant_code_motion_test",
+    srcs = ["while_loop_invariant_code_motion_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":while_loop_invariant_code_motion",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/core:test",
     ],
 )
 
