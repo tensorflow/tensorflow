@@ -24,7 +24,7 @@ function real_path() {
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
 }
