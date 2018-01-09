@@ -275,13 +275,6 @@ RandomUniform(poplar::Graph &graph,
               TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
-Bernoulli(poplar::Graph &graph,
-          CompilerResources& res,
-          const HloInstruction *inst,
-          const xla::Shape& output_shape,
-          TensorMap& tensor_map);
-
-port::StatusOr<poplar::program::Program>
 CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              CompilerResources& res,
                              const HloInstruction *inst,

@@ -8,7 +8,6 @@ class HloInstruction;
 namespace poplarplugin {
 
 bool IsTruncatedNormalWhile(const HloInstruction *inst);
-bool IsRandomBernoulli(const HloInstruction *inst);
 bool IsRandomNormal(const HloInstruction *inst);
 bool IsRandomUniform(const HloInstruction *inst);
 bool IsConstantZero(const HloInstruction *inst);

@@ -365,12 +365,6 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
                           RandomUniform(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
       sequence.add(prog);
     }
-    else if (name == "bernoulli") {
-      poplar::program::Program prog;
-      TF_ASSIGN_OR_RETURN(prog,
-                          Bernoulli(*graph_, resources_, inst, GetOutputShape(inst), tensor_map));
-      sequence.add(prog);
-    }
     else if (name == "avgpool") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,

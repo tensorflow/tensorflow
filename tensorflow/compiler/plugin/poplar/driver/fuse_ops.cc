@@ -39,7 +39,6 @@ static const char* names[] = {
   "uniform_scale_add",
   "norm",
   "uniform",
-  "bernoulli",
   "avgpool",
   "avgpool",
   "avgpool",
@@ -157,10 +156,6 @@ static const std::vector<HloMatcherPattern> patterns = {
   // Random 2-constant without post scale and add
   {{HloOpcode::kRng, true, IsRandomUniform, {1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
-   {HloOpcode::kConstant, true, nullptr, {}}},
-
-  // Random bernoulli
-  {{HloOpcode::kRng, true, IsRandomBernoulli, {1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Average pool (valid)

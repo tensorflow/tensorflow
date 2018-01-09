@@ -12,10 +12,6 @@ bool IsTruncatedNormalWhile(const HloInstruction *inst) {
   return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }
 
-bool IsRandomBernoulli(const HloInstruction *inst) {
-  return inst->random_distribution() == RandomDistribution::RNG_BERNOULLI;
-}
-
 bool IsRandomNormal(const HloInstruction *inst) {
   return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
 }
