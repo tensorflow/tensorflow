@@ -60,14 +60,15 @@ std::map<string, string> kBrokenTests = {
      "70527055"},
     {R"(padd.*int32)", "70527055"},
 
-    // L2Norm only supports 4D tensors.
-    {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.\])", "67963684"},
+    // L2Norm only supports tensors with 4D or fewer.
     {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
     // SpaceToBatch only supports 4D tensors.
     {R"(space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
     // L2Norm only works for dim=-1.
+    {R"(l2normdim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(l2normdim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
     {R"(l2normdim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
     {R"(l2normdim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
     {R"(l2normdim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
