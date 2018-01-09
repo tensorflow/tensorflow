@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -103,6 +104,12 @@ class Literal {
   tensorflow::gtl::MutableArraySlice<NativeT> data(
       const ShapeIndex& shape_index = {});
 
+  // Returns a pointer to the sparse index array. Returns nullptr if the literal
+  // is not a sparse array.
+  const SparseIndexArray* sparse_indices(
+      const ShapeIndex& shape_index = {}) const;
+  SparseIndexArray* sparse_indices(const ShapeIndex& shape_index = {});
+
   // Returns a pointer to (or size of) the underlying buffer holding the array
   // at the given shape index. CHECKs if the subshape of the literal at the
   // given ShapeIndex is not array.
@@ -159,6 +166,56 @@ class Literal {
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
   string GetR1U8AsString() const;
+
+  // Creates a literal with a sparse layout and the given indices and values.
+  // The shape is initialized from the given dimensions.  The minor dimension of
+  // the indices array must equal the rank of the shape (i.e. size of the
+  // dimensions array). The major dimension of the indices array must equal the
+  // number of elements in the values array. The maximum number of elements in
+  // the array is taken from the max_indices() value of the index array.
+  //
+  // XLA assumes that sparse literals are in sorted order for all operations. If
+  // the `sort` argument is true, then the indices and values will be sorted
+  // while copying them into the literal. If you have ensured that the indices
+  // and values are already sorted, then you may set the `sort` argument to
+  // false to skip the sorting step.
+  //
+  // For example:
+  //
+  //   CreateSparse(
+  //     {12, 12, 12},
+  //     SparseIndexArray(10, 3,
+  //                      Array2D{
+  //                        {0, 1, 2},
+  //                        {3, 4, 5},
+  //                        {6, 7, 8},
+  //                        {9, 10, 11},
+  //                      }),
+  //     {1.0, 2.0 3.0, 4.0})
+  //
+  // This creates an array with shape F64[12,12,12]sparse{10}, that has the
+  // following non-zero values:
+  //
+  //     [0,  1,  2]: 1.0
+  //     [3,  4,  5]: 2.0
+  //     [6,  7,  8]: 3.0
+  //     [9, 10, 11]: 4.0
+  //
+  template <typename NativeT>
+  static std::unique_ptr<Literal> CreateSparse(
+      tensorflow::gtl::ArraySlice<int64> dimensions, SparseIndexArray indices,
+      tensorflow::gtl::ArraySlice<NativeT> values, bool sort = true);
+
+  // Populates a literal with a sparse layout with the given indices and values.
+  // Each index in the indices array is CHECKed against the dimensions in the
+  // literal's shape.  If sort is true, then the indices and values will be
+  // sorted.  If sort is false, then the indices and values are assumed to
+  // already be in sorted order.  See CreateSparse for an example of how data
+  // are populated.
+  template <typename NativeT>
+  void PopulateSparse(SparseIndexArray indices,
+                      tensorflow::gtl::ArraySlice<NativeT> values,
+                      bool sort = true);
 
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
@@ -358,7 +415,7 @@ class Literal {
            const ShapeIndex& shape_index, NativeT value);
 
   // Overloads of Get and Set for array literals. CHECKs if the literal is not
-  // array-shaped.
+  // array-shaped and dense.
   template <typename NativeT>
   NativeT Get(tensorflow::gtl::ArraySlice<int64> multi_index) const;
   template <typename NativeT>
@@ -408,6 +465,8 @@ class Literal {
   // This function is useful if you want a polymorphic representation
   // of the tensor's elements (turning it to a string for something
   // like representation in a protobuf).
+  //
+  // This literal must have a dense layout.
   void EachCellAsString(
       const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                                const string& value)>& per_cell) const;
@@ -447,6 +506,8 @@ class Literal {
   //
   // generator must be a callable of the type
   // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  //
+  // This literal must have a dense layout.
   template <typename NativeT, typename FnType>
   Status Populate(const FnType& generator);
 
@@ -485,10 +546,12 @@ class Literal {
   // admonishments about floating-point equality checks apply.  We expect you to
   // use this to check for complex values that can be expressed precisely as
   // float pairs e.g. (-0.5, 1.0).
+  //
+  // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
 
   // Returns whether this literal is zero at the specified index. This literal
-  // must be an array.
+  // must be an array with a dense layout.
   bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;
 
   // Return the count of the elements in the array at the given shape index in
@@ -563,6 +626,14 @@ class Literal {
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
+    // The array of multi-indices that provide the locations of non-zero
+    // elements in a sparse array.  Only used if
+    // LayoutUtil::IsSparseArray(shape()) is true.
+    SparseIndexArray* sparse_indices() const { return sparse_indices_; }
+    void set_sparse_indices(SparseIndexArray* sparse_indices) {
+      sparse_indices_ = sparse_indices;
+    }
+
     // Gets or sets the subshape of this piece. This reference points to a
     // subshape within the shape in the containing Literal (Literal::shape_).
     const Shape& subshape() const { return *subshape_; }
@@ -597,6 +668,9 @@ class Literal {
 
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
+
+    // For sparse arrays, this is the array of indices.
+    SparseIndexArray* sparse_indices_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -837,6 +911,21 @@ template <typename NativeT>
 }
 
 template <typename NativeT>
+/* static */ std::unique_ptr<Literal> Literal::CreateSparse(
+    tensorflow::gtl::ArraySlice<int64> dimensions, SparseIndexArray indices,
+    tensorflow::gtl::ArraySlice<NativeT> values, bool sort) {
+  int64 num_elements = values.size();
+  int64 rank = dimensions.size();
+  CHECK_EQ(num_elements, indices.index_count());
+  CHECK_EQ(rank, indices.rank());
+  auto literal = MakeUnique<Literal>(ShapeUtil::MakeShapeWithSparseLayout(
+      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions,
+      indices.max_indices()));
+  literal->PopulateSparse(indices, values, sort);
+  return literal;
+}
+
+template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR4(
     std::initializer_list<std::initializer_list<
         std::initializer_list<std::initializer_list<NativeT>>>>
@@ -1044,11 +1133,35 @@ void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
+template <typename NativeT>
+void Literal::PopulateSparse(SparseIndexArray indices,
+                             tensorflow::gtl::ArraySlice<NativeT> values,
+                             bool sort) {
+  CHECK(LayoutUtil::IsSparseArray(shape()));
+  int rank = ShapeUtil::Rank(shape());
+  CHECK_EQ(indices.rank(), rank);
+  int64 max_elements = LayoutUtil::MaxSparseElements(shape().layout());
+  CHECK_LE(indices.max_indices(), max_elements);
+  int64 num_elements = values.size();
+  CHECK_LE(num_elements, max_elements);
+  CHECK_EQ(num_elements, indices.index_count());
+  auto root_data = root_piece().data<NativeT>();
+  root_data.remove_suffix(max_elements - values.size());
+  std::copy(values.begin(), values.end(), root_data.begin());
+  *this->root_piece().sparse_indices() = std::move(indices);
+  if (sort) {
+    auto root_data = this->root_piece().data<NativeT>();
+    root_data.remove_suffix(root_data.size() - num_elements);
+    this->root_piece().sparse_indices()->SortWithValues(root_data);
+  }
+  DCHECK(this->root_piece().sparse_indices()->Validate(shape()));
+}
+
 template <typename NativeT, typename FnType>
 Status Literal::Populate(const FnType& generator) {
   const Shape& this_shape = shape();
   const int64 rank = ShapeUtil::Rank(this_shape);
-  TF_RET_CHECK(ShapeUtil::IsArray(this_shape));
+  TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
   tensorflow::gtl::MutableArraySlice<NativeT> literal_data = data<NativeT>();

@@ -614,7 +614,7 @@ class Estimator(object):
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
-            'input_fn should return (feautures, labels) as a len 2 tuple.')
+            'input_fn should return (features, labels) as a len 2 tuple.')
       return result[0], result[1], input_hooks
     return result, None, input_hooks
 

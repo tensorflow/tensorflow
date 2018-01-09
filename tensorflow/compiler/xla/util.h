@@ -398,6 +398,31 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
+// Simple wrapper around std::all_of.
+template <typename Container, typename Predicate>
+bool c_all_of(Container container, Predicate predicate) {
+  return std::all_of(std::begin(container), std::end(container), predicate);
+}
+
+// Simple wrapper around std::transform.
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(InputContainer input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator, unary_op);
+}
+
+// Simple wrapper around std::copy_if.
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(InputContainer input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, predicate);
+}
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \
