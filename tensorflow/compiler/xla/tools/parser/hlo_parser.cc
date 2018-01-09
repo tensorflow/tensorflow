@@ -1515,7 +1515,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
             return false;
           }
         } else {
-          return TokenError(StrCat("unsupported premitive type ",
+          return TokenError(StrCat("unsupported primitive type ",
                                    PrimitiveType_Name(shape.element_type())));
         }
         break;
