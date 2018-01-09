@@ -1851,7 +1851,7 @@ bool HloParser::ParseWindow(Window* window) {
       if (field_name == "rhs_reversal") {
         return ParseDxD("rhs_reversal", &rhs_reversal);
       }
-      return Error(loc, StrCat("unexpected attribute name: ", field_name));
+      return Error(attr_loc, StrCat("unexpected attribute name: ", field_name));
     }();
     if (!ok) {
       return false;
