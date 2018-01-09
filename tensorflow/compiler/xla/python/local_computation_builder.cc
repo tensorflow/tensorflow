@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/default/thread_annotations.h"
 
 namespace xla {
 
@@ -24,17 +25,17 @@ namespace swig {
 // TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
 // device handles instead of needing to set the number of replicas at XLA
 // service initialization time.
-tensorflow::mutex g_replica_count_mutex(tensorflow::LINKER_INITIALIZED);
-int g_replica_count = 1;
-bool g_local_client_created = false;
+tensorflow::mutex g_local_client_mutex(tensorflow::LINKER_INITIALIZED);
+int g_replica_count GUARDED_BY(g_local_client_mutex) = 1;
+LocalClient* g_local_client GUARDED_BY(g_local_client_mutex) = nullptr;
 
 Status InitializeReplicaCount(int replica_count) {
   if (replica_count < 1) {
     return InvalidArgument("Replica count must be >= 1; got %d.",
                            replica_count);
   }
-  tensorflow::mutex_lock lock(g_replica_count_mutex);
-  if (g_local_client_created) {
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
     return FailedPrecondition(
         "Attempted to set the replica count to %d, but a local XLA service was "
         "previously created with a replica count of %d.",
@@ -45,18 +46,20 @@ Status InitializeReplicaCount(int replica_count) {
 }
 
 int GetReplicaCount() {
-  tensorflow::mutex_lock lock(g_replica_count_mutex);
+  tensorflow::mutex_lock lock(g_local_client_mutex);
   return g_replica_count;
 }
 
 LocalClient* GetOrCreateLocalClient() {
-  LocalClientOptions options;
-  {
-    tensorflow::mutex_lock lock(g_replica_count_mutex);
-    options.set_number_of_replicas(g_replica_count);
-    g_local_client_created = true;
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return g_local_client;
   }
-  return ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  LocalClientOptions options;
+  options.set_number_of_replicas(g_replica_count);
+  g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  CHECK(g_local_client != nullptr);
+  return g_local_client;
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
