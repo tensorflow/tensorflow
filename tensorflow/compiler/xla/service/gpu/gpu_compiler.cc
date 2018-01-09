@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -137,6 +139,7 @@ tensorflow::Status OptimizeHloModule(
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
+    pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
@@ -474,6 +477,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(
         entry_computation->root_instruction()->Accept(&ir_emitter));
+  }
+
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
+
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
+
+    // verifyModule() returns true if the module is broken.
+    TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+        << "Invalid LLVM IR before optimizations:\n"
+        << err_stream.str()
+        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+           "Rerun with --xla_dump_ir_to to get the IR. ";
   }
 
   if (user_pre_optimization_hook_) {

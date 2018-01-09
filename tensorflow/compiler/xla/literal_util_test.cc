@@ -193,6 +193,34 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   ASSERT_EQ(expected, result);
 }
 
+TEST_F(LiteralUtilTest, CreateSparse) {
+  std::vector<int64> dimensions = {8, 8, 8};
+  Array2D<int64> indices = {
+      {3, 4, 5},
+      {1, 2, 3},
+      {2, 3, 4},
+      {3, 5, 6},
+  };
+  std::vector<int64> values = {7, 8, 9, 10};
+  auto literal = Literal::CreateSparse<int64>(
+      dimensions, SparseIndexArray(indices.n1() + 3, indices), values);
+
+  Array2D<int64> expected_indices = {
+      {1, 2, 3},
+      {2, 3, 4},
+      {3, 4, 5},
+      {3, 5, 6},
+  };
+  std::vector<int64> expected_values = {8, 9, 7, 10};
+
+  EXPECT_EQ(literal->sparse_indices()->data(),
+            tensorflow::gtl::ArraySlice<int64>(
+                expected_indices.data(), expected_indices.num_elements()));
+  EXPECT_EQ(tensorflow::gtl::ArraySlice<int64>(literal->data<int64>().data(),
+                                               expected_values.size()),
+            tensorflow::gtl::ArraySlice<int64>(expected_values));
+}
+
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   // clang-format off
   auto literal = Literal::CreateR4Projected<float>({

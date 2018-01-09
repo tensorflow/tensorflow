@@ -69,6 +69,18 @@ class IndexUtil {
   //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10
   static int64 GetDimensionStride(const Shape& shape, int64 dimension);
 
+  // Returns true iff the given multi-index is contained in the bounds for the
+  // shape.
+  static bool IndexInBounds(const Shape& shape,
+                            tensorflow::gtl::ArraySlice<int64> index);
+
+  // Compares the given indices in lexicographic order.  lhs[0] and rhs[0] are
+  // compared first, and lhs[rank-1] and rhs[rank-1] last.  If lhs is larger,
+  // then -1 is returned. If rhs is larger, then 1 is returned.  Otherwise, 0 is
+  // returned.
+  static int CompareIndices(tensorflow::gtl::ArraySlice<int64> lhs,
+                            tensorflow::gtl::ArraySlice<int64> rhs);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);
 };
