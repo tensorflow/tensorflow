@@ -62,7 +62,9 @@ def _get_computed_nodes(g, output, seen):
   for each in node_def.input:
     # Parses name of input node.
     if each.startswith('^'):
-      each = each[1:]
+      # The character '^' denotes a control dependency, so this input node can
+      # be safely ignored.
+      continue
     each = each.split(':')[0]
     # Recursively computes ordering.
     new_v = _get_computed_nodes(g, each, seen)

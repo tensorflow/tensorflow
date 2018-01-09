@@ -555,6 +555,17 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_TRANSPOSE: {
+      auto* params = MallocPOD<TfLiteTransposeParams>();
+      if (auto* schema_params = op->builtin_options_as_TransposeOptions()) {
+        const auto& perm = schema_params->perm();
+        FlatBufferIntVectorToArray(sizeof(params->perm), perm, params->perm,
+                                   error_reporter);
+        params->num_dimensions = perm->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
   }
   return builtin_data;
 }
