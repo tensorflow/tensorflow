@@ -51,6 +51,7 @@ ProfileResponse Profile(const string& service_addr, int duration_ms) {
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
   request.add_tools("input_pipeline");
+  request.add_tools("overview_page");
   std::cout << "Limiting the number of trace events to " << kMaxEvents
             << std::endl;
   ::grpc::ClientContext context;
