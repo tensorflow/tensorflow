@@ -36,7 +36,7 @@ transitive_hdrs(
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
     ] + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers"
+        "@local_config_cuda//cuda:cuda_headers",
     ]),
 )
 
