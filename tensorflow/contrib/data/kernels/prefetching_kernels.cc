@@ -83,8 +83,10 @@ class FunctionBufferingResource : public ResourceBase {
       return Status::OK();
     }
     AttrValueMap attr_values = func_.attr();
-    return lib_->Instantiate(func_.name(), AttrSlice(&attr_values),
-                             {target_device_}, &handle_);
+    FunctionLibraryRuntime::InstantiateOptions opts;
+    opts.target = target_device_;
+    return lib_->Instantiate(func_.name(), AttrSlice(&attr_values), opts,
+                             &handle_);
   }
 
   // Returns true if we've got to the end of the sequence and exhausted the
