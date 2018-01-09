@@ -26,7 +26,7 @@ DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   std::unique_ptr<Literal> double_lit;
   TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
 
-  const double* val = static_cast<const double*>(double_lit->InternalData());
+  const double* val = static_cast<const double*>(double_lit->untyped_data());
   return *val;
 }
 
