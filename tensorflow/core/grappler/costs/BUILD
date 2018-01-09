@@ -16,7 +16,10 @@ filegroup(
 
 filegroup(
     name = "graph_properties_testdata",
-    srcs = glob(["graph_properties_testdata/*.pbtxt"]),
+    srcs = glob([
+        "graph_properties_testdata/*.pbtxt",
+        "graph_properties_testdata/*.pbtxt.html",
+    ]),
     visibility = ["//visibility:public"],
 )
 

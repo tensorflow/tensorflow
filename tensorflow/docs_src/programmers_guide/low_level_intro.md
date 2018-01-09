@@ -6,7 +6,7 @@ This guide gets you started programming in the low-level TensorFlow APIs
   * Manage your own TensorFlow program (a `tf.Graph`) and TensorFlow
     runtime (a `tf.Session`), instead of relying on Estimators to manage them.
   * Run TensorFlow operations, using a `tf.Session`.
-  * Use high level components ([datasets](#datasets),[layers](#layers), and
+  * Use high level components ([datasets](#datasets), [layers](#layers), and
     [feature_columns](#feature_columns)) in this low level environment.
   * Build your own training loop, instead of using the one
     @{$get_started/premade_estimators$provided by Estimators}.
@@ -63,8 +63,8 @@ TensorFlow uses numpy arrays to represent tensor **values**.
 You might think of TensorFlow Core programs as consisting of two discrete
 sections:
 
-1.  Building the computational graph (a `@{tf.Graph}`).
-2.  Running the computational graph (using a `@{tf.Session}`).
+1.  Building the computational graph (a @{tf.Graph}).
+2.  Running the computational graph (using a @{tf.Session}).
 
 ### Graph
 
@@ -78,7 +78,7 @@ graph. The graph is composed of two types of objects.
     `tf.Tensors`.
 
 Important: `tf.Tensors` do not have values, they are just handles to elements
-in computation graph.
+in the computation graph.
 
 Let's build a simple computational graph. The most basic operation is a
 constant. The Python function that builds the operation takes a tensor value as
@@ -180,7 +180,9 @@ print(sess.run({'ab':(a, b), 'total':total}))
 
 which returns the results in a structure of the same layout:
 
+``` None
 {'total': 7.0, 'ab': (3.0, 4.0)}
+```
 
 During a call to `tf.Session.run` any `tf.Tensor` only has a single value.
 For example, the following code calls `tf.random_uniform` to produce a
@@ -252,10 +254,9 @@ that placeholders throw an error if no value is fed to them.
 Placeholders work for simple experiments, but @{tf.data$Datasets} are the
 preferred method of streaming data into a model.
 
-Datasets also build up a representation of a calculation step by step, but do
-not build Operations and Tensors directly into the Graph. To get a runnable
-Tensor from a Dataset you must first convert it to a @{tf.data.Iterator}, and
-then call the Iterator's @{tf.data.Iterator.get_next$`get_next`} method.
+To get a runnable `tf.Tensor` from a Dataset you must first convert it to a
+@{tf.data.Iterator}, and then call the Iterator's
+@{tf.data.Iterator.get_next$`get_next`} method.
 
 The simplest way to create an Iterator is with the
 @{tf.data.Dataset.make_one_shot_iterator$`make_one_shot_iterator`} method.
@@ -284,6 +285,8 @@ while True:
   except tf.errors.OutOfRangeError:
     break
 ```
+
+For more details on Datasets and Iterators see: @{$programmers_guide/datasets}.
 
 ## Layers
 
@@ -330,9 +333,8 @@ sess.run(init)
 ```
 
 Important: Calling `tf.global_variables_initializer` only
-creates and returns a handle to a TensorFlow operation that will
-initializes all the global variables when we run it. Until we call `sess.run`,
-the variables are un-initialized.
+creates and returns a handle to a TensorFlow operation. That op
+will initialize all the global variables when we run it with `tf.Session.run`.
 
 Also note that this `global_variables_initializer` only initializes variables
 that existed in the graph when the  initializer was created. So the initializer
@@ -386,10 +388,10 @@ of a categorical column you must wrap it in an
 ``` python
 features = {
     'sales' : [[5], [10], [8], [9]],
-    'department': ['sports','sports', 'gardening', 'gardening']}
+    'department': ['sports', 'sports', 'gardening', 'gardening']}
 
 department_column = tf.feature_column.categorical_column_with_vocabulary_list(
-        'department', ['sports','gardening'])
+        'department', ['sports', 'gardening'])
 department_column = tf.feature_column.indicator_column(department_column)
 
 columns = [

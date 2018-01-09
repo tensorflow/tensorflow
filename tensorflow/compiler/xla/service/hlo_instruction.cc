@@ -101,7 +101,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   instruction->metadata_ = proto.metadata();
   if (proto.has_literal()) {
-    instruction->literal_ = MakeUnique<Literal>(proto.literal());
+    TF_ASSIGN_OR_RETURN(instruction->literal_,
+                        Literal::CreateFromProto(proto.literal()));
   }
   instruction->parameter_number_ = proto.parameter_number();
 
@@ -144,6 +145,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
   instruction->outfeed_shape_ = proto.outfeed_shape();
+  instruction->fft_type_ = proto.fft_type();
+  for (int64 fft_len : proto.fft_length()) {
+    instruction->fft_length_.push_back(fft_len);
+  }
 
   return std::move(instruction);
 }
@@ -162,8 +167,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
-  instruction->literal_.reset(new Literal);
-  instruction->literal_->append_u8s(tag);
+  instruction->literal_ = Literal::CreateR1U8(tag);
   return instruction;
 }
 
@@ -331,6 +335,16 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   instruction->window_ = MakeUnique<Window>(window);
   instruction->convolution_dimension_numbers_ =
       MakeUnique<ConvolutionDimensionNumbers>(dimension_numbers);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
+    const Shape& shape, HloInstruction* operand, FftType fft_type,
+    tensorflow::gtl::ArraySlice<int64> fft_length) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFft, shape));
+  instruction->AppendOperand(operand);
+  instruction->fft_type_ = fft_type;
+  instruction->fft_length_.assign(fft_length.begin(), fft_length.end());
   return instruction;
 }
 
@@ -1167,6 +1181,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateDot(shape, new_operands[0], new_operands[1],
                         *dot_dimension_numbers_);
       break;
+    case HloOpcode::kFft:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateFft(shape, new_operands[0], fft_type_, fft_length_);
     case HloOpcode::kCrossReplicaSum:
       clone = CreateCrossReplicaSum(shape, new_operands);
       break;
@@ -1631,6 +1648,11 @@ bool HloInstruction::IdenticalSlowPath(
       return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
                                            other.dot_dimension_numbers());
 
+    // FFT has various types & lengths.
+    case HloOpcode::kFft:
+      return fft_type() == other.fft_type() &&
+             fft_length() == other.fft_length();
+
     // Reduction results are determined by the reduction dimension and the
     // reduction computation.
     case HloOpcode::kReduce:
@@ -2055,6 +2077,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
   }
+  if (opcode() == HloOpcode::kFft) {
+    extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
+    extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
+  }
 
   if (options.print_subcomputation_references()) {
     if (opcode() == HloOpcode::kWhile) {
@@ -2206,6 +2232,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
   *proto.mutable_outfeed_shape() = outfeed_shape_;
+  proto.set_fft_type(fft_type_);
+  for (int64 fft_len : fft_length_) {
+    proto.add_fft_length(fft_len);
+  }
 
   return proto;
 }
@@ -2278,7 +2308,7 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s_string();
+  return literal_->GetR1U8AsString();
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
@@ -2421,6 +2451,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSelect(this);
     case HloOpcode::kConvolution:
       return visitor->HandleConvolution(this);
+    case HloOpcode::kFft:
+      return visitor->HandleFft(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
     case HloOpcode::kTuple:

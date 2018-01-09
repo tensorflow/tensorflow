@@ -127,7 +127,7 @@ class ConvRecurrent2D(Recurrent):
     self.input_spec = [InputSpec(ndim=5)]
     self.state_spec = None
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -467,9 +467,9 @@ class ConvLSTM2D(ConvRecurrent2D):
                        'Got input shape: ' + str(input_shape))
 
     if self.return_state:
-      output_shape = tuple(self._compute_output_shape(input_shape)[0].as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape)[0].as_list())
     else:
-      output_shape = tuple(self._compute_output_shape(input_shape).as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape).as_list())
     if self.return_sequences:
       output_shape = (input_shape[0],) + output_shape[2:]
     else:

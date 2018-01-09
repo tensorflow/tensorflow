@@ -369,8 +369,9 @@ string LayoutConstraints::ToString() const {
 }
 
 Status LayoutAssignment::AddMandatoryConstraints(
-    const ComputationLayout& computation_layout, HloComputation* computation,
-    LayoutConstraints* constraints) {
+    const ComputationLayout& computation_layout,
+    const ChannelLayoutConstraints* channel_constraints,
+    HloComputation* computation, LayoutConstraints* constraints) {
   VLOG(3) << "Adding mandatory layout constraints to computation "
           << computation->name();
 
@@ -402,6 +403,37 @@ Status LayoutAssignment::AddMandatoryConstraints(
     if (shape_with_layout != nullptr) {
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(*shape_with_layout, instruction));
+    }
+
+    if (instruction->opcode() == HloOpcode::kSend ||
+        instruction->opcode() == HloOpcode::kRecv) {
+      CHECK(channel_constraints)
+          << "Multi-module layout assignment requires ChannelLayoutConstraints";
+      int64 channel_id = instruction->channel_id();
+      if (!channel_constraints->IsChannelConstrained(channel_id)) {
+        continue;
+      }
+      if (instruction->opcode() == HloOpcode::kSend) {
+        // TODO(b/68493863): Change to use SetOperandLayout().
+        const Shape send_buffer_shape = instruction->operand(0)->shape();
+        TF_RET_CHECK(ShapeUtil::IsArray(send_buffer_shape));
+        Shape new_buffer_shape = channel_constraints->LayoutShapeForChannel(
+            send_buffer_shape, instruction->channel_id());
+        TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+            new_buffer_shape, instruction->operand(0)));
+      } else {
+        const Shape recv_buffer_shape =
+            ShapeUtil::GetTupleElementShape(instruction->shape(), 0);
+        TF_RET_CHECK(ShapeUtil::IsArray(recv_buffer_shape));
+        TF_ASSIGN_OR_RETURN(
+            const LogicalBuffer* buffer,
+            constraints->points_to_analysis().GetBufferDefinedAt(instruction,
+                                                                 {0}));
+        Shape new_shape = channel_constraints->LayoutShapeForChannel(
+            recv_buffer_shape, instruction->channel_id());
+        TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
+            new_shape.layout(), *buffer, /*mandatory=*/true));
+      }
     }
   }
 
@@ -690,8 +722,11 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
   return Status::OK();
 }
 
-LayoutAssignment::LayoutAssignment(ComputationLayout* entry_computation_layout)
-    : entry_computation_layout_(entry_computation_layout) {
+LayoutAssignment::LayoutAssignment(
+    ComputationLayout* entry_computation_layout,
+    ChannelLayoutConstraints* channel_constraints)
+    : entry_computation_layout_(entry_computation_layout),
+      channel_layout_constraints_(channel_constraints) {
   VLOG(1) << "entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
   // Layouts of all parameter instructions must be set.
@@ -1321,7 +1356,8 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
 Status LayoutAssignment::RunOnComputation(
     const ComputationLayout& computation_layout,
     const TuplePointsToAnalysis& points_to_analysis,
-    HloComputation* computation) {
+    HloComputation* computation,
+    ChannelLayoutConstraints* channel_constraints) {
   DCHECK(computation_layout.LayoutIsSet());
   InsertOrDie(&computation_layouts_, computation, computation_layout);
   VLOG(2) << "LayoutAssignment::RunOnComputation(" << computation->name()
@@ -1347,8 +1383,8 @@ Status LayoutAssignment::RunOnComputation(
 
   // Add constraints required for correctness on all backends (eg, entry
   // parameter layout constraints).
-  TF_RETURN_IF_ERROR(
-      AddMandatoryConstraints(computation_layout, computation, &constraints));
+  TF_RETURN_IF_ERROR(AddMandatoryConstraints(
+      computation_layout, channel_constraints, computation, &constraints));
 
   // Add any backend-specific constraints.
   TF_RETURN_IF_ERROR(AddBackendConstraints(&constraints));
@@ -1387,7 +1423,20 @@ Status LayoutAssignment::RunOnComputation(
   // All logical buffers should have constraints at this point. All that
   // remains is assign the constraints to the buffers and infer layouts for
   // aliased buffers.
-  return AssignLayouts(constraints, computation);
+  TF_RETURN_IF_ERROR(AssignLayouts(constraints, computation));
+
+  // Record the layouts assigned for any communication ops in
+  // channel_constraints so that they are constrained for future modules.
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() == HloOpcode::kSend) {
+      channel_constraints->ConstrainChannel(
+          instruction->channel_id(), instruction->operand(0)->shape().layout());
+    } else if (instruction->opcode() == HloOpcode::kRecvDone) {
+      channel_constraints->ConstrainChannel(instruction->channel_id(),
+                                            instruction->shape().layout());
+    }
+  }
+  return Status::OK();
 }
 
 StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
@@ -1407,9 +1456,9 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   // all callers of a computation will agree.
   for (auto* computation : module->MakeComputationPostOrder()) {
     if (computation == module->entry_computation()) {
-      TF_RETURN_IF_ERROR(RunOnComputation(*entry_computation_layout_,
-                                          *points_to_analysis,
-                                          module->entry_computation()));
+      TF_RETURN_IF_ERROR(RunOnComputation(
+          *entry_computation_layout_, *points_to_analysis,
+          module->entry_computation(), channel_layout_constraints_));
     } else if (computation->IsFusionComputation()) {
       continue;
     } else {
@@ -1418,7 +1467,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
       // suboptimal.
       computation_layout.SetToDefaultLayout();
       TF_RETURN_IF_ERROR(RunOnComputation(computation_layout,
-                                          *points_to_analysis, computation));
+                                          *points_to_analysis, computation,
+                                          channel_layout_constraints_));
     }
   }
 

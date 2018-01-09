@@ -327,19 +327,20 @@ def get_var(environ_cp,
   var = environ_cp.get(var_name)
   if var is not None:
     var_content = var.strip().lower()
-    if var_content in ('1', 't', 'true', 'y', 'yes'):
+    true_strings = ('1', 't', 'true', 'y', 'yes')
+    false_strings = ('0', 'f', 'false', 'n', 'no')
+    if var_content in true_strings:
       var = True
-    elif var_content in ('0', 'f', 'false', 'n', 'no'):
+    elif var_content in false_strings:
       var = False
     else:
-      raise UserInputError('Environment variable %s must be set as a boolean indicator.\n'
-                           'The following are accepted as TRUE : %s.\n'
-                           'The following are accepted as FALSE: %s.\n'
-                           'Current value is %s' %
-                           (var_name,
-                            ','.join(true_contents),
-                            ','.join(false_contents),
-                            var))
+      raise UserInputError(
+          'Environment variable %s must be set as a boolean indicator.\n'
+          'The following are accepted as TRUE : %s.\n'
+          'The following are accepted as FALSE: %s.\n'
+          'Current value is %s.' % (
+              var_name, ', '.join(true_strings), ', '.join(false_strings),
+              var))
 
   while var is None:
     user_input_origin = get_input(question)
@@ -627,8 +628,9 @@ def prompt_loop_or_load_from_env(
 
   Raises:
     UserInputError: if a query has been attempted n_ask_attempts times without
-      success, assume that the user has made a scripting error, and will continue
-      to provide invalid input. Raise the error to avoid infinitely looping.
+      success, assume that the user has made a scripting error, and will
+      continue to provide invalid input. Raise the error to avoid infinitely
+      looping.
   """
   default = environ_cp.get(var_name) or var_default
   full_query = '%s [Default is %s]: ' % (
@@ -1120,17 +1122,20 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+
 def set_trisycl_include_dir(environ_cp):
-  """Set TRISYCL_INCLUDE_DIR"""
+  """Set TRISYCL_INCLUDE_DIR."""
+
   ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
                              'include directory. (Use --config=sycl_trisycl '
                              'when building with Bazel) '
                              '[Default is %s]: '
-                             ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
+                            ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
+
   while True:
     trisycl_include_dir = get_from_env_or_user_or_default(
-      environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
-      _DEFAULT_TRISYCL_INCLUDE_DIR)
+        environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
+        _DEFAULT_TRISYCL_INCLUDE_DIR)
     if os.path.exists(trisycl_include_dir):
       break
 
@@ -1200,45 +1205,9 @@ def set_other_mpi_vars(environ_cp):
     raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
 
 
-def set_mkl():
-  write_to_bazelrc('build:mkl --define using_mkl=true')
-  write_to_bazelrc('build:mkl -c opt')
-  print(
-      'Add "--config=mkl" to your bazel command to build with MKL '
-      'support.\nPlease note that MKL on MacOS or windows is still not '
-      'supported.\nIf you would like to use a local MKL instead of '
-      'downloading, please set the environment variable \"TF_MKL_ROOT\" every '
-      'time before build.\n')
-
-
-def set_monolithic():
-  # Add --config=monolithic to your bazel command to use a mostly-static
-  # build and disable modular op registration support (this will revert to
-  # loading TensorFlow with RTLD_GLOBAL in Python). By default (without
-  # --config=monolithic), TensorFlow will build with a dependence on
-  # //tensorflow:libtensorflow_framework.so.
-  write_to_bazelrc('build:monolithic --define framework_shared_object=false')
-  # For projects which use TensorFlow as part of a Bazel build process, putting
-  # nothing in a bazelrc will default to a monolithic build. The following line
-  # opts in to modular op registration support by default:
-  write_to_bazelrc('build --define framework_shared_object=true')
-
-
-def create_android_bazelrc_configs():
-  # Flags for --config=android
-  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
-  write_to_bazelrc(
-      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
-  # Flags for --config=android_arm
-  write_to_bazelrc('build:android_arm --config=android')
-  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
-  # Flags for --config=android_arm64
-  write_to_bazelrc('build:android_arm64 --config=android')
-  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
-
-
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
+
 
 def set_windows_build_flags():
   if is_windows():
@@ -1248,6 +1217,11 @@ def set_windows_build_flags():
     write_to_bazelrc('build --copt=-w --host_copt=-w')
     # Output more verbose information when something goes wrong
     write_to_bazelrc('build --verbose_failures')
+
+
+def config_info_line(name, help_text):
+  """Helper function to print formatted help text for Bazel config options."""
+  print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
 def main():
@@ -1335,10 +1309,7 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  set_mkl()
-  set_monolithic()
   set_windows_build_flags()
-  create_android_bazelrc_configs()
 
   if workspace_has_any_android_rule():
     print('The WORKSPACE file has at least one of ["android_sdk_repository", '
@@ -1356,6 +1327,11 @@ def main():
       create_android_ndk_rule(environ_cp)
       create_android_sdk_rule(environ_cp)
 
+  print('Preconfigured Bazel build configs. You can use any of the below by '
+        'adding "--config=<>" to your build command. See tools/bazel.rc for '
+        'more details.')
+  config_info_line('mkl', 'Build with MKL support.')
+  config_info_line('monolithic', 'Config for mostly static monolithic build.')
 
 if __name__ == '__main__':
   main()

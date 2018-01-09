@@ -99,6 +99,7 @@ class HloParser {
     kString,
     kBracedInt64List,
     kHloComputation,
+    kFftType,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -178,6 +179,7 @@ class HloParser {
   bool ParseString(string* result);
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
+  bool ParseFftType(FftType* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseInt64(int64* result);
@@ -683,6 +685,20 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1], *window, *dnums));
+      break;
+    }
+    case HloOpcode::kFft: {
+      optional<FftType> fft_type;
+      optional<std::vector<int64>> fft_length;
+      attrs["fft_type"] = {/*required=*/true, AttrTy::kFftType, &fft_type};
+      attrs["fft_length"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &fft_length};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateFft(
+          shape, operands[0], *fft_type, *fft_length));
       break;
     }
     case HloOpcode::kBroadcast: {
@@ -1308,7 +1324,7 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
         PrimitiveType_Name(literal->shape().element_type())));
   }
 
-  literal->GetMutableArraySlice<LiteralNativeT>().at(linear_index) =
+  literal->data<LiteralNativeT>().at(linear_index) =
       static_cast<LiteralNativeT>(value);
   return true;
 }
@@ -1670,6 +1686,14 @@ bool HloParser::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<HloComputation*>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kFftType: {
+        FftType result;
+        if (!ParseFftType(&result)) {
+          return false;
+        }
+        static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kWindow: {
@@ -2285,6 +2309,19 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
                status_or_result.status().error_message().c_str()));
   }
   *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseFftType(FftType* result) {
+  VLOG(1) << "ParseFftType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects fft type");
+  }
+  string val = lexer_.GetStrVal();
+  if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
+    return TokenError(Printf("expects fft type but sees: %s", val.c_str()));
+  }
   lexer_.Lex();
   return true;
 }

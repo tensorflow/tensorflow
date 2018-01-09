@@ -1560,6 +1560,10 @@ params.shape[axis + 1:]` where:
 <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
 </div>
 
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
+
 params: The tensor from which to gather values. Must be at least rank
   `axis + 1`.
 indices: Index tensor. Must be in range `[0, params.shape[axis])`.
@@ -1628,6 +1632,10 @@ The last dimension of `indices` corresponds to elements
 of `params`.  The output tensor has shape
 
     indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
 
 Some examples below.
 
@@ -1814,6 +1822,21 @@ Identity op for gradient debugging.
 
 This op is hidden from public in Python. It is used by TensorFlow Debugger to
 register gradient tensors for gradient debugging.
+This op operates on non-reference-type tensors.
+)Doc");
+
+REGISTER_OP("DebugGradientRefIdentity")
+    .Input("input: Ref(T)")
+    .Output("output: Ref(T)")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetAllowsUninitializedInput()
+    .Doc(R"Doc(
+Identity op for gradient debugging.
+
+This op is hidden from public in Python. It is used by TensorFlow Debugger to
+register gradient tensors for gradient debugging.
+This op operates on reference-type tensors.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -5412,6 +5435,9 @@ The resulting tensor would look like this:
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, the index is ignored.
 
 indices: Index tensor.
 updates: Updates to scatter into output.

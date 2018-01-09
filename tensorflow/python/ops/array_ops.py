@@ -1090,6 +1090,27 @@ def concat(values, axis, name="concat"):
   tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
   tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
   ```
+  As in Python, the `axis` could also be negative numbers. Negative `axis`
+  are interpreted as counting from the end of the rank, i.e.,
+   `axis + rank(values)`-th dimension.
+
+  For example:
+
+  ```python
+  t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
+  t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
+  tf.concat([t1, t2], -1)
+  ```
+
+  would produce:
+
+  ```python
+  [[[ 1,  2,  7,  4],
+    [ 2,  3,  8,  4]],
+
+   [[ 4,  4,  2, 10],
+    [ 5,  3, 15, 11]]]
+  ```
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
@@ -1107,7 +1128,10 @@ def concat(values, axis, name="concat"):
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
     axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
-      in the range `[-rank(values), rank(values))`.
+      in the range `[-rank(values), rank(values))`. As in Python, indexing
+      for axis is 0-based. Positive axis in the rage of
+      `[0, rank(values))` refers to `axis`-th dimension. And negative axis
+      refers to `axis + rank(values)`-th dimension.
     name: A name for the operation (optional).
 
   Returns:
@@ -1494,20 +1518,17 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
-    # Checking for boolean dtype to prevent attempting to run fill on the GPU
-    # which does not have a boolean kernel registered.
-    if context.in_eager_mode() and dtype != dtypes.bool:
-      return fill(shape, constant(zero, dtype=dtype), name=name)
-    try:
-      if isinstance(shape, ops.Tensor):
-        # TODO(apassos) this is required to reproduce the behavior from before
-        # Tensors were iterable. It's a crutch.
-        raise TypeError
-      shape = tensor_shape.as_shape(shape)
-      output = constant(zero, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(zero, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(zero, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -1625,15 +1646,17 @@ def ones(shape, dtype=dtypes.float32, name=None):
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
     one = True if dtype == dtypes.bool else 1
-    try:
-      if isinstance(shape, ops.Tensor):
-        raise TypeError(
-            "preserving semantics from before tensors were iterable")
-      shape = tensor_shape.as_shape(shape)
-      output = constant(one, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(one, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(one, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 

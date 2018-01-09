@@ -1238,6 +1238,7 @@ py_test(
     srcs = ["framework/dtypes_test.py"],
     main = "framework/dtypes_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -1252,12 +1253,12 @@ py_test(
     name = "op_def_library_test",
     size = "small",
     srcs = ["framework/op_def_library_test.py"],
-    main = "framework/op_def_library_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",
+        ":test_ops",
     ],
 )
 
@@ -3506,6 +3507,7 @@ py_test(
     size = "small",
     srcs = ["lib/core/bfloat16_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":lib",
@@ -3717,6 +3719,7 @@ cuda_py_test(
     srcs = ["training/session_manager_test.py"],
     additional_deps = [
         ":array_ops",
+        ":control_flow_ops",
         ":client",
         ":client_testlib",
         ":errors",

@@ -101,56 +101,57 @@ namespace xla {
   ASSERT_EQ(expected.ShortDebugString(), actual.ShortDebugString());
 }
 
+namespace {
+
+// Return a literal with all arrays of type FromNativeT converted to type
+// ToNativeT in the given literal.
+template <typename FromNativeT, typename ToNativeT>
+std::unique_ptr<Literal> ConvertType(const Literal& literal) {
+  // First construct shape of the result.
+  Shape result_shape(literal.shape());
+  ShapeUtil::ForEachMutableSubshape(
+      &result_shape, [](Shape* subshape, const ShapeIndex&) {
+        if (subshape->element_type() ==
+            primitive_util::NativeToPrimitiveType<FromNativeT>()) {
+          subshape->set_element_type(
+              primitive_util::NativeToPrimitiveType<ToNativeT>());
+        }
+      });
+  auto result = MakeUnique<Literal>(result_shape);
+
+  // Then copy over the data from 'literal' converting FromNativeT values to
+  // ToNativeT values as necessary.
+  ShapeUtil::ForEachSubshape(
+      literal.shape(),
+      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        if (ShapeUtil::IsArray(subshape)) {
+          if (subshape.element_type() ==
+              primitive_util::NativeToPrimitiveType<FromNativeT>()) {
+            auto src = literal.data<FromNativeT>(shape_index);
+            auto dest = result->data<ToNativeT>(shape_index);
+            for (int64 i = 0; i < src.size(); ++i) {
+              dest[i] = static_cast<ToNativeT>(src[i]);
+            }
+          } else {
+            TF_CHECK_OK(result->CopyFrom(literal,
+                                         /*dest_shape_index=*/shape_index,
+                                         /*src_shape_index=*/shape_index));
+          }
+        }
+      });
+  return result;
+}
+
+}  // namespace
+
 /* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertBF16ToF32(
     const Literal& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
-    std::vector<std::unique_ptr<Literal>> converted_elements;
-    for (const auto& element : literal.tuple_literals()) {
-      converted_elements.push_back(ConvertBF16ToF32(element));
-    }
-    return Literal::MakeTupleOwned(std::move(converted_elements));
-  }
-
-  if (literal.shape().element_type() != BF16) {
-    return MakeUnique<Literal>(literal);
-  }
-  Shape converted_shape = literal.shape();
-  converted_shape.set_element_type(F32);
-  auto converted = Literal::CreateFromShape(converted_shape);
-  if (!ShapeUtil::HasZeroElements(converted_shape)) {
-    std::vector<int64> index(converted_shape.dimensions_size(), 0);
-    do {
-      converted->Set<float>(index,
-                            static_cast<float>(literal.Get<bfloat16>(index)));
-    } while (IndexUtil::BumpIndices(converted_shape, &index));
-  }
-  return converted;
+  return ConvertType<bfloat16, float>(literal);
 }
 
 /* static */ std::unique_ptr<Literal> LiteralTestUtil::ConvertF32ToBF16(
     const Literal& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
-    std::vector<std::unique_ptr<Literal>> converted_elements;
-    for (const auto& element : literal.tuple_literals()) {
-      converted_elements.push_back(ConvertF32ToBF16(element));
-    }
-    return Literal::MakeTupleOwned(std::move(converted_elements));
-  }
-
-  if (literal.shape().element_type() != F32) {
-    return MakeUnique<Literal>(literal);
-  }
-  Shape converted_shape = literal.shape();
-  converted_shape.set_element_type(BF16);
-  auto converted = Literal::CreateFromShape(converted_shape);
-  if (!ShapeUtil::HasZeroElements(converted_shape)) {
-    std::vector<int64> index(converted_shape.dimensions_size(), 0);
-    do {
-      converted->Set<bfloat16>(
-          index, static_cast<bfloat16>(literal.Get<float>(index)));
-    } while (IndexUtil::BumpIndices(converted_shape, &index));
-  }
-  return converted;
+  return ConvertType<float, bfloat16>(literal);
 }
 
 namespace {
@@ -311,9 +312,10 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
       break;
     case TUPLE: {
       bool tuple_match = true;
-      for (int i = 0; i < actual.tuple_literals_size(); ++i) {
-        auto result =
-            Equal(expected.tuple_literals(i), actual.tuple_literals(i));
+      for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
+        // Create LiteralViews of the expected and actual elements.
+        auto result = Equal(LiteralView::Create(expected, {i}),
+                            LiteralView::Create(actual, {i}));
         tuple_match = tuple_match ? !!result : false;
       }
       match = tuple_match;
@@ -348,11 +350,11 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
   AssertEqualShapes(expected.shape(), actual.shape());
 
   ::testing::AssertionResult err = ::testing::AssertionSuccess();
-  for (uint64 i = 0; i < expected.tuple_literals_size(); ++i) {
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
     SCOPED_TRACE(tensorflow::strings::StrCat(
         "Tuple index ", i, " in ", ShapeUtil::HumanString(expected.shape())));
-    const auto& expected_element = expected.tuple_literals(i);
-    const auto& actual_element = actual.tuple_literals(i);
+    const auto expected_element = LiteralView::Create(expected, {i});
+    const auto actual_element = LiteralView::Create(actual, {i});
 
     ::testing::AssertionResult res = [&] {
       if (ShapeUtil::IsTuple(expected_element.shape())) {
@@ -408,10 +410,7 @@ class NearComparator {
     abs_expected_miscompare_sum_ = 0.0;
     max_rel_err_ = 0.0;
     max_abs_err_ = 0.0;
-    *miscompares_.mutable_shape() =
-        ShapeUtil::ChangeElementType(actual.shape(), PRED);
-    miscompares_.mutable_preds()->resize(
-        ShapeUtil::ElementsIn(miscompares_.shape()), false);
+    miscompares_ = Literal(ShapeUtil::ChangeElementType(actual.shape(), PRED));
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
     switch (expected.shape().element_type()) {
@@ -644,11 +643,11 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
   AssertEqualShapes(expected.shape(), actual.shape());
 
   ::testing::AssertionResult err = ::testing::AssertionSuccess();
-  for (uint64 i = 0; i < expected.tuple_literals_size(); ++i) {
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
     SCOPED_TRACE(tensorflow::strings::StrCat(
         "Tuple index ", i, " in ", ShapeUtil::HumanString(expected.shape())));
-    const auto& expected_element = expected.tuple_literals(i);
-    const auto& actual_element = actual.tuple_literals(i);
+    const auto expected_element = LiteralView::Create(expected, {i});
+    const auto actual_element = LiteralView::Create(actual, {i});
 
     ::testing::AssertionResult res = [&] {
       if (ShapeUtil::IsTuple(expected_element.shape())) {
@@ -714,18 +713,14 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
   }
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
 
-  auto new_literal = MakeUnique<Literal>();
-  *new_literal->mutable_shape() =
-      ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions);
+  auto new_literal = MakeUnique<Literal>(
+      ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions));
 
   // Create a new shape with the given minor-to-major layout. This shape is used
   // solely for converting linear address to multi-dimensional addresses when
   // writing elements to the new literal.
   Shape shape_with_layout = new_literal->shape();
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
-
-  // Allocate space in the new literal.
-  new_literal->Reserve(ShapeUtil::ElementsIn(literal.shape()));
 
   // Copy data into new literal, element-by-element.
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {

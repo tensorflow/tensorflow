@@ -189,6 +189,44 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
+  def test_adjust_gamma_less_zero(self):
+    """White image should be returned for gamma equal to zero"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+    
+      x = constant_op.constant(x_np, shape=x_np.shape)
+
+      err_msg = 'Gamma should be a non-negative real number.'
+      
+      try:
+        image_ops.adjust_gamma(x, gamma=-1)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+
+  def test_adjust_gamma_less_zero_tensor(self):
+    """White image should be returned for gamma equal to zero"""
+    with self.test_session():
+      x_data = np.random.uniform(0, 255, (8, 8))
+      x_np = np.array(x_data, dtype=np.float32)
+    
+      x = constant_op.constant(x_np, shape=x_np.shape)
+      y = constant_op.constant(-1.0, dtype=dtypes.float32)
+      
+      image = image_ops.adjust_gamma(x, gamma=y)
+      
+      err_msg = 'Gamma should be a non-negative real number.'
+      try:
+        image.eval()
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+      
   def test_adjust_gamma_zero(self):
     """White image should be returned for gamma equal to zero"""
     with self.test_session():

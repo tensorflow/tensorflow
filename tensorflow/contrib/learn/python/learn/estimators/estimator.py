@@ -1256,7 +1256,9 @@ class Estimator(BaseEstimator):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None,
-      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),)):
+      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),),
+      strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1280,6 +1282,9 @@ class Estimator(BaseEstimator):
         produce a separate MetaGraphDef within the exported SavedModel, tagged
         and rewritten as specified.  Defaults to a single entry using the
         default serving tag ("serve") and no rewriting.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
@@ -1287,6 +1292,7 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
+    # pylint: enable=line-too-long
     if serving_input_fn is None:
       raise ValueError('serving_input_fn must be defined.')
 
@@ -1366,7 +1372,8 @@ class Estimator(BaseEstimator):
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=init_op)
+            legacy_init_op=init_op,
+            strip_default_attrs=strip_default_attrs)
 
     # pylint: disable=protected-access
     base_meta_graph_def = builder._saved_model.meta_graphs[0]

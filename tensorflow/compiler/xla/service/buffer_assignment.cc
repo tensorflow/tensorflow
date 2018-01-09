@@ -75,7 +75,7 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
   CHECK_LE(offset + size, size_)
       << "LogicalBuffer " << buffer << " size out of range";
   CHECK_EQ(buffer.color(), color())
-      << "Buffer color " << buffer.color()
+      << "Buffer color " << buffer.color() << " for buffer " << buffer
       << " does not match allocation color " << color() << ".";
   OffsetSize offset_size;
   offset_size.offset = offset;
