@@ -40,7 +40,7 @@ class CopyOpTest : public HloTestBase {
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
     auto constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(MakeUnique<Literal>(literal)));
+        HloInstruction::CreateConstant(literal.CloneToUnique()));
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
@@ -132,7 +132,8 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   std::unique_ptr<Literal> literal =
       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
-  Layout* literal_layout = literal->mutable_shape()->mutable_layout();
+  Layout* literal_layout =
+      literal->mutable_shape_do_not_use()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
   literal_layout->mutable_minor_to_major()->SwapElements(0, 1);
 

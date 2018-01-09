@@ -96,14 +96,14 @@ void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
 template <typename NativeT>
 void CopyNumpyArrayToLiteral(PyArrayObject* py_array, Literal* literal) {
   NativeT* source = static_cast<NativeT*>(PyArray_DATA(py_array));
-  auto dest = literal->GetMutableArraySlice<NativeT>();
+  auto dest = literal->data<NativeT>();
   std::copy(source, source + PyArray_SIZE(py_array), dest.data());
 }
 
 template <typename NativeT>
 void CopyLiteralToNumpyArray(const Literal& literal, PyArrayObject* py_array) {
   NativeT* dest = static_cast<NativeT*>(PyArray_DATA(py_array));
-  auto source = literal.GetArraySlice<NativeT>();
+  auto source = literal.data<NativeT>();
   std::copy(source.begin(), source.end(), dest);
 }
 

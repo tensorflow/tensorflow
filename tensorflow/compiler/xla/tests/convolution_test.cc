@@ -105,8 +105,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x1x2_1x1x1x2_Valid) {
   }));
 
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -136,8 +136,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Valid) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -167,8 +167,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Same) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -200,8 +200,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x3x3_Same) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -501,10 +501,10 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
   Array2D<float> expected_result(29, 10);
   expected_result.Fill(0);
 
-  ComputeAndCompare(
-      &builder, conv,
-      {*Literal::CreateFromArray(param0), *Literal::CreateFromArray(param1)},
-      error_spec_);
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(param0)),
+                     std::move(*Literal::CreateFromArray(param1))},
+                    error_spec_);
 }
 
 INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,

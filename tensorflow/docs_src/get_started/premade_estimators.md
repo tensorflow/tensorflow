@@ -71,7 +71,7 @@ Before getting into the details of the program itself, let's investigate the
 programming environment. As the following illustration shows, TensorFlow
 provides a programming stack consisting of multiple API layers:
 
-<div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
 <div style="text-align: center">
