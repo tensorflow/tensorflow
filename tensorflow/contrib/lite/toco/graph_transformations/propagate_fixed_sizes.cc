@@ -631,6 +631,9 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
   const auto& output_size_shape = output_size_array.shape();
   CHECK_EQ(output_size_shape.dimensions_count(), 1);
   CHECK_EQ(output_size_shape.dims(0), 2);
+  if (!output_size_array.buffer) {
+    return;
+  }
   std::vector<int32> output_shape =
       output_size_array.GetBuffer<ArrayDataType::kInt32>().data;
   model->arrays[op->outputs[0]]->copy_shape(
