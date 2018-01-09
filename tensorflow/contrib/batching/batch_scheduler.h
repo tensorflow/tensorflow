@@ -210,6 +210,7 @@ std::unique_ptr<TaskType> Batch<TaskType>::RemoveTask() {
       return nullptr;
     }
     std::unique_ptr<TaskType> task = std::move(tasks_.back());
+    size_ -= task->size();
     tasks_.pop_back();
     return task;
   }

@@ -60,6 +60,12 @@ bool ContainsKey(const Collection& collection, const Key& key) {
   return collection.find(key) != collection.end();
 }
 
+// Inserts `value` into `set`. Dies if it was already present.
+template <class Set>
+void InsertOrDie(Set* const set, const typename Set::value_type& value) {
+  CHECK(set->insert(value).second) << "duplicate value: " << value;
+}
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_MAP_UTIL_H_

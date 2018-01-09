@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,9 +94,15 @@ Literal::Literal(const Shape& shape, bool allocate_arrays)
     Piece& piece = pair.second;
 
     piece.set_subshape(&ShapeUtil::GetSubshape(shape_, index));
-    if (ShapeUtil::IsArray(piece.subshape())) {
+    const Shape& subshape = piece.subshape();
+    if (ShapeUtil::IsArray(subshape)) {
       if (allocate_arrays) {
         piece.set_buffer(new char[piece.size_bytes()]);
+        if (LayoutUtil::IsSparseArray(subshape)) {
+          piece.set_sparse_indices(new SparseIndexArray(
+              LayoutUtil::MaxSparseElements(subshape.layout()),
+              ShapeUtil::Rank(subshape)));
+        }
       } else {
         piece.set_buffer(nullptr);
       }
@@ -112,6 +118,7 @@ void Literal::DeallocateBuffers() {
       Piece& piece = pair.second;
       if (piece.buffer() != nullptr) {
         delete[] piece.buffer();
+        delete piece.sparse_indices();
       }
     }
   }
@@ -162,6 +169,15 @@ std::unique_ptr<Literal> Literal::CreateFromShape(const Shape& shape) {
     }
   }
   return literal;
+}
+
+const SparseIndexArray* Literal::sparse_indices(
+    const ShapeIndex& shape_index) const {
+  return piece(shape_index).sparse_indices();
+}
+
+SparseIndexArray* Literal::sparse_indices(const ShapeIndex& shape_index) {
+  return piece(shape_index).sparse_indices();
 }
 
 /* static */ std::unique_ptr<Literal> Literal::CreateFromDimensions(
@@ -247,9 +263,12 @@ std::vector<Literal> Literal::DecomposeTuple() {
       }
       Piece& src_piece = piece(src_index);
 
-      // Move the respective buffer over to the element Literal.
+      // Move the respective buffer and sparse indices over to the element
+      // Literal.
       dest_piece.set_buffer(src_piece.buffer());
       src_piece.set_buffer(nullptr);
+      dest_piece.set_sparse_indices(src_piece.sparse_indices());
+      src_piece.set_sparse_indices(nullptr);
     }
   }
   // Set this literal to be nil-shaped.
@@ -406,6 +425,8 @@ Status Literal::MoveFrom(Literal&& src_literal,
     Piece& dest_piece = piece(dest_index);
     delete[] dest_piece.buffer();
     dest_piece.set_buffer(src_piece.buffer());
+    delete dest_piece.sparse_indices();
+    dest_piece.set_sparse_indices(src_piece.sparse_indices());
   }
 
   src_literal.shape_ = ShapeUtil::MakeNil();
@@ -764,7 +785,7 @@ std::unique_ptr<Literal> Literal::Transpose(
   // dimension has within the transposed array, a layout is affine if
   // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
   // vector of the affine layout.
-  CHECK(LayoutUtil::IsDense(permuted_shape));
+  CHECK(LayoutUtil::IsDenseArray(permuted_shape));
   Layout* layout = permuted_shape.mutable_layout();
   layout->clear_minor_to_major();
   for (auto index : LayoutUtil::MinorToMajor(shape())) {
@@ -1573,6 +1594,12 @@ LiteralProto Literal::ToProto() const {
     }
     piece.WriteToProto(proto_piece);
   }
+
+  if (LayoutUtil::IsSparseArray(shape())) {
+    CopyToRepeatedField(proto.mutable_sparse_indices(),
+                        sparse_indices()->data());
+  }
+
   return proto;
 }
 
@@ -1653,6 +1680,7 @@ LiteralView::LiteralView(const Literal& literal, const ShapeIndex& view_root) {
     }
     const Piece& src_piece = literal.piece(src_index);
     piece.set_buffer(src_piece.buffer());
+    piece.set_sparse_indices(src_piece.sparse_indices());
     piece.set_subshape(&ShapeUtil::GetSubshape(shape_, index));
   }
 }
