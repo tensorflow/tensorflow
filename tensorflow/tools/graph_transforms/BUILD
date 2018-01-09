@@ -317,7 +317,6 @@ tf_py_test(
     main = "python/transform_graph_test.py",
 )
 
-
 py_binary(
     name = "graph_transforms_wrapper",
     srcs = ["graph_transforms_wrapper.py"],
