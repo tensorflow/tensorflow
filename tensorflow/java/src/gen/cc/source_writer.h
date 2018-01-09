@@ -72,11 +72,13 @@ class SourceWriter {
   // A common use case of a prefix is for commenting or documenting the code.
   //
   // The prefix is written after the indentation, For example, invoking
-  // Indent(2)->SetLinePrefix("//") will result in prefixing lines with "  //".
-  SourceWriter& SetLinePrefix(const char* line_prefix);
-
-  // Removes the actual line prefix, if any.
-  SourceWriter& UnsetLinePrefix();
+  // Indent(2)->Prefix("//") will result in prefixing lines with "  //".
+  //
+  // An empty value ("") will remove any line prefix that was previously set.
+  SourceWriter& Prefix(const char* line_prefix) {
+    line_prefix_ = line_prefix;
+    return *this;
+  }
 
  protected:
   virtual void DoAppend(const StringPiece& str) = 0;

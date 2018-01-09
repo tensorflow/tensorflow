@@ -59,14 +59,4 @@ SourceWriter& SourceWriter::Indent(int tab) {
   return *this;
 }
 
-SourceWriter& SourceWriter::SetLinePrefix(const char* line_prefix) {
-  line_prefix_ = line_prefix;
-  return *this;
-}
-
-SourceWriter& SourceWriter::UnsetLinePrefix() {
-  line_prefix_.clear();
-  return *this;
-}
-
 }  // namespace tensorflow

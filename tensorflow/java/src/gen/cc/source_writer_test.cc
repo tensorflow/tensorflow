@@ -46,7 +46,7 @@ TEST(AppendTest, MultiLineTextWithIndent) {
 
 TEST(AppendTest, MultiLineTextWithPrefix) {
   SourceBufferWriter writer;
-  writer.SetLinePrefix("--").Append("You say goodbye\nand I say hello!");
+  writer.Prefix("--").Append("You say goodbye\nand I say hello!");
 
   const char* expected = "--You say goodbye\nand I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -55,7 +55,7 @@ TEST(AppendTest, MultiLineTextWithPrefix) {
 TEST(AppendTest, MultiLineTextWithIndentAndPrefix) {
   SourceBufferWriter writer;
   writer.Indent(2)
-        .SetLinePrefix("--")
+        .Prefix("--")
         .Append("You say goodbye\nand I say hello!");
 
   const char* expected = "  --You say goodbye\nand I say hello!";
@@ -88,7 +88,7 @@ TEST(WriteTest, MultiLineTextWithIndent) {
 
 TEST(WriteTest, MultiLineTextWithPrefix) {
   SourceBufferWriter writer;
-  writer.SetLinePrefix("--").Write("You say goodbye\nand I say hello!");
+  writer.Prefix("--").Write("You say goodbye\nand I say hello!");
 
   const char* expected = "--You say goodbye\n--and I say hello!";
   ASSERT_STREQ(expected, writer.str().data());
@@ -97,7 +97,7 @@ TEST(WriteTest, MultiLineTextWithPrefix) {
 TEST(WriteTest, MultiLineTextWithIndentAndPrefix) {
   SourceBufferWriter writer;
   writer.Indent(2)
-        .SetLinePrefix("--")
+        .Prefix("--")
         .Write("You say goodbye\nand I say hello!");
 
   const char* expected = "  --You say goodbye\n  --and I say hello!";
@@ -137,11 +137,11 @@ TEST(MarginTest, IndentAndOutdent) {
   ASSERT_STREQ(expected, writer.str().data());
 }
 
-TEST(MarginTest, SetLinePrefix) {
+TEST(MarginTest, Prefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
         .EndLine()
-        .SetLinePrefix("--")
+        .Prefix("--")
         .Append("and I say hello!");
 
   const char* expected = "You say goodbye\n--and I say hello!";
@@ -152,10 +152,10 @@ TEST(MarginTest, PrefixAndRemovePrefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
         .EndLine()
-        .SetLinePrefix("--")
+        .Prefix("--")
         .Append("and I say hello!")
         .EndLine()
-        .UnsetLinePrefix()
+        .Prefix("")
         .Append("Hello, hello!");
 
   const char* expected = "You say goodbye\n--and I say hello!\nHello, hello!";
@@ -167,11 +167,11 @@ TEST(MarginTest, IndentAndPrefixAndOutdentAndRemovePrefix) {
   writer.Append("You say goodbye")
         .EndLine()
         .Indent(2)
-        .SetLinePrefix("--")
+        .Prefix("--")
         .Append("and I say hello!")
         .EndLine()
         .Indent(-2)
-        .UnsetLinePrefix()
+        .Prefix("")
         .Append("Hello, hello!");
 
   const char* expected = "You say goodbye\n  --and I say hello!\nHello, hello!";
@@ -208,7 +208,7 @@ TEST(MarginTest, EmptyPrefix) {
   SourceBufferWriter writer;
   writer.Append("You say goodbye")
         .EndLine()
-        .SetLinePrefix("")
+        .Prefix("")
         .Append("and I say hello!");
 
   const char* expected = "You say goodbye\nand I say hello!";
