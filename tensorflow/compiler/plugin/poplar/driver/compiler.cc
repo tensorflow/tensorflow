@@ -195,52 +195,6 @@ public:
   std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
-class CallTargetFinder : public DfsHloVisitorWithDefault {
-public:
-  CallTargetFinder(HloComputation* entry) {
-    todo.insert(entry);
-  }
-
-  Status DefaultAction(HloInstruction*) override { return Status::OK(); }
-
-  Status HandleCall(HloInstruction* inst) override {
-    CallSiteFound(inst->to_apply(), 1);
-    return Status::OK();
-  }
-
-  Status HandleWhile(HloInstruction* inst) override {
-    CallSiteFound(inst->while_condition(), 2);
-    CallSiteFound(inst->while_body(), 2);
-    return Status::OK();
-  }
-
-  Status Run() {
-    while (!todo.empty()) {
-      auto it = todo.begin();
-      HloComputation *comp = *it;
-      todo.erase(it);
-      done.insert(comp);
-      TF_RETURN_IF_ERROR(comp->Accept(this));
-    }
-    return Status::OK();
-  }
-
-  std::map<HloComputation*,int> targets;
-
-private:
-  void CallSiteFound(HloComputation* comp, int count) {
-    if (comp->name().substr(0,8) != "_pop_op_") {
-      if (done.find(comp) == done.end()) {
-        todo.insert(comp);
-      }
-      targets[comp] += count;
-    }
-  }
-
-  std::set<HloComputation*> todo;
-  std::set<HloComputation*> done;
-};
-
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
         std::unique_ptr<HloModule> module,
         perftools::gputools::StreamExecutor* executor) {
@@ -299,14 +253,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   CompilerResources resources(module->config().seed());
 
   HloComputation* entry = module->entry_computation();
-
-  VLOG(2) << "Running poplar call site finder";
-
-  // Find all Call instructions
-  CallTargetFinder call_finder(entry);
-  TF_RETURN_IF_ERROR(call_finder.Run());
-
-  VLOG(2) << "Running tensor allocation tracker";
 
   {
     AllocationFinder finder;
