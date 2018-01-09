@@ -70,6 +70,15 @@ def _get_logger():
         # Even now, we may be in an interactive shell with `python -i`.
         _interactive = _sys.flags.interactive
 
+      if not _interactive:
+        try:
+          # Do we have access to IPython libraries, and if we do, has get_ipython been injected?
+          from IPython.display import clear_output  # pylint: disable=g-import-not-at-top
+          get_ipython
+          _interactive = True
+        except (ImportError, NameError):
+          pass        
+        
       # If we are in an interactive environment (like Jupyter), set loglevel
       # to INFO and pipe the output to stdout.
       if _interactive:
