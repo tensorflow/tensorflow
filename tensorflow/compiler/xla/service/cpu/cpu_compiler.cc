@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -443,6 +444,21 @@ Status InitializeModuleHooks(
   return Status::OK();
 }
 
+Status VerifyLlvmModule(const llvm::Module& llvm_module) {
+  XLA_SCOPED_LOGGING_TIMER("CpuCompiler - Running LLVM verifier");
+
+  std::string err;
+  llvm::raw_string_ostream err_stream(err);
+
+  // verifyModule() returns true if the module is broken.
+  TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+      << "Invalid LLVM IR before optimizations:\n"
+      << err_stream.str()
+      << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+         "Rerun with --xla_dump_ir_to to get the IR. ";
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
@@ -631,6 +647,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));
@@ -708,6 +725,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
 
@@ -879,6 +897,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                    &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(llvm_module));
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;
