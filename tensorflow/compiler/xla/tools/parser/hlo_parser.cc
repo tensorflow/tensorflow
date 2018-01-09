@@ -1324,7 +1324,7 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
         PrimitiveType_Name(literal->shape().element_type())));
   }
 
-  literal->GetMutableArraySlice<LiteralNativeT>().at(linear_index) =
+  literal->data<LiteralNativeT>().at(linear_index) =
       static_cast<LiteralNativeT>(value);
   return true;
 }

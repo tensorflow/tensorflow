@@ -2532,9 +2532,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   std::iota(r1.begin(), r1.end(), 1.0);
 
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> a_literal = Literal::CreateR4FromArray4D(r4);
-  *a_literal->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout({0, 1, 2, 3});
+  std::unique_ptr<Literal> a_literal = Literal::CreateR4FromArray4DWithLayout(
+      r4, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   auto a = builder.ConstantLiteral(*a_literal);
   auto b = builder.ConstantR1<float>(r1);
   builder.Add(a, b, {1});

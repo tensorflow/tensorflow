@@ -2838,7 +2838,8 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          Literal(constant_request.literal()).CloneToUnique()));
+          Literal::CreateFromProto(constant_request.literal())
+              .ConsumeValueOrDie()));
       break;
     }
 

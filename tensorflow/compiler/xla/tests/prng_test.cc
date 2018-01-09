@@ -152,10 +152,12 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
                        computation,
                        /*arguments=*/{param0_data.get()}, &execution_options));
 
-  EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
-  for (int i = 0; i < param0_literal->f32s_size(); ++i) {
-    EXPECT_GE(actual->f32s(i), param0_literal->f32s(i));
-    EXPECT_LT(actual->f32s(i), param0_literal->f32s(i) + 1.0f);
+  EXPECT_EQ(ShapeUtil::ElementsIn(actual->shape()),
+            ShapeUtil::ElementsIn(param0_literal->shape()));
+  for (int i = 0; i < ShapeUtil::ElementsIn(actual->shape()); ++i) {
+    EXPECT_GE(actual->data<float>()[i], param0_literal->data<float>()[i]);
+    EXPECT_LT(actual->data<float>()[i],
+              param0_literal->data<float>()[i] + 1.0f);
   }
 }
 

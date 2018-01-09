@@ -225,11 +225,11 @@ Shape XlaShapeFromPyShapeInfo(PyObject* o) {
 
 PyObject* PyObjectFromXlaLiteral(const Literal& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
-    const std::vector<Literal>& tuple_literals = literal.tuple_literals();
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(tuple, i, PyObjectFromXlaLiteral(tuple_literals[i]));
+      PyTuple_SET_ITEM(
+          tuple, i, PyObjectFromXlaLiteral(LiteralView::Create(literal, {i})));
     }
     return tuple;
   } else {
