@@ -55,10 +55,6 @@ std::map<string, string> kBrokenTests = {
     {R"(constant.*int32)", "68808744"},
     {R"(mul.*int32)", "68808744"},
 
-    // Toco or TFLite has a bug to deal with some constant functions with
-    // more than 1 element.
-    {R"(constant.*input_shape=\[(2|2,2,2,2)\])", "68721522"},
-
     // Pad only supports 4D float32 tensors.
     {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
