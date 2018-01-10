@@ -291,7 +291,7 @@ calls @{tf.decode_csv} to parse a single line into its features
 and the label. Since Estimators require that features be represented as a
 dictionary, we rely on Python's built-in `dict` and `zip` functions to build
 that dictionary.  The feature names are the keys of that dictionary.
-We then then call the dictionary's `pop` method to remove the label field from
+We then call the dictionary's `pop` method to remove the label field from
 the features dictionary:
 
 ``` python
