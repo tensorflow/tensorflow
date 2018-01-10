@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import random
 import threading
 
@@ -209,6 +210,18 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(1, {"a": 1})
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
 
   def testAllCloseDicts(self):
     a = 7
