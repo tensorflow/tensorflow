@@ -14,13 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorboard/db/schema.h"
 
+#include "tensorflow/core/lib/core/errors.h"
+
 namespace tensorflow {
 namespace {
 
 Status Run(Sqlite* db, const char* sql) {
-  auto stmt = db->Prepare(sql);
-  TF_RETURN_IF_ERROR(stmt.status());
-  TF_RETURN_IF_ERROR(stmt.ValueOrDie().StepAndReset());
+  SqliteStatement stmt;
+  TF_RETURN_IF_ERROR(db->Prepare(sql, &stmt));
+  TF_RETURN_IF_ERROR(stmt.StepAndReset());
   return Status::OK();
 }
 

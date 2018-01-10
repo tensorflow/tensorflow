@@ -42,7 +42,7 @@ class SqliteQueryConnection : public QueryConnection {
   // `stmt_`.
   void FillTensorWithResultSetEntry(const DataType& data_type, int column_index,
                                     Tensor* tensor);
-  std::shared_ptr<Sqlite> db_ = nullptr;
+  Sqlite* db_ = nullptr;
   SqliteStatement stmt_;
   int column_count_ = 0;
   string query_;
