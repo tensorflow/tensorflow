@@ -877,19 +877,28 @@ class ComputationBuilder {
   // This is used before any given operation is enqueued.
   Status PrepareComputation();
 
-  // Helper function for parsing a method response and either returning the
-  // output computation data handle (on success) or a vacuous computation data
-  // handle (on failure).
-  ComputationDataHandle ParseOpResponse(const Status& status,
-                                        OpResponse* response);
-
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error
   //   (this deferred value will be produced on the call to Build())
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  void AddCommonFieldsToOpRequest(OpRequest* request) const;
+  // Helper function that runs the given op_request, filling in op_response.
+  // Before the op is run, PrepareComputation is called, and common fields in
+  // the op_request are filled in.
+  Status RunOp(OpRequest* op_request, OpResponse* op_response);
+
+  // Helper function that calls RunOp and calls NoteError on failures.
+  void RunOpAndNoteError(OpRequest* op_request);
+
+  // Helper function that calls RunOp and either returns the output computation
+  // data handle (on success) or a vacuous computation data handle (on failure).
+  ComputationDataHandle RunOpAndParseResponse(OpRequest* op_request);
+
+  // Helper function that implements GetShape without noting errors. This makes
+  // it easier to ensure the real GetShape will note errors on every error path.
+  StatusOr<std::unique_ptr<Shape>> GetShapeWithoutNoteError(
+      const ComputationDataHandle& operand);
 
   string name_;  // Name to use for the built computation.
 
