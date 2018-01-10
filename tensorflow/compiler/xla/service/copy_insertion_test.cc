@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -1725,6 +1726,190 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
 
 BENCHMARK(BM_SequentialWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
 BENCHMARK(BM_ParallelWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
+
+TEST_F(CopyInsertionTest, SimpleControlFlowTest) {
+  const string& hlo_string = R"(
+HloModule TestModule
+
+if-body.v5 {
+  constant.3 = s32[] constant(-1)
+  p.1 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.18 = (s32[], s32[], s32[]) get-tuple-element(p.1), index=1
+  get-tuple-element.65 = s32[] get-tuple-element(get-tuple-element.18), index=0
+  get-tuple-element.66 = s32[] get-tuple-element(get-tuple-element.18), index=1
+  add.3 = s32[] add(get-tuple-element.65, get-tuple-element.66)
+  tuple.33 = (s32[]) tuple(add.3)
+  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3, get-tuple-element.18, tuple.33)
+}
+
+if-condition.v4 {
+  p.2 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.67 = s32[] get-tuple-element(p.2), index=0
+  constant.4 = s32[] constant(0)
+  ROOT equal-to = pred[] equal-to(get-tuple-element.67, constant.4)
+}
+
+_functionalize_body_1__.v28 {
+  arg_tuple.4 = (s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.68 = s32[] get-tuple-element(arg_tuple.4), index=0
+  constant.7 = s32[] constant(1)
+  add.4 = s32[] add(get-tuple-element.68, constant.7)
+  get-tuple-element.69 = s32[] get-tuple-element(arg_tuple.4), index=1
+  get-tuple-element.70 = s32[] get-tuple-element(arg_tuple.4), index=2
+  less-than-or-equal-to = pred[] less-than-or-equal-to(get-tuple-element.69, get-tuple-element.70)
+  constant.8 = s32[] constant(0)
+  select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
+  get-tuple-element.71 = s32[] get-tuple-element(arg_tuple.4), index=3
+  tuple.35 = (s32[], s32[], s32[]) tuple(get-tuple-element.69, get-tuple-element.71, get-tuple-element.70)
+  tuple.36 = (s32[]) tuple(constant.8)
+  tuple.37 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.35, tuple.36)
+  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.37), condition=if-condition.v4, body=if-body.v5
+  get-tuple-element.72 = (s32[]) get-tuple-element(while), index=2
+  get-tuple-element.73 = s32[] get-tuple-element(get-tuple-element.72), index=0
+  ROOT tuple.38 = (s32[], s32[], s32[], s32[]) tuple(add.4, get-tuple-element.69, get-tuple-element.70, get-tuple-element.73)
+}
+
+cond_wrapper.v3.1 {
+  inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.75 = s32[] get-tuple-element(inputs.1), index=0
+  constant.11 = s32[] constant(7)
+  ROOT less-than.2 = pred[] less-than(get-tuple-element.75, constant.11)
+}
+
+_functionalize_body_2__.v25 {
+  arg_tuple.5 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.76 = s32[] get-tuple-element(arg_tuple.5), index=0
+  get-tuple-element.77 = s32[] get-tuple-element(arg_tuple.5), index=2
+  get-tuple-element.78 = s32[] get-tuple-element(arg_tuple.5), index=3
+  get-tuple-element.79 = s32[] get-tuple-element(arg_tuple.5), index=4
+  tuple.39 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.76, get-tuple-element.77, get-tuple-element.78, get-tuple-element.79)
+  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.39), condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
+  get-tuple-element.80 = s32[] get-tuple-element(while.2), index=0
+  get-tuple-element.81 = s32[] get-tuple-element(arg_tuple.5), index=1
+  constant.12 = s32[] constant(1)
+  add.5 = s32[] add(get-tuple-element.81, constant.12)
+  get-tuple-element.82 = s32[] get-tuple-element(while.2), index=3
+  ROOT tuple.40 = (s32[], s32[], s32[], s32[], s32[]) tuple(get-tuple-element.80, add.5, get-tuple-element.77, get-tuple-element.78, get-tuple-element.82)
+}
+
+cond_wrapper.v3.2 {
+  inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.83 = s32[] get-tuple-element(inputs.2), index=1
+  constant.13 = s32[] constant(5)
+  ROOT less-than.3 = pred[] less-than(get-tuple-element.83, constant.13)
+}
+
+ENTRY TestComputation {
+  arg_tuple.6 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
+}
+)";
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module = module_or_status.ConsumeValueOrDie();
+  InsertCopies(module.get());
+}
+
+TEST_F(CopyInsertionTest, ControlFlowTest) {
+  const string& hlo_string = R"(
+HloModule TestModule
+
+if-body.v5 {
+  constant.3 = s32[] constant(-1)
+  p.1 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.18 = (s32[], s32[], s32[]) get-tuple-element(p.1), index=1
+  get-tuple-element.65 = s32[] get-tuple-element(get-tuple-element.18), index=0
+  get-tuple-element.66 = s32[] get-tuple-element(get-tuple-element.18), index=1
+  add.3 = s32[] add(get-tuple-element.65, get-tuple-element.66)
+  tuple.33 = (s32[]) tuple(add.3)
+  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3, get-tuple-element.18, tuple.33)
+}
+
+if-condition.v4 {
+  p.2 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.67 = s32[] get-tuple-element(p.2), index=0
+  constant.4 = s32[] constant(0)
+  ROOT equal-to = pred[] equal-to(get-tuple-element.67, constant.4)
+}
+
+if-body.v5.1 {
+  constant.5 = s32[] constant(-1)
+  p.3 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.68 = (s32[], s32[], s32[]) get-tuple-element(p.3), index=1
+  get-tuple-element.70 = s32[] get-tuple-element(get-tuple-element.68), index=2
+  multiply.1 = s32[] multiply(get-tuple-element.70, get-tuple-element.70)
+  tuple.35 = (s32[]) tuple(multiply.1)
+  ROOT tuple.36 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.5, get-tuple-element.68, tuple.35)
+}
+
+if-condition.v4.1 {
+  p.4 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
+  get-tuple-element.71 = s32[] get-tuple-element(p.4), index=0
+  constant.6 = s32[] constant(1)
+  ROOT equal-to.1 = pred[] equal-to(get-tuple-element.71, constant.6)
+}
+
+_functionalize_body_1__.v28 {
+  arg_tuple.4 = (s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.72 = s32[] get-tuple-element(arg_tuple.4), index=0
+  constant.7 = s32[] constant(1)
+  add.4 = s32[] add(get-tuple-element.72, constant.7)
+  get-tuple-element.73 = s32[] get-tuple-element(arg_tuple.4), index=1
+  get-tuple-element.74 = s32[] get-tuple-element(arg_tuple.4), index=2
+  less-than-or-equal-to = pred[] less-than-or-equal-to(get-tuple-element.73, get-tuple-element.74)
+  constant.8 = s32[] constant(0)
+  select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
+  get-tuple-element.75 = s32[] get-tuple-element(arg_tuple.4), index=3
+  tuple.37 = (s32[], s32[], s32[]) tuple(get-tuple-element.73, get-tuple-element.75, get-tuple-element.74)
+  tuple.38 = (s32[]) tuple(constant.8)
+  tuple.39 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.37, tuple.38)
+  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.39), condition=if-condition.v4, body=if-body.v5
+  while.1 = (s32[], (s32[], s32[], s32[]), (s32[])) while(while), condition=if-condition.v4.1, body=if-body.v5.1
+  get-tuple-element.76 = (s32[]) get-tuple-element(while.1), index=2
+  get-tuple-element.77 = s32[] get-tuple-element(get-tuple-element.76), index=0
+  ROOT tuple.40 = (s32[], s32[], s32[], s32[]) tuple(add.4, get-tuple-element.73, get-tuple-element.74, get-tuple-element.77)
+}
+
+cond_wrapper.v3.1 {
+  inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.78 = s32[] get-tuple-element(inputs.1), index=0
+  constant.11 = s32[] constant(7)
+  ROOT less-than.2 = pred[] less-than(get-tuple-element.78, constant.11)
+}
+
+_functionalize_body_2__.v25 {
+  arg_tuple.5 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.79 = s32[] get-tuple-element(arg_tuple.5), index=0
+  get-tuple-element.80 = s32[] get-tuple-element(arg_tuple.5), index=2
+  get-tuple-element.81 = s32[] get-tuple-element(arg_tuple.5), index=3
+  get-tuple-element.82 = s32[] get-tuple-element(arg_tuple.5), index=4
+  tuple.41 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.79, get-tuple-element.80, get-tuple-element.81, get-tuple-element.82)
+  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.41), condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
+  get-tuple-element.83 = s32[] get-tuple-element(while.2), index=0
+  get-tuple-element.84 = s32[] get-tuple-element(arg_tuple.5), index=1
+  constant.12 = s32[] constant(1)
+  add.5 = s32[] add(get-tuple-element.84, constant.12)
+  get-tuple-element.85 = s32[] get-tuple-element(while.2), index=3
+  ROOT tuple.42 = (s32[], s32[], s32[], s32[], s32[]) tuple(get-tuple-element.83, add.5, get-tuple-element.80, get-tuple-element.81, get-tuple-element.85)
+}
+
+cond_wrapper.v3.2 {
+  inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  get-tuple-element.86 = s32[] get-tuple-element(inputs.2), index=1
+  constant.13 = s32[] constant(5)
+  ROOT less-than.3 = pred[] less-than(get-tuple-element.86, constant.13)
+}
+
+ENTRY TestComputation {
+  arg_tuple.6 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
+  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
+}
+)";
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module = module_or_status.ConsumeValueOrDie();
+  InsertCopies(module.get());
+}
 
 }  // namespace
 }  // namespace xla
