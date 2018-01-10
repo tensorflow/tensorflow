@@ -897,13 +897,22 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                    &module_sequence.at(computation)));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
-    TF_RETURN_IF_ERROR(VerifyLlvmModule(llvm_module));
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;
     TF_RETURN_IF_ERROR(InitializeModuleHooks(
         *module, user_pre_optimization_hook_, user_post_optimization_hook_,
         &pre_optimization_ir_dump_hook, &post_optimization_ir_dump_hook));
+
+    // Run the LLVM verifier over the unoptimized LLVM IR.  If it fails, run the
+    // pre-optimization IR dump hook before returning.
+    {
+      Status verify_status = VerifyLlvmModule(llvm_module);
+      if (!verify_status.ok() && pre_optimization_ir_dump_hook) {
+        pre_optimization_ir_dump_hook(llvm_module).IgnoreError();
+      }
+      TF_RETURN_IF_ERROR(verify_status);
+    }
 
     Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(
