@@ -36,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 
 
@@ -543,14 +544,21 @@ class BeamSearchDecoder(decoder.Decoder):
     """
     if not isinstance(t, tensor_array_ops.TensorArray):
       return t
+    # pylint: disable=protected-access
     if (not t._infer_shape or not t._element_shape
-        or t._element_shape[0].ndims is None or t._element_shape[0].ndims < 1):  # pylint: disable=protected-access
-      tf.logging.warn("The cell state contains a TensorArray that is not "
-                      "amenable to sorting based on the beam search result. "
-                      "For a TensorArray to be sorted, its elements shape "
-                      "must be defined and have at least a rank of 1.")
+        or t._element_shape[0].ndims is None
+        or t._element_shape[0].ndims < 1):
+      shape = (
+          t._element_shape[0] if t._infer_shape and t._element_shape
+          else tensor_shape.TensorShape(None))
+      tf_logging.warn("The TensorArray %s in the cell state is not amenable to "
+                      "sorting based on the beam search result. For a "
+                      "TensorArray to be sorted, its elements shape must be "
+                      "defined and have at least a rank of 1, but saw shape: %s"
+                      % (t.handle.name, shape))
       return t
-    shape = t._element_shape[0]  # pylint: disable=protected-access
+    shape = t._element_shape[0]
+    # pylint: enable=protected-access
     batch_size = tensor_util.constant_value(self._batch_size)
     reshaped_shape = tensor_shape.TensorShape(
         [batch_size, self._beam_width, None])
