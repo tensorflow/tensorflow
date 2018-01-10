@@ -146,9 +146,16 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           return;
         }
         case HloOpcode::kDynamicSlice:
-        case HloOpcode::kDynamicUpdateSlice:
         {
           if (op_index == 0) {
+            auto t = std::make_pair(user, op_index);
+            tensor_allocation_map.insert(std::make_pair(src, t));
+          }
+          break;
+        }
+        case HloOpcode::kDynamicUpdateSlice:
+        {
+          if (op_index == 0 || op_index==1) {
             auto t = std::make_pair(user, op_index);
             tensor_allocation_map.insert(std::make_pair(src, t));
           }
