@@ -1,6 +1,6 @@
 # Importing Data
 
-The `tf.data` API enables you to build complex input pipelines from
+The @{tf.data} API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
