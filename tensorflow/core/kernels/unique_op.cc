@@ -63,7 +63,7 @@ class UniqueOp : public OpKernel {
         OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                     errors::InvalidArgument("unique expects a 1D vector."));
       } else {
-        auto axis_vec = axis_tensor.vec<int64>();
+        auto axis_vec = axis_tensor.vec<int32>();
         axis = axis_vec(0);
         axis = axis < 0 ? axis + input.dims() : axis;
         OP_REQUIRES(context, 0 <= axis && axis < input.dims(),
