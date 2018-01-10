@@ -81,9 +81,8 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   // implementation, CTCBeamSearchDecoder<>::DefaultBeamScorer, generates the
   // standard beam search.
   CTCBeamSearchDecoder(int num_classes, int beam_width,
-                       BaseBeamScorer<CTCBeamState>* scorer, int batch_size = 1,
-                       bool merge_repeated = false)
-      : CTCDecoder(num_classes, batch_size, merge_repeated),
+                       BaseBeamScorer<CTCBeamState>* scorer, int batch_size = 1)
+      : CTCDecoder(num_classes, batch_size, false),
         beam_width_(beam_width),
         leaves_(beam_width),
         beam_scorer_(CHECK_NOTNULL(scorer)) {

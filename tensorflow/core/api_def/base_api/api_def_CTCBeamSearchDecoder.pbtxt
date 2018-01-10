@@ -55,12 +55,6 @@ END
 A scalar >= 0, <= beam_width (controls output size).
 END
   }
-  attr {
-    name: "merge_repeated"
-    description: <<END
-If true, merge repeated classes in output.
-END
-  }
   summary: "Performs beam search decoding on the logits given in input."
   description: <<END
 A note about the attribute merge_repeated: For the beam search decoder,

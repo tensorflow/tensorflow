@@ -229,20 +229,17 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
 
 
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
-                            top_paths=1, merge_repeated=True):
+                            top_paths=1):
   """Performs beam search decoding on the logits given in input.
 
   **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  `ctc_beam_search_decoder` with `top_paths=1`, `beam_width=1`, and
+  `merge_repeated=True` (but that decoder is faster for this special case).
 
-  If `merge_repeated` is `True`, merge repeated classes in the output beams.
+  Repeated classes are merged in the output beam.s
   This means that if consecutive entries in a beam are the same,
   only the first of these is emitted.  That is, when the top path
-  is `A B B B B`, the return value is:
-
-    * `A B` if `merge_repeated = True`.
-    * `A B B B B` if `merge_repeated = False`.
+  is `A B B B B`, the return value is `A B`.
 
   Args:
     inputs: 3-D `float` `Tensor`, size
@@ -251,7 +248,6 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
       having size `[batch_size]`.
     beam_width: An int scalar >= 0 (beam search beam width).
     top_paths: An int scalar >= 0, <= beam_width (controls output size).
-    merge_repeated: Boolean.  Default: True.
 
   Returns:
     A tuple `(decoded, log_probabilities)` where
@@ -269,8 +265,7 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
       gen_ctc_ops._ctc_beam_search_decoder(
-          inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
-          merge_repeated=merge_repeated))
+          inputs, sequence_length, beam_width=beam_width, top_paths=top_paths))
 
   return (
       [sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
