@@ -167,32 +167,6 @@ namespace {
 // first module is compiled.
 std::once_flag llvm_command_line_options_initialized;
 
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
-  auto options = config.debug_options().xla_backend_extra_options();
-  if (!options.empty()) {
-    std::vector<string> fake_argv_storage;
-    fake_argv_storage.push_back("");
-    for (const auto& it : options) {
-      // Skip options the XLA backend itself consumes.
-      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
-        if (it.second.empty()) {
-          fake_argv_storage.push_back(it.first);
-        } else {
-          fake_argv_storage.push_back(it.first + "=" + it.second);
-        }
-      }
-    }
-
-    VLOG(2) << "Passing argv to LLVM:";
-    std::vector<const char*> fake_argv;
-    for (const auto& s : fake_argv_storage) {
-      fake_argv.push_back(s.c_str());
-      VLOG(2) << s;
-    }
-    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
-  }
-}
-
 // This visitor records which HLO instructions should have profiling information
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
@@ -484,7 +458,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
-                 &InitializeLLVMCommandLineOptions, module->config());
+                 &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
@@ -750,7 +724,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                 const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(!modules.empty());
   std::call_once(llvm_command_line_options_initialized,
-                 &InitializeLLVMCommandLineOptions, modules[0]->config());
+                 &llvm_ir::InitializeLLVMCommandLineOptions,
+                 modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
