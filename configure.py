@@ -959,6 +959,33 @@ def set_tf_cudnn_version(environ_cp):
   write_action_env_to_bazelrc('TF_CUDNN_VERSION', tf_cudnn_version)
 
 
+def set_tf_nvvm_location(environ_cp):
+  """Set NVVMIR_LIBRARY_DIR."""
+
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+    default_nvvm_path = os.path.join(environ_cp.get('CUDA_TOOLKIT_PATH'), 'nvvm')
+    ask_nvvm_path = (r'Please specify the location where NVVM IR library is '
+                      'installed. [Default is %s]:') % (default_nvvm_path)
+    nvvm_install_path = get_from_env_or_user_or_default(
+        environ_cp, 'NVVMIR_LIBRARY_DIR', ask_nvvm_path, default_nvvm_path)
+
+    if os.path.exists(nvvm_install_path):
+      break
+
+    # Reset and Retry
+    print(
+        'Invalid path to NVVM IR library. %s does not exist:' % nvvm_install_path)
+
+  else:
+    raise UserInputError('Invalid NVVMIR_LIBRARY_DIR setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+  environ_cp['NVVMIR_LIBRARY_DIR'] = nvvm_install_path
+  write_action_env_to_bazelrc('NVVMIR_LIBRARY_DIR', nvvm_install_path)
+
+
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1278,6 +1305,7 @@ def main():
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
     set_tf_cudnn_version(environ_cp)
+    set_tf_nvvm_location(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
 
     set_tf_cuda_clang(environ_cp)
