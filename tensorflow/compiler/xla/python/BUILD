@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
     ],
 )

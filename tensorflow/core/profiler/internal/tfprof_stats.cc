@@ -282,7 +282,7 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   }
 }
 
-void TFStats::WriteProfile(const string& filename) {
+void TFStats::SerializeToString(string* content) {
   ProfileProto profile;
   for (const auto& entry : id_to_string_) {
     (*profile.mutable_id_to_string())[entry.first] = entry.second;
@@ -299,8 +299,13 @@ void TFStats::WriteProfile(const string& filename) {
   for (int64 s : steps_) {
     profile.add_steps(s);
   }
-  Status s =
-      WriteStringToFile(Env::Default(), filename, profile.SerializeAsString());
+  *content = profile.SerializeAsString();
+}
+
+void TFStats::WriteProfile(const string& filename) {
+  string content;
+  SerializeToString(&content);
+  Status s = WriteStringToFile(Env::Default(), filename, content);
   if (!s.ok()) {
     fprintf(stderr, "%s\n", s.ToString().c_str());
   }
