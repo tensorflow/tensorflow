@@ -55,10 +55,9 @@ std::map<string, string> kBrokenTests = {
     {R"(constant.*int32)", "68808744"},
     {R"(mul.*int32)", "68808744"},
 
-    // Pad only supports 4D float32 tensors.
+    // Pad only supports 4D tensors.
     {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
-    {R"(padd.*int32)", "70527055"},
 
     // L2Norm only supports tensors with 4D or fewer.
     {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
