@@ -121,7 +121,10 @@ class _WarmStartSettings(
   # where ws could be defined as:
 
   # Warm-start all weights in the model (input layer and hidden weights).
+  # Either the directory or a specific checkpoint can be provided (in the case
+  # of the former, the latest checkpoint will be used).
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp")
+  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp/model-1000")
 
   # Warm-start only the embeddings (input layer).
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
@@ -348,7 +351,7 @@ def _warmstart_var_with_vocab(var,
     # TODO(vihanjain): Support _WarmstartSettings where class vocabularies need
     # remapping too.
     init = checkpoint_ops._load_and_remap_matrix_initializer(
-        ckpt_path=saver.latest_checkpoint(prev_ckpt),
+        ckpt_path=checkpoint_utils._get_checkpoint_filename(prev_ckpt),
         old_tensor_name=prev_tensor_name,
         new_row_vocab_size=current_vocab_size,
         new_col_vocab_size=v_shape[1],
@@ -420,5 +423,10 @@ def _warmstart(warmstart_settings):
       if warmstart_settings.vars_to_warmstart:
         logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
+        # Because we use a default empty list in grouped_variables, single
+        # unpartitioned variables will be lists here, which we rectify in order
+        # for init_from_checkpoint logic to work correctly.
+        if len(variable) == 1:
+          variable = variable[0]
         _warmstart_var(variable, warmstart_settings.ckpt_to_initialize_from,
                        prev_var_name)

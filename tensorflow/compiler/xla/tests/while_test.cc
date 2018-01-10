@@ -1160,6 +1160,50 @@ TEST_F(WhileTest, WhileWithCallInsideCondition) {
   ComputeAndCompareR0<int32>(&builder, 5, {});
 }
 
+TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
+  auto matrix_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto while_shape = ShapeUtil::MakeTupleShape(
+      {scalar_s32, matrix_shape, matrix_shape, matrix_shape});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto state = builder.Parameter(0, while_shape, "state");
+    builder.Gt(builder.ConstantR0<int32>(5), builder.GetTupleElement(state, 0));
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+  }
+
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto state = builder.Parameter(0, while_shape, "state");
+    auto indvar = builder.GetTupleElement(state, 0);
+    auto input_0 = builder.GetTupleElement(state, 1);
+    auto input_1 = builder.GetTupleElement(state, 2);
+    auto output = builder.Tanh(builder.Dot(input_0, input_1));
+    auto indvar_next = builder.Add(indvar, builder.ConstantR0<int32>(1));
+    auto tuple_result = builder.Tuple({indvar_next, input_0, input_1, output});
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+  }
+
+  ComputationBuilder builder(client_, TestName());
+  auto matrix_input = builder.Parameter(0, matrix_shape, "matrix");
+  auto init = builder.Tuple(
+      {builder.ConstantR0<int32>(0), matrix_input, matrix_input, matrix_input});
+  auto while_instruction = builder.While(condition, body, init);
+  builder.GetTupleElement(while_instruction, 3);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto param_value,
+                          client_->TransferToServer(*Literal::CreateR2<float>(
+                              {{1.0, 2.0}, {-1.0, -2.0}})));
+
+  ComputeAndCompareR2<float>(
+      &builder, {{-0.76159416, -0.96402758}, {0.76159416, 0.96402758}},
+      {param_value.get()}, ErrorSpec(4e-5));
+}
+
 void BM_WhileLoop(int num_iters) {
   // Benchmark a simple kernel to measure while loop overheads.
   tensorflow::testing::StopTiming();

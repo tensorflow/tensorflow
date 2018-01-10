@@ -542,7 +542,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
   // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def,
   // which is GUARDED_BY(ctx->functions_mu). But knowledge of the implementation
-  // of FunctionLibraryRuntime tells use that func_lib_def is not accessed by
+  // of FunctionLibraryRuntime tells us that func_lib_def is not accessed by
   // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
   // This is quite subtle. Re-work things to make this better?  (Would it make
   // sense for FunctionLibraryRuntime to ensure thread-safe access to

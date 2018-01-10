@@ -184,8 +184,33 @@ def _get_cluster():
   return cluster
 
 
+def _is_transpose(node):
+  return node.endswith('TransposeNHWCToNCHW-LayoutOptimizer') or node.endswith(
+      'TransposeNCHWToNHWC-LayoutOptimizer')
+
+
+def _is_permute(node):
+  return node.endswith('VecPermuteNHWCToNCHW-LayoutOptimizer') or node.endswith(
+      'VecPermuteNCHWToNHWC-LayoutOptimizer')
+
+
 class LayoutOptimizerTest(test.TestCase):
   """Tests the Grappler layout optimizer."""
+
+  def _assert_trans_nchw_to_nhwc(self, name, nodes):
+    self.assertIn(name + '-TransposeNCHWToNHWC-LayoutOptimizer', nodes)
+
+  def _assert_trans_nhwc_to_nchw(self, name, nodes):
+    self.assertIn(name + '-TransposeNHWCToNCHW-LayoutOptimizer', nodes)
+
+  def _assert_map_nhwc_to_nchw(self, name, nodes):
+    self.assertIn(name + '-DimMapNHWCToNCHW-LayoutOptimizer', nodes)
+
+  def _assert_vec_nchw_to_nhwc(self, name, nodes):
+    self.assertIn(name + '-VecPermuteNCHWToNHWC-LayoutOptimizer', nodes)
+
+  def _assert_vec_nhwc_to_nchw(self, name, nodes):
+    self.assertIn(name + '-VecPermuteNHWCToNCHW-LayoutOptimizer', nodes)
 
   def _train(self, checkpoint_path, layout_optimizer=False, restore=False):
     ops.reset_default_graph()
@@ -238,7 +263,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -246,8 +271,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Relu_1-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Relu_1-0-0', nodes)
 
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -270,7 +295,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -278,9 +303,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-split-0-0', nodes)
-      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_split_0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('split-0-0', nodes)
+      self._assert_map_nhwc_to_nchw('split-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSplitVWithNonConstAxis(self):
@@ -304,7 +329,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -312,9 +337,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-SplitV-0-0', nodes)
-      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_SplitV_2', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('SplitV-0-0', nodes)
+      self._assert_map_nhwc_to_nchw('SplitV-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testPadWithConstPaddings(self):
@@ -338,7 +363,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -346,9 +371,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
-      self.assertIn('LayoutOptimizer-Pad-PaddingsConst', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Pad-0-0', nodes)
+      self.assertIn('Pad-PaddingsConst-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReduceSum(self):
@@ -369,7 +394,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -377,7 +402,7 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 1
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReduceSumAlongHWC(self):
@@ -398,7 +423,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -406,7 +431,7 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 1
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReduceSumAlongNHW(self):
@@ -427,7 +452,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -435,7 +460,7 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 1
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReduceSumAlongC(self):
@@ -456,7 +481,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -464,7 +489,7 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 1
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testConcatWithControlDependency(self):
@@ -489,7 +514,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -497,9 +522,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-concat-0-0', nodes)
-      self.assertIn('LayoutOptimizer-concat-Const_2', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('concat-0-0', nodes)
+      self.assertIn('concat-Const_2-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testFill(self):
@@ -527,9 +552,9 @@ class LayoutOptimizerTest(test.TestCase):
       num_transposes = 0
       num_vec_permute = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
-        if node.name.startswith('LayoutOptimizerVecPermute'):
+        if _is_permute(node.name):
           num_vec_permute += 1
         nodes.append(node.name)
 
@@ -541,8 +566,8 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; they cancelled out each other in the Collapse phase.
       expected_vec_permute = 0
       self.assertEqual(expected_vec_permute, num_vec_permute)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Fill-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Fill-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testTile(self):
@@ -568,7 +593,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -576,9 +601,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Tile-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Tile_1', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Tile-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('Tile-1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReverseWithConstDims(self):
@@ -600,7 +625,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -608,9 +633,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-ReverseV2-0-0', nodes)
-      self.assertIn('LayoutOptimizer-ReverseV2-DimsConst', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('ReverseV2-0-0', nodes)
+      self.assertIn('ReverseV2-DimsConst-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReverseWithNonConstDims(self):
@@ -636,7 +661,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -644,9 +669,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-ReverseV2-0-0', nodes)
-      self.assertIn('LayoutOptimizerDimMapNHWCToNCHW_ReverseV2_1', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('ReverseV2-0-0', nodes)
+      self._assert_map_nhwc_to_nchw('ReverseV2-1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSelectOp(self):
@@ -670,14 +695,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Select-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Select-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSelectOpScalarCondition(self):
@@ -700,14 +725,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Select-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Select-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testPadWithNonConstPaddings(self):
@@ -733,7 +758,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -741,9 +766,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Pad-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Pad_1', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Pad-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('Pad-1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testMaxPoolV2(self):
@@ -770,16 +795,16 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-MaxPoolV2-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_MaxPoolV2_2', nodes)
-      self.assertIn('LayoutOptimizer-MaxPoolV2-Const_2', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('MaxPoolV2-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('MaxPoolV2-2', nodes)
+      self.assertIn('MaxPoolV2-Const_2-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testMaxPoolGradV2(self):
@@ -807,18 +832,16 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-MaxPoolGradV2-0-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_MaxPoolGradV2_4',
-                    nodes)
-      self.assertIn('LayoutOptimizer-MaxPoolGradV2-Const_2', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('MaxPoolGradV2-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('MaxPoolGradV2-4', nodes)
+      self.assertIn('MaxPoolGradV2-Const_2-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSliceWithNonConstAxis(self):
@@ -844,7 +867,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -852,9 +875,9 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Slice-0-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_Slice_2', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Slice-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('Slice-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testStridedSliceWithNonConstAxis(self):
@@ -880,7 +903,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -888,12 +911,11 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-StridedSlice-0-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_StridedSlice_2', nodes)
-      self.assertIn('LayoutOptimizer-StridedSlice-StridedSlice/begin', nodes)
-      self.assertIn('LayoutOptimizer-StridedSlice-StridedSlice/strides', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('StridedSlice-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('StridedSlice-2', nodes)
+      self.assertIn('StridedSlice-StridedSlice/begin-LayoutOptimizer', nodes)
+      self.assertIn('StridedSlice-StridedSlice/strides-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testStridedSliceWithMask(self):
@@ -915,7 +937,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -923,13 +945,12 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-strided_slice-0-0',
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('strided_slice-0-0', nodes)
+      self.assertIn('strided_slice-strided_slice/stack-LayoutOptimizer', nodes)
+      self.assertIn('strided_slice-strided_slice/stack_1-LayoutOptimizer',
                     nodes)
-      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack', nodes)
-      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack_1',
-                    nodes)
-      self.assertIn('LayoutOptimizer-strided_slice-strided_slice/stack_2',
+      self.assertIn('strided_slice-strided_slice/stack_2-LayoutOptimizer',
                     nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -960,7 +981,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -968,14 +989,12 @@ class LayoutOptimizerTest(test.TestCase):
       # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-StridedSliceGrad-0-0',
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('StridedSliceGrad-0-0', nodes)
+      self._assert_vec_nhwc_to_nchw('StridedSliceGrad-2', nodes)
+      self.assertIn('StridedSlice-StridedSliceGrad/begin-LayoutOptimizer',
                     nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNHWCToNCHW_StridedSliceGrad_2',
-                    nodes)
-      self.assertIn('LayoutOptimizer-StridedSlice-StridedSliceGrad/begin',
-                    nodes)
-      self.assertIn('LayoutOptimizer-StridedSlice-StridedSliceGrad/strides',
+      self.assertIn('StridedSlice-StridedSliceGrad/strides-LayoutOptimizer',
                     nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
@@ -1000,14 +1019,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 1
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-Conv2D-0', nodes)
-      self.assertIn('LayoutOptimizerVecPermuteNCHWToNHWC-ShapeN-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_vec_nchw_to_nhwc('ShapeN-0-0', nodes)
       self.assertAllEqual(output_val_ref, output_val)
 
   def testLoop(self):
@@ -1024,7 +1043,7 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
@@ -1033,10 +1052,8 @@ class LayoutOptimizerTest(test.TestCase):
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
-                    nodes)
-      self.assertIn(
-          'LayoutOptimizerTransposeNCHWToNHWC-map/while/MaxPool_1-0-2', nodes)
+      self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/MaxPool_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoopWithBranch(self):
@@ -1053,16 +1070,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
-                    nodes)
+      self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoopWithVecAnd4D(self):
@@ -1079,16 +1094,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-map/while/Conv2D-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-map/while/Add-0-2',
-                    nodes)
+      self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testBinaryOpSecondPort(self):
@@ -1105,15 +1118,14 @@ class LayoutOptimizerTest(test.TestCase):
       nodes = []
       num_transposes = 0
       for node in metadata.cost_graph.node:
-        if node.name.startswith('LayoutOptimizerTranspose'):
+        if _is_transpose(node.name):
           num_transposes += 1
         nodes.append(node.name)
 
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
-      self.assertIn('LayoutOptimizerTransposeNHWCToNCHW-FusedBatchNorm-0',
-                    nodes)
-      self.assertIn('LayoutOptimizerTransposeNCHWToNHWC-Add-0-0', nodes)
+      self._assert_trans_nhwc_to_nchw('FusedBatchNorm-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Add-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testGradient(self):

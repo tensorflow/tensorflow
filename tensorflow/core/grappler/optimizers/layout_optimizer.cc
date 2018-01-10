@@ -36,18 +36,17 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-const char kPrefix[] = "LayoutOptimizer";
-const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
-const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
-const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
-const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
-const char kDimMapNHWCToNCHW[] = "LayoutOptimizerDimMapNHWCToNCHW";
-const char kDimMapNCHWToNHWC[] = "LayoutOptimizerDimMapNCHWToNHWC";
-const char kVecPermuteNHWCToNCHW[] = "LayoutOptimizerVecPermuteNHWCToNCHW";
-const char kVecPermuteNCHWToNHWC[] = "LayoutOptimizerVecPermuteNCHWToNHWC";
-const char kReshapeNHWCToNCHW[] = "LayoutOptimizerReshapeNHWCToNCHW";
-const char kReshapeConst[] = "LayoutOptimizerReshapeConst";
-const char kReductionConst[] = "LayoutOptimizerReductionConst";
+const char kSuffix[] = "LayoutOptimizer";
+const char kPermNHWCToNCHW[] = "PermConstNHWCToNCHW";
+const char kPermNCHWToNHWC[] = "PermConstNCHWToNHWC";
+const char kTransposeNHWCToNCHW[] = "TransposeNHWCToNCHW";
+const char kTransposeNCHWToNHWC[] = "TransposeNCHWToNHWC";
+const char kDimMapNHWCToNCHW[] = "DimMapNHWCToNCHW";
+const char kDimMapNCHWToNHWC[] = "DimMapNCHWToNHWC";
+const char kVecPermuteNHWCToNCHW[] = "VecPermuteNHWCToNCHW";
+const char kVecPermuteNCHWToNHWC[] = "VecPermuteNCHWToNHWC";
+const char kReshapeNHWCToNCHW[] = "ReshapeNHWCToNCHW";
+const char kReshapeConst[] = "ReshapeConst";
 
 std::set<string> GetOpsFormatSupported() {
   std::set<string> ops_format_supported = {
@@ -210,55 +209,45 @@ std::set<string> GetOpsFormatAgnostic() {
   return ops_format_agnostic;
 }
 
+bool EndWith(const string& str, const string& ending) {
+  if (str.size() < ending.size()) return false;
+  if (str.substr(str.size() - ending.size(), ending.size()) == ending)
+    return true;
+  return false;
+}
+
 bool IsNodeByLayoutOptimizer(const string& node_name) {
-  const string prefix_pattern = kPrefix;
-  string prefix = node_name.substr(0, prefix_pattern.length());
-  if (prefix.compare(prefix_pattern) == 0) {
-    return true;
-  }
-  return false;
+  const string suffix = kSuffix;
+  return EndWith(node_name, suffix);
 }
 
-bool IsNodeNHWCToNCHW(const string& node_name, const string& prefix_const) {
-  const string transform_prefix = prefix_const;
-  string prefix = node_name.substr(0, transform_prefix.length());
-  if (prefix.compare(transform_prefix) == 0) {
-    return true;
-  }
-  return false;
-}
-
-bool IsNodeNCHWToNHWC(const string& node_name, const string& prefix_const) {
-  const string transform_prefix = prefix_const;
-  string prefix = node_name.substr(0, transform_prefix.length());
-  if (prefix.compare(transform_prefix) == 0) {
-    return true;
-  }
-  return false;
+bool IsNodeType(const string& node_name, const string& type) {
+  const string suffix = strings::StrCat(type, "-", kSuffix);
+  return EndWith(node_name, suffix);
 }
 
 bool IsTransposeNHWCToNCHW(const string& node_name) {
-  return IsNodeNHWCToNCHW(node_name, kTransposeNHWCToNCHW);
+  return IsNodeType(node_name, kTransposeNHWCToNCHW);
 }
 
 bool IsTransposeNCHWToNHWC(const string& node_name) {
-  return IsNodeNCHWToNHWC(node_name, kTransposeNCHWToNHWC);
+  return IsNodeType(node_name, kTransposeNCHWToNHWC);
 }
 
 bool IsDimMapNHWCToNCHW(const string& node_name) {
-  return IsNodeNHWCToNCHW(node_name, kDimMapNHWCToNCHW);
+  return IsNodeType(node_name, kDimMapNHWCToNCHW);
 }
 
 bool IsDimMapNCHWToNHWC(const string& node_name) {
-  return IsNodeNCHWToNHWC(node_name, kDimMapNCHWToNHWC);
+  return IsNodeType(node_name, kDimMapNCHWToNHWC);
 }
 
 bool IsVecPermuteNHWCToNCHW(const string& node_name) {
-  return IsNodeNHWCToNCHW(node_name, kVecPermuteNHWCToNCHW);
+  return IsNodeType(node_name, kVecPermuteNHWCToNCHW);
 }
 
 bool IsVecPermuteNCHWToNHWC(const string& node_name) {
-  return IsNodeNCHWToNHWC(node_name, kVecPermuteNCHWToNHWC);
+  return IsNodeType(node_name, kVecPermuteNCHWToNHWC);
 }
 
 bool IsConcat(const NodeDef& node) {
@@ -439,6 +428,10 @@ class GraphProcessor {
     return node;
   }
 
+  string LayoutOptimizerNode(const string& base_name) {
+    return strings::StrCat(base_name, "-", kSuffix);
+  }
+
   const VirtualPlacer& virtual_placer_;
   const std::unordered_set<string>& nodes_to_preserve_;
   GraphDef* graph_;
@@ -591,7 +584,7 @@ class NodeProcessor : public GraphProcessor {
     NodeDef* added_node = graph_->add_node();
     *added_node = *input_node;
     string base_name = strings::StrCat(node_->name(), "-", input_node->name());
-    string node_name = AddPrefixToNodeName(base_name, "LayoutOptimizer", "-");
+    string node_name = LayoutOptimizerNode(base_name);
     added_node->set_name(node_name);
     *node_->mutable_input(input_index) = node_name;
     node_map_->AddNode(node_name, added_node);
@@ -612,8 +605,8 @@ class NodeProcessor : public GraphProcessor {
   virtual Status AddLayoutTransposeToInputs() {
     std::vector<int> input_pos = GetInputPos();
     for (const auto& pos : input_pos) {
-      string node_name =
-          strings::StrCat(kTransposeNHWCToNCHW, "-", node_->name(), "-", pos);
+      string node_name = LayoutOptimizerNode(
+          strings::StrCat(node_->name(), "-", pos, "-", kTransposeNHWCToNCHW));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       auto input_node = node_map_->GetNode(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
@@ -652,8 +645,8 @@ class NodeProcessor : public GraphProcessor {
                 strings::StrCat(node_->name(), "-", output_count, "-", i);
             string added_node_name;
             if (op == "Transpose") {
-              added_node_name = AddPrefixToNodeName(added_node_base_name,
-                                                    kTransposeNCHWToNHWC, "-");
+              added_node_name = LayoutOptimizerNode(strings::StrCat(
+                  added_node_base_name, "-", kTransposeNCHWToNHWC));
               DataType dtype;
               if (IsAngle(*node_) || IsComplex(*node_) ||
                   IsComplexAbs(*node_) || IsImag(*node_) || IsReal(*node_)) {
@@ -674,8 +667,8 @@ class NodeProcessor : public GraphProcessor {
                   node_->attr().at("_output_shapes").list().shape(input_port),
                   false);
             } else if (op == "DataFormatVecPermute") {
-              added_node_name = AddPrefixToNodeName(added_node_base_name,
-                                                    kVecPermuteNCHWToNHWC, "-");
+              added_node_name = LayoutOptimizerNode(strings::StrCat(
+                  added_node_base_name, "-", kVecPermuteNCHWToNHWC));
               TF_RETURN_IF_ERROR(HasAttribute(*node_, "out_type"));
               DataType dtype = (IsSplit(*node_) || IsSplitV(*node_))
                                    ? DT_INT32
@@ -835,10 +828,11 @@ class NodeProcessor : public GraphProcessor {
     return node;
   }
 
-  NodeDef* AddNodePermNHWCToNCHW(const string& suffix,
+  NodeDef* AddNodePermNHWCToNCHW(const string& base_name,
                                  const string& depended_node,
                                  const string& device) {
-    string name = strings::StrCat(kPermNHWCToNCHW, "-", suffix);
+    string name =
+        LayoutOptimizerNode(strings::StrCat(base_name, "-", kPermNHWCToNCHW));
     auto const_node = AddNodePermConst(name, device, {0, 3, 1, 2});
     // This is to ensure the transpose node and the const node are in the
     // same frame.
@@ -846,11 +840,12 @@ class NodeProcessor : public GraphProcessor {
     return const_node;
   }
 
-  NodeDef* AddNodePermNCHWToNHWC(const string& suffix,
+  NodeDef* AddNodePermNCHWToNHWC(const string& base_name,
                                  const string& depended_node,
                                  const string& device) {
     auto const_node = AddNodePermConst(
-        strings::StrCat(kPermNCHWToNHWC, "-", suffix), device, {0, 2, 3, 1});
+        LayoutOptimizerNode(strings::StrCat(base_name, "-", kPermNCHWToNHWC)),
+        device, {0, 2, 3, 1});
     // This is to ensure the transpose node and the const node are in the same
     // frame.
     *const_node->add_input() = AsControlDependency(depended_node);
@@ -860,7 +855,7 @@ class NodeProcessor : public GraphProcessor {
   string GetOrAddNodePermNHWCToNCHW(int pos) {
     string const_name;
     if (is_in_frame_) {
-      string suffix = strings::StrCat(node_->name(), "_", pos);
+      string base_name = strings::StrCat(node_->name(), "-", pos);
       string input = NodeName(node_->input(pos));
       string depended_node;
       if (!IsTransposeNCHWToNHWC(input)) {
@@ -870,10 +865,10 @@ class NodeProcessor : public GraphProcessor {
         depended_node = NodeName(input_node->input(0));
       }
       auto const_node =
-          AddNodePermNHWCToNCHW(suffix, depended_node, node_->device());
+          AddNodePermNHWCToNCHW(base_name, depended_node, node_->device());
       const_name = const_node->name();
     } else {
-      const_name = kPermNHWCToNCHW;
+      const_name = LayoutOptimizerNode(kPermNHWCToNCHW);
     }
     return const_name;
   }
@@ -885,7 +880,7 @@ class NodeProcessor : public GraphProcessor {
           AddNodePermNCHWToNHWC(node_->name(), node_->name(), node_->device());
       const_name = const_node->name();
     } else {
-      const_name = kPermNCHWToNHWC;
+      const_name = LayoutOptimizerNode(kPermNCHWToNHWC);
     }
     return const_name;
   }
@@ -923,9 +918,10 @@ class NodeProcessor : public GraphProcessor {
 
   void AddDataFormatTranformToParamInput(const string& op, int input_pos,
                                          DataType dtype) {
-    string prefix = (op == "DataFormatVecPermute") ? kVecPermuteNHWCToNCHW
+    string suffix = (op == "DataFormatVecPermute") ? kVecPermuteNHWCToNCHW
                                                    : kDimMapNHWCToNCHW;
-    string name = strings::StrCat(prefix, "_", node_->name(), "_", input_pos);
+    string name = LayoutOptimizerNode(
+        strings::StrCat(node_->name(), "-", input_pos, "-", suffix));
     auto added_node =
         AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype, true);
     *node_->mutable_input(input_pos) = added_node->name();
@@ -1320,10 +1316,10 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     }
     if (vector_index != -1) {
       string base_name = strings::StrCat(node_->name(), "-", vector_index);
-      string reshape_node_name =
-          AddPrefixToNodeName(base_name, kReshapeNHWCToNCHW, "-");
+      string reshape_node_name = LayoutOptimizerNode(
+          strings::StrCat(base_name, "-", kReshapeNHWCToNCHW));
       string shape_const_node_name =
-          AddPrefixToNodeName(base_name, kReshapeConst, "-");
+          LayoutOptimizerNode(strings::StrCat(base_name, "-", kReshapeConst));
       auto input_node = node_map_->GetNode(node_->input(vector_index));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int port;
@@ -1839,11 +1835,13 @@ class DataLayoutOptimizer : GraphProcessor {
 
  private:
   NodeDef* AddNodePermNHWCToNCHW() {
-    return AddNodePermConst(kPermNHWCToNCHW, "", {0, 3, 1, 2});
+    return AddNodePermConst(LayoutOptimizerNode(kPermNHWCToNCHW), "",
+                            {0, 3, 1, 2});
   }
 
   NodeDef* AddNodePermNCHWToNHWC() {
-    return AddNodePermConst(kPermNCHWToNHWC, "", {0, 2, 3, 1});
+    return AddNodePermConst(LayoutOptimizerNode(kPermNCHWToNHWC), "",
+                            {0, 2, 3, 1});
   }
 
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.

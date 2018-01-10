@@ -2290,6 +2290,8 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       t4.set_shape([43, 37])
       t5.set_shape([43, None])
 
+      b = constant_op.constant(1.0)  # pylint: disable=unused-variable
+
       gd = g.as_graph_def(add_shapes=True)
       self.assertProtoEqualsVersion("""
       node { name: "FiveFloatOutputs" op: "FiveFloatOutputs"
@@ -2306,6 +2308,26 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
           }
         }
       }
+    node { name: "Const" op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape { }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value { type: DT_FLOAT }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape { }
+         float_val: 1.0  } } } }
       """, gd)
 
 

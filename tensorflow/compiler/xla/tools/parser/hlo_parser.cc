@@ -1515,7 +1515,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
             return false;
           }
         } else {
-          return TokenError(StrCat("unsupported premitive type ",
+          return TokenError(StrCat("unsupported primitive type ",
                                    PrimitiveType_Name(shape.element_type())));
         }
         break;
@@ -1851,7 +1851,7 @@ bool HloParser::ParseWindow(Window* window) {
       if (field_name == "rhs_reversal") {
         return ParseDxD("rhs_reversal", &rhs_reversal);
       }
-      return Error(loc, StrCat("unexpected attribute name: ", field_name));
+      return Error(attr_loc, StrCat("unexpected attribute name: ", field_name));
     }();
     if (!ok) {
       return false;
