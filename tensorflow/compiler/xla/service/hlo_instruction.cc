@@ -708,10 +708,26 @@ HloInstruction::CreateSelectAndScatter(
   return instruction;
 }
 
+// We put the fusion kind into the instruction's name for transpose-dot and
+// backward-conv fusions, since those fusions are really just describing a type
+// of dot/conv rather than generating a novel computation.
+static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
+  switch (fusion_kind) {
+    case HloInstruction::FusionKind::kTransposeDot:
+      return "dot_fusion";
+    case HloInstruction::FusionKind::kConvBackwardInput:
+    case HloInstruction::FusionKind::kConvBackwardFilter:
+      return "conv_fusion";
+    default:
+      return "fusion";
+  }
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
+  instruction->name_ = FusionNodeName(fusion_kind);
   instruction->set_parent(fused_root->parent());
   instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
@@ -727,6 +743,7 @@ HloInstruction::CreateSelectAndScatter(
     instruction->AppendOperand(operand);
   }
   instruction->fusion_kind_ = fusion_kind;
+  instruction->name_ = FusionNodeName(fusion_kind);
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
@@ -2246,7 +2263,7 @@ string HloInstruction::ToCategory() const {
     return "data formatting";
   }
 
-  if (opcode() == HloOpcode::kConvolution) {
+  auto conv_category = [&] {
     string category = "convolution";
     if (window_util::HasBaseDilation(window())) {
       category += " base-dilated";
@@ -2255,8 +2272,17 @@ string HloInstruction::ToCategory() const {
       category += " window-dilated";
     }
     return category;
+  };
+
+  if (opcode() == HloOpcode::kConvolution) {
+    return conv_category();
   }
 
+  // Give transpose-dot and backwards-conv fusions the categories "dot" and
+  // "convolution" so they match the categories of proper kDot and kConvolution
+  // ops.  These fusion categories are really just a way of expressing a
+  // particular kind of dot or conv, so they should have the same category as a
+  // vanilla dot/conv.
   if (opcode() == HloOpcode::kFusion) {
     switch (fusion_kind()) {
       case FusionKind::kLoop:
@@ -2266,10 +2292,10 @@ string HloInstruction::ToCategory() const {
       case FusionKind::kOutput:
         return "output fusion";
       case FusionKind::kTransposeDot:
-        return "dot fusion";
+        return "dot";
       case FusionKind::kConvBackwardFilter:
       case FusionKind::kConvBackwardInput:
-        return "convolution fusion";
+        return conv_category();
       case FusionKind::kCustom:
         return "custom fusion";
     }
