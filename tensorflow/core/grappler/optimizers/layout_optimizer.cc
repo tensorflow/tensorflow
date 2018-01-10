@@ -1702,8 +1702,12 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   bool IsAlongDimHW() const {
     if (node_->attr().find("squeeze_dims") != node_->attr().end()) {
       auto list = node_->attr().at("squeeze_dims").list();
-      if (list.i(0) == 1 && list.i(1) == 2) {
-        return true;
+      // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+      if (list.i_size() == 0) return true;
+      if (list.i_size() == 2) {
+        if (list.i(0) == 1 && list.i(1) == 2) {
+          return true;
+        }
       }
     }
     return false;
@@ -1712,8 +1716,10 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     TF_RETURN_IF_ERROR(HasAttribute(*node_, "squeeze_dims"));
     auto list = node_->mutable_attr()->at("squeeze_dims").mutable_list();
-    list->set_i(0, 2);
-    list->set_i(1, 3);
+    if (list->i_size() == 2) {
+      list->set_i(0, 2);
+      list->set_i(1, 3);
+    }
     return Status::OK();
   }
 };
