@@ -42,6 +42,21 @@ class Convolution1DTest(test.TestCase):
           },
           expected_output=[[[1], [3], [5]]])
 
+  def test_conv1d_with_causal_padding(self):
+    with self.test_session(use_gpu=test.is_gpu_available()):
+      testing_utils.layer_test(
+        keras.layers.Conv1D,
+        input_data=np.reshape(np.arange(4, dtype='float32'), (1, 4, 1)),
+        kwargs={
+          'filters': 1,
+          'kernel_size': 2,
+          'dilation_rate': 2,
+          'padding': 'causal',
+          'kernel_initializer': 'ones',
+          'use_bias': False,
+        },
+        expected_output=[[[0], [1], [2], [4]]])
+
   def test_conv_1d(self):
     batch_size = 2
     steps = 8

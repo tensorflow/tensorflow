@@ -4076,7 +4076,10 @@ py_test(
     main = "layers/convolutional_test.py",
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":client_testlib",
+        ":constant_op",
+        ":dtypes",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":layers",

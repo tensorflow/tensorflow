@@ -122,6 +122,16 @@ class _Conv(base.Layer):
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
 
+  # TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
+  def _get_padding(self):
+    """Return correct padding for its low-level implementation.
+
+    Note that the private method is only declared for Conv1D
+    to support causal padding. Don't use it anywhere except in
+    _Conv or Conv1D class.
+    """
+    return self.padding
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if self.data_format == 'channels_first':
@@ -158,7 +168,7 @@ class _Conv(base.Layer):
         filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=self.padding.upper(),
+        padding=self._get_padding().upper(),
         data_format=utils.convert_data_format(self.data_format,
                                               self.rank + 2))
     self.built = True
@@ -201,7 +211,7 @@ class _Conv(base.Layer):
         new_dim = utils.conv_output_length(
             space[i],
             self.kernel_size[i],
-            padding=self.padding,
+            padding=self._get_padding(),
             stride=self.strides[i],
             dilation=self.dilation_rate[i])
         new_space.append(new_dim)
@@ -214,12 +224,62 @@ class _Conv(base.Layer):
         new_dim = utils.conv_output_length(
             space[i],
             self.kernel_size[i],
-            padding=self.padding,
+            padding=self._get_padding(),
             stride=self.strides[i],
             dilation=self.dilation_rate[i])
         new_space.append(new_dim)
       return tensor_shape.TensorShape([input_shape[0], self.filters] +
                                       new_space)
+
+
+# TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
+def _helper_for_causal_padding(dilation_rate, kernel_size):
+  """Generate the functions to preprocess inputs and input_shape for causal padding.
+
+  Arguments:
+    dilation_rate: An integer, specifying the dilation rate to use for dilated convolution.
+    kernel_size: An integer, specifying the length of the convolution window.
+
+  Returns:
+    (inputs_fn, shape_fn, padding_fn): Functions for preprocessing.
+
+  Raises:
+    ValueError: If invalid argument is given.
+  """
+  # The left pad on time channel.
+  left_pad = int(dilation_rate * (kernel_size - 1))
+  if left_pad < 0:
+    raise ValueError('The left_pad must be nonnegative. Received: '
+                     '{} = dilation_rate {} * (kernel_size {} - 1)'.format(
+                     left_pad, dilation_rate, kernel_size))
+
+  def inputs_fn(inputs):
+    # Padding on the left side of time channel.
+    return array_ops.pad(inputs, [[0, 0], [left_pad, 0], [0, 0]])
+
+  def shape_fn(input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    if input_shape.ndims != 3:
+      raise ValueError('The input_shape must be 3 dimensions. '
+                       'Received: {}'.format(input_shape))
+    if not input_shape[1].value:
+      # Unknown dimension in time channel.
+      return input_shape
+    else:
+      input_list = input_shape.as_list()
+      # Padding on the left side of time channel.
+      input_list[1] += left_pad
+      return tensor_shape.TensorShape([tensor_shape.Dimension(d)
+                                       for d in input_list])
+
+  def padding_fn(padding):
+    # Use valid convolution after left padding.
+    if padding == 'causal':
+      return 'valid'
+    else:
+      raise ValueError('padding must be `causal`. Received: {}'.format(padding))
+
+  return inputs_fn, shape_fn, padding_fn
 
 
 class Conv1D(_Conv):
@@ -240,7 +300,8 @@ class Conv1D(_Conv):
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: One of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
+      Currently, causal padding only supports channels_last (NTC) format.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -270,6 +331,10 @@ class Conv1D(_Conv):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+
+  Raises:
+    ValueError: If data format is incompatible with causal padding, or invalid
+      argument is given.
   """
 
   def __init__(self, filters,
@@ -290,7 +355,7 @@ class Conv1D(_Conv):
                trainable=True,
                name=None,
                **kwargs):
-    super(Convolution1D, self).__init__(
+    super(Conv1D, self).__init__(
         rank=1,
         filters=filters,
         kernel_size=kernel_size,
@@ -309,6 +374,35 @@ class Conv1D(_Conv):
         bias_constraint=bias_constraint,
         trainable=trainable,
         name=name, **kwargs)
+    # TODO(fchollet): Remove it when nn_ops.convolution supports causal padding.
+    if self.padding == 'causal':
+      if self.data_format != 'channels_last':
+        raise ValueError('causal padding only supports channels_last (NTC) format.')
+      # Left pad for `causal` padding.
+      self._inputs_fn, self._shape_fn, self._padding_fn = _helper_for_causal_padding(
+          self.dilation_rate[0], self.kernel_size[0])
+    else:
+      # Keep original value for `same` and `valid` padding.
+      identity_fn = lambda x: x
+      self._inputs_fn = identity_fn
+      self._shape_fn = identity_fn
+      self._padding_fn = identity_fn
+
+  # TODO(fchollet): Remove those methods when nn_ops.convolution supports causal padding.
+  def _get_padding(self):
+    return self._padding_fn(self.padding)
+
+  def build(self, input_shape):
+    input_shape = self._shape_fn(input_shape)
+    super(Conv1D, self).build(input_shape)
+
+  def call(self, inputs):
+    inputs = self._inputs_fn(inputs)
+    return super(Conv1D, self).call(inputs)
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = self._shape_fn(input_shape)
+    return super(Conv1D, self)._compute_output_shape(input_shape)
 
 
 def conv1d(inputs,
