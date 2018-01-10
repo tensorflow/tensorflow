@@ -344,7 +344,7 @@ def implicit_val_and_grad(f):
 
   def grad_fn(*args):
     """Computes the gradient of the wrapped function."""
-    tape.push_new_tape()
+    this_tape = tape.push_new_tape()
     try:
       end_node = f(*args)
       if end_node is None:
@@ -352,10 +352,10 @@ def implicit_val_and_grad(f):
                          "did you forget to return a value from {}?".format(
                              f.__name__))
     finally:
-      popped_tape = tape.pop_tape()
+      tape.pop_tape(this_tape)
     # Sorting variables by id, which is monotonically increasing in construction
     # order. This ensures unique order across executions.
-    variables = list(sorted(popped_tape.watched_variables(),
+    variables = list(sorted(this_tape.watched_variables(),
                             key=lambda v: v.handle._id))  # pylint: disable=protected-access
     sources = [x.handle for x in variables]
 
@@ -363,7 +363,7 @@ def implicit_val_and_grad(f):
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
-                                           popped_tape,
+                                           this_tape,
                                            nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -652,7 +652,7 @@ def make_vjp(f, params=None):
     """Computes the value and gradient of the decorated function."""
     parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
-    tape.push_new_tape()
+    this_tape = tape.push_new_tape()
     try:
       sources = []
       args = [
@@ -673,12 +673,12 @@ def make_vjp(f, params=None):
       flat_result = [gen_array_ops.identity(x) for x in flat_result]
       result = nest.pack_sequence_as(result, flat_result)
     finally:
-      t = tape.pop_tape()
+      tape.pop_tape(this_tape)
     def vjp(dy=None):
       if dy is not None:
         dy = [ops.convert_to_tensor(x) for x in nest.flatten(dy)]
       return imperative_grad.imperative_grad(
-          _default_vspace, t, nest.flatten(result), sources,
+          _default_vspace, this_tape, nest.flatten(result), sources,
           output_gradients=dy)
     return result, vjp
 
@@ -835,11 +835,11 @@ class GradientTape(object):
     self._persistent = persistent
 
   def __enter__(self):
-    tape.push_new_tape(persistent=self._persistent)
+    self._tape = tape.push_new_tape(persistent=self._persistent)
     return self
 
   def __exit__(self, typ, value, traceback):
-    self._tape = tape.pop_tape()
+    tape.pop_tape(self._tape)
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

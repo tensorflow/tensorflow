@@ -323,7 +323,7 @@ class TemplateTest(test.TestCase):
     v1 = tmpl1()
     v2 = tmpl1()
     v3 = tmpl2()
-    self.assertTrue(v1, v2)
+    self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested_1/dummy:0", v1.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
