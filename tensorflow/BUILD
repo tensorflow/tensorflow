@@ -694,14 +694,6 @@ tf_cc_shared_object(
     framework_so = [],
     linkstatic = 1,
     visibility = ["//visibility:public"],
-    linkopts = select({
-        "//tensorflow:darwin": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
-        "//conditions:default": [
-            "-Wl,-soname,libtensorflow_framework.so"
-        ]
-    }),
     deps = [
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",
@@ -738,7 +730,6 @@ tf_cc_shared_object(
         "//conditions:default": [
             "-z defs",
             "-s",
-            "-Wl,-soname,libtensorflow_cc.so",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "//tensorflow/c:version_script.lds",
         ],
