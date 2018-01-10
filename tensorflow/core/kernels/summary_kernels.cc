@@ -65,10 +65,13 @@ class CreateSummaryDbWriterOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
     const string user_name = tmp->scalar<string>()();
     SummaryWriterInterface* s;
-    auto db = Sqlite::Open(db_uri);
-    OP_REQUIRES_OK(ctx, db.status());
+    Sqlite* db;
+    OP_REQUIRES_OK(ctx, Sqlite::Open(db_uri,
+                                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                                     &db));
+    core::ScopedUnref unref(db);
     OP_REQUIRES_OK(
-        ctx, CreateSummaryDbWriter(db.ConsumeValueOrDie(), experiment_name,
+        ctx, CreateSummaryDbWriter(db, experiment_name,
                                    run_name, user_name, ctx->env(), &s));
     OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
   }
