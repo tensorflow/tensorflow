@@ -33,9 +33,10 @@ import numpy as np
 # White-listed layer operations, which do not affect the receptive field
 # computation.
 _UNCHANGED_RF_LAYER_OPS = [
-  'Add', 'BiasAdd', 'Ceil', 'ConcatV2', 'Const', 'Floor', 'Identity', 'Log',
-  'Mul', 'Pow', 'RealDiv', 'Relu', 'Round', 'Rsqrt', 'Softplus', 'Sub',
-  'VariableV2']
+    "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor", "Identity",
+    "Log", "Mul", "Pow", "RealDiv", "Relu", "Relu6", "Round", "Rsqrt",
+    "Softplus", "Sub", "VariableV2"
+]
 
 # Different ways in which padding modes may be spelled.
 _VALID_PADDING = ["VALID", b"VALID"]
@@ -240,8 +241,8 @@ def _get_layer_params(node, name_to_order_node):
     padding_x = 0
     padding_y = 0
   else:
-    raise ValueError("Unknown layer for operation '%s': %s" %
-                     (node.name, node.op))
+    raise ValueError("Unknown layer for operation '%s': %s" % (node.name,
+                                                               node.op))
   return kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x, padding_y
 
 
@@ -308,22 +309,21 @@ def _get_effective_padding_node_input(stride, padding,
 
 
 class ReceptiveField:
-  """
-  Receptive field of a convolutional neural network.
+  """Receptive field of a convolutional neural network.
 
   Args:
     size: Receptive field size.
     stride: Effective stride.
     padding: Effective padding.
   """
+
   def __init__(self, size, stride, padding):
     self.size = np.asarray(size)
     self.stride = np.asarray(stride)
     self.padding = np.asarray(padding)
 
   def compute_input_center_coordinates(self, y, axis=None):
-    """
-    Computes the center of the receptive field that generated a feature.
+    """Computes the center of the receptive field that generated a feature.
 
     Args:
       y: An array of feature coordinates with shape `(..., d)`, where `d` is the
@@ -354,8 +354,7 @@ class ReceptiveField:
       (self.size[axis] - 1) / 2
 
   def compute_feature_coordinates(self, x, axis=None):
-    """
-    Computes the position of a feature given the center of a receptive field.
+    """Computes the position of a feature given the center of a receptive field.
 
     Args:
       x: An array of input center coordinates with shape `(..., d)`, where `d`
@@ -388,7 +387,9 @@ class ReceptiveField:
     return iter(np.concatenate([self.size, self.stride, self.padding]))
 
 
-def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
+def compute_receptive_field_from_graph_def(graph_def,
+                                           input_node,
+                                           output_node,
                                            stop_propagation=None):
   """Computes receptive field (RF) parameters from a Graph or GraphDef object.
 
@@ -531,7 +532,13 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
         if any(inp_name.startswith(stop) for stop in stop_propagation):
           logging.vlog(3, "Skipping explicitly ignored node %s.", node.name)
           continue
+
         logging.vlog(4, "inp_name = %s", inp_name)
+        if inp_name.startswith("^"):
+          # The character "^" denotes a control dependency, so this input node
+          # can be safely ignored.
+          continue
+
         inp_node = name_to_order_node[inp_name].node
         logging.vlog(4, "inp_node = \n%s", inp_node)
         if inp_node.name in rf_sizes_x:
@@ -590,6 +597,6 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
   if input_node not in rf_sizes_x:
     raise ValueError("Input node was not found")
   return ReceptiveField(
-    (rf_sizes_x[input_node], rf_sizes_y[input_node]),
-    (effective_strides_x[input_node], effective_strides_y[input_node]),
-    (effective_paddings_x[input_node], effective_paddings_y[input_node]))
+      (rf_sizes_x[input_node], rf_sizes_y[input_node]),
+      (effective_strides_x[input_node], effective_strides_y[input_node]),
+      (effective_paddings_x[input_node], effective_paddings_y[input_node]))

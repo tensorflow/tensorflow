@@ -1373,21 +1373,14 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
     } else if (node.name() == "p1") {
       ++found;
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/i-0", node.input(0));
+      EXPECT_EQ("i", node.input(0));
     } else if (node.name() == "p2") {
       ++found;
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("i:1", node.input(0));
-    } else if (node.name() == "ConstantFolding/i-0") {
-      ++found;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^i", node.input(0));
-      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
-                       .num_elements());
     }
   }
-  EXPECT_EQ(7, found);
+  EXPECT_EQ(6, found);
 }
 
 TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {

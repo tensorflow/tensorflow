@@ -1283,6 +1283,41 @@ def make_batch_to_space_nd_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_transpose_tests(zip_path):
+  """Make a set of tests to do transpose."""
+
+  # TODO(nupurgarg): Add test for uint8.
+  test_parameters = [{
+      "dtype": [tf.int32, tf.int64, tf.float32],
+      "input_shape": [[2, 2, 3]],
+      "perm": [[0, 1, 2], [0, 2, 1]],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4]],
+      "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4, 5]],
+      "perm": [[0, 1, 2, 3, 4]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.transpose(input_tensor, perm=parameters["perm"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
   """Given an input perform a sequence of TensorFlow ops to produce l2pool."""
   return tf.sqrt(tf.nn.avg_pool(
@@ -1336,6 +1371,7 @@ def main(unused_args):
         "sigmoid.zip": make_sigmoid_tests,
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
+        "transpose.zip": make_transpose_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

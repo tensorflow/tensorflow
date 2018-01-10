@@ -173,7 +173,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("id=%d, shape=%s, dtype=%s, numpy=\n%r" %
                   (t._id, t.shape, t.dtype.name, t.numpy()), tensor_repr)
 
-  def testTensorStrReprObeyNumpyPrintOptions(self):
+  def disabled_testTensorStrReprObeyNumpyPrintOptions(self):
     orig_threshold = np.get_printoptions()["threshold"]
     orig_edgeitems = np.get_printoptions()["edgeitems"]
     np.set_printoptions(threshold=2, edgeitems=1)

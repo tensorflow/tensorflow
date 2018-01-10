@@ -50,9 +50,7 @@ class WarmStartingUtilTest(test.TestCase):
     sess.run(variables.global_variables_initializer())
     saver = saver_lib.Saver()
     ckpt_prefix = os.path.join(self.get_temp_dir(), "model")
-    ckpt_state_name = "checkpoint"
-    saver.save(
-        sess, ckpt_prefix, global_step=0, latest_filename=ckpt_state_name)
+    saver.save(sess, ckpt_prefix, global_step=0)
 
   def _create_prev_run_var(self,
                            var_name,
@@ -408,6 +406,44 @@ class WarmStartingUtilTest(test.TestCase):
         self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [prev_vocab_val]},
                                   sess)
 
+  def testWarmStart_ExplicitCheckpointFile(self):
+    # Create vocab for sparse column "sc_vocab".
+    vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                   "vocab")
+    # Create feature column.
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=vocab_path, vocabulary_size=4)
+
+    # Save checkpoint from which to warm-start.
+    _, prev_vocab_val = self._create_prev_run_var(
+        "linear_model/sc_vocab/weights", shape=[4, 1], initializer=ones())
+
+    partitioner = lambda shape, dtype: [1] * len(shape)
+    # New graph, new session WITHOUT warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        sess.run(variables.global_variables_initializer())
+        # Without warmstarting, the weights should be initialized using default
+        # initializer (which is init_ops.zeros_initializer).
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [np.zeros([4, 1])]},
+                                  sess)
+
+    # New graph, new session with warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model([sc_vocab], partitioner)
+        # Since old vocab is not explicitly set in WarmStartSettings, the old
+        # vocab is assumed to be same as new vocab.
+        ws_util._warmstart(ws_util._WarmStartSettings(
+            # Explicitly provide the file prefix instead of just the dir.
+            os.path.join(self.get_temp_dir(), "model-0"),
+            vars_to_warmstart=".*sc_vocab.*"))
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warmstarted.
+        self._assert_cols_to_vars(cols_to_vars, {sc_vocab: [prev_vocab_val]},
+                                  sess)
+
   def testWarmStart_SparseColumnVocabularyConstrainedVocabSizes(self):
     # Create old vocabulary, and use a size smaller than the total number of
     # entries.
@@ -657,6 +693,67 @@ class WarmStartingUtilTest(test.TestCase):
                 np.array([[3.], [2.], [1.]]),
                 np.array([[0.5], [0.], [0.]])
             ]
+        }, sess)
+
+  def testWarmStartMoreSettingsNoPartitioning(self):
+    # Create old and new vocabs for sparse column "sc_vocab".
+    prev_vocab_path = self._write_vocab(["apple", "banana", "guava", "orange"],
+                                        "old_vocab")
+    new_vocab_path = self._write_vocab(
+        ["orange", "guava", "banana", "apple", "raspberry",
+         "blueberry"], "new_vocab")
+    # Create feature columns.
+    sc_hash = fc.categorical_column_with_hash_bucket(
+        "sc_hash", hash_bucket_size=15)
+    sc_keys = fc.categorical_column_with_vocabulary_list(
+        "sc_keys", vocabulary_list=["a", "b", "c", "e"])
+    sc_vocab = fc.categorical_column_with_vocabulary_file(
+        "sc_vocab", vocabulary_file=new_vocab_path, vocabulary_size=6)
+    all_linear_cols = [sc_hash, sc_keys, sc_vocab]
+
+    # Save checkpoint from which to warm-start.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        variable_scope.get_variable(
+            "linear_model/sc_hash/weights", shape=[15, 1], initializer=norms())
+        sc_keys_weights = variable_scope.get_variable(
+            "some_other_name", shape=[4, 1], initializer=rand())
+        variable_scope.get_variable(
+            "linear_model/sc_vocab/weights",
+            initializer=[[0.5], [1.], [2.], [3.]])
+        self._write_checkpoint(sess)
+        prev_keys_val = sess.run(sc_keys_weights)
+
+    # New graph, new session with warmstarting.
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        cols_to_vars = self._create_linear_model(all_linear_cols,
+                                                 partitioner=None)
+        vocab_info = ws_util._VocabInfo(
+            new_vocab=sc_vocab.vocabulary_file,
+            new_vocab_size=sc_vocab.vocabulary_size,
+            num_oov_buckets=sc_vocab.num_oov_buckets,
+            old_vocab=prev_vocab_path
+        )
+        ws_settings = ws_util._WarmStartSettings(
+            self.get_temp_dir(),
+            vars_to_warmstart=".*(sc_keys|sc_vocab).*",
+            var_name_to_vocab_info={
+                ws_util._infer_var_name(cols_to_vars[sc_vocab]): vocab_info
+            },
+            var_name_to_prev_var_name={
+                ws_util._infer_var_name(cols_to_vars[sc_keys]):
+                    "some_other_name"
+            })
+        ws_util._warmstart(ws_settings)
+        sess.run(variables.global_variables_initializer())
+        # Verify weights were correctly warmstarted.  Var corresponding to
+        # sc_hash should not be warm-started.  Var corresponding to sc_vocab
+        # should be correctly warmstarted after vocab remapping.
+        self._assert_cols_to_vars(cols_to_vars, {
+            sc_keys: [prev_keys_val],
+            sc_hash: [np.zeros([15, 1])],
+            sc_vocab: [np.array([[3.], [2.], [1.], [0.5], [0.], [0.]])]
         }, sess)
 
   def testWarmStartVarsToWarmstartIsNone(self):
