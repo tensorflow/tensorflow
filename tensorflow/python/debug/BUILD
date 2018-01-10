@@ -613,7 +613,10 @@ py_test(
     size = "small",
     srcs = ["cli/curses_ui_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
     deps = [
         ":curses_ui",
         ":debugger_cli_common",
@@ -803,6 +806,9 @@ py_test(
     size = "small",
     srcs = ["cli/tensor_format_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":debug_data",
         ":tensor_format",
@@ -872,6 +878,9 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_oss",
     ],
 )
 
