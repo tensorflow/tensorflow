@@ -12,16 +12,12 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split("-", 1)
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split("."):
-    version_tuple += (str(number),)
-  return version_tuple
+  for i in range(len(bazel_version)):
+    c = bazel_version[i]
+    if not (c.isdigit() or c == "."):
+      bazel_version = bazel_version[:i]
+      break
+  return tuple([int(n) for n in bazel_version.split(".")])
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
