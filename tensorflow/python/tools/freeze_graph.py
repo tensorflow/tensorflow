@@ -239,17 +239,12 @@ def freeze_graph(input_graph,
       input_meta_graph_def, input_saved_model_dir, saved_model_tags.split(","))
 
 
-def main(unused_args):
-  freeze_graph(FLAGS.input_graph, FLAGS.input_saver, FLAGS.input_binary,
-               FLAGS.input_checkpoint, FLAGS.output_node_names,
-               FLAGS.restore_op_name, FLAGS.filename_tensor_name,
-               FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
-               FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
-               FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
-               FLAGS.saved_model_tags)
-
-
-if __name__ == "__main__":
+def create_parser():
+  """Creates a parser that parse the command line arguments.
+  
+  Returns:
+    An ArgumentParser with command line arguments.
+  """
   parser = argparse.ArgumentParser()
   parser.register("type", "bool", lambda v: v.lower() == "true")
   parser.add_argument(
@@ -346,5 +341,20 @@ if __name__ == "__main__":
       separated by \',\'. For tag-set contains multiple tags, all tags \
       must be passed in.\
       """)
-  FLAGS, unparsed = parser.parse_known_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  return parser
+ 
+
+def main():
+  parser = create_parser()
+  FLAGS, _ = parser.parse_known_args()
+  freeze_graph(FLAGS.input_graph, FLAGS.input_saver, FLAGS.input_binary,
+               FLAGS.input_checkpoint, FLAGS.output_node_names,
+               FLAGS.restore_op_name, FLAGS.filename_tensor_name,
+               FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
+               FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
+               FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
+               FLAGS.saved_model_tags)
+
+
+if __name__ == "__main__":
+  sys.exit(main())
