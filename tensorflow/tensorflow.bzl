@@ -268,6 +268,7 @@ def tf_cc_shared_object(
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
           ],
           "//conditions:default": [
+              "-Wl,-soname," + name.split("/")[-1],
           ],
       }),
       **kwargs)
