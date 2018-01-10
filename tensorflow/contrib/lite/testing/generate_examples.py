@@ -94,8 +94,6 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # Gather doesn't support int64 indices.
-    r"gather.*indices_dtype=int64": "XXXX",
     # BatchToSpaceND doesn't support cropping.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
