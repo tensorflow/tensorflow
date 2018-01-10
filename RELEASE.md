@@ -13,15 +13,114 @@
 * [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
   dev preview is now available.
 * CUDA 9 and cuDNN 7 support.
+* Accelerated Linear Algebra (XLA):
+  * Add `complex64` support to XLA compiler.
+  * `bfloat` support is now added to XLA infrastructure.
+  * Make `ClusterSpec` propagation work with XLA devices.
+  * Use a determinisitic executor to generate XLA graph.
+* `tf.contrib`:
+  * `tf.contrib.distributions`:
+    * Add `tf.contrib.distributions.Autoregressive`.
+    * Make `tf.contrib.distributions` QuadratureCompound classes support batch
+    * Infer `tf.contrib.distributions.RelaxedOneHotCategorical` `dtype` from arguments.
+    * Make `tf.contrib.distributions` quadrature family parameterized by
+      `quadrature_grid_and_prob` vs `quadrature_degree`.
+    * `auto_correlation` added to `tf.contrib.distributions`
+  * Add `tf.contrib.bayesflow.layers`, a collection of probabilistic (neural) layers.
+  * Add `tf.contrib.bayesflow.halton_sequence`.
+  * Add `tf.contrib.data.make_saveable_from_iterator.`
+  * Add `tf.contrib.data.shuffle_and_repeat`.
+  * Add new custom transformation: `tf.contrib.data.scan()`.
+  * `tf.contrib.distributions.bijectors`:
+    * Add `tf.contrib.distributions.bijectors.MaskedAutoregressiveFlow`.
+    * Add `tf.contrib.distributions.bijectors.Permute`.
+    * Add `tf.contrib.distributions.bijectors.Gumbel`.
+    * Add `tf.contrib.distributions.bijectors.Reshape`.
+    * Support shape inference (i.e., shapes containing -1) in the Reshape bijector.
+* Add `streaming_precision_recall_at_equal_thresholds,` a method for computing
+  streaming precision and recall with `O(num_thresholds + size of predictions)`
+  time and space complexity.
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
+* Replaced the implementation of `tf.flags` with `absl.flags`.
 
 ## Bug Fixes and Other Changes
-* `auto_correlation` added to `tf.contrib.distributions`.
-* Add `DenseFlipout` probabilistic layer.
-* Restandardize `DenseVariational` as simpler template for other probabilistic layers.
-* Make `tf.contrib.distributions` QuadratureCompound classes support batch.
+* Documentation updates:
+  * Clarified that you can only install TensorFlow on 64-bit machines.
+  * Added a short doc explaining how `Estimator`s save checkpoints.
+  * Add documentation for ops supported by the `tf2xla` bridge.
+  * Fix minor typos in the doc of `SpaceToDepth` and `DepthToSpace`.
+  * Updated documentation comments in `mfcc_mel_filterbank.h` and `mfcc.h` to
+    clarify that the input domain is squared magnitude spectra and the weighting
+    is done on linear magnitude spectra (sqrt of inputs).
+  * Change `tf.contrib.distributions` docstring examples to use `tfd` alias
+    rather than `ds`, `bs`.
+  * Fix docstring typos in `tf.distributions.bijectors.Bijector`.
+  * `tf.assert_equal` no longer raises `ValueError.` It now raises
+    `InvalidArgumentError,` as documented.
+* Google Cloud Storage (GCS):
+  * Add userspace DNS caching for the GCS client.
+  * Customize request timeouts for the GCS filesystem.
+  * Improve GCS filesystem caching.
+* Bug Fixes:
+  * Fix bug where partitioned integer variables got their wrong shapes. Before
+  * Fix correctness bug in CPU and GPU implementations of Adadelta.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+    importing into a scope. WARNING: This may break loading checkpoints of
+    graphs with partitioned variables saved after using `import_meta_graph` with
+    a non-empty `import_scope` argument.
+  * Fix bug in offline debugger which prevented viewing events.
+  * Added the `WorkerService.DeleteWorkerSession` method to the gRPC interface,
+    to fix a memory leak. Ensure that your master and worker servers are running
+    the same version of TensorFlow to avoid compatibility issues.
+  * Fix bug in peephole implementation of BlockLSTM cell.
+  * Fix bug by casting dtype of `log_det_jacobian` to match `log_prob` in
+    `TransformedDistribution`.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+  * Ensure `tf.distributions.Multinomial` doesn't underflow in `log_prob`.
+    Before this change, all partitions of an integer variable were initialized
+    with the shape of the unpartitioned variable; after this change they are
+    initialized correctly.
+* Other:
+  * Add necessary shape util support for bfloat16.
+  * Add a way to run ops using a step function to MonitoredSession.
+  * Add `DenseFlipout` probabilistic layer.
+  * A new flag `ignore_live_threads` is available on train. If set to `True`, it
+    will ignore threads that remain running when tearing down infrastructure
+    after successfully completing training, instead of throwing a RuntimeError.
+  * Restandardize `DenseVariational` as simpler template for other probabilistic
+    layers.
+  * `tf.data` now supports `tf.SparseTensor` components in dataset elements.
+  * It is now possible to iterate over `Tensor`s.
+  * Allow `SparseSegmentReduction` ops to have missing segment IDs.
+  * Modify custom export strategy to account for multidimensional sparse float
+    splits.
+  * `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` now supports arbitrary
+    dilations with GPU and cuDNNv6 support.
+  * `Estimator` now supports `Dataset`: `input_fn` can return a `Dataset`
+    instead of `Tensor`s.
+  * Add `RevBlock`, a memory-efficient implementation of reversible residual layers.
+  * Reduce BFCAllocator internal fragmentation.
+  * Add `cross_entropy` and `kl_divergence` to `tf.distributions.Distribution`.
+  * Add `tf.nn.softmax_cross_entropy_with_logits_v2` which enables backprop
+    w.r.t. the labels.
+  * GPU back-end now uses `ptxas` to compile generated PTX.
+  * `BufferAssignment`'s protocol buffer dump is now deterministic.
+  * Change embedding op to use parallel version of `DynamicStitch`.
+  * Add support for sparse multidimensional feature columns.
+  * Speed up the case for sparse float columns that have only 1 value.
+  * Allow sparse float splits to support multivalent feature columns.
+  * Add `quantile` to `tf.distributions.TransformedDistribution`.
+  * Add `NCHW_VECT_C` support for `tf.depth_to_space` on GPU.
+  * Add `NCHW_VECT_C` support for `tf.space_to_depth` on GPU.
+
+## API Changes
+* Rename `SqueezeDims` attribute to `Axis` in C++ API for Squeeze op.
 * `Stream::BlockHostUntilDone` now returns Status rather than bool.
-* Customize request timeouts for the GCS filesystem.
-* `tf.data` now supports `tf.SparseTensor` components in dataset elements.
+* Minor refactor: move stats files from `stochastic` to `common` and remove
+  `stochastic`.
 
 ## Thanks to our Contributors
 
