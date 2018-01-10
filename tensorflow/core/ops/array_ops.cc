@@ -1169,7 +1169,7 @@ REGISTER_OP("UniqueV2")
     .Output("y: T")
     .Output("idx: out_idx")
     .Attr("T: type")
-    .Attr("Taxis: {int32,int64}")
+    .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
@@ -1198,9 +1198,34 @@ y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 ```
 
+For an `2-D` tensor `x` with `axis = 0`:
+
+```
+# tensor 'x' is [[1, 0, 0],
+#                [1, 0, 0],
+#                [2, 0, 0]]
+y, idx = unique(x, axis=0)
+y ==> [[1, 0, 0],
+       [2, 0, 0]]
+idx ==> [0, 0, 1]
+```
+
+For an `2-D` tensor `x` with `axis = 1`:
+
+```
+# tensor 'x' is [[1, 0, 0],
+#                [1, 0, 0],
+#                [2, 0, 0]]
+y, idx = unique(x, axis=0)
+y ==> [[1, 0],
+       [1, 0],
+       [2, 0]]
+idx ==> [0, 1, 1]
+```
+
 
 x: A `Tensor`.
-axis: A `Tensor` of type `int32` (default: 0). The axis of the Tensor to
+axis: A `Tensor` of type `int32` (default: None). The axis of the Tensor to
   find the unique elements.
 y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
 idx: A 1-D Tensor. Has the same type as x that contains the index of each
