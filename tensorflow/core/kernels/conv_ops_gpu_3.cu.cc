@@ -541,6 +541,7 @@ constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                                                 int TileShortSide,
                                                 int size_of_t, Op op) {
   // clang-format off
+
   return (size_of_t == 16 && ((TileLongSide == 32   && op(TileShortSide, 4))  ||
                              (TileLongSide == 64   && op(TileShortSide, 4))  ||
                              (TileLongSide == 128  && op(TileShortSide, 4))  ||
@@ -568,6 +569,7 @@ constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                              (TileLongSide == 256  && op(TileShortSide, 8))  ||
                              (TileLongSide == 512  && op(TileShortSide, 4))  ||
                              (TileLongSide == 1024 && op(TileShortSide, 2))));
+
   // clang-format on
 }
 

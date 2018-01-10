@@ -550,7 +550,7 @@ def _ensure_unique_tensor_objects(parameter_positions, args):
 
 
 def val_and_grad_function(f, params=None):
-  """Returns a function that computes f and is derivative w.r.t. params.
+  """Returns a function that computes f and its derivative w.r.t. params.
 
   Example:
   ```python
