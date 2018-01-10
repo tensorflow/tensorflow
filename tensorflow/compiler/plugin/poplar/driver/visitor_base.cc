@@ -378,14 +378,14 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       return Status::OK();
     }
     else if (name == "wide_const") {
-      const HloInstruction* root = inst->to_apply()->root_instruction();
-      poplar::Tensor out;
-      TF_ASSIGN_OR_RETURN(out, AddConstantTensor(*graph_,
-                                                 std::make_pair(inst, 0),
-                                                 inst->shape(),
-                                                 root->operand(0)->literal(),
-                                                 resources_));
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateWideConstant(*graph_,
+                                             resources_,
+                                             inst,
+                                             GetOutputShape(inst),
+                                             tensor_map));
+      sequence.add(prog);
       return Status::OK();
     }
     else if (name == "depthwise_conv") {

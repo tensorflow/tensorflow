@@ -29,10 +29,10 @@ using InplaceInstructions = std::set<const HloInstruction*>;
 using InplaceRoute = std::vector<HloInstruction*>;
 
 /**
- * This class finds all instructions that explicitly add tensors to the
- * graph.  For each one of them, it locates the downstream consumers of that
- * tensor, and if any of those instructions require a specific tensor allocation
- * method (e.g. convolution), then it notes the downstream instruction
+ * This finds instructions which do inplace updates to tensors.
+ *
+ * Care is taken to track tensors through tuples, as they should still be
+ * updated in place even when they have been made part of a tuple.
  */
 class InplaceFinder {
 public:

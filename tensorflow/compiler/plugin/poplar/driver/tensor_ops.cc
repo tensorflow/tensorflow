@@ -219,6 +219,26 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   return seq;
 }
 
+port::StatusOr<poplar::program::Program>
+CreateWideConstant(poplar::Graph &graph,
+                   CompilerResources& res,
+                   const HloInstruction *inst,
+                   const xla::Shape& output_shape,
+                   TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  const HloInstruction* root = inst->to_apply()->root_instruction();
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddConstantTensor(graph,
+                                             std::make_pair(inst, 0),
+                                             inst->shape(),
+                                             root->operand(0)->literal(),
+                                             res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
+}
+
 }
 }
 

@@ -351,6 +351,13 @@ ConvBiasApply(poplar::Graph &graph,
               const xla::Shape& output_shape,
               TensorMap& tensor_map);
 
+port::StatusOr<poplar::program::Program>
+CreateWideConstant(poplar::Graph &graph,
+                   CompilerResources& res,
+                   const HloInstruction *inst,
+                   const xla::Shape& output_shape,
+                   TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool
