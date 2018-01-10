@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace {
 
 TEST(SchemaTest, SmokeTestTensorboardSchema) {
-  auto db = Sqlite::Open(":memory:").ValueOrDie();
+  auto db = Sqlite::OpenOrDie(":memory:");
   TF_ASSERT_OK(SetupTensorboardSqliteDb(db.get()));
 }
 

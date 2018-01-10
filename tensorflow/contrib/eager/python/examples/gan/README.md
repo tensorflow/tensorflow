@@ -32,7 +32,7 @@ or `tf-nightly-gpu` pip package in order to access the eager execution feature.
   
   Use `--checkpoint_dir=<DIR>` to direct the script to save checkpoints to
   `<DIR>` during training. DIR defaults to /tmp/tensorflow/mnist/checkpoints/.
-  The script will load the   latest saved checkpoint from this directory if
+  The script will load the latest saved checkpoint from this directory if
   one exists.
   
   Use `-h` for other options.
