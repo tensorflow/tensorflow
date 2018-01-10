@@ -258,6 +258,8 @@ class IteratorContext {
     // created. Better suggestions are welcome!
     std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
         nullptr;
+
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -274,6 +276,10 @@ class IteratorContext {
     } else {
       return nullptr;
     }
+  }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
   }
 
  private:
