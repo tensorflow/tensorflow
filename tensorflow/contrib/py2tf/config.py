@@ -22,11 +22,14 @@ PYTHON_LITERALS = {
     'None': None,
 }
 
-DEFAULT_UNCOMPILED_MODULES = set(('tensorflow',))
+DEFAULT_UNCOMPILED_MODULES = set((
+    ('tensorflow',),
+))
 
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
 # TODO(mdan): Also allow controlling the generated names (for testability).
 COMPILED_IMPORT_STATEMENTS = (
+    'from contextlib import contextmanager',
     'import tensorflow as tf',
 )

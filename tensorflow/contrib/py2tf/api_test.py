@@ -34,7 +34,7 @@ class ApiTest(test.TestCase):
         x //= 2
       return x
 
-    config.DEFAULT_UNCOMPILED_MODULES.add(math_ops.__name__)
+    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     config.COMPILED_IMPORT_STATEMENTS = (
         'from tensorflow.python.ops '
         'import control_flow_ops as tf',
@@ -51,7 +51,7 @@ class ApiTest(test.TestCase):
         x /= 2
       return x
 
-    config.DEFAULT_UNCOMPILED_MODULES.add(math_ops.__name__)
+    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     compiled_code = api.to_code(test_fn)
 
     # Just check for some key words and that it is parseable Python code.

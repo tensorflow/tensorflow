@@ -95,7 +95,7 @@ class TypeInfoResolver(gast.NodeTransformer):
         type_holder = gast.Name(node.id, gast.Load(), None)
         type_string, type_obj = self.value_hints[node.id]
         anno.setanno(type_holder, 'type', type_obj)
-        anno.setanno(type_holder, 'type_fqn', type_string.split('.'))
+        anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
         self.scope.setval(node.id, type_holder)
     return node
 

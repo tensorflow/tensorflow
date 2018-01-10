@@ -133,7 +133,7 @@ class TypeInfoResolverTest(test.TestCase):
 
     attr_call_node = node.body[0].body[0].value.func
     self.assertEquals(
-        training.__name__.split('.') + ['GradientDescentOptimizer'],
+        tuple(training.__name__.split('.')) + ('GradientDescentOptimizer',),
         anno.getanno(attr_call_node, 'type_fqn'))
 
   def test_function_variables(self):
