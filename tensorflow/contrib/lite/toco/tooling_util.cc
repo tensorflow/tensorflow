@@ -651,10 +651,12 @@ void CheckNonExistentIOArrays(const Model& model) {
 void CheckNoMissingArray(const Model& model) {
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
-      CHECK(model.arrays.count(input));
+      CHECK(model.arrays.count(input)) << "Input: " << input <<
+	      " missing for op: " << op->outputs[0];
     }
     for (const auto& output : op->outputs) {
-      CHECK(model.arrays.count(output));
+      CHECK(model.arrays.count(output)) << "Output: " << output <<
+	      " missing.";
     }
   }
   CheckNonExistentIOArrays(model);

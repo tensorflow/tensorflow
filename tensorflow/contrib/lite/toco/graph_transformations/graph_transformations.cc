@@ -137,6 +137,7 @@ bool GraphTransformationsPass(int increment, Model* model,
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
+    LOG(INFO) << "Model is empty!!!";
     return false;
   }
   int op_index = increment == 1 ? 0 : model->operators.size() - 1;
@@ -152,7 +153,7 @@ bool GraphTransformationsPass(int increment, Model* model,
         CHECK(!model->operators.empty());
         op_index = std::min<int>(op_index, model->operators.size() - 1);
         // Uncomment for debugging
-        // CheckInvariants(*model);
+        CheckInvariants(*model);
       }
       const char* made_a_change_msg =
           changed_now ? "made a change" : "did NOT make a change";
