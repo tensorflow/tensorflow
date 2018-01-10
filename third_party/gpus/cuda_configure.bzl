@@ -635,30 +635,6 @@ def _find_cudnn_header_dir(repository_ctx, cudnn_install_basedir):
   auto_configure_fail("Cannot find cudnn.h under %s" % cudnn_install_basedir)
 
 
-def _find_cudnn_lib_path(repository_ctx, cudnn_install_basedir, symlink_files):
-  """Returns the path to the directory containing libcudnn
-
-  Args:
-    repository_ctx: The repository context.
-    cudnn_install_basedir: The cudnn install dir as returned by
-      _cudnn_install_basedir.
-    symlink_files: The symlink files as returned by _cuda_symlink_files.
-
-  Returns:
-    The path of the directory containing the cudnn libraries.
-  """
-  lib_dir = cudnn_install_basedir + "/" + symlink_files.cuda_dnn_lib
-  if repository_ctx.path(lib_dir).exists:
-    return lib_dir
-  alt_lib_dir = cudnn_install_basedir + "/" + symlink_files.cuda_dnn_lib_alt
-  if repository_ctx.path(alt_lib_dir).exists:
-    return alt_lib_dir
-
-  auto_configure_fail("Cannot find %s or %s under %s" %
-       (symlink_files.cuda_dnn_lib, symlink_files.cuda_dnn_lib_alt,
-        cudnn_install_basedir))
-
-
 def _cudart_static_linkopt(cpu_value):
   """Returns additional platform-specific linkopts for cudart."""
   return "" if cpu_value == "Darwin" else "\"-lrt\","
