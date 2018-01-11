@@ -178,6 +178,16 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = ["platform/stacktrace_handler_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":platform",
+    ],
+)
+
+tf_py_test(
     name = "app_test",
     size = "small",
     srcs = ["platform/app_test.py"],
@@ -3083,6 +3093,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "training/quantize_training.i",
         "training/server_lib.i",
