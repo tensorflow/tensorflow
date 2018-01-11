@@ -27,7 +27,7 @@ function cp_external() {
   for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
-  cp "local_config_cuda/cuda/cuda/cuda_config.h" --parents "$dest_dir"
+  cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" --parents "$dest_dir"
 }
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
