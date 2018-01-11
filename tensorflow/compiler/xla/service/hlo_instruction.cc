@@ -1571,7 +1571,7 @@ bool HloInstruction::HasConstantOperand() const {
 
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    std::function<bool(const HloComputation*, const HloComputation*)>
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
