@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
@@ -99,13 +100,6 @@ namespace {
 
 using tensorflow::port::Tracing;
 using tensorflow::strings::StrCat;
-
-// Any address of a variable residing in global memory or returned by one of the
-// memory allocation routines from the driver or runtime API is always aligned
-// to at least 256 bytes.
-//
-// http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
-constexpr int64 kMemoryAlignment = 256;
 
 // Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
 // should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
@@ -446,8 +440,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
-                            return kMemoryAlignment;
+                          BufferSizeBytesFunction(),
+                          /*color_alignment=*/[](LogicalBuffer::Color) {
+                            return kCudaMallocAlignBytes;
                           }));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
