@@ -1165,10 +1165,11 @@ REGISTER_OP("Unique")
 
 REGISTER_OP("UniqueV2")
     .Input("x: T")
-    .Input("axis: int64")
+    .Input("axis: Taxis")
     .Output("y: T")
     .Output("idx: out_idx")
     .Attr("T: type")
+    .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
