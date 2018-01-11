@@ -66,7 +66,21 @@ class _DeviceContextGenerator(object):
 
 
 class FisherEstimator(object):
-  """Fisher estimator class supporting various approximations of the Fisher."""
+  """Fisher estimator class supporting various approximations of the Fisher.
+
+  Attributes:
+    cov_update_thunks: list of no-arg functions. Executing a function adds
+      covariance update ops for a single FisherFactor to the graph.
+    cov_update_ops: List of Ops. Running an op updates covariance matrices for a
+      single FisherFactor.
+    cov_update_op: Op. Running updates covariance matrices for all
+      FisherFactors.
+    inv_update_thunks: list of no-arg functions.  Executing a function adds
+      inverse update ops for a single FisherFactor to the graph.
+    inv_update_ops: List of Ops. Running an op updates inverse matrices for a
+      single FisherFactor.
+    inv_update_op: Op. Running updates inverse matrices for all FisherFactors.
+  """
 
   def __init__(self,
                variables,
@@ -122,6 +136,7 @@ class FisherEstimator(object):
       ValueError: If no losses have been registered with layer_collection.
     """
 
+    self._cov_ema_decay = cov_ema_decay
     self._variables = variables
     self._damping = damping
     self._estimation_mode = estimation_mode
@@ -135,13 +150,31 @@ class FisherEstimator(object):
         "exact": self._get_grads_lists_exact
     }
     self._colocate_gradients_with_ops = colocate_gradients_with_ops
+
+    # TODO(b/70674513): Factor device placement outside of this class.
     self._cov_device_context_generator = _DeviceContextGenerator(cov_devices)
     if inv_devices == cov_devices:
       self._inv_device_context_generator = self._cov_device_context_generator
     else:
       self._inv_device_context_generator = _DeviceContextGenerator(inv_devices)
-    setup = self._setup(cov_ema_decay)
-    self.cov_update_op, self.inv_update_op, self.inv_updates_dict = setup
+
+    self._instantiate_factors()
+
+    self.cov_update_thunks = [
+        self._create_cov_update_thunk(factor)
+        for factor in self._layers.get_factors()
+    ]
+    self.cov_update_ops = [thunk() for thunk in self.cov_update_thunks]
+    self.cov_update_op = control_flow_ops.group(
+        self.cov_update_ops, name="cov_update_op")
+
+    self.inv_update_thunks = [
+        self._create_inv_update_thunk(factor)
+        for factor in self._layers.get_factors()
+    ]
+    self.inv_update_ops = [thunk() for thunk in self.inv_update_thunks]
+    self.inv_update_op = control_flow_ops.group(
+        self.inv_update_ops, name="inv_update_op")
 
   @property
   def variables(self):
@@ -202,18 +235,8 @@ class FisherEstimator(object):
     return self._apply_transformation(vecs_and_vars,
                                       lambda fb, vec: fb.multiply(vec))
 
-  def _setup(self, cov_ema_decay):
-    """Sets up the various operations.
-
-    Args:
-      cov_ema_decay: The decay factor used when calculating the covariance
-          estimate moving averages.
-
-    Returns:
-      A triple (covs_update_op, invs_update_op, inv_updates_dict), where
-      covs_update_op is the grouped Op to update all the covariance estimates,
-      invs_update_op is the grouped Op to update all the inverses, and
-      inv_updates_dict is a dict mapping Op names to individual inverse updates.
+  def _instantiate_factors(self):
+    """Instantiates FisherFactors' variables.
 
     Raises:
       ValueError: If estimation_mode was improperly specified at construction.
@@ -238,20 +261,30 @@ class FisherEstimator(object):
       with self._cov_device_context_generator():
         fb.instantiate_factors(grads_list, self.damping)
 
-    cov_updates = [
-        factor.make_covariance_update_op(cov_ema_decay)
-        for factor in self._layers.get_factors()
-    ]
-    inv_updates = {op.name: op for op in self._get_all_inverse_update_ops()}
+  def _create_cov_update_thunk(self, factor):
+    """Constructs a covariance update thunk for a single FisherFactor."""
 
-    return control_flow_ops.group(*cov_updates), control_flow_ops.group(
-        *inv_updates.values()), inv_updates
+    def thunk():
+      with tf_ops.name_scope(
+          "create_cov_update_thunk", values=[self._cov_ema_decay]):
+        return factor.make_covariance_update_op(self._cov_ema_decay)
 
-  def _get_all_inverse_update_ops(self):
-    for factor in self._layers.get_factors():
-      with self._inv_device_context_generator():
-        for op in factor.make_inverse_update_ops():
-          yield op
+    return thunk
+
+  def _create_inv_update_thunk(self, factor):
+    """Constructs an inverse update thunk for a single FisherFactor."""
+
+    def thunk():
+      with tf_ops.name_scope("create_inv_update_thunk"):
+        with self._inv_device_context_generator():
+          return control_flow_ops.group(factor.make_inverse_update_ops())
+
+    return thunk
+
+  @property
+  def inv_updates_dict(self):
+    """Returns a dictionary mapping strings to inv_update_ops."""
+    return {op.name: op for op in self.inv_update_ops}
 
   def _get_grads_lists_gradients(self, tensors):
     grads_flat = gradients_impl.gradients(
