@@ -480,7 +480,7 @@ does not specify one.
 
 For local deployment, you can serve your model using
 [TensorFlow Serving](https://github.com/tensorflow/serving), an open-source project that loads a
-SavedModel and exposes it as a [gRPC](http://www.grpc.io/) service.
+SavedModel and exposes it as a [gRPC](https://www.grpc.io/) service.
 
 First, [install TensorFlow Serving](https://github.com/tensorflow/serving).
 
