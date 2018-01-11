@@ -1723,6 +1723,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument("FFT only supports ranks 1-3, but got %lld",
                            fft_rank);
   }
+#define RET_CHECK_RANK(x)                              \
+  if (x.dimensions_size() < fft_rank) {                \
+    return InvalidArgument(                            \
+        "FFT of rank %lld requires input of at least " \
+        "same rank; got input of rank %d",             \
+        fft_rank, x.dimensions_size());                \
+  }
   switch (fft_type) {
     case FFT:
     case IFFT:
@@ -1731,12 +1738,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                FftType_Name(fft_type).c_str(),
                                PrimitiveType_Name(in.element_type()).c_str());
       }
+      RET_CHECK_RANK(in);
       return in;
     case RFFT: {
       if (in.element_type() != F32) {
         return InvalidArgument("RFFT requires F32 input type, found %s",
                                PrimitiveType_Name(in.element_type()).c_str());
       }
+      RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
         if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
             fft_length[i]) {
@@ -1758,7 +1767,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         return InvalidArgument("IRFFT requires C64 input type, found %s",
                                PrimitiveType_Name(in.element_type()).c_str());
       }
-      Shape result = ShapeUtil::ChangeElementType(in, F32);
+      RET_CHECK_RANK(in);
+      Shape result = ShapeUtil::ComplexComponentShape(in);
       for (int i = 0; i < fft_rank - 1; i++) {
         if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
             fft_length[i]) {
@@ -1785,6 +1795,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     default:
       LOG(FATAL) << "Unexpected fft_type: " << fft_type;
   }
+#undef RET_CHECK_RANK
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
