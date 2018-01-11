@@ -80,7 +80,7 @@ cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
-zip -j libtensorflow-cpu-windows-$(uname -m).zip \
+zip libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
   include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
