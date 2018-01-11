@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import re
 
 import numpy as np
 
@@ -173,14 +174,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("id=%d, shape=%s, dtype=%s, numpy=\n%r" %
                   (t._id, t.shape, t.dtype.name, t.numpy()), tensor_repr)
 
-  def disabled_testTensorStrReprObeyNumpyPrintOptions(self):
+  def testTensorStrReprObeyNumpyPrintOptions(self):
     orig_threshold = np.get_printoptions()["threshold"]
     orig_edgeitems = np.get_printoptions()["edgeitems"]
     np.set_printoptions(threshold=2, edgeitems=1)
 
     t = _create_tensor(np.arange(10, dtype=np.int32))
-    self.assertIn("[0 ..., 9]", str(t))
-    self.assertIn("[0, ..., 9]", repr(t))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", str(t)))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", repr(t)))
 
     # Clean up: reset to previous printoptions.
     np.set_printoptions(threshold=orig_threshold, edgeitems=orig_edgeitems)

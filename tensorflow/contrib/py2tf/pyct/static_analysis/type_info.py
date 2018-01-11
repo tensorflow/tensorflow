@@ -95,33 +95,42 @@ class TypeInfoResolver(gast.NodeTransformer):
         type_holder = gast.Name(node.id, gast.Load(), None)
         type_string, type_obj = self.value_hints[node.id]
         anno.setanno(type_holder, 'type', type_obj)
-        anno.setanno(type_holder, 'type_fqn', type_string.split('.'))
+        anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
         self.scope.setval(node.id, type_holder)
     return node
 
-  def visit_Assign(self, node):
-    self.generic_visit(node)
-    if isinstance(node.value, gast.Call):
-      target = node.value.func
-      if anno.hasanno(target, 'live_val'):
-        target_obj = anno.getanno(target, 'live_val')
-        if tf_inspect.isclass(target_obj):
+  def _process_variable_assignment(self, source, targets):
+    if isinstance(source, gast.Call):
+      func = source.func
+      if anno.hasanno(func, 'live_val'):
+        func_obj = anno.getanno(func, 'live_val')
+        if tf_inspect.isclass(func_obj):
           # This is then a constructor.
-          anno.setanno(node.value, 'type', target_obj)
-          anno.setanno(node.value, 'type_fqn', anno.getanno(target, 'fqn'))
+          anno.setanno(source, 'type', func_obj)
+          anno.setanno(source, 'type_fqn', anno.getanno(func, 'fqn'))
           # TODO(mdan): Raise an error if constructor has side effects.
           # We can have a whitelist of no-side-effects constructors.
           # We can also step inside the constructor and further analyze.
 
-    for n in node.targets:
-      if isinstance(n, gast.Tuple):
-        for i, e in enumerate(n.elts):
+    for t in targets:
+      if isinstance(t, gast.Tuple):
+        for i, e in enumerate(t.elts):
           self.scope.setval(e.id,
                             gast.Subscript(
-                                node.value, gast.Index(i), ctx=gast.Store()))
+                                source, gast.Index(i), ctx=gast.Store()))
       else:
-        self.scope.setval(n.id, node.value)
+        self.scope.setval(t.id, source)
 
+  def visit_With(self, node):
+    for wi in node.items:
+      if wi.optional_vars is not None:
+        self._process_variable_assignment(wi.context_expr, (wi.optional_vars,))
+    self.generic_visit(node)
+    return node
+
+  def visit_Assign(self, node):
+    self.generic_visit(node)
+    self._process_variable_assignment(node.value, node.targets)
     return node
 
   def visit_Call(self, node):

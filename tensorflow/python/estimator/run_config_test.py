@@ -262,8 +262,9 @@ class RunConfigDistributedSettingTest(test.TestCase):
             'index': 0
         }
     }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
     self._assert_distributed_properties(
-        run_config=_create_run_config_with_cluster_spec(tf_config),
+        run_config=run_config,
         expected_cluster_spec={},
         expected_task_type=run_config_lib.TaskType.WORKER,
         expected_task_id=0,
@@ -272,6 +273,7 @@ class RunConfigDistributedSettingTest(test.TestCase):
         expected_is_chief=True,
         expected_num_worker_replicas=1,
         expected_num_ps_replicas=0)
+    self.assertEqual(0, run_config.global_id_in_cluster)
 
   def test_session_master_for_local(self):
     tf_config = {'session_master': '_my_master'}
@@ -544,8 +546,9 @@ class RunConfigDistributedSettingTest(test.TestCase):
             'index': 12
         }
     }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
     self._assert_distributed_properties(
-        run_config=_create_run_config_with_cluster_spec(tf_config),
+        run_config=run_config,
         expected_cluster_spec={},
         expected_task_type=run_config_lib.TaskType.EVALUATOR,
         expected_task_id=12,
@@ -554,6 +557,7 @@ class RunConfigDistributedSettingTest(test.TestCase):
         expected_is_chief=False,  # evaluator is never chief.
         expected_num_worker_replicas=0,  # evaluator is not in training cluster.
         expected_num_ps_replicas=0)
+    self.assertIsNone(run_config.global_id_in_cluster)
 
   def test_eval_master_for_evaluator(self):
     tf_config = {
@@ -583,6 +587,71 @@ class RunConfigDistributedSettingTest(test.TestCase):
     }
     with self.assertRaisesRegexp(ValueError, _NEGATIVE_TASK_INDEX_ERR):
       _create_run_config_with_cluster_spec(tf_config)
+
+  def test_global_id_in_cluster_for_chief(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.CHIEF,
+            'index': 0,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(0, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_worker(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.WORKER,
+            'index': 2,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(3, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_ps(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.PS,
+            'index': 1,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(5, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_multipe_worker_types(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            'worker': ['host3:3', 'host4:4', 'host5:5'],
+            'other_type': ['host3:1', 'host4:2'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': 'other_type',
+            'index': 1,
+        },
+    }
+    # Though 'other_type' is defined after 'worker', based on alphabetical
+    # order, the task type order should be 'chief', 'other_type', 'worker',
+    # 'ps', where 'chief' and 'ps' are predefined to be the top and last in the
+    # order list.
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(2, run_config.global_id_in_cluster)
 
 
 class RunConfigDistributedSettingWithMasterTest(test.TestCase):
@@ -851,6 +920,71 @@ class RunConfigDistributedSettingWithMasterTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  _INVALID_CHIEF_IN_CLUSTER_WITH_MASTER_ERR):
       _create_run_config_with_cluster_spec(tf_config)
+
+  def test_global_id_in_cluster_for_master(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.MASTER,
+            'index': 0,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(0, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_worker(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.WORKER,
+            'index': 2,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(3, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_ps(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4', 'host5:5'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.PS,
+            'index': 1,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(5, run_config.global_id_in_cluster)
+
+  def test_global_id_in_cluster_for_multipe_worker_types(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.MASTER: ['host0:0'],
+            'worker': ['host3:3', 'host4:4', 'host5:5'],
+            'other_type': ['host3:1', 'host4:2'],
+            run_config_lib.TaskType.PS: ['host6:3', 'host7:4', 'host8:5']
+        },
+        'task': {
+            'type': 'other_type',
+            'index': 1,
+        },
+    }
+    # Though 'other_type' is defined after 'worker', based on alphabetical
+    # order, the task type order should be 'chief', 'other_type', 'worker',
+    # 'ps', where 'chief' and 'ps' are predefined to be the top and last in the
+    # order list.
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(2, run_config.global_id_in_cluster)
 
 
 class RunConfigSaveCheckpointsTest(test.TestCase):

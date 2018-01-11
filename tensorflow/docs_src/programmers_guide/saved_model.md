@@ -349,10 +349,10 @@ SavedModel format. This section explains how to:
 
 ### Preparing serving inputs
 
-During training, an @{$input_fn$`input_fn()`} ingests data and prepares it for
-use by the model.  At serving time, similarly, a `serving_input_receiver_fn()`
-accepts inference requests and prepares them for the model.  This function
-has the following purposes:
+During training, an @{$premade_estimators#input_fn$`input_fn()`} ingests data
+and prepares it for use by the model.  At serving time, similarly, a
+`serving_input_receiver_fn()` accepts inference requests and prepares them for
+the model.  This function has the following purposes:
 
 *  To add placeholders to the graph that the serving system will feed
    with inference requests.

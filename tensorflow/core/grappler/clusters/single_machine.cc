@@ -80,15 +80,22 @@ Status SingleMachine::Provision() {
 
   TF_RETURN_IF_ERROR(ResetSession());
 
-  DeviceProperties attr = GetLocalCPUInfo();
-  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
-
-  VLOG(1) << "Number of GPUs: " << num_gpus_;
-  for (int i = 0; i < num_gpus_; ++i) {
-    string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
-    VLOG(1) << "Adding GPU device " << device_name;
-    devices_[device_name] = GetLocalGPUInfo(i);
+  std::vector<DeviceAttributes> devices;
+  TF_RETURN_IF_ERROR(session_->ListDevices(&devices));
+  int gpu_id = 0;
+  for (const auto& dev : devices) {
+    DeviceProperties attr;
+    if (dev.device_type() == "CPU") {
+      attr = GetLocalCPUInfo();
+    } else if (dev.device_type() == "GPU") {
+      attr = GetLocalGPUInfo(gpu_id++);
+    } else {
+      attr.set_type(dev.device_type());
+    }
+    // Overwrite the memory size since users might have requested to use only a
+    // fraction of the available device memory.
+    attr.set_memory_size(dev.memory_limit());
+    devices_[dev.name()] = attr;
   }
   already_provisioned = true;
 

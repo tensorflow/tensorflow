@@ -216,6 +216,25 @@ def get_sync_optimizer():
       replicas_to_aggregate=1)
 
 
+def get_tensor_pool_fn(pool_size):
+
+  def tensor_pool_fn_impl(input_values):
+    return random_tensor_pool.tensor_pool(input_values, pool_size=pool_size)
+
+  return tensor_pool_fn_impl
+
+
+def get_tensor_pool_fn_for_infogan(pool_size):
+
+  def tensor_pool_fn_impl(input_values):
+    generated_data, generator_inputs = input_values
+    output_values = random_tensor_pool.tensor_pool(
+        [generated_data] + generator_inputs, pool_size=pool_size)
+    return output_values[0], output_values[1:]
+
+  return tensor_pool_fn_impl
+
+
 class GANModelTest(test.TestCase):
   """Tests for `gan_model`."""
 
@@ -412,24 +431,87 @@ class GANLossTest(test.TestCase):
   def test_callable_acgan(self):
     self._test_acgan_helper(create_callable_acgan_model)
 
+  def _check_tensor_pool_adjusted_model_outputs(self, tensor1, tensor2,
+                                                pool_size):
+    history_values = []
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      for i in range(2 * pool_size):
+        t1, t2 = sess.run([tensor1, tensor2])
+        history_values.append(t1)
+        if i < pool_size:
+          # For [0, pool_size), the pool is not full, tensor1 should be equal
+          # to tensor2 as the pool.
+          self.assertAllEqual(t1, t2)
+        else:
+          # For [pool_size, ?), the pool is full, tensor2 must be equal to some
+          # historical values of tensor1 (which is previously stored in the
+          # pool).
+          self.assertTrue(any([(v == t2).all() for v in history_values]))
+
+  # Test `_tensor_pool_adjusted_model` for gan model.
+  def test_tensor_pool_adjusted_model_gan(self):
+    model = create_gan_model()
+
+    new_model = train._tensor_pool_adjusted_model(model, None)
+    # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
+    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertIs(new_model.discriminator_gen_outputs,
+                  model.discriminator_gen_outputs)
+
+    pool_size = 5
+    new_model = train._tensor_pool_adjusted_model(
+        model, get_tensor_pool_fn(pool_size=pool_size))
+    self.assertIsNot(new_model.discriminator_gen_outputs,
+                     model.discriminator_gen_outputs)
+    # Check values.
+    self._check_tensor_pool_adjusted_model_outputs(
+        model.discriminator_gen_outputs, new_model.discriminator_gen_outputs,
+        pool_size)
+
+  # Test _tensor_pool_adjusted_model for infogan model.
+  def test_tensor_pool_adjusted_model_infogan(self):
+    model = create_infogan_model()
+
+    pool_size = 5
+    new_model = train._tensor_pool_adjusted_model(
+        model, get_tensor_pool_fn_for_infogan(pool_size=pool_size))
+    # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
+    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertIsNot(new_model.discriminator_gen_outputs,
+                     model.discriminator_gen_outputs)
+    self.assertIsNot(new_model.predicted_distributions,
+                     model.predicted_distributions)
+    # Check values.
+    self._check_tensor_pool_adjusted_model_outputs(
+        model.discriminator_gen_outputs, new_model.discriminator_gen_outputs,
+        pool_size)
+
+  # Test _tensor_pool_adjusted_model for acgan model.
+  def test_tensor_pool_adjusted_model_acgan(self):
+    model = create_acgan_model()
+
+    pool_size = 5
+    new_model = train._tensor_pool_adjusted_model(
+        model, get_tensor_pool_fn(pool_size=pool_size))
+    # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
+    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertIsNot(new_model.discriminator_gen_outputs,
+                     model.discriminator_gen_outputs)
+    self.assertIsNot(new_model.discriminator_gen_classification_logits,
+                     model.discriminator_gen_classification_logits)
+    # Check values.
+    self._check_tensor_pool_adjusted_model_outputs(
+        model.discriminator_gen_outputs, new_model.discriminator_gen_outputs,
+        pool_size)
+
   # Test tensor pool.
   def _test_tensor_pool_helper(self, create_gan_model_fn):
     model = create_gan_model_fn()
     if isinstance(model, namedtuples.InfoGANModel):
-
-      def tensor_pool_fn_impl(input_values):
-        generated_data, generator_inputs = input_values
-        output_values = random_tensor_pool.tensor_pool(
-            [generated_data] + generator_inputs, pool_size=5)
-        return output_values[0], output_values[1:]
-
-      tensor_pool_fn = tensor_pool_fn_impl
+      tensor_pool_fn = get_tensor_pool_fn_for_infogan(pool_size=5)
     else:
-
-      def tensor_pool_fn_impl(input_values):
-        return random_tensor_pool.tensor_pool(input_values, pool_size=5)
-
-      tensor_pool_fn = tensor_pool_fn_impl
+      tensor_pool_fn = get_tensor_pool_fn(pool_size=5)
     loss = train.gan_loss(model, tensor_pool_fn=tensor_pool_fn)
     self.assertTrue(isinstance(loss, namedtuples.GANLoss))
 

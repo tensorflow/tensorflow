@@ -83,7 +83,7 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.h
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.cc
-        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${tensorflow_source_dir}/tensorflow/cc/ops/op_gen_overrides.pbtxt ${cc_ops_include_internal} ${tensorflow_source_dir}/tensorflow/core/api_def/base_api
+        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${cc_ops_include_internal} ${tensorflow_source_dir}/tensorflow/core/api_def/base_api
         DEPENDS ${tf_cc_op_lib_name}_gen_cc create_cc_ops_header_dir
     )
 
