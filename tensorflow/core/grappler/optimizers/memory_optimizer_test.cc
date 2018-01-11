@@ -328,6 +328,43 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
   }
 }
 
+TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output b = ops::Variable(s.WithOpName("b").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output c = ops::Variable(s.WithOpName("c").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output d = ops::AddN(s.WithOpName("d").WithDevice("/gpu:0"), {a, b, c});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"d"};
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+  MemoryOptimizer optimizer(RewriterConfig::SCHEDULING_HEURISTICS);
+  GraphDef output;
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  int count = 0;
+  for (const auto& node : output.node()) {
+    std::cout << node.DebugString() << std::endl;
+    if (node.name() == "d") {
+      EXPECT_EQ("DestroyTemporaryVariable", node.op());
+      count++;
+    } else if (node.name() == "d/tmp_var_initializer") {
+      EXPECT_EQ("Assign", node.op());
+      count++;
+    } else if (node.name() == "d/tmp_var") {
+      EXPECT_EQ("TemporaryVariable", node.op());
+      count++;
+    }
+  }
+  EXPECT_EQ(3, count);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

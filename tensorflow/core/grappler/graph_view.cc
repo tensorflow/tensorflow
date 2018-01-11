@@ -118,5 +118,26 @@ const GraphView::OutputPort GraphView::GetRegularFanin(
   return fanin;
 }
 
+const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+GraphView::GetFanins(const NodeDef& node,
+                     bool include_controlling_nodes) const {
+  std::unordered_set<OutputPort, HashPort> result;
+  for (int i = 0; i < node.input_size(); ++i) {
+    OutputPort fanin;
+    string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
+    if (fanin.port_id < 0) {
+      if (!include_controlling_nodes) {
+        break;
+      }
+    }
+    auto it = nodes_.find(fanin_name);
+    if (it != nodes_.end()) {
+      fanin.node = it->second;
+      result.insert(fanin);
+    }
+  }
+  return result;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
