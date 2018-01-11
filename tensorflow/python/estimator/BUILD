@@ -647,6 +647,7 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
