@@ -257,10 +257,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
-
   OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_,
-                                     variables, ctx, &kernel, &executable,
-                                     /*compile_options=*/nullptr));
+                                     variables, ctx, &kernel, &executable));
 
   VLOG(1) << "Executing XLA Computation...";
 
