@@ -311,6 +311,7 @@ TEST_F(GrapplerItemBuilderTest, FromSimpleFunctionDef) {
   for (const NodeDef &node : item->graph.node()) {
     if (node.name() == "x") {
       EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "two") {
       EXPECT_EQ("Const", node.op());
@@ -377,6 +378,7 @@ TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
   for (const NodeDef &node : item->graph.node()) {
     if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
       EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "rx") {
       EXPECT_EQ("BroadcastGradientArgs", node.op());

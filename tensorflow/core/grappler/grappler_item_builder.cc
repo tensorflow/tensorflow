@@ -527,6 +527,18 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
     NodeDef* ph = new_item->graph.add_node();
     ph->set_name(inp.name());
     ph->set_op("Placeholder");
+    if (inp.type() != DT_INVALID) {
+      (*ph->mutable_attr())["T"].set_type(inp.type());
+    } else {
+      auto it = func_attr.find(inp.type_attr());
+      if (it == func_attr.end()) {
+        LOG(ERROR) << "Unknown type attribute " << inp.type_attr()
+                   << " for function input " << inp.name();
+        return nullptr;
+      } else {
+        (*ph->mutable_attr())["T"] = it->second;
+      }
+    }
     port_map[inp.name()] = inp.name();
   }
 
