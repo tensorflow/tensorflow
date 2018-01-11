@@ -145,6 +145,17 @@ TEST_F(OperatorTest, BuiltinBatchToSpaceND) {
   EXPECT_EQ(op.after_crops, output_toco_op->after_crops);
 }
 
+TEST_F(OperatorTest, BuiltinMean) {
+  MeanOperator op;
+  op.axis = {1, 2};
+  op.keep_dims = false;
+
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+  EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
+}
+
 TEST_F(OperatorTest, CustomCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;
