@@ -137,7 +137,7 @@ class AccessResolverTest(test.TestCase):
 
     while_node = node.body[0].body[1]
     while_body_scope = anno.getanno(while_node, 'body_scope')
-    while_parent_scope = anno.getanno(while_node, 'parent_scope')
+    while_parent_scope = anno.getanno(while_node, 'body_parent_scope')
 
     self.assertItemsEqual(['b'], while_body_scope.used)
     self.assertItemsEqual(['b', 'c'], while_body_scope.modified)
@@ -146,6 +146,30 @@ class AccessResolverTest(test.TestCase):
     self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.used)
     self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.modified)
     self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.created)
+
+  def test_for(self):
+
+    def test_fn(a):
+      b = a
+      for _ in a:
+        c = b
+        b -= 1
+      return b, c
+
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+
+    for_node = node.body[0].body[1]
+    for_body_scope = anno.getanno(for_node, 'body_scope')
+    for_parent_scope = anno.getanno(for_node, 'body_parent_scope')
+
+    self.assertItemsEqual(['b'], for_body_scope.used)
+    self.assertItemsEqual(['b', 'c'], for_body_scope.modified)
+    self.assertItemsEqual(['c'], for_body_scope.created)
+
+    self.assertItemsEqual(['a', 'b', 'c'], for_parent_scope.used)
+    self.assertItemsEqual(['a', 'b', 'c', '_'], for_parent_scope.modified)
+    self.assertItemsEqual(['a', 'b', 'c', '_'], for_parent_scope.created)
 
 
 if __name__ == '__main__':

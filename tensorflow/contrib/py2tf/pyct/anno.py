@@ -33,7 +33,6 @@ def hasanno(node, key, field_name='___pyct_anno'):
 def setanno(node, key, value, field_name='___pyct_anno'):
   annotations = getattr(node, field_name, {})
   setattr(node, field_name, annotations)
-  assert not hasanno(node, key, field_name), (node, key)
   annotations[key] = value
 
   # So that the annotations survive gast_to_ast() and ast_to_gast()
