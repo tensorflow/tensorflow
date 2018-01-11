@@ -65,7 +65,7 @@ For an `2-D` tensor `x` with `axis = 1`:
 # tensor 'x' is [[1, 0, 0],
 #                [1, 0, 0],
 #                [2, 0, 0]]
-y, idx = unique(x, axis=0)
+y, idx = unique(x, axis=1)
 y ==> [[1, 0],
        [1, 0],
        [2, 0]]
