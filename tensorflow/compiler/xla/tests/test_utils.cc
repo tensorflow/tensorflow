@@ -271,13 +271,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
 
 Status VerifyHloModule(const perftools::gputools::Platform& platform,
                        HloModule* const module) {
-  return HloVerifier(
-             std::bind(
-                 &TransferManager::GetByteSizeRequirement,
-                 TransferManager::GetForPlatform(&platform).ConsumeValueOrDie(),
-                 std::placeholders::_1))
-      .Run(module)
-      .status();
+  return HloVerifier().Run(module).status();
 }
 
 }  // namespace xla

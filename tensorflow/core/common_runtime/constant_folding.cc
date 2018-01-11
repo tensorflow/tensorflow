@@ -226,11 +226,6 @@ bool IsConstantFoldable(
   if (consider && !consider(n)) {
     return false;
   }
-  // PlaceholderWithDefault shouldn't be constant folded because its output can
-  // be fed non-constant values.
-  if (n->type_string() == "PlaceholderWithDefault") {
-    return false;
-  }
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
     return false;
   }

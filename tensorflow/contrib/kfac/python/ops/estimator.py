@@ -74,7 +74,7 @@ class FisherEstimator(object):
                damping,
                layer_collection,
                estimation_mode="gradients",
-               colocate_gradients_with_ops=False,
+               colocate_gradients_with_ops=True,
                cov_devices=None,
                inv_devices=None):
     """Create a FisherEstimator object.
@@ -110,7 +110,7 @@ class FisherEstimator(object):
           is more expensive to compute than the other three options by a factor
           equal to the output dimension, roughly speaking.
       colocate_gradients_with_ops: Whether we should request gradients be
-          colocated with their respective ops.
+          colocated with their respective ops. (Default: True)
       cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
           computations will be placed on these devices in a round-robin fashion.
           Can be None, which means that no devices are specified.

@@ -234,7 +234,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+  pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
@@ -253,7 +253,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+    pass.AddInvariantChecker<HloVerifier>();
 
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -483,6 +483,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   HloComputation* entry_computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
+  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinter> hlo_profile_printer;
   if (module->config().hlo_profiling_enabled()) {
@@ -506,6 +507,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
     hlo_profile_printer =
         CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
+    computation_to_profile_idx =
+        hlo_profile_index_map->computation_to_profile_idx();
   }
 
   std::unique_ptr<Executable> cpu_executable;
@@ -516,18 +519,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       module->config().debug_options().xla_embed_ir_in_executable();
   const string xla_dump_hlo_proto_to =
       module->config().debug_options().xla_dump_hlo_proto_to();
-
-  // We always profile the entry computation as a whole, even if hlo profiling
-  // is disabled.  When hlo profiling is diabled, the executor passes in a
-  // profile counter array of just one element, which corresponds to the whole
-  // computation.
-  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
-  if (hlo_profile_index_map) {
-    computation_to_profile_idx =
-        hlo_profile_index_map->computation_to_profile_idx();
-  } else {
-    computation_to_profile_idx[entry_computation] = 0;
-  }
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
