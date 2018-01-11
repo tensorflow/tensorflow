@@ -35,11 +35,17 @@ StatusOr<bool> WideConstFinder::Run(HloModule *module) {
         if (inst->IsConstant() && ShapeUtil::ElementsIn(inst->shape()) > 1) {
           const Literal& literal = inst->literal();
           if (literal.IsAll(0)) {
+            auto zero =
+                    Literal::Zero(inst->shape().element_type()).CloneToUnique();
+            HloInstruction* c = comp->AddInstruction(
+                    HloInstruction::CreateConstant(std::move(zero)));
+
             std::vector<int64> dims(ShapeUtil::Rank(inst->shape()));
             std::iota(dims.begin(), dims.end(), 0);
-            HloInstruction* bcast = comp->AddInstruction(
-                    HloInstruction::CreateBroadcast(inst->shape(), inst, dims));
-            if (!inst->ReplaceAllUsesWith(bcast).ok()) {
+            HloInstruction* b = comp->AddInstruction(
+                    HloInstruction::CreateBroadcast(inst->shape(), c, dims));
+
+            if (!inst->ReplaceAllUsesWith(b).ok()) {
               return false;
             }
           }

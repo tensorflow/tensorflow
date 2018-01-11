@@ -28,18 +28,21 @@ using WideConstFinderTest = HloTestBase;
 
 TEST_F(WideConstFinderTest, ReplaceWideConstants) {
   Shape s1 = ShapeUtil::MakeShape(S32, {2, 2});
+  Shape s2 = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto builder = HloComputation::Builder(TestName());
-  auto in = builder.AddInstruction(
-    HloInstruction::CreateParameter(0, s1, "input"));
+  auto i1 = builder.AddInstruction(
+    HloInstruction::CreateParameter(0, s1, "i1"));
+  auto i2 = builder.AddInstruction(
+    HloInstruction::CreateParameter(1, s2, "i2"));
   auto c1 = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR2<float>({{0, 0},{0, 0}})));
+    HloInstruction::CreateConstant(Literal::CreateR2<int>({{0, 0},{0, 0}})));
   auto c2 = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1},{1, 1}})));
+    HloInstruction::CreateConstant(Literal::CreateR2<float>({{0, 0},{0, 0}})));
   auto add1 = builder.AddInstruction(
-    HloInstruction::CreateBinary(s1, HloOpcode::kAdd, in, c1));
+    HloInstruction::CreateBinary(s1, HloOpcode::kAdd, i1, c1));
   auto add2 = builder.AddInstruction(
-    HloInstruction::CreateBinary(s1, HloOpcode::kAdd, in, c2));
+    HloInstruction::CreateBinary(s1, HloOpcode::kAdd, i2, c2));
 
   builder.AddInstruction(
     HloInstruction::CreateTuple({add1, add2}));
@@ -50,11 +53,30 @@ TEST_F(WideConstFinderTest, ReplaceWideConstants) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);
-  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 6);
+  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 7);
 
   WideConstFinder finder;
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
-  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 7);
+  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 11);
+  //note: the original constant isn't removed
+
+  HloInstruction* inst;
+
+  inst = hlo_module->entry_computation()->root_instruction();
+  inst = inst->mutable_operand(0)->mutable_operand(1);
+  EXPECT_THAT(inst->opcode(), HloOpcode::kBroadcast);
+  EXPECT_TRUE(ShapeUtil::Equal(inst->shape(), s1));
+  inst = inst->mutable_operand(0);
+  EXPECT_THAT(inst->opcode(), HloOpcode::kConstant);
+  EXPECT_TRUE(ShapeUtil::Equal(inst->shape(), ShapeUtil::MakeShape(S32, {})));
+
+  inst = hlo_module->entry_computation()->root_instruction();
+  inst = inst->mutable_operand(1)->mutable_operand(1);
+  EXPECT_THAT(inst->opcode(), HloOpcode::kBroadcast);
+  EXPECT_TRUE(ShapeUtil::Equal(inst->shape(), s2));
+  inst = inst->mutable_operand(0);
+  EXPECT_THAT(inst->opcode(), HloOpcode::kConstant);
+  EXPECT_TRUE(ShapeUtil::Equal(inst->shape(), ShapeUtil::MakeShape(F32, {})));
 }
 
 TEST_F(WideConstFinderTest, DontReplaceScalars) {
@@ -64,9 +86,9 @@ TEST_F(WideConstFinderTest, DontReplaceScalars) {
   auto in = builder.AddInstruction(
     HloInstruction::CreateParameter(0, s1, "input"));
   auto c1 = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+    HloInstruction::CreateConstant(Literal::CreateR0<int>(0)));
   auto c2 = builder.AddInstruction(
-    HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+    HloInstruction::CreateConstant(Literal::CreateR0<int>(1)));
   auto add1 = builder.AddInstruction(
     HloInstruction::CreateBinary(s1, HloOpcode::kAdd, in, c1));
   auto add2 = builder.AddInstruction(
