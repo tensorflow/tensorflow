@@ -343,7 +343,7 @@ def _tensor_pool_adjusted_model(model, tensor_pool_fn):
     `tensor_pool_fn` is None.
 
   Raises:
-    ValueError: If tensor pool does not suport the `model`.
+    ValueError: If tensor pool does not support the `model`.
   """
   if tensor_pool_fn is None:
     return model
