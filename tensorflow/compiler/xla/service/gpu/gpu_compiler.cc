@@ -479,20 +479,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         entry_computation->root_instruction()->Accept(&ir_emitter));
   }
 
-  {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
-
-    std::string err;
-    llvm::raw_string_ostream err_stream(err);
-
-    // verifyModule() returns true if the module is broken.
-    TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
-        << "Invalid LLVM IR before optimizations:\n"
-        << err_stream.str()
-        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_ir_to to get the IR. ";
-  }
-
   if (user_pre_optimization_hook_) {
     TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
   }
@@ -513,6 +499,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         /*directory_name=*/ir_dump_directory,
         /*hlo_module_name=*/module->name(), llvm_module,
         /*optimized=*/false));
+  }
+
+  {
+    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
+
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
+
+    // verifyModule() returns true if the module is broken.
+    TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+        << "Invalid LLVM IR before optimizations:\n"
+        << err_stream.str()
+        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+           "Rerun with --xla_dump_ir_to to get the IR. ";
   }
 
   string libdevice_dir;

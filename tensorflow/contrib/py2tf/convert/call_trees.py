@@ -55,34 +55,30 @@ class CallTreeTransformer(gast.NodeTransformer):
     node.name = self.namer.compiled_function_name(node.name)
     return node
 
+  def _should_compile(self, fqn):
+    for i in range(1, len(fqn)):
+      if fqn[:i] in self.uncompiled_modules:
+        return False
+    return True
+
   def _rename_compilable_function(self, node):
     assert anno.hasanno(node.func, 'live_val')
     assert anno.hasanno(node.func, 'fqn')
     target_obj = anno.getanno(node.func, 'live_val')
     target_fqn = anno.getanno(node.func, 'fqn')
 
-    fqn = ''
-    for s in target_fqn:
-      if fqn:
-        fqn += '.'
-      fqn += s
-      if fqn in self.uncompiled_modules:
-        return node
+    if not self._should_compile(target_fqn):
+      return node
 
-    new_name = self.namer.compiled_function_name(fqn, live_object=target_obj)
+    new_name = self.namer.compiled_function_name(
+        '.'.join(target_fqn), live_object=target_obj)
     node.func = gast.Name(id=new_name, ctx=gast.Load(), annotation=None)
     return node
 
   def _rename_member_function_of_known_type(self, node):
     target_fqn = anno.getanno(node.func, 'type_fqn')
-
-    fqn = ''
-    for s in target_fqn:
-      if fqn:
-        fqn += '.'
-      fqn += s
-      if fqn in self.uncompiled_modules:
-        return node
+    if not self._should_compile(target_fqn):
+      return node
 
     raise NotImplementedError('Member function call (of known type).')
 
@@ -114,9 +110,24 @@ class CallTreeTransformer(gast.NodeTransformer):
 
     return (wrapper_def, call_expr)
 
+  def _function_is_compilable(self, target_obj):
+    # TODO(mdan): This is just a placeholder. Implement.
+    return not isinstance(target_obj, types.BuiltinFunctionType)
+
   def visit_Expr(self, node):
     if isinstance(node.value, gast.Call):
-      node = self._wrap_to_py_func_no_return(node.value)
+      if anno.hasanno(node.value.func, 'live_val'):
+        target_obj = anno.getanno(node.value.func, 'live_val')
+        if not self._function_is_compilable(target_obj):
+          if anno.hasanno(node.value.func, 'fqn'):
+            target_fqn = anno.getanno(node.value.func, 'fqn')
+            if not self._should_compile(target_fqn):
+              return node
+            node = self._wrap_to_py_func_no_return(node.value)
+            return node
+      # Only the case of py_func with no return value is special.
+      # Everything else is processed by visit_Call.
+      self.visit(node.value)
     else:
       self.generic_visit(node)
     return node
@@ -125,10 +136,10 @@ class CallTreeTransformer(gast.NodeTransformer):
     self.generic_visit(node)
     if anno.hasanno(node.func, 'live_val'):
       target_obj = anno.getanno(node.func, 'live_val')
-      if isinstance(target_obj, types.BuiltinFunctionType):
-        raise NotImplementedError('py_func with return values')
-      else:
+      if self._function_is_compilable(target_obj):
         node = self._rename_compilable_function(node)
+      else:
+        raise NotImplementedError('py_func with return values')
     elif anno.hasanno(node.func, 'type_fqn'):
       node = self._rename_member_function_of_known_type(node)
     else:

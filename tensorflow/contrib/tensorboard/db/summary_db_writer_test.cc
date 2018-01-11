@@ -48,13 +48,17 @@ class FakeClockEnv : public EnvWrapper {
 
 class SummaryDbWriterTest : public ::testing::Test {
  protected:
-  void SetUp() override { db_ = Sqlite::OpenOrDie(":memory:"); }
+  void SetUp() override {
+    TF_ASSERT_OK(Sqlite::Open(":memory:", SQLITE_OPEN_READWRITE, &db_));
+  }
 
   void TearDown() override {
     if (writer_ != nullptr) {
       writer_->Unref();
       writer_ = nullptr;
     }
+    db_->Unref();
+    db_ = nullptr;
   }
 
   int64 QueryInt(const string& sql) {
@@ -91,7 +95,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   }
 
   FakeClockEnv env_;
-  std::shared_ptr<Sqlite> db_;
+  Sqlite* db_ = nullptr;
   SummaryWriterInterface* writer_ = nullptr;
 };
 

@@ -129,7 +129,7 @@ class IteratorResource : public ResourceBase {
     GraphRunner graph_runner(ctx->env());
 
     // Build a new FLR that knows about the functions in the graph.
-    std::unique_ptr<FunctionLibraryDefinition> flib_def(
+    std::shared_ptr<FunctionLibraryDefinition> flib_def(
         new FunctionLibraryDefinition(
             *ctx->function_library()->GetFunctionLibraryDefinition()));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
@@ -148,13 +148,21 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
-      return captured_iterator->Restore(ctx, reader);
+      TF_RETURN_IF_ERROR(captured_iterator->Restore(ctx, reader));
+      mutex_lock l(mu_);
+      lib_def_ = std::move(flib_def);
+      return Status::OK();
     } else {
       return errors::FailedPrecondition(
           "Failed to restore iterator. Make sure the checkpoint ",
           "is not corrupt. If the checkpoint does not contain the GraphDef, ",
           "you will need to initialize your iterator before restoring.");
     }
+  }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    tf_shared_lock l(mu_);
+    return lib_def_;
   }
 
   // Transfers ownership of iterator to this. This method is thread-safe.
@@ -191,6 +199,7 @@ class IteratorResource : public ResourceBase {
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
   std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
+  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -721,6 +730,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
             return iterator->stats_aggregator();
           };
           params.runner = *(ctx->runner());
+          params.function_library = iterator->function_library();
           IteratorContext iter_ctx(std::move(params));
 
           OP_REQUIRES_OK_ASYNC(
