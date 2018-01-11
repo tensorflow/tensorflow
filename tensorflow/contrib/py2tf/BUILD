@@ -44,7 +44,7 @@ py_library(
         "naming.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib/py2tf/convert",
         "//tensorflow/contrib/py2tf/pyct",
