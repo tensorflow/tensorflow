@@ -47,6 +47,12 @@ Status TransferToInfeedLocal(const Literal& literal);
 // The replica number is resolved to an appropriate device ordinal.
 Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 
+// Transfers a literal of the given shape from the outfeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number);
+
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
 // client.
@@ -114,6 +120,9 @@ class LocalComputationBuilder {
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
 
   ComputationDataHandle Infeed(const Shape& shape);
+
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
+               const string& outfeed_config);
 
   ComputationDataHandle ConstantLiteral(const Literal& literal);
 
