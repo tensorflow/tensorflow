@@ -39,8 +39,8 @@ StatusOr<bool> WideConstFinder::Run(HloModule *module) {
             std::iota(dims.begin(), dims.end(), 0);
             HloInstruction* bcast = comp->AddInstruction(
                     HloInstruction::CreateBroadcast(inst->shape(), inst, dims));
-            for (auto& user : inst->users()) {
-              inst->ReplaceUseWith(user, bcast);
+            if (!inst->ReplaceAllUsesWith(bcast).ok()) {
+              return false;
             }
           }
         }
