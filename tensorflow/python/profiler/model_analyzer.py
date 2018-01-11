@@ -177,8 +177,9 @@ class Profiler(object):
     """Add statistics of a step.
 
     Args:
-      step: int, A step used to identify the RunMetadata. Must be different
-         across different AddStep() calls.
+      step: int, An id used to group one or more different `run_meta` together.
+          When profiling with the profile_xxx APIs, user can use the `step`
+          id in the `options` to profile these `run_meta` together.
       run_meta: RunMetadata proto that contains statistics of a session run.
     """
     # pylint: disable=protected-access

@@ -173,7 +173,11 @@ void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
   auto& output_float_data =
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
   output_float_data.resize(input_flat_size);
-  if (input_tensor.float_val_size()) {
+  if (input_tensor.float_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_float_data[i] = input_tensor.float_val(0);
+    }
+  } else if (input_tensor.float_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_float_data[i] = input_tensor.float_val(i);
     }

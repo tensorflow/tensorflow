@@ -715,5 +715,31 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   return function;
 }
 
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
+    std::vector<const char*> fake_argv;
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
+    }
+    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  }
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

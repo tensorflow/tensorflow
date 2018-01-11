@@ -75,7 +75,8 @@ class CallTreesTest(test.TestCase):
         'constant_op': constant_op
     })
     node = call_trees.transform(node, TestNamer(),
-                                set((math_ops.__name__, constant_op.__name__)))
+                                set(((math_ops.__name__,),
+                                     (constant_op.__name__,))))
     result = compiler.ast_to_object(node)
     setattr(result, 'math_ops', math_ops)
     setattr(result, 'constant_op', constant_op)

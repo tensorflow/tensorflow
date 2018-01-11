@@ -324,7 +324,6 @@ def tf_gen_op_wrapper_cc(name,
                          pkg="",
                          op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                          deps=None,
-                         override_file=None,
                          include_internal_ops=0,
                          # ApiDefs will be loaded in the order specified in this list.
                          api_def_srcs=[]):
@@ -340,12 +339,6 @@ def tf_gen_op_wrapper_cc(name,
       deps=[op_gen] + deps)
 
   srcs = api_def_srcs[:]
-
-  if override_file == None:
-    override_arg = ","
-  else:
-    srcs += [override_file]
-    override_arg = "$(location " + override_file + ")"
 
   if not api_def_srcs:
     api_def_args_str = ","
@@ -369,7 +362,7 @@ def tf_gen_op_wrapper_cc(name,
       srcs=srcs,
       tools=[":" + tool] + tf_binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-           "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
+           "$(location :" + out_ops_file + ".cc) " +
            str(include_internal_ops) + " " + api_def_args_str))
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -410,7 +403,6 @@ def tf_gen_op_wrappers_cc(name,
                               clean_dep("//tensorflow/cc:const_op"),
                           ],
                           op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
-                          override_file=None,
                           include_internal_ops=0,
                           visibility=None,
                           # ApiDefs will be loaded in the order apecified in this list.
@@ -425,7 +417,6 @@ def tf_gen_op_wrappers_cc(name,
         "ops/" + n,
         pkg=pkg,
         op_gen=op_gen,
-        override_file=override_file,
         include_internal_ops=include_internal_ops,
         api_def_srcs=api_def_srcs)
     subsrcs += ["ops/" + n + ".cc"]

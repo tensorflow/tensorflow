@@ -352,21 +352,24 @@ def _tensor_pool_adjusted_model(model, tensor_pool_fn):
       (model.generated_data, model.generator_inputs))
 
   if isinstance(model, namedtuples.GANModel):
-    dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
-                                             pooled_generator_inputs)
+    with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
+      dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
+                                               pooled_generator_inputs)
     return model._replace(discriminator_gen_outputs=dis_gen_outputs)
   elif isinstance(model, namedtuples.ACGANModel):
-    (dis_pooled_gen_outputs,
-     dis_pooled_gen_classification_logits) = model.discriminator_fn(
-         pooled_generated_data, pooled_generator_inputs)
+    with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
+      (dis_pooled_gen_outputs,
+       dis_pooled_gen_classification_logits) = model.discriminator_fn(
+           pooled_generated_data, pooled_generator_inputs)
     return model._replace(
         discriminator_gen_outputs=dis_pooled_gen_outputs,
         discriminator_gen_classification_logits=
         dis_pooled_gen_classification_logits)
   elif isinstance(model, namedtuples.InfoGANModel):
-    (dis_pooled_gen_outputs,
-     pooled_predicted_distributions) = model.discriminator_and_aux_fn(
-         pooled_generated_data, pooled_generator_inputs)
+    with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
+      (dis_pooled_gen_outputs,
+       pooled_predicted_distributions) = model.discriminator_and_aux_fn(
+           pooled_generated_data, pooled_generator_inputs)
     return model._replace(
         discriminator_gen_outputs=dis_pooled_gen_outputs,
         predicted_distributions=pooled_predicted_distributions)

@@ -120,16 +120,22 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
 
       def template(call, temp_result):
         temp_result = call
-        if not isinstance(temp_result, (list, tuple)):
-          temp_result = (temp_result,)
-        with tf.control_dependencies(temp_result):  # pylint:disable=undefined-variable
+        if temp_result is not None:
+          if not isinstance(temp_result, (list, tuple)):
+            temp_result = (temp_result,)
+          ctx = tf.control_dependencies(temp_result)  # pylint:disable=undefined-variable
+        else:
+          ctx = contextmanager(lambda: (yield))()  # pylint:disable=undefined-variable
+        with ctx:
           # TODO(mdan): Also insert ops to re-fetch if variables are involved.
           pass  # Will be removed below.
 
-      guard_var_assign, arg_checker, control_deps_guard = templates.replace(
+      # TODO(mdan): This is brittle. Reorganize this mechanism.
+      statements = templates.replace(
           template,
           call=node.value,
           temp_result=gast.Name(temp_name, gast.Store(), None))
+      control_deps_guard = statements[-1]
       control_deps_guard.body = []
 
       # First, attempt to gate future evaluation of args. If that's not
@@ -138,10 +144,10 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       guarded_args = tuple(
           n for n in args_scope.used if n in args_scope.parent.modified)
       if guarded_args:
-        node = (guard_var_assign, arg_checker,
-                self._gate_symbols(control_deps_guard, guarded_args))
+        node = tuple(statements[:-1]) + (
+            self._gate_symbols(control_deps_guard, guarded_args),)
       else:
-        node = (guard_var_assign, arg_checker)
+        node = tuple(statements[:-1])
         # The mechanism will insert the guard statement later.
         self.indent_next = True
         self.next_indent_owner = control_deps_guard

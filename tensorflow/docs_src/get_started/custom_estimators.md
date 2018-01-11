@@ -1,5 +1,6 @@
 
 # Creating Custom Estimators
+
 This document introduces custom Estimators. In particular, this document
 demonstrates how to create a custom @{tf.estimator.Estimator$Estimator} that
 mimics the behavior of the pre-made Estimator
@@ -23,9 +24,9 @@ python custom_estimator.py
 ```
 
 If you are feeling impatient, feel free to compare and contrast
-[`custom_estimatr.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py)
+[`custom_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py)
 with
-[`premade_estimatr.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
+[`premade_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
 (which is in the same directory).
 
 
@@ -105,7 +106,7 @@ This input function builds an input pipeline that yields batches of
 
 ## Create feature columns
 
-As detailed in the @{$get_started/estimator$Premade Estimators} and
+As detailed in the @{$get_started/premade_estimators$Premade Estimators} and
 @{$get_started/feature_columns$Feature Columns} chapters, you must define
 your model's feature columns to specify how the model should use each feature.
 Whether working with pre-made Estimators or custom Estimators, you define

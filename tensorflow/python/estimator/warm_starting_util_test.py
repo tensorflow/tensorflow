@@ -992,6 +992,27 @@ class WarmStartingUtilTest(test.TestCase):
     self.assertRaises(TypeError, ws_util._warmstart,
                       {"StringType": x}, ws_util._WarmStartSettings("/tmp"))
 
+    # Unused variable names raises ValueError.
+    with ops.Graph().as_default():
+      with self.test_session() as sess:
+        x = variable_scope.get_variable(
+            "x",
+            shape=[4, 1],
+            initializer=ones(),
+            partitioner=lambda shape, dtype: [2, 1])
+        self._write_checkpoint(sess)
+
+    self.assertRaises(ValueError, ws_util._warmstart,
+                      ws_util._WarmStartSettings(
+                          self.get_temp_dir(),
+                          var_name_to_vocab_info={
+                              "y": ws_util._VocabInfo("", 1, 0, "")
+                          }))
+    self.assertRaises(ValueError, ws_util._warmstart,
+                      ws_util._WarmStartSettings(
+                          self.get_temp_dir(),
+                          var_name_to_prev_var_name={"y": "y2"}))
+
 
 if __name__ == "__main__":
   test.main()

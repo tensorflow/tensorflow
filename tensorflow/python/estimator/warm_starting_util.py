@@ -377,6 +377,12 @@ def _warmstart(warmstart_settings):
 
   Args:
     warmstart_settings: An object of `_WarmStartSettings`.
+
+  Raises:
+    ValueError: If the WarmStartSettings contains prev_var_name or VocabInfo
+      configuration for variable names that are not used.  This is to ensure
+      a stronger check for variable configuration than relying on users to
+      examine the logs.
   """
   # We have to deal with partitioned variables, since get_collection flattens
   # out the list.
@@ -390,10 +396,22 @@ def _warmstart(warmstart_settings):
     else:
       var_name = _infer_var_name(v)
     grouped_variables.setdefault(var_name, []).append(v)
+
+  # Keep track of which var_names in var_name_to_prev_var_name and
+  # var_name_to_vocab_info have been used.  Err on the safer side by throwing an
+  # exception if any are unused by the end of the loop.  It is easy to misname
+  # a variable during this configuration, in which case without this check, we
+  # would fail to warmstart silently.
+  prev_var_name_used = set()
+  vocab_info_used = set()
+
   for var_name, variable in six.iteritems(grouped_variables):
     prev_var_name = warmstart_settings.var_name_to_prev_var_name.get(var_name)
+    if prev_var_name:
+      prev_var_name_used.add(var_name)
     vocab_info = warmstart_settings.var_name_to_vocab_info.get(var_name)
     if vocab_info:
+      vocab_info_used.add(var_name)
       logging.info(
           "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
           " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
@@ -430,3 +448,21 @@ def _warmstart(warmstart_settings):
           variable = variable[0]
         _warmstart_var(variable, warmstart_settings.ckpt_to_initialize_from,
                        prev_var_name)
+
+  prev_var_name_not_used = set(
+      warmstart_settings.var_name_to_prev_var_name.keys()) - prev_var_name_used
+  vocab_info_not_used = set(
+      warmstart_settings.var_name_to_vocab_info.keys()) - vocab_info_used
+
+  if prev_var_name_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_prev_var_name that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(prev_var_name_not_used, grouped_variables.keys()))
+  if vocab_info_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_vocab_info that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(vocab_info_not_used, grouped_variables.keys()))

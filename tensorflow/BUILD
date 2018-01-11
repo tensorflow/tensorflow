@@ -793,6 +793,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
     ],
 )
