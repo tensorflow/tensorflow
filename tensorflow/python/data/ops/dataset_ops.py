@@ -724,6 +724,12 @@ class Dataset(object):
   def batch(self, batch_size):
     """Combines consecutive elements of this dataset into batches.
 
+    NOTE: If the number of elements (`N`) in this dataset is not an exact
+    multiple of `batch_size`, the final batch contain smaller tensors with
+    shape `N % batch_size` in the batch dimension. If your program depends on
+    the batches having the same shape, consider using the
+    @{tf.contrib.data.batch_and_drop_remainder} transformation instead.
+
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.

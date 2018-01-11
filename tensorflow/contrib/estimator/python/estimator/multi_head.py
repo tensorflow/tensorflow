@@ -186,40 +186,44 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
       logits_dict = logits
     else:
       logits_dict = self._split_logits(logits)
-    weighted_sum_losses = []
-    example_weight_sums = []
+    training_losses = []
     labels_by_head = {}
-    for head in self._heads:
-      (weighted_sum_loss,
-       example_weight_sum, processed_labels) = head.create_loss(
+    unreduced_losses_by_head = {}
+    example_weights_by_head = {}
+    for i, head in enumerate(self._heads):
+      (training_loss, unreduced_loss,
+       weights, processed_labels) = head.create_loss(
            features, mode, logits_dict[head.name], labels[head.name])
-      weighted_sum_losses.append(weighted_sum_loss)
-      example_weight_sums.append(example_weight_sum)
+      training_losses.append(training_loss)
       labels_by_head[head.name] = processed_labels
-
-    weighted_sum_losses = tuple(weighted_sum_losses)
-    with ops.name_scope('merge_losses',
-                        values=weighted_sum_losses + (self._head_weights or
-                                                      tuple())):
       if self._head_weights:
-        head_weighted_losses = []
-        head_weighted_example_weight_sums = []
-        for loss, example_weight_sum, weight in zip(weighted_sum_losses,
-                                                    example_weight_sums,
-                                                    self._head_weights):
-          head_weighted_losses.append(math_ops.multiply(loss, weight))
-          head_weighted_example_weight_sums.append(math_ops.multiply(
-              example_weight_sum, weight))
-        merged_weighted_sum_loss = math_ops.add_n(head_weighted_losses)
-        merged_example_weight_sum = math_ops.add_n(
-            head_weighted_example_weight_sums)
+        head_weight = self._head_weights[i]
+        unreduced_losses_by_head[head.name] = math_ops.multiply(
+            unreduced_loss, head_weight)
+        example_weights_by_head[head.name] = math_ops.multiply(
+            weights, head_weight)
       else:
-        merged_weighted_sum_loss = math_ops.add_n(weighted_sum_losses)
-        merged_example_weight_sum = math_ops.add_n(example_weight_sums)
+        unreduced_losses_by_head[head.name] = unreduced_loss
+        example_weights_by_head[head.name] = weights
+
+    training_losses = tuple(training_losses)
+    with ops.name_scope(
+        'merge_losses',
+        values=training_losses + (self._head_weights or tuple())):
+      if self._head_weights:
+        head_weighted_training_losses = []
+        for training_loss, head_weight in zip(
+            training_losses, self._head_weights):
+          head_weighted_training_losses.append(
+              math_ops.multiply(training_loss, head_weight))
+        merged_training_loss = math_ops.add_n(head_weighted_training_losses)
+      else:
+        merged_training_loss = math_ops.add_n(training_losses)
 
     return head_lib.LossSpec(
-        weighted_sum_loss=merged_weighted_sum_loss,
-        example_weight_sum=merged_example_weight_sum,
+        training_loss=merged_training_loss,
+        unreduced_loss=unreduced_losses_by_head,
+        weights=example_weights_by_head,
         processed_labels=labels_by_head)
 
   def create_estimator_spec(

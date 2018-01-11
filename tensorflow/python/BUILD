@@ -1225,6 +1225,7 @@ py_test(
         ":random_ops",
         ":resource_variable_ops",
         ":session",
+        ":test_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
