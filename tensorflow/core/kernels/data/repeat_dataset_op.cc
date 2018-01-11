@@ -99,7 +99,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         return Status::OK();
       }
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         return Status::OK();
       }
@@ -147,7 +147,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
@@ -209,7 +209,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("uninitialized"))) {
