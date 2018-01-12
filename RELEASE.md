@@ -60,7 +60,7 @@ answered questions, and were part of inspiring discussions.
 # Release 1.4.1
 
 ## Bug Fixes and Other Changes
-* `LinearClassifier` fix for CloudML Engine.
+* `LinearClassifier` fix for the Google Cloud Machine Learning Engine.
 
 # Release 1.4.0
 

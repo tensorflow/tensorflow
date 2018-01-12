@@ -529,14 +529,6 @@ cc_library(
     ],
 )
 
-tf_proto_library_cc(
-    name = "op_gen_overrides_proto",
-    srcs = ["framework/op_gen_overrides.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "op_gen_lib",
     srcs = ["framework/op_gen_lib.cc"],
@@ -545,7 +537,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":op_gen_overrides_proto_cc",
         ":protos_all_cc",
     ],
 )
@@ -1069,6 +1060,20 @@ cc_library(
         "//third_party/fft2d:fft2d_headers",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
+        "@nsync//:nsync_cpp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ios_tensorflow_lib_lite",
+    srcs = if_ios(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_all_cc_impl",
+        "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -3456,7 +3461,6 @@ tf_cc_test(
     srcs = ["api_def/api_test.cc"],
     data = [
         ":base_api_def",
-        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
     ],
     deps = [
         ":framework",
@@ -3465,10 +3469,10 @@ tf_cc_test(
         ":lib_internal",
         ":lib_test_internal",
         ":op_gen_lib",
-        ":op_gen_overrides_proto_cc",
         ":ops",
         ":protos_all_cc",
         ":test",
+        ":test_main",
     ],
 )
 

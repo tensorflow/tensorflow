@@ -1084,7 +1084,7 @@ func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddin
 // SqueezeAttr is an optional argument to Squeeze.
 type SqueezeAttr func(optionalAttr)
 
-// SqueezeSqueezeDims sets the optional squeeze_dims attribute to value.
+// SqueezeAxis sets the optional axis attribute to value.
 //
 // value: If specified, only squeezes the dimensions listed. The dimension
 // index starts at 0. It is an error to squeeze a dimension that is not 1. Must
@@ -1092,7 +1092,7 @@ type SqueezeAttr func(optionalAttr)
 // If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
-func SqueezeSqueezeDims(value []int64) SqueezeAttr {
+func SqueezeAxis(value []int64) SqueezeAttr {
 	return func(m optionalAttr) {
 		m["squeeze_dims"] = value
 	}
@@ -1103,7 +1103,7 @@ func SqueezeSqueezeDims(value []int64) SqueezeAttr {
 // Given a tensor `input`, this operation returns a tensor of the same type with
 // all dimensions of size 1 removed. If you don't want to remove all size 1
 // dimensions, you can remove specific size 1 dimensions by specifying
-// `squeeze_dims`.
+// `axis`.
 //
 // For example:
 //
@@ -1263,12 +1263,12 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 
 // Returns locations of nonzero / true values in a tensor.
 //
-// This operation returns the coordinates of true elements in `input`. The
+// This operation returns the coordinates of true elements in `condition`. The
 // coordinates are returned in a 2-D tensor where the first dimension (rows)
 // represents the number of true elements, and the second dimension (columns)
 // represents the coordinates of the true elements. Keep in mind, the shape of
 // the output tensor can vary depending on how many true values there are in
-// `input`. Indices are output in row-major order.
+// `condition`. Indices are output in row-major order.
 //
 // For example:
 //
@@ -1280,7 +1280,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 // where(input) ==> [[0, 0],
 //                   [1, 0]]
 //
-// # `input` tensor is [[[True, False]
+// # `condition` tensor is [[[True, False]
 // #                     [True, False]]
 // #                    [[False, True]
 // #                     [False, True]]
@@ -1294,7 +1294,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //                   [1, 1, 1],
 //                   [2, 1, 1]]
 //
-// # `input` tensor is [[[1.5,  0.0]
+// # `condition` tensor is [[[1.5,  0.0]
 // #                     [-0.5, 0.0]]
 // #                    [[0.0,  0.25]
 // #                     [0.0,  0.75]]
@@ -1308,7 +1308,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //                   [1, 1, 1],
 //                   [2, 1, 1]]
 //
-// # `input` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
+// # `condition` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
 // #                     [0.0 + 0.5j, 0.0  + 0.0j]]
 // #                    [[0.0 + 0.0j, 0.25 + 1.5j]
 // #                     [0.0 + 0.0j, 0.75 + 0.0j]]
@@ -1322,14 +1322,14 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //                   [1, 1, 1],
 //                   [2, 1, 1]]
 // ```
-func Where(scope *Scope, input tf.Output) (index tf.Output) {
+func Where(scope *Scope, condition tf.Output) (index tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "Where",
 		Input: []tf.Input{
-			input,
+			condition,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -2079,14 +2079,14 @@ func GuaranteeConst(scope *Scope, input tf.Output) (output tf.Output) {
 //	size_splits: list containing the sizes of each output tensor along the split
 // dimension. Must sum to the dimension of value along split_dim.
 // Can contain one -1 indicating that dimension is to be inferred.
-//	split_dim: 0-D.  The dimension along which to split.  Must be in the range
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
 // `[-rank(value), rank(value))`.
 //
 //
 // Returns Tensors whose shape matches that of `value`
-// except along `split_dim`, where their sizes are
+// except along `axis`, where their sizes are
 // `size_splits[i]`.
-func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, split_dim tf.Output, num_split int64) (output []tf.Output) {
+func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output, num_split int64) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -2094,7 +2094,7 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, split_dim tf.O
 	opspec := tf.OpSpec{
 		Type: "SplitV",
 		Input: []tf.Input{
-			value, size_splits, split_dim,
+			value, size_splits, axis,
 		},
 		Attrs: attrs,
 	}
@@ -2114,16 +2114,16 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, split_dim tf.O
 // Splits a tensor into `num_split` tensors along one dimension.
 //
 // Arguments:
-//	split_dim: 0-D.  The dimension along which to split.  Must be in the range
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
 // `[-rank(value), rank(value))`.
 //	value: The tensor to split.
 //	num_split: The number of ways to split.  Must evenly divide
 // `value.shape[split_dim]`.
 //
 // Returns They are identically shaped tensors, whose shape matches that of `value`
-// except along `split_dim`, where their sizes are
+// except along `axis`, where their sizes are
 // `values.shape[split_dim] / num_split`.
-func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
+func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -2131,7 +2131,7 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 	opspec := tf.OpSpec{
 		Type: "Split",
 		Input: []tf.Input{
-			split_dim, value,
+			axis, value,
 		},
 		Attrs: attrs,
 	}
@@ -5922,6 +5922,7 @@ func RandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, output_types [
 //
 // This op is hidden from public in Python. It is used by TensorFlow Debugger to
 // register gradient tensors for gradient debugging.
+// This op operates on non-reference-type tensors.
 func DebugGradientIdentity(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11860,18 +11861,18 @@ func SumKeepDims(value bool) SumAttr {
 
 // Computes the sum of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...SumAttr) (output tf.Output) {
+func Sum(scope *Scope, input tf.Output, axis tf.Output, optional ...SumAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -11882,7 +11883,7 @@ func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 	opspec := tf.OpSpec{
 		Type: "Sum",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -15704,7 +15705,7 @@ func SoftmaxCrossEntropyWithLogits(scope *Scope, features tf.Output, labels tf.O
 
 // Returns x - y element-wise.
 //
-// *NOTE*: `Sub` supports broadcasting. More about broadcasting
+// *NOTE*: `Subtract` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -19574,18 +19575,18 @@ func ProdKeepDims(value bool) ProdAttr {
 
 // Computes the product of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...ProdAttr) (output tf.Output) {
+func Prod(scope *Scope, input tf.Output, axis tf.Output, optional ...ProdAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -19596,7 +19597,7 @@ func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional .
 	opspec := tf.OpSpec{
 		Type: "Prod",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -20946,18 +20947,18 @@ func AnyKeepDims(value bool) AnyAttr {
 
 // Computes the "logical or" of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Any(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...AnyAttr) (output tf.Output) {
+func Any(scope *Scope, input tf.Output, axis tf.Output, optional ...AnyAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -20968,7 +20969,7 @@ func Any(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 	opspec := tf.OpSpec{
 		Type: "Any",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -24096,18 +24097,18 @@ func MaxKeepDims(value bool) MaxAttr {
 
 // Computes the maximum of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Max(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MaxAttr) (output tf.Output) {
+func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -24118,7 +24119,7 @@ func Max(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 	opspec := tf.OpSpec{
 		Type: "Max",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -24198,8 +24199,6 @@ func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Out
 }
 
 // Computes the reciprocal of x element-wise.
-//
-// DEPRECATED at GraphDef version 17: Use Reciprocal
 //
 // I.e., \\(y = 1 / x\\).
 func Inv(scope *Scope, x tf.Output) (y tf.Output) {
@@ -24303,8 +24302,6 @@ func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, 
 }
 
 // Computes the gradient for the inverse of `x` wrt its input.
-//
-// DEPRECATED at GraphDef version 17: Use ReciprocalGrad
 //
 // Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
 // is the corresponding input gradient.
@@ -24485,8 +24482,8 @@ func SqrtGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 // Inserts a dimension of 1 into a tensor's shape.
 //
 // Given a tensor `input`, this operation inserts a dimension of 1 at the
-// dimension index `dim` of `input`'s shape. The dimension index `dim` starts at
-// zero; if you specify a negative number for `dim` it is counted backward from
+// dimension index `axis` of `input`'s shape. The dimension index `axis` starts at
+// zero; if you specify a negative number for `axis` it is counted backward from
 // the end.
 //
 // This operation is useful if you want to add a batch dimension to a single
@@ -24517,20 +24514,20 @@ func SqrtGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 //
 // Arguments:
 //
-//	dim: 0-D (scalar). Specifies the dimension index at which to
+//	axis: 0-D (scalar). Specifies the dimension index at which to
 // expand the shape of `input`. Must be in the range
 // `[-rank(input) - 1, rank(input)]`.
 //
 // Returns Contains the same data as `input`, but its shape has an additional
 // dimension of size 1 added.
-func ExpandDims(scope *Scope, input tf.Output, dim tf.Output) (output tf.Output) {
+func ExpandDims(scope *Scope, input tf.Output, axis tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "ExpandDims",
 		Input: []tf.Input{
-			input, dim,
+			input, axis,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -24552,18 +24549,18 @@ func AllKeepDims(value bool) AllAttr {
 
 // Computes the "logical and" of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func All(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...AllAttr) (output tf.Output) {
+func All(scope *Scope, input tf.Output, axis tf.Output, optional ...AllAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -24574,7 +24571,7 @@ func All(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 	opspec := tf.OpSpec{
 		Type: "All",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -25319,18 +25316,18 @@ func MinKeepDims(value bool) MinAttr {
 
 // Computes the minimum of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Min(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MinAttr) (output tf.Output) {
+func Min(scope *Scope, input tf.Output, axis tf.Output, optional ...MinAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -25341,7 +25338,7 @@ func Min(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 	opspec := tf.OpSpec{
 		Type: "Min",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}
@@ -25947,7 +25944,7 @@ func SparseReduceSumSparse(scope *Scope, input_indices tf.Output, input_values t
 
 // Returns x * y element-wise.
 //
-// *NOTE*: `Mul` supports broadcasting. More about broadcasting
+// *NOTE*: `Multiply` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 func Mul(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -26415,24 +26412,24 @@ func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Selects elements from `t` or `e`, depending on `condition`.
+// Selects elements from `x` or `y`, depending on `condition`.
 //
-// The `t`, and `e` tensors must all have the same shape, and the
+// The `x`, and `y` tensors must all have the same shape, and the
 // output will also have that shape.
 //
-// The `condition` tensor must be a scalar if `t` and `e` are scalars.
-// If `t` and `e` are vectors or higher rank, then `condition` must be either a
-// scalar, a vector with size matching the first dimension of `t`, or must have
-// the same shape as `t`.
+// The `condition` tensor must be a scalar if `x` and `y` are scalars.
+// If `x` and `y` are vectors or higher rank, then `condition` must be either a
+// scalar, a vector with size matching the first dimension of `x`, or must have
+// the same shape as `x`.
 //
 // The `condition` tensor acts as a mask that chooses, based on the value at each
 // element, whether the corresponding element / row in the output should be
-// taken from `t` (if true) or `e` (if false).
+// taken from `x` (if true) or `y` (if false).
 //
-// If `condition` is a vector and `t` and `e` are higher rank matrices, then
-// it chooses which row (outer dimension) to copy from `t` and `e`.
-// If `condition` has the same shape as `t` and `e`, then it chooses which
-// element to copy from `t` and `e`.
+// If `condition` is a vector and `x` and `y` are higher rank matrices, then
+// it chooses which row (outer dimension) to copy from `x` and `y`.
+// If `condition` has the same shape as `x` and `y`, then it chooses which
+// element to copy from `x` and `y`.
 //
 // For example:
 //
@@ -26458,20 +26455,20 @@ func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // Arguments:
 //
-//	t: = A `Tensor` which may have the same shape as `condition`.
-// If `condition` is rank 1, `t` may have higher rank,
+//	x: = A `Tensor` which may have the same shape as `condition`.
+// If `condition` is rank 1, `x` may have higher rank,
 // but its first dimension must match the size of `condition`.
-//	e: = A `Tensor` with the same type and shape as `t`.
+//	y: = A `Tensor` with the same type and shape as `x`.
 //
-// Returns = A `Tensor` with the same type and shape as `t` and `e`.
-func Select(scope *Scope, condition tf.Output, t tf.Output, e tf.Output) (output tf.Output) {
+// Returns = A `Tensor` with the same type and shape as `x` and `y`.
+func Select(scope *Scope, condition tf.Output, x tf.Output, y tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "Select",
 		Input: []tf.Input{
-			condition, t, e,
+			condition, x, y,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -26544,18 +26541,18 @@ func MeanKeepDims(value bool) MeanAttr {
 
 // Computes the mean of elements across dimensions of a tensor.
 //
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// Reduces `input` along the dimensions given in `axis`. Unless
 // `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// `axis`. If `keep_dims` is true, the reduced dimensions are
 // retained with length 1.
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce. Must be in the range
+//	axis: The dimensions to reduce. Must be in the range
 // `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
-func Mean(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MeanAttr) (output tf.Output) {
+func Mean(scope *Scope, input tf.Output, axis tf.Output, optional ...MeanAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -26566,7 +26563,7 @@ func Mean(scope *Scope, input tf.Output, reduction_indices tf.Output, optional .
 	opspec := tf.OpSpec{
 		Type: "Mean",
 		Input: []tf.Input{
-			input, reduction_indices,
+			input, axis,
 		},
 		Attrs: attrs,
 	}

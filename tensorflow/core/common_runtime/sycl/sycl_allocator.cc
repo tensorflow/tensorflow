@@ -71,6 +71,13 @@ void SYCLAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
+void SYCLAllocator::ClearStats() override {
+  mutex_lock l(mu_);
+  stats_.num_allocs = 0;
+  stats_.max_bytes_in_use = stats_.bytes_in_use;
+  stats_.max_alloc_size = 0;
+}
+
 size_t SYCLAllocator::RequestedSize(void* ptr) {
   mutex_lock lock(mu_);
   if(!sycl_device_) {

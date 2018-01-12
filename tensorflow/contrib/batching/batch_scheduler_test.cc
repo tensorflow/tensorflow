@@ -74,7 +74,9 @@ TEST(BatchTest, Basic) {
   EXPECT_EQ(task1->size(), batch.task(1).size());
 
   EXPECT_EQ(7, batch.RemoveTask()->size());
+  EXPECT_EQ(3, batch.size());
   EXPECT_EQ(3, batch.RemoveTask()->size());
+  EXPECT_EQ(0, batch.size());
   EXPECT_TRUE(batch.empty());
 }
 

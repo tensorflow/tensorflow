@@ -156,6 +156,8 @@ void TrackingAllocator::GetStats(AllocatorStats* stats) {
   allocator_->GetStats(stats);
 }
 
+void TrackingAllocator::ClearStats() { allocator_->ClearStats(); }
+
 std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   size_t high_watermark;
   size_t total_bytes;

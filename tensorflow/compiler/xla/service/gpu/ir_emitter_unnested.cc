@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -185,15 +186,15 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
       llvm_ir::SanitizeFunctionName(inst.name()));
 
-  // Create the kernel and adds it to the module.
+  // Create the kernel and add it to the module.
   llvm::Module* module = ir_emitter_context_->llvm_module();
   llvm::LLVMContext& context = module->getContext();
   int num_escaped_hlos = escaped_hlos.size();
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(context),  // The type of function result.
+      /*Result=*/llvm::Type::getVoidTy(context),
       std::vector<llvm::Type*>(num_escaped_hlos + 1,
                                ir_builder_.getInt8PtrTy()),
-      false);  // Not a variadic argument function.
+      /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module);
@@ -218,7 +219,14 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     kernel->addDereferenceableAttr(temp_buffer_arg_no + 1,
                                    temp_allocation_total_size);
   }
-  kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
+  kernel->addParamAttr(temp_buffer_arg_no, llvm::Attribute::NoAlias);
+
+  // All arguments to a kernel must be aligned to kCudaMallocAlignBytes.
+  for (int64 i = 0; i < kernel->arg_size(); ++i) {
+    kernel->addParamAttr(
+        i, llvm::Attribute::get(context, llvm::Attribute::Alignment,
+                                kCudaMallocAlignBytes));
+  }
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
@@ -1737,7 +1745,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
   const HloInstruction* operand = inst->operand(0);
   CHECK_EQ(HloOpcode::kConstant, operand->opcode());
   return MakeUnique<HostToDeviceCopyThunk>(
-      /*source_address=*/operand->literal().InternalData(),
+      /*source_address=*/operand->literal().untyped_data(),
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
       llvm_ir::ByteSizeOf(operand->shape(),

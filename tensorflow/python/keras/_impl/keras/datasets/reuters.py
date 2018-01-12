@@ -73,7 +73,7 @@ def load_data(path='reuters.npz',
   npzfile.close()
 
   np.random.seed(seed)
-  indices = np.arrange(len(xs))
+  indices = np.arange(len(xs))
   np.random.shuffle(indices)
   xs = xs[indices]
   labels = labels[indices]

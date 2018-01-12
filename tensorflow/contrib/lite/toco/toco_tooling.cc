@@ -85,6 +85,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
+  transformations->Add(new ResolveTransposeAttributes);
   transformations->Add(new ResolveConstantTensorFlowShape);
   transformations->Add(new MakeInitialDequantizeOperator);
 }

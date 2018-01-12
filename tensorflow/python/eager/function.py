@@ -544,11 +544,12 @@ def _defun_internal(name, func, args, kwds):
       func_inputs = _get_defun_inputs(args)
 
       with capture_tensors(captures):
-        tape.push_new_tape()
+        this_tape = tape.push_new_tape()
         try:
           func_outputs = func(*func_inputs, **kwds)
         finally:
-          variables = tape.pop_tape().watched_variables()
+          tape.pop_tape(this_tape)
+        variables = this_tape.watched_variables()
 
         # Returning a closed-over tensor as an output does not trigger a
         # call to convert_to_tensor, so we manually capture all such tensors.

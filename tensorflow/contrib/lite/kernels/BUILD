@@ -101,6 +101,7 @@ cc_library(
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
         "svdf.cc",
+        "transpose.cc",
         "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [

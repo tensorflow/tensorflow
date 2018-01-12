@@ -134,6 +134,7 @@ class ShapeIndexView {
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
+std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 
 // Namespaced collection of (static) shape utilities.
 //
@@ -142,7 +143,10 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
-  // e.g. for rank 0 (scalars) the result is always 1.
+  // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
+  // may not actually be able to store this number of elements. See
+  // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
+  // elements that can be stored in a sparse shape.
   // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
@@ -162,6 +166,27 @@ class ShapeUtil {
   //
   // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
+
+  // Returns the number of bytes required to store the tuple member pointers for
+  // a allocation of shape. The `shape` must be a TUPLE shape, and
+  // `pointer_size` must be larger than zero.
+  static int64 ByteSizeOfTupleIndexTable(const Shape& shape,
+                                         int64 pointer_size);
+
+  // Returns the number of bytes required for the elements in an allocation of
+  // `shape`, which must be an array shape. The return value does not include
+  // the bytes needed to store sparse indices. Dense shapes use a separate
+  // memory location for each element, and so for these shapes,
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. For dense shapes, this
+  // size also includes padding if present in the layout. For sparse shapes,
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape) +
+  // ByteSizeOfSparseindices(shape)`.
+  static int64 ByteSizeOfElements(const Shape& shape);
+
+  // Returns the number of bytes required for the sparse indices in an
+  // allocation of shape. The shape must be an array shape. The return value
+  // does not include the bytes needed to store sparse indices.
+  static int64 ByteSizeOfSparseIndices(const Shape& shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -267,6 +292,10 @@ class ShapeUtil {
   static Shape MakeShapeWithLayout(
       PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<int64> minor_to_major);
+
+  static Shape MakeShapeWithSparseLayout(
+      PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
+      int64 max_sparse_elements);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
@@ -537,6 +566,8 @@ class ShapeUtil {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
 };
+
+std::ostream& operator<<(std::ostream& out, const Shape& shape);
 
 }  // namespace xla
 

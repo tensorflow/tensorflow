@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 
 import numpy as np
 
@@ -1052,6 +1053,23 @@ class EmbeddedComputationsTest(LocalComputationTest):
     for item in to_infeed:
       result = compiled_c.Execute()
       self.assertEqual(result, item)
+
+  def testInfeedThenOutfeedS32(self):
+    to_round_trip = NumpyArrayS32([1, 2, 3, 4])
+    c = self._NewComputation()
+    x = c.Infeed(xla_client.Shape.from_numpy(to_round_trip[0]))
+    c.Outfeed(x)
+
+    compiled_c = c.Build().CompileWithExampleArguments()
+
+    for want in to_round_trip:
+      execution = threading.Thread(target=compiled_c.Execute)
+      execution.start()
+      xla_client.transfer_to_infeed(want)
+      got = xla_client.transfer_from_outfeed(
+          xla_client.Shape.from_numpy(to_round_trip[0]))
+      execution.join()
+      self.assertEqual(want, got)
 
 
 class ErrorTest(LocalComputationTest):

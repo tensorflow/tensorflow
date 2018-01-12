@@ -121,7 +121,10 @@ class _WarmStartSettings(
   # where ws could be defined as:
 
   # Warm-start all weights in the model (input layer and hidden weights).
+  # Either the directory or a specific checkpoint can be provided (in the case
+  # of the former, the latest checkpoint will be used).
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp")
+  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp/model-1000")
 
   # Warm-start only the embeddings (input layer).
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
@@ -348,7 +351,7 @@ def _warmstart_var_with_vocab(var,
     # TODO(vihanjain): Support _WarmstartSettings where class vocabularies need
     # remapping too.
     init = checkpoint_ops._load_and_remap_matrix_initializer(
-        ckpt_path=saver.latest_checkpoint(prev_ckpt),
+        ckpt_path=checkpoint_utils._get_checkpoint_filename(prev_ckpt),
         old_tensor_name=prev_tensor_name,
         new_row_vocab_size=current_vocab_size,
         new_col_vocab_size=v_shape[1],
@@ -374,6 +377,12 @@ def _warmstart(warmstart_settings):
 
   Args:
     warmstart_settings: An object of `_WarmStartSettings`.
+
+  Raises:
+    ValueError: If the WarmStartSettings contains prev_var_name or VocabInfo
+      configuration for variable names that are not used.  This is to ensure
+      a stronger check for variable configuration than relying on users to
+      examine the logs.
   """
   # We have to deal with partitioned variables, since get_collection flattens
   # out the list.
@@ -387,10 +396,22 @@ def _warmstart(warmstart_settings):
     else:
       var_name = _infer_var_name(v)
     grouped_variables.setdefault(var_name, []).append(v)
+
+  # Keep track of which var_names in var_name_to_prev_var_name and
+  # var_name_to_vocab_info have been used.  Err on the safer side by throwing an
+  # exception if any are unused by the end of the loop.  It is easy to misname
+  # a variable during this configuration, in which case without this check, we
+  # would fail to warmstart silently.
+  prev_var_name_used = set()
+  vocab_info_used = set()
+
   for var_name, variable in six.iteritems(grouped_variables):
     prev_var_name = warmstart_settings.var_name_to_prev_var_name.get(var_name)
+    if prev_var_name:
+      prev_var_name_used.add(var_name)
     vocab_info = warmstart_settings.var_name_to_vocab_info.get(var_name)
     if vocab_info:
+      vocab_info_used.add(var_name)
       logging.info(
           "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
           " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
@@ -420,5 +441,28 @@ def _warmstart(warmstart_settings):
       if warmstart_settings.vars_to_warmstart:
         logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
+        # Because we use a default empty list in grouped_variables, single
+        # unpartitioned variables will be lists here, which we rectify in order
+        # for init_from_checkpoint logic to work correctly.
+        if len(variable) == 1:
+          variable = variable[0]
         _warmstart_var(variable, warmstart_settings.ckpt_to_initialize_from,
                        prev_var_name)
+
+  prev_var_name_not_used = set(
+      warmstart_settings.var_name_to_prev_var_name.keys()) - prev_var_name_used
+  vocab_info_not_used = set(
+      warmstart_settings.var_name_to_vocab_info.keys()) - vocab_info_used
+
+  if prev_var_name_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_prev_var_name that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(prev_var_name_not_used, grouped_variables.keys()))
+  if vocab_info_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_vocab_info that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(vocab_info_not_used, grouped_variables.keys()))

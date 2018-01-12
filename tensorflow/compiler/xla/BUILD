@@ -300,7 +300,9 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":shape_tree",
         ":shape_util",
+        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -623,6 +625,28 @@ tf_cc_test(
         ":xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "sparse_index_array",
+    srcs = ["sparse_index_array.cc"],
+    hdrs = ["sparse_index_array.h"],
+    deps = [
+        ":array2d",
+        ":shape_util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_index_array_test",
+    srcs = ["sparse_index_array_test.cc"],
+    deps = [
+        ":sparse_index_array",
+        ":test",
         "//tensorflow/core:test_main",
     ],
 )

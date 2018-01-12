@@ -50,11 +50,12 @@ def _profiled_run(self,
   """Overwrites the session.run()."""
   # pylint: disable=protected-access
   # Count the session steps.
-  with self.profile_context._new_step() as step:
+  with self.profile_context._new_step() as state:
+    step, locked = state
     # Fast path if no need for profiling.
-    if not self.profile_context._is_fast_path():
+    if locked and not self.profile_context._is_fast_path(step):
       # Maybe trace this step.
-      if self.profile_context._should_trace(self.graph, fetches):
+      if self.profile_context._should_trace(step, self.graph, fetches):
         if self.profile_context._debug:
           sys.stderr.write('debug: tracing step: %d\n' % step)
         # Enable tracing, perform auto profiling or auto dump.
@@ -81,7 +82,7 @@ def _profiled_run(self,
         ret = self._profiler_run_internal(fetches, feed_dict, options)
 
       # Maybe dump profile.
-      self.profile_context._maybe_dump()
+      self.profile_context._maybe_dump(step)
 
       # Maybe profile:
       to_profiles = self.profile_context._profile_candidates()
@@ -225,26 +226,26 @@ class ProfileContext(object):
     self._dump_next_step = True
     self._slow_path_steps.add(self._step)
 
-  def _is_fast_path(self):
-    if self._step in self._slow_path_steps:
+  def _is_fast_path(self, step):
+    if step in self._slow_path_steps:
       return False
     # When user doesn't set the tracing steps explicitly, auto decide it.
-    if (self._auto_tracing and self._step > WARMUP_STEPS and
+    if (self._auto_tracing and step > WARMUP_STEPS and
         self._traced_steps <= MAX_TRACED_STEPS):
       return False
     return True
 
-  def _should_trace(self, graph, fetches):
+  def _should_trace(self, step, graph, fetches):
     """Whether should do tracing at current step."""
     if self._traced_steps > MAX_TRACED_STEPS:
       return False
     # Check user-set tracing steps.
-    if self._step in self._trace_steps or self._trace_next_step:
+    if step in self._trace_steps or self._trace_next_step:
       self._traced_steps += 1
       return True
 
     # If no user-set tracing steps set and passes warm up steps, auto trace.
-    if self._auto_tracing and self._step > WARMUP_STEPS:
+    if self._auto_tracing and step > WARMUP_STEPS:
       # If the fetches have not been seen before, trace it.
       with graph.as_default():
         fetch_names = [f.name for f in
@@ -257,23 +258,23 @@ class ProfileContext(object):
         self._traced_steps += 1
         return True
       # If the trace coverage is low, does some random tracing.
-      if (self.profiler._coverage < 0.5 and self._step < MAX_TRACED_STEPS and  # pylint: disable=protected-access
+      if (self.profiler._coverage < 0.5 and step < MAX_TRACED_STEPS and  # pylint: disable=protected-access
           self._rng.randint(0, 10) < 2):
         self._traced_steps += 1
         return True
     return False
 
-  def _maybe_dump(self):
+  def _maybe_dump(self, step):
     """Maybe dump the profile file."""
-    if not (self._step in self._dump_steps or self._dump_next_step):
+    if not (step in self._dump_steps or self._dump_next_step):
       return
     if self._debug:
-      sys.stderr.write('debug: dumping file at step: %d\n' % self._step)
+      sys.stderr.write('debug: dumping file at step: %d\n' % step)
     if not gfile.Exists(self._profiler_dir):
       gfile.MakeDirs(self._profiler_dir)
 
     filename = os.path.join(compat.as_bytes(self._profiler_dir),
-                            compat.as_bytes('profile_%d' % self._step))
+                            compat.as_bytes('profile_%d' % step))
     self.profiler._write_profile(filename)  # pylint: disable=protected-access
 
   def _dump_file(self, pb, basename):
@@ -284,11 +285,13 @@ class ProfileContext(object):
 
   @contextlib.contextmanager
   def _new_step(self):
-    with self._lock:
-      yield self._step
-      self._step += 1
-      self._trace_next_step = False
-      self._dump_next_step = False
+    acquired = self._lock.acquire(False)
+    yield (self._step, acquired)
+    self._step += 1
+    self._trace_next_step = False
+    self._dump_next_step = False
+    if acquired:
+      self._lock.release()
 
   def _profile_candidates(self):
     to_profile = []

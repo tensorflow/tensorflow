@@ -217,7 +217,7 @@ using ::tensorflow::operator==;
 using ::tensorflow::operator!=;
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(COMPILER_MSVC) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {

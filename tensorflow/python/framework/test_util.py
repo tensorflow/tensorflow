@@ -162,6 +162,16 @@ def assert_meta_graph_protos_equal(tester, a, b):
   # proto comparison below.
   a.ClearField("collection_def")
   b.ClearField("collection_def")
+
+  # Check the graph_defs.
+  assert_equal_graph_def(a.graph_def, b.graph_def, checkpoint_v2=True)
+  # Check graph_def versions (ignored by assert_equal_graph_def).
+  tester.assertProtoEquals(a.graph_def.versions, b.graph_def.versions)
+  # Compared the fields directly, remove their raw values from the
+  # proto comparison below.
+  a.ClearField("graph_def")
+  b.ClearField("graph_def")
+
   tester.assertProtoEquals(a, b)
 
 
@@ -178,7 +188,7 @@ def _strip_checkpoint_v2_randomized(graph_def):
       if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
         attr_tensor_string_value = attr_tensor_value.string_val[0]
         if (attr_tensor_string_value and
-            re.match(_SHARDED_SAVE_OP_PATTERN, attr_tensor_string_value)):
+            re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
           delete_keys.append(attr_key)
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -1116,7 +1126,8 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
 
-    This does not support nested dicts.
+    This does not support nested dicts. `a` and `b` can be namedtuples too,
+    which are converted to dicts.
 
     Args:
       a: The expected numpy ndarray (or anything can be converted to one), or
@@ -1129,6 +1140,11 @@ class TensorFlowTestCase(googletest.TestCase):
     Raises:
       ValueError: if only one of `a` and `b` is a dict.
     """
+    # Check if a and/or b are namedtuples.
+    if hasattr(a, "_asdict"):
+      a = a._asdict()
+    if hasattr(b, "_asdict"):
+      b = b._asdict()
     is_a_dict = isinstance(a, dict)
     if is_a_dict != isinstance(b, dict):
       raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))
