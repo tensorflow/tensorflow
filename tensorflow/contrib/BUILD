@@ -6,6 +6,7 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 py_library(
     name = "contrib_py",
@@ -74,6 +75,7 @@ py_library(
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
+        "//tensorflow/contrib/receptive_field:receptive_field_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
@@ -114,7 +116,6 @@ cc_library(
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/nccl:nccl_kernels",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_kernels",
         "//tensorflow/contrib/rnn:all_kernels",
         "//tensorflow/contrib/seq2seq:beam_search_ops_kernels",
@@ -122,7 +123,9 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
+        "//tensorflow/contrib/nccl:nccl_kernels",
+    ]),
 )
 
 cc_library(

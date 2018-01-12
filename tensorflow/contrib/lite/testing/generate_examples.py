@@ -670,6 +670,51 @@ def make_add_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_mean_tests(zip_path):
+  """Make a set of tests to do mean."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[3, 2, 4]],
+      "axis": [
+          None, 0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+          [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
+          [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+      ],
+      "keep_dims": [True, False],
+  }, {
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[1, 224, 224, 3]],
+      "axis": [
+          None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
+          [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
+          -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
+          [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
+      ],
+      "keep_dims": [True, False],
+  }]
+
+  def build_graph(parameters):
+    """Build the mean op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.reduce_mean(
+        input_tensor,
+        axis=parameters["axis"],
+        keep_dims=parameters["keep_dims"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_mul_tests(zip_path):
   """Make a set of tests to do mul with and without broadcast."""
 
@@ -1375,6 +1420,7 @@ def main(unused_args):
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
         "transpose.zip": make_transpose_tests,
+        "mean.zip": make_mean_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

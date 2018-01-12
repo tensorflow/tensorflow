@@ -2337,6 +2337,64 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
+                 T* output_data, const int* output_dims,
+                 const int output_num_dims, const int* axis,
+                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
+                 int* resolved_axis) {
+  // resets output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    num_outputs *= static_cast<size_t>(output_dims[idx]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = 0;
+  }
+  // resets temp index.
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    temp_index[idx] = 0;
+  }
+  // resolves axis.
+  int num_resolved_axis = 0;
+  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
+    int current = axis[idx];
+    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
+    if (current < 0) {
+      current += input_num_dims;
+    }
+    bool is_dup = false;
+    for (int j = 0; j < num_resolved_axis; ++j) {
+      if (resolved_axis[j] == current) {
+        is_dup = true;
+        break;
+      }
+    }
+    if (!is_dup) {
+      resolved_axis[num_resolved_axis++] = current;
+    }
+  }
+  // iterates through input_data.
+  for (bool has_next = true; has_next;
+       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
+    size_t output_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
+                            num_resolved_axis, resolved_axis);
+    output_data[output_offset] += input_data[input_offset];
+  }
+  // takes average by num of elements added to get mean.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                      num_elements_in_axis);
+  }
+}
+
+template <typename T>
 inline void Mean(const T* input_data, const Dims<4>& input_dims,
                  const std::vector<int>& reduction_indices, T* output_data,
                  const Dims<4>& output_dims) {

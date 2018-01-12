@@ -407,7 +407,7 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):

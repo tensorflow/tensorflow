@@ -307,6 +307,12 @@ class IrEmitterUnnested : public IrEmitter {
                           const llvm_ir::ElementGenerator& init_value_gen,
                           HloComputation* reducer);
 
+  // Emits code that reduces a tensor of arbitrary rank to a scalar.
+  Status EmitReductionToScalar(HloInstruction* reduce, const Shape& input_shape,
+                               const llvm_ir::ElementGenerator& input_gen,
+                               const llvm_ir::ElementGenerator& init_value_gen,
+                               HloComputation* reducer);
+
   // Figures out whether `reduce` is a row or column reduction, and which
   // dimensions to reduce, and calls either `EmitRowReduction` or
   // `EmitColumnReduction` as appropriate. `input_shape` is the shape of the
