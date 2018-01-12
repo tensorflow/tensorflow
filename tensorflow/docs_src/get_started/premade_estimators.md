@@ -6,7 +6,7 @@ how to write the Iris classification problem in TensorFlow.
 
 Prior to reading this document, do the following:
 
-* [Install TensorFlow](install/index.md).
+* @{$install$Install TensorFlow}.
 * If you installed TensorFlow with virtualenv or Anaconda, activate your
   TensorFlow environment.
 * To keep the data import simple, our Iris example uses Pandas. You can
@@ -28,7 +28,11 @@ Take the following steps to get the sample code for this program:
 
        `cd models/samples/core/get_started/`
 
-The program described in this document is called `premade_estimator.py`.
+The program described in this document is
+[`premade_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
+This program uses
+[`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py)
+To fetch its training data.
 
 ### Running the program
 
@@ -38,15 +42,15 @@ You run TensorFlow programs as you would run any Python program. For example:
 python premade_estimator.py
 ```
 
-The program should output training logs and some predictions against a test
-set. For example, the first line in the following output shows that the model
-thinks there is a 99.6% chance that the first example in the test set is a
-Sentosa. Since the test set `expected "Setosa"`, this appears to be a good
-prediction.
+The program should output training logs followed by some predictions against
+the test set. For example, the first line in the following output shows that
+the model thinks there is a 99.6% chance that the first example in the test
+set is a Setosa. Since the test set `expected "Setosa"`, this appears to be
+a good prediction.
 
 ``` None
 ...
-Prediction is "Sentosa" (99.6%), expected "Setosa"
+Prediction is "Setosa" (99.6%), expected "Setosa"
 
 Prediction is "Versicolor" (99.8%), expected "Versicolor"
 
@@ -67,7 +71,7 @@ Before getting into the details of the program itself, let's investigate the
 programming environment. As the following illustration shows, TensorFlow
 provides a programming stack consisting of multiple API layers:
 
-<div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
 <div style="text-align: center">
@@ -76,12 +80,12 @@ The TensorFlow Programming Environment
 
 We strongly recommend writing TensorFlow programs with the following APIs:
 
-* Estimators, which represent a complete model. The Estimator API provides
-  methods to train the model, to judge the model's accuracy, and to generate
-  predictions.
-* Datasets, which build a data input pipeline. The Dataset API has methods to
-  load and manipulate data, and feed it into your model. The Datasets API meshes
-  well with the Estimators API.
+* @{tf.estimator$Estimators}, which represent a complete model.
+  The Estimator API provides methods to train the model, to judge the model's
+  accuracy, and to generate predictions.
+* @{$get_started/datasets_quickstart$Datasets}, which build a data input
+  pipeline. The Dataset API has methods to load and manipulate data, and feed
+  it into your model. The Datasets API meshes well with the Estimators API.
 
 ## Classifying irises: an overview
 
@@ -130,7 +134,7 @@ The following table shows three examples in the data set:
 
 |sepal length | sepal width | petal length | petal width| species (label) |
 |------------:|------------:|-------------:|-----------:|:---------------:|
-|         5.1 |         3.3 |          1.7 |        0.5 |   0 (Sentosa)   |
+|         5.1 |         3.3 |          1.7 |        0.5 |   0 (Setosa)   |
 |         5.0 |         2.3 |          3.3 |        1.0 |   1 (versicolor)|
 |         6.4 |         2.8 |          5.6 |        2.2 |   2 (virginica) |
 
@@ -145,11 +149,10 @@ topology:
 The following figure illustrates the features, hidden layers, and predictions
 (not all of the nodes in the hidden layers are shown):
 
-
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%"
   alt="A diagram of the network architecture: Inputs, 2 hidden layers, and outputs"
-  src="../images/iris_model.png">
+  src="../images/custom_estimators/full_network.png">
 </div>
 <div style="text-align: center">
 The Model.
@@ -252,9 +255,11 @@ The Dataset API can handle a lot of common cases for you. For example,
 using the Dataset API, you can easily read in records from a large collection
 of files in parallel and join them into a single stream.
 
-To keep things simple in this example we are going to load the data with pandas, and build our input pipeline from this in-memory data.
+To keep things simple in this example we are going to load the data with pandas,
+and build our input pipeline from this in-memory data.
 
-Here is the input function used for training in this program:
+Here is the input function used for training in this program, which is available
+in [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py):
 
 ``` python
 def train_input_fn(features, labels, batch_size):
@@ -272,14 +277,14 @@ def train_input_fn(features, labels, batch_size):
 ## Define the Feature Columns
 
 A [**Feature Column**](https://developers.google.com/machine-learning/glossary/#feature_columns)
-is an object describing how the model should use raw input features from the
+is an object describing how the model should use raw input data from the
 features dictionary. When you build an Estimator model, you pass it a list of
 feature columns that describes each of the features you want the model to use.
-
-These objects are created by functions in the @{tf.feature_column} module. `tf.feature_column` methods provide many different ways to represent data.
+The @{tf.feature_column} module provides many options for representing data
+to the model.
 
 For Iris, the 4 raw features are numeric values, so we'll build a list of
-feature columns, to tell the Estimator model to represent each of the four
+feature columns to tell the Estimator model to represent each of the four
 features as 32-bit floating-point values. Therefore, the code to create the
 Feature Column is simply:
 
@@ -291,7 +296,8 @@ for key in train_x.keys():
 ```
 
 Feature Columns can be far more sophisticated than those we're showing here.
-<!--TODO(markdaoust) add link to feature_columns doc when it exists.-->
+We detail feature columns @{$get_started/feature_columns$later on} in
+getting started.
 
 Now that we have the description of how we want the model to represent the raw
 features, we can build the estimator.
@@ -299,14 +305,13 @@ features, we can build the estimator.
 
 ## Instantiate an Estimator
 
-The Iris problem is a classic classifier problem. Fortunately, TensorFlow
+The Iris problem is a classic classification problem. Fortunately, TensorFlow
 provides several pre-made classifier Estimators, including:
 
 * @{tf.estimator.DNNClassifier}—for deep models that perform multi-class
   classification.
 * @{tf.estimator.DNNLinearCombinedClassifier}—for wide-n-deep models.
-* @{tf.estimator.LinearClassifier}—for linear models that feed results into
-  binary classifiers.
+* @{tf.estimator.LinearClassifier}— for classifiers based on linear models.
 
 For the Iris problem, `tf.estimator.DNNClassifier` seems like the best choice.
 Here's how we instantiated this Estimator:
@@ -336,14 +341,15 @@ Train the model by calling the Estimator's `train` method as follows:
 ```python
 # Train the Model.
 classifier.train(
-    input_fn=lambda:train_input_fn(train_x, train_y, args.batch_size),
+    input_fn=lambda:iris_data.train_input_fn(train_x, train_y, args.batch_size),
     steps=args.train_steps)
 ```
 
-Here we wrap up our `input_fn` call in a [`lambda`](https://docs.python.org/3/tutorial/controlflow.html)
-to allow the Estimator to call it, at the correct time, with no arguments.
-The `steps` argument tells the method to stop training after a number of
-training steps.
+Here we wrap up our `input_fn` call in a
+[`lambda`](https://docs.python.org/3/tutorial/controlflow.html)
+to capture the arguments while providing an input function that takes no
+arguments, as expected by the Estimator. The `steps` argument tells the method
+to stop training after a number of training steps.
 
 ### Evaluate the trained model
 
@@ -354,14 +360,14 @@ model on the test data:
 ```python
 # Evaluate the model.
 eval_result = classifier.evaluate(
-    input_fn=lambda:eval_input_fn(test_x, test_y, args.batch_size))
+    input_fn=lambda:iris_data.eval_input_fn(test_x, test_y, args.batch_size))
 
 print('\nTest set accuracy: {accuracy:0.3f}\n'.format(**eval_result))
 ```
 
-Note how unlike our call to the `train` method, we did not pass the `steps`
-argument to evaluate. Our `eval_input_fn` doesn't use the `repeat` method on
-the dataset, so evaluation just runs to the end of the data.
+Unlike our call to the `train` method, we did not pass the `steps`
+argument to evaluate. Our `eval_input_fn` only yields a single
+[epoch](https://developers.google.com/machine-learning/glossary/#epoch) of data.
 
 Running this code yields the following output (or something similar):
 
@@ -387,7 +393,8 @@ predict_x = {
 }
 
 predictions = classifier.predict(
-    input_fn=lambda:eval_input_fn(predict_x, batch_size=args.batch_size))
+    input_fn=lambda:iris_data.eval_input_fn(predict_x,
+                                            batch_size=args.batch_size))
 ```
 
 The `predict` method returns a Python iterable, yielding a dictionary of
@@ -401,29 +408,35 @@ for pred_dict, expec in zip(predictions, expected):
 
     class_id = pred_dict['class_ids'][0]
     probability = pred_dict['probabilities'][class_id]
-    print(template.format(SPECIES[class_id], 100 * probability, expec))
+
+    print(template.format(iris_data.SPECIES[class_id],
+                          100 * probability, expec))
 ```
 
 Running the preceding code yields the following output:
 
 ``` None
 ...
-Prediction is "Sentosa" (99.6%), expected "Setosa"
+Prediction is "Setosa" (99.6%), expected "Setosa"
 
 Prediction is "Versicolor" (99.8%), expected "Versicolor"
 
 Prediction is "Virginica" (97.9%), expected "Virginica"
 ```
 
-## Next
 
-Now that you've gotten started writing TensorFlow programs.
+## Summary
 
-* For more on Datasets, see the
-  @{$programmers_guide/datasets$Programmer's guide} and
-  @{tf.data$reference documentation}.
-* For more on Estimators, see the
-  @{$programmers_guide/estimators$Programmer's guide} and
-  @{tf.estimator$reference documentation}.
-<!--TODO(markdaoust) add links to next get_started section when it exists.-->
+Pre-made Estimators are an effective way to quickly create standard models.
+
+Now that you've gotten started writing TensorFlow programs, consider the
+following material:
+
+* @{$get_started/checkpoints$Checkpoints} to learn how to save and restore
+  models.
+* @{$get_started/datasets_quickstart$Datasets} to learn more about importing
+  data into your
+  model.
+* @{$get_started/custom_estimators$Creating Custom Estimators} to learn how to
+  write your own Estimator, customized for a particular problem.
 
