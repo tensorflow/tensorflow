@@ -5,7 +5,12 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_copts",
+)
 
 cc_library(
     name = "schema",
@@ -103,6 +108,32 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_binary(
+    name = "loader",
+    srcs = ["loader.cc"],
+    linkstatic = 1,
+    deps = [
+        ":schema",
+        ":summary_db_writer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/db:sqlite",
+    ],
+)
+
+tf_cc_binary(
+    name = "vacuum",
+    srcs = ["vacuum.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/db:sqlite",
     ],
 )
 
