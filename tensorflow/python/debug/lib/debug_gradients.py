@@ -264,32 +264,22 @@ class GradientsDebugger(object):
       The GradientsDebugger instance itself.
     """
     tensor_name_pattern = re.compile(tensor_name_regex)
-
-    # pylint: disable=protected-access
     with graph.as_default():
       for op in graph.get_operations():
         for output in op.outputs:
           if tensor_name_pattern.match(output.name):
             debug_op = self.identify_gradient(output)
 
-            for consumer in output.consumers():
+            # Make a copy of output.consumers() since we'll modify the consumers
+            # TODO(skyewm): this is unnecessary once the C API is enabled
+            for consumer in list(output.consumers()):
               if consumer == debug_op.op:
                 continue
 
               # Locate the slot index of the original input.
-              input_slots = []
-              for i, consumer_input in enumerate(consumer._inputs):
+              for i, consumer_input in enumerate(consumer.inputs):
                 if consumer_input == output:
-                  input_slots.append(i)
-
-              for slot in input_slots:
-                consumer._inputs[slot] = debug_op
-                debug_op._consumers.append(consumer)
-
-            del output._consumers[:]
-            output._consumers.append(debug_op.op)
-    # pylint: enable=protected-access
-
+                  consumer._update_input(i, debug_op)  # pylint: disable=protected-access
     return self
 
   def _check_same_graph(self, tensor):

@@ -95,13 +95,11 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
 
   def _gate_symbols(self, guard_statement, guarded_args):
 
-    def template(dst_args, src_args):  # pylint:disable=unused-argument
-      (dst_args,) = (tf.identity(a) for a in (src_args,))  # pylint:disable=undefined-variable
+    def template(args):  # pylint:disable=unused-argument
+      (args,) = (tf.identity(a) for a in (args,))  # pylint:disable=undefined-variable
 
     guards = templates.replace(
-        template,
-        dst_args=tuple(gast.Name(a, gast.Store(), None) for a in guarded_args),
-        src_args=tuple(gast.Name(a, gast.Load(), None) for a in guarded_args))
+        template, args=tuple(gast.Name(a, None, None) for a in guarded_args))
     guard_statement.body.extend(guards)
     return guard_statement
 
@@ -134,7 +132,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       statements = templates.replace(
           template,
           call=node.value,
-          temp_result=gast.Name(temp_name, gast.Store(), None))
+          temp_result=gast.Name(temp_name, None, None))
       control_deps_guard = statements[-1]
       control_deps_guard.body = []
 

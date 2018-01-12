@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Identity converter. Useful for testing and diagnostic."""
+"""Handles control flow statements: while, if."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -48,17 +48,8 @@ class ControlFlowTransformer(gast.NodeTransformer):
 
   # pylint:disable=invalid-name
 
-  def _tuple_or_item(self, elts):
-    elts = tuple(elts)
-    if len(elts) == 1:
-      return elts[0]
-    return elts
-
-  def _ast_tuple_or_item(self, elts, ctx):
-    elts = list(elts)
-    if len(elts) == 1:
-      return elts[0]
-    return gast.Tuple(elts, ctx)
+  def visit_For(self, node):
+    assert False, 'for statement should have been canonicalized at this point'
 
   def visit_If(self, node):
     raise NotImplementedError()
@@ -67,45 +58,41 @@ class ControlFlowTransformer(gast.NodeTransformer):
     self.generic_visit(node)
     # Scrape out the data flow analysis
     body_scope = anno.getanno(node, 'body_scope')
-    parent_scope_values = anno.getanno(node, 'parent_scope_values')
     body_closure = tuple(body_scope.modified - body_scope.created)
 
     def template(
-        state_args,  # pylint:disable=unused-argument
-        state_locals,
-        state_results,  # pylint:disable=unused-argument
+        state,  # pylint:disable=unused-argument
+        state_ast_tuple,  # pylint:disable=unused-argument
         test_name,
         test,  # pylint:disable=unused-argument
         body_name,
-        body,
-        state_init):
+        body):
 
-      def test_name(state_args):  # pylint:disable=function-redefined,unused-argument
+      def test_name(state):  # pylint:disable=function-redefined,unused-argument
         return test
 
-      def body_name(state_args):  # pylint:disable=function-redefined,unused-argument
+      def body_name(state):  # pylint:disable=function-redefined,unused-argument
         body  # pylint:disable=pointless-statement
-        return state_locals
+        return state,
 
-      state_results = tf.while_loop(test_name, body_name, [state_init])  # pylint:disable=undefined-variable
+      state_ast_tuple = tf.while_loop(test_name, body_name, [state])  # pylint:disable=undefined-variable
 
     test_name = self.namer.new_symbol('loop_test', body_scope.used)
     body_name = self.namer.new_symbol('loop_body', body_scope.used)
+    if len(body_closure) == 1:
+      state = gast.Name(body_closure[0], None, None)
+      state_ast_tuple = state
+    else:
+      state = tuple(gast.Name(n, None, None) for n in body_closure)
+      state_ast_tuple = gast.Tuple(state, None)
     node = templates.replace(
         template,
-        state_args=self._tuple_or_item(
-            gast.Name(n, gast.Param(), None) for n in body_closure),
-        state_locals=self._ast_tuple_or_item(
-            (gast.Name(n, gast.Load(), None) for n in body_closure),
-            gast.Load()),
-        state_results=self._ast_tuple_or_item(
-            (gast.Name(n, gast.Store(), None) for n in body_closure),
-            gast.Store()),
+        state=state,
+        state_ast_tuple=state_ast_tuple,
         test_name=gast.Name(test_name, gast.Load(), None),
         test=node.test,
         body_name=gast.Name(body_name, gast.Load(), None),
-        body=node.body,
-        state_init=[parent_scope_values.getval(n) for n in body_closure])
+        body=node.body)
 
     return node
 

@@ -1048,18 +1048,31 @@ cc_library(
     name = "ios_tensorflow_lib",
     srcs = if_ios([
         ":android_op_registrations_and_gradients",
-        "//tensorflow/core:android_srcs",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":ios_tensorflow_lib_lite",
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ios_tensorflow_lib_lite",
+    srcs = if_ios(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_all_cc_impl",
+        "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],

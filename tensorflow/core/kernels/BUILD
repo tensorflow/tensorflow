@@ -5930,6 +5930,7 @@ tf_kernel_library(
     srcs = ["summary_kernels.cc"],
     deps = [
         ":summary_interface",
+        "//tensorflow/contrib/tensorboard/db:schema",
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

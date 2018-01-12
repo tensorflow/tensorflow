@@ -614,7 +614,11 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   tensor_ids.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+#if PY_MAJOR_VERSION >= 3
     if (PyLong_Check(item)) {
+#else
+    if (PyLong_Check(item) || PyInt_Check(item)) {
+#endif
       tensorflow::int64 id = MakeInt(item);
       tensor_ids.push_back(id);
     } else {

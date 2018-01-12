@@ -5,12 +5,13 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
 
 cc_library(
     name = "schema",
     srcs = ["schema.cc"],
     hdrs = ["schema.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/db:sqlite",
@@ -32,8 +33,10 @@ cc_library(
     name = "summary_db_writer",
     srcs = ["summary_db_writer.cc"],
     hdrs = ["summary_db_writer.h"],
+    copts = tf_copts(),
     deps = [
         ":schema",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -47,6 +50,7 @@ tf_cc_test(
     size = "small",
     srcs = ["summary_db_writer_test.cc"],
     deps = [
+        ":schema",
         ":summary_db_writer",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

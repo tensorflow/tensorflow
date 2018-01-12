@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional as conv_layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -32,6 +34,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.with_c_api
 class ConvTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -97,16 +100,14 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannels(self):
-    images = random_ops.random_uniform((5, 7, 9, 4))
-    images._shape = tensor_shape.as_shape((5, 7, 9, None))
+    images = array_ops.placeholder(dtypes.float32, (5, 7, 9, None))
     layer = conv_layers.Conv2D(32, [3, 3], activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
                                  'should be defined. Found `None`.'):
       _ = layer.apply(images)
 
-    images = random_ops.random_uniform((5, 4, 7, 9))
-    images._shape = tensor_shape.as_shape((5, None, 7, 9))
+    images = array_ops.placeholder(dtypes.float32, (5, None, 7, 9))
     layer = conv_layers.Conv2D(32, [3, 3], data_format='channels_first')
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -167,16 +168,14 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannelsConv1D(self):
-    data = random_ops.random_uniform((5, 4, 7))
-    data._shape = tensor_shape.as_shape((5, 4, None))
+    data = array_ops.placeholder(dtypes.float32, (5, 4, None))
     layer = conv_layers.Conv1D(32, 3, activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
                                  'should be defined. Found `None`.'):
       _ = layer.apply(data)
 
-    data = random_ops.random_uniform((5, 7, 4))
-    data._shape = tensor_shape.as_shape((5, None, 4))
+    data = array_ops.placeholder(dtypes.float32, (5, None, 4))
     layer = conv_layers.Conv1D(32, 3, data_format='channels_first')
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -195,8 +194,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannelsConv3D(self):
-    volumes = random_ops.random_uniform((5, 6, 7, 9, 9))
-    volumes._shape = tensor_shape.as_shape((5, 6, 7, 9, None))
+    volumes = array_ops.placeholder(dtypes.float32, (5, 6, 7, 9, None))
     layer = conv_layers.Conv3D(32, [3, 3, 3], activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -328,6 +326,7 @@ class ConvTest(test.TestCase):
     self.assertEqual(conv3d.bias_constraint, b_constraint)
 
 
+@test_util.with_c_api
 class SeparableConv2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -571,6 +570,7 @@ class SeparableConv2DTest(test.TestCase):
     self.assertEqual(layer.bias_constraint, b_constraint)
 
 
+@test_util.with_c_api
 class Conv2DTransposeTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -756,6 +756,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertEqual(layer.bias_constraint, b_constraint)
 
 
+@test_util.with_c_api
 class Conv3DTransposeTest(test.TestCase):
 
   def testInvalidDataFormat(self):
