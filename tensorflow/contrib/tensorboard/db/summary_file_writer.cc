@@ -12,9 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/summary_interface.h"
-
-#include <utility>
+#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,6 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
 template <typename T>
 Status TensorValueAt(Tensor t, int64 index, T* out) {
   switch (t.dtype()) {
@@ -210,9 +209,9 @@ Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h, int w,
 
 }  // namespace
 
-class SummaryWriterImpl : public SummaryWriterInterface {
+class SummaryFileWriter : public SummaryWriterInterface {
  public:
-  SummaryWriterImpl(int max_queue, int flush_millis, Env* env)
+  SummaryFileWriter(int max_queue, int flush_millis, Env* env)
       : SummaryWriterInterface(),
         is_initialized_(false),
         max_queue_(max_queue),
@@ -246,7 +245,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     return InternalFlush();
   }
 
-  ~SummaryWriterImpl() override {
+  ~SummaryFileWriter() override {
     (void)Flush();  // Ignore errors.
   }
 
@@ -413,7 +412,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     return Status::OK();
   }
 
-  string DebugString() override { return "SummaryWriterImpl"; }
+  string DebugString() override { return "SummaryFileWriter"; }
 
  private:
   double GetWallTime() {
@@ -445,10 +444,11 @@ class SummaryWriterImpl : public SummaryWriterInterface {
       GUARDED_BY(mu_);
 };
 
-Status CreateSummaryWriter(int max_queue, int flush_millis,
-                           const string& logdir, const string& filename_suffix,
-                           Env* env, SummaryWriterInterface** result) {
-  SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis, env);
+Status CreateSummaryFileWriter(int max_queue, int flush_millis,
+                               const string& logdir,
+                               const string& filename_suffix, Env* env,
+                               SummaryWriterInterface** result) {
+  SummaryFileWriter* w = new SummaryFileWriter(max_queue, flush_millis, env);
   const Status s = w->Initialize(logdir, filename_suffix);
   if (!s.ok()) {
     w->Unref();

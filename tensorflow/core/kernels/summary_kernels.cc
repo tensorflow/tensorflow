@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorboard/db/schema.h"
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
+#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -43,8 +43,9 @@ class CreateSummaryFileWriterOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
     const string filename_suffix = tmp->scalar<string>()();
     SummaryWriterInterface* s;
-    OP_REQUIRES_OK(ctx, CreateSummaryWriter(max_queue, flush_millis, logdir,
-                                            filename_suffix, ctx->env(), &s));
+    OP_REQUIRES_OK(ctx,
+                   CreateSummaryFileWriter(max_queue, flush_millis, logdir,
+                                           filename_suffix, ctx->env(), &s));
     OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
   }
 };
