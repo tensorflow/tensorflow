@@ -29,6 +29,7 @@ from tensorflow.core.profiler import profile_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -761,6 +762,15 @@ class PrintModelAnalysisTest(test.TestCase):
       ret_pb = model_analyzer.profile(
           sess.graph, run_meta=run_metadata, cmd='scope', options=options)
       self.assertGreater(ret_pb.total_requested_bytes, 1000000)
+
+  def testEager(self):
+    ops.reset_default_graph()
+    with context.eager_mode():
+      context.enable_run_metadata()
+      lib.BuildSmallModel()
+      run_meta = context.export_run_metadata()
+      self.assertTrue('Conv2D' in '%s' % run_meta)
+      context.disable_run_metadata()
 
 
 if __name__ == '__main__':
