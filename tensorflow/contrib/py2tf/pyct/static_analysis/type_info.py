@@ -158,11 +158,6 @@ class TypeInfoResolver(gast.NodeTransformer):
     self.generic_visit(node)
     return node
 
-  def visit_While(self, node):
-    anno.setanno(node, 'parent_scope_values', self.scope.copy())
-    self.generic_visit(node)
-    return node
-
 
 def resolve(node, value_hints):
   return TypeInfoResolver(value_hints).visit(node)

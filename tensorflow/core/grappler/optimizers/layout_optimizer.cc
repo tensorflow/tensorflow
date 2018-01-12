@@ -625,7 +625,8 @@ class NodeProcessor : public GraphProcessor {
           node_name, node_->input(pos), const_name, dtype,
           input_node->attr().at("_output_shapes").list().shape(output_pos),
           true);
-      node_map_->UpdateOutput(node_->input(pos), node_->name(), node_name);
+      node_map_->UpdateOutput(NodeName(node_->input(pos)), node_->name(),
+                              node_name);
       node_map_->AddOutput(node_name, node_->name());
       *node_->mutable_input(pos) = node_name;
     }
@@ -917,7 +918,7 @@ class NodeProcessor : public GraphProcessor {
     auto added_node =
         AddNodeDataFormatOp(name, node_->input(input_pos), op, dtype, true);
     *node_->mutable_input(input_pos) = added_node->name();
-    node_map_->UpdateOutput(added_node->input(0), node_->name(),
+    node_map_->UpdateOutput(NodeName(added_node->input(0)), node_->name(),
                             added_node->name());
     node_map_->AddOutput(added_node->name(), node_->name());
   }
@@ -1328,8 +1329,8 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
       AddNodeReshape(reshape_node_name, node_->input(vector_index),
                      shape_const_node_name, node_->attr().at("T").type());
       node_map_->AddOutput(shape_const_node_name, reshape_node_name);
-      node_map_->UpdateOutput(node_->input(vector_index), node_->name(),
-                              reshape_node_name);
+      node_map_->UpdateOutput(NodeName(node_->input(vector_index)),
+                              node_->name(), reshape_node_name);
       node_map_->AddOutput(reshape_node_name, node_->name());
       *node_->mutable_input(vector_index) = reshape_node_name;
     }

@@ -455,7 +455,7 @@ class GANLossTest(test.TestCase):
 
     new_model = train._tensor_pool_adjusted_model(model, None)
     # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
-    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertEqual(2, len(ops.get_collection(ops.GraphKeys.VARIABLES)))
     self.assertIs(new_model.discriminator_gen_outputs,
                   model.discriminator_gen_outputs)
 
@@ -477,7 +477,7 @@ class GANLossTest(test.TestCase):
     new_model = train._tensor_pool_adjusted_model(
         model, get_tensor_pool_fn_for_infogan(pool_size=pool_size))
     # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
-    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertEqual(2, len(ops.get_collection(ops.GraphKeys.VARIABLES)))
     self.assertIsNot(new_model.discriminator_gen_outputs,
                      model.discriminator_gen_outputs)
     self.assertIsNot(new_model.predicted_distributions,
@@ -495,7 +495,7 @@ class GANLossTest(test.TestCase):
     new_model = train._tensor_pool_adjusted_model(
         model, get_tensor_pool_fn(pool_size=pool_size))
     # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
-    self.assertLen(ops.get_collection(ops.GraphKeys.VARIABLES), 2)
+    self.assertEqual(2, len(ops.get_collection(ops.GraphKeys.VARIABLES)))
     self.assertIsNot(new_model.discriminator_gen_outputs,
                      model.discriminator_gen_outputs)
     self.assertIsNot(new_model.discriminator_gen_classification_logits,

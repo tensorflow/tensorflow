@@ -19,7 +19,6 @@ py_library(
     srcs = [
         "call_trees.py",
         "control_flow.py",
-        "gradients_function.py",
         "logical_expressions.py",
         "print_functions.py",
         "side_effect_guards.py",
@@ -47,18 +46,6 @@ py_test(
     srcs = ["control_flow_test.py"],
     deps = [
         ":convert",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "gradients_function_test",
-    srcs = ["gradients_function_test.py"],
-    deps = [
-        ":convert",
-        "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",

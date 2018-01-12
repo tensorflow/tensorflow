@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
@@ -100,13 +101,6 @@ namespace {
 using tensorflow::port::Tracing;
 using tensorflow::strings::StrCat;
 
-// Any address of a variable residing in global memory or returned by one of the
-// memory allocation routines from the driver or runtime API is always aligned
-// to at least 256 bytes.
-//
-// http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
-constexpr int64 kMemoryAlignment = 256;
-
 // Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
 // should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
 // HloModule being compiled.
@@ -133,12 +127,10 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
 }
 
 // Runs optimization passes on the given HLO module.
-tensorflow::Status OptimizeHloModule(
-    HloModule* hlo_module,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
+tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
+    pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
@@ -150,7 +142,7 @@ tensorflow::Status OptimizeHloModule(
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>(shape_size_function);
+      pass.AddInvariantChecker<HloVerifier>();
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -191,14 +183,14 @@ tensorflow::Status OptimizeHloModule(
   }
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
-    fusion.AddInvariantChecker<HloVerifier>(shape_size_function);
+    fusion.AddInvariantChecker<HloVerifier>();
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    reduce_pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
+    reduce_pipeline.AddInvariantChecker<HloVerifier>();
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -216,16 +208,14 @@ tensorflow::Status OptimizeHloModule(
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(
-    HloModule* hlo_module,
-    const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
+tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
+  pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
@@ -409,7 +399,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   Tracing::TraceMe annotation("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), ShapeSizeBytesFunction()));
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get()));
   return std::move(module);
 }
 
@@ -419,8 +409,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(
-      PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -451,8 +440,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
-                            return kMemoryAlignment;
+                          BufferSizeBytesFunction(),
+                          /*color_alignment=*/[](LogicalBuffer::Color) {
+                            return kCudaMallocAlignBytes;
                           }));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.

@@ -1067,6 +1067,20 @@ cc_library(
 )
 
 cc_library(
+    name = "ios_tensorflow_lib_lite",
+    srcs = if_ios(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_all_cc_impl",
+        "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ios_tensorflow_test_lib",
     testonly = 1,
     srcs = if_ios([":android_test_srcs"]),

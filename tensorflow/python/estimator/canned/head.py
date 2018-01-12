@@ -54,11 +54,13 @@ _PREDICT_SERVING_KEY = 'predict'
 
 
 # A LossSpec contains
-# * a scalar `Tensor` representing weighted, sum-reduced loss
-# * a scalar `Tensor` representing the sum of example weights
+# * a scalar `Tensor` representing reduced weighted training loss
+# * a scalar `Tensor` representing the unreduced unweighted loss
+# * a scalar `Tensor` representing the example weights
 # * possibly processed labels (e.g. vocabulary lookup, shape manipulation, etc)
 LossSpec = collections.namedtuple(
-    'LossSpec', ['weighted_sum_loss', 'example_weight_sum', 'processed_labels'])
+    'LossSpec', ['training_loss', 'unreduced_loss', 'weights',
+                 'processed_labels'])
 
 
 def _summary_key(head_name, val):
@@ -159,8 +161,9 @@ class _Head(object):
 
     Returns:
       A LossSpec that contains
-      * the scalar `Tensor` representing weighted, sum-reduced loss
-      * the scalar `Tensor` representing the sum of example weights
+      * the scalar `Tensor` representing reduced weighted training loss
+      * the scalar `Tensor` representing the unreduced unweighted loss
+      * the scalar `Tensor` representing the example weights
       * possibly processed labels (e.g. vocabulary lookup, shape manipulation,
         etc.)
 
@@ -456,10 +459,12 @@ def _recall_at_threshold(labels, predictions, weights, threshold, name=None):
     return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 
-def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
-                                                      weight_column=None,
-                                                      label_vocabulary=None,
-                                                      name=None):
+def _multi_class_head_with_softmax_cross_entropy_loss(
+    n_classes,
+    weight_column=None,
+    label_vocabulary=None,
+    loss_reduction=losses.Reduction.SUM,
+    name=None):
   """Creates a '_Head' for multi class classification.
 
   The head expects `logits` with shape `[D0, D1, ... DN, n_classes]`.
@@ -489,6 +494,8 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       integer within [0, n_classes). If given, labels must be of string type and
       have any value in `label_vocabulary`. Note that errors will be raised if
       `label_vocabulary` is not provided but labels are strings.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -496,16 +503,23 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
     An instance of `_Head` for multi class classification.
 
   Raises:
-    ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.
+    ValueError: If `n_classes`, `label_vocabulary` or `loss_reduction` is
+      invalid.
   """
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
     raise ValueError(
         'label_vocabulary should be a list or a tuple. Given type: {}'.format(
             type(label_vocabulary)))
-
-  return _MultiClassHeadWithSoftmaxCrossEntropyLoss(n_classes, weight_column,
-                                                    label_vocabulary, name)
+  if (loss_reduction not in losses.Reduction.all() or
+      loss_reduction == losses.Reduction.NONE):
+    raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  return _MultiClassHeadWithSoftmaxCrossEntropyLoss(
+      n_classes=n_classes,
+      weight_column=weight_column,
+      label_vocabulary=label_vocabulary,
+      loss_reduction=loss_reduction,
+      name=name)
 
 
 class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
@@ -515,12 +529,14 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
                n_classes,
                weight_column=None,
                label_vocabulary=None,
+               loss_reduction=losses.Reduction.SUM,
                name=None):
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError('n_classes must be > 2: %s.' % n_classes)
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._label_vocabulary = label_vocabulary
+    self._loss_reduction = loss_reduction
     self._name = name
 
   @property
@@ -531,24 +547,18 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def logits_dimension(self):
     return self._n_classes
 
-  def _eval_metric_ops(self, labels, class_ids, weights, weighted_sum_loss,
-                       example_weight_sum):
+  def _eval_metric_ops(self, labels, class_ids, weights, unreduced_loss):
     """Returns the Eval metric ops."""
     with ops.name_scope(
-        None, 'metrics',
-        (labels, class_ids, weights, weighted_sum_loss, example_weight_sum)):
+        None, 'metrics', (labels, class_ids, weights, unreduced_loss)):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           # TODO(xiejw): Any other metrics?
           _summary_key(self._name, keys.LOSS_MEAN):
               metrics_lib.mean(
-                  # Both values and weights here are reduced, scalar Tensors.
-                  # values is the actual mean we want -- weights represents the
-                  # total weight of the batch and is needed to calculate
-                  # update_op over many batches.
-                  values=(weighted_sum_loss / example_weight_sum),
-                  weights=example_weight_sum,
+                  values=unreduced_loss,
+                  weights=weights,
                   name=keys.LOSS_MEAN),
           _summary_key(self._name, keys.ACCURACY):
               metrics_lib.accuracy(
@@ -588,14 +598,12 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=-1)
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits)
-    weighted_sum_loss = losses.compute_weighted_loss(
-        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
-    # _weights() can return 1.
-    example_weight_sum = math_ops.reduce_sum(
-        weights * array_ops.ones_like(unweighted_loss))
+    training_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=self._loss_reduction)
     return LossSpec(
-        weighted_sum_loss=weighted_sum_loss,
-        example_weight_sum=example_weight_sum,
+        training_loss=training_loss,
+        unreduced_loss=unweighted_loss,
+        weights=weights,
         processed_labels=label_ids)
 
   def create_estimator_spec(
@@ -655,40 +663,49 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
-      weighted_sum_loss, example_weight_sum, label_ids = self.create_loss(
+      training_loss, unreduced_loss, weights, label_ids = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=weighted_sum_loss,
+            loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=label_ids,
                 class_ids=class_ids,
-                weights=_weights(features, self._weight_column),
-                weighted_sum_loss=weighted_sum_loss,
-                example_weight_sum=example_weight_sum))
+                weights=weights,
+                unreduced_loss=unreduced_loss))
 
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn cannot be None.')
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          weighted_sum_loss)
-      summary.scalar(
-          _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          weighted_sum_loss / example_weight_sum)
+          training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
+            mean_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=weighted_sum_loss,
-        train_op=train_op_fn(weighted_sum_loss))
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
-    weight_column=None, thresholds=None, label_vocabulary=None, name=None):
+    weight_column=None, thresholds=None, label_vocabulary=None,
+    loss_reduction=losses.Reduction.SUM, name=None):
   """Creates a `_Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -723,6 +740,8 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       [0, 1]. If given, labels must be string type and have any value in
       `label_vocabulary`. Note that errors will be raised if `label_vocabulary`
       is not provided but labels are strings.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -730,7 +749,8 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
     An instance of `_Head` for binary classification.
 
   Raises:
-    ValueError: if `thresholds` contains a value outside of `(0, 1)`.
+    ValueError: If `thresholds` contains a value outside of `(0, 1)`.
+    ValueError: If `loss_reduction` is invalid.
   """
   thresholds = tuple(thresholds) if thresholds else tuple()
   if label_vocabulary is not None and not isinstance(label_vocabulary,
@@ -742,10 +762,14 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   for threshold in thresholds:
     if (threshold <= 0.0) or (threshold >= 1.0):
       raise ValueError('thresholds not in (0, 1): {}.'.format((thresholds,)))
+  if (loss_reduction not in losses.Reduction.all() or
+      loss_reduction == losses.Reduction.NONE):
+    raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
       weight_column=weight_column,
       thresholds=thresholds,
       label_vocabulary=label_vocabulary,
+      loss_reduction=loss_reduction,
       name=name)
 
 
@@ -756,10 +780,12 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                weight_column=None,
                thresholds=None,
                label_vocabulary=None,
+               loss_reduction=losses.Reduction.SUM,
                name=None):
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
+    self._loss_reduction = loss_reduction
     self._name = name
 
   @property
@@ -771,10 +797,10 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
     return 1
 
   def _eval_metric_ops(self, labels, logits, logistic, class_ids, weights,
-                       weighted_sum_loss, example_weight_sum):
+                       unreduced_loss):
     with ops.name_scope(None, 'metrics',
                         (labels, logits, logistic, class_ids, weights,
-                         weighted_sum_loss, example_weight_sum)):
+                         unreduced_loss)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
@@ -782,12 +808,8 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           # Estimator already adds a metric for loss.
           _summary_key(self._name, keys.LOSS_MEAN):
               metrics_lib.mean(
-                  # Both values and weights here are reduced, scalar Tensors.
-                  # values is the actual mean we want -- weights represents the
-                  # total weight of the batch and is needed to calculate
-                  # update_op over many batches.
-                  values=(weighted_sum_loss / example_weight_sum),
-                  weights=example_weight_sum,
+                  values=unreduced_loss,
+                  weights=weights,
                   name=keys.LOSS_MEAN),
           _summary_key(self._name, keys.ACCURACY):
               metrics_lib.accuracy(
@@ -863,14 +885,12 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         labels=labels, logits=logits)
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits)
-    weighted_sum_loss = losses.compute_weighted_loss(
-        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
-    # _weights() can return 1.
-    example_weight_sum = math_ops.reduce_sum(
-        weights * array_ops.ones_like(unweighted_loss))
+    training_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=self._loss_reduction)
     return LossSpec(
-        weighted_sum_loss=weighted_sum_loss,
-        example_weight_sum=example_weight_sum,
+        training_loss=training_loss,
+        unreduced_loss=unweighted_loss,
+        weights=weights,
         processed_labels=labels)
 
   def create_estimator_spec(
@@ -919,47 +939,55 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
-      (weighted_sum_loss, example_weight_sum,
-       processed_labels) = self.create_loss(
-           features=features, mode=mode, logits=logits, labels=labels)
+      (training_loss, unreduced_loss, weights, processed_labels) = (
+          self.create_loss(
+              features=features, mode=mode, logits=logits, labels=labels))
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        weights = _get_weights_and_check_match_logits(
-            features=features, weight_column=self._weight_column, logits=logits)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=weighted_sum_loss,
+            loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=processed_labels,
                 logits=logits,
                 logistic=logistic,
                 class_ids=class_ids,
                 weights=weights,
-                weighted_sum_loss=weighted_sum_loss,
-                example_weight_sum=example_weight_sum))
+                unreduced_loss=unreduced_loss))
 
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          weighted_sum_loss)
-      summary.scalar(
-          _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          weighted_sum_loss / example_weight_sum)
+          training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
+            mean_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=weighted_sum_loss,
-        train_op=train_op_fn(weighted_sum_loss))
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
-def _regression_head_with_mean_squared_error_loss(weight_column=None,
-                                                  label_dimension=1,
-                                                  name=None):
+def _regression_head_with_mean_squared_error_loss(
+    weight_column=None,
+    label_dimension=1,
+    loss_reduction=losses.Reduction.SUM,
+    name=None):
   """Creates a `_Head` for regression using the `mean_squared_error` loss.
 
   The loss is the weighted sum over all input dimensions. Namely, if the input
@@ -985,27 +1013,42 @@ def _regression_head_with_mean_squared_error_loss(weight_column=None,
     label_dimension: Number of regression labels per example. This is the size
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
+
+  Raises:
+    ValueError: If `label_dimension` or `loss_reduction` is invalid.
   """
+  if (loss_reduction not in losses.Reduction.all() or
+      loss_reduction == losses.Reduction.NONE):
+    raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
   return _RegressionHeadWithMeanSquaredErrorLoss(
       weight_column=weight_column,
       label_dimension=label_dimension,
+      loss_reduction=loss_reduction,
       name=name)
 
 
 class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   """`Head` for regression using the mean squared loss."""
 
-  def __init__(self, label_dimension, weight_column=None, name=None):
+  def __init__(
+      self,
+      label_dimension,
+      weight_column=None,
+      loss_reduction=losses.Reduction.SUM,
+      name=None):
     """`Head` for regression."""
     if label_dimension < 1:
       raise ValueError('Invalid label_dimension %s.' % label_dimension)
     self._logits_dimension = label_dimension
     self._weight_column = weight_column
+    self._loss_reduction = loss_reduction
     self._name = name
 
   @property
@@ -1029,14 +1072,12 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits,
         allow_per_logit_weights=True)
-    weighted_sum_loss = losses.compute_weighted_loss(
-        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
-    # _weights() can return 1.
-    example_weight_sum = math_ops.reduce_sum(
-        weights * array_ops.ones_like(unweighted_loss))
+    training_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=self._loss_reduction)
     return LossSpec(
-        weighted_sum_loss=weighted_sum_loss,
-        example_weight_sum=example_weight_sum,
+        training_loss=training_loss,
+        unreduced_loss=unweighted_loss,
+        weights=weights,
         processed_labels=labels)
 
   def create_estimator_spec(
@@ -1074,7 +1115,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
-      weighted_sum_loss, example_weight_sum, _ = self.create_loss(
+      training_loss, unreduced_loss, weights, _ = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
 
       # Eval.
@@ -1083,34 +1124,39 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         eval_metric_ops = {
             _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN):
                 metrics_lib.mean(
-                    # Both values and weights here are reduced, scalar Tensors.
-                    # values is the actual mean we want -- weights represents
-                    # the total weight of the batch and is needed to calculate
-                    # update_op over many batches.
-                    values=(weighted_sum_loss / example_weight_sum),
-                    weights=example_weight_sum)
+                    values=unreduced_loss,
+                    weights=weights)
         }
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=weighted_sum_loss,
+            loss=training_loss,
             eval_metric_ops=eval_metric_ops)
 
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          weighted_sum_loss)
-      summary.scalar(
-          _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          weighted_sum_loss / example_weight_sum)
+          training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
+            mean_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=weighted_sum_loss,
-        train_op=train_op_fn(weighted_sum_loss))
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
 def _assert_range(labels, n_classes, message=None):

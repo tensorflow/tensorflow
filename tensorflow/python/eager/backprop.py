@@ -710,7 +710,7 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            constant_op.constant(range(grad.shape[0])),
+            math_ops.range(grad.shape[0]),
             constant_op.constant(grad.shape.as_list()))
         indexed_slices_list.append(indexed_slices)
       else:

@@ -1217,8 +1217,15 @@ class EagerVariableStore(object):
   ```
   """
 
-  def __init__(self):
-    self._store = _VariableStore()
+  def __init__(self, store=None):
+    if store is not None:
+      if not store._store_eager_variables:  # pylint: disable=protected-access
+        raise ValueError("Cannot construct EagerVariableStore from a "
+                         "VariableStore object that does not hold eager "
+                         "variables.")
+      self._store = store
+    else:
+      self._store = _VariableStore()
     self._store._store_eager_variables = True  # pylint: disable=protected-access
 
   def as_default(self):

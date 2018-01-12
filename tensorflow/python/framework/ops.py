@@ -1623,15 +1623,12 @@ class Operation(object):
       assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
     elif self._graph._c_graph:  # pylint: disable=protected-access
-      if self._op_def:
-        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
-        # inputs. Refactor so we don't have to do this here.
-        grouped_inputs = self._reconstruct_sequence_inputs(
-            self._op_def, self._inputs, self._node_def.attr)
-      else:
-        # If no OpDef is specified, assume all inputs are scalar.
-        grouped_inputs = self._inputs
-
+      if op_def is None:
+        op_def = self._graph._registered_ops[node_def.op]
+      # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
+      # Refactor so we don't have to do this here.
+      grouped_inputs = self._reconstruct_sequence_inputs(
+          op_def, inputs, node_def.attr)
       self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
                                 self._control_inputs)
     else:
