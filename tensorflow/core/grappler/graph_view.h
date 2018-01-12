@@ -71,6 +71,10 @@ class GraphView {
   const std::unordered_set<OutputPort, HashPort> GetFanins(
       const NodeDef& node, bool include_controlling_nodes) const;
 
+  // Get the number of ports in the immediate fanin of a node. Count the
+  // controlling nodes iff include_controlling_nodes is true.
+  int NumFanins(const NodeDef& node, bool include_controlling_nodes) const;
+
  private:
   GraphDef* graph_;
   std::unordered_map<string, NodeDef*> nodes_;

@@ -24,7 +24,7 @@ GraphView::GraphView(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     auto rslt = nodes_.insert(std::make_pair(node->name(), node));
     // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
+    CHECK(rslt.second) << "Non unique node name detected: " << node->name();
   }
   for (NodeDef& node : *graph_->mutable_node()) {
     for (int i = 0; i < node.input_size(); ++i) {
@@ -137,6 +137,18 @@ GraphView::GetFanins(const NodeDef& node,
     }
   }
   return result;
+}
+
+int GraphView::NumFanins(const NodeDef& node,
+                         bool include_controlling_nodes) const {
+  int count = 0;
+  for (const string& input : node.input()) {
+    if (!include_controlling_nodes && IsControlInput(input)) {
+      break;
+    }
+    count += 1;
+  }
+  return count;
 }
 
 }  // end namespace grappler

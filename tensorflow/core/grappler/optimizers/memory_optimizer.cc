@@ -490,6 +490,10 @@ void SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     if (!IsAddN(node)) {
       continue;
     }
+    // There is nothing to gain by optimizing nodes with 2 inputs of fewer.
+    if (view.NumFanins(node, false) <= 2) {
+      continue;
+    }
     for (const auto& input : view.GetFanins(node, false)) {
       if (input.node->device() == node.device()) {
         string tensor_name =
