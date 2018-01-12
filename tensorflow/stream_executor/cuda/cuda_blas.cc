@@ -36,6 +36,7 @@ limitations under the License.
 #include <assert.h>
 #include <complex>
 
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_helpers.h"
@@ -268,6 +269,11 @@ PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmEx)
 PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGemmEx)
 #endif
 
+#if CUDA_VERSION >= 9000
+PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasGetMathMode)
+PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSetMathMode)
+#endif
+
 }  // namespace wrap
 
 static string ToString(cublasStatus_t status) {
@@ -297,6 +303,18 @@ static string ToString(cublasStatus_t status) {
     default:
       return port::StrCat("<invalid cublas status: ", status, ">");
   }
+}
+
+// Decide whether to enable TENSOR_OP_MATH
+static bool TensorOpMathEnabled() {
+  static bool is_enabled = [] {
+    bool is_disabled;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUBLAS_TENSOR_OP_MATH",
+                                       /*default_val=*/false, &is_disabled));
+    return !is_disabled;
+  }();
+  return is_enabled;
 }
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
@@ -359,6 +377,66 @@ class ScopedCublasPointerMode {
   cublasPointerMode_t old_mode_;  // Prior cuBLAS pointer mode, to be restored.
   bool ok_;                       // Whether the change was successful.
 };
+
+#if CUDA_VERSION >= 9000
+// cuBLAS has interfaces that permit computations to use the Tensor Cores
+// available in Volta hardware. This must be enabled via the
+// cublasGet/SetMathMode APIs.
+//
+// This helper sets the cuBLAS math mode to a desired value for a cuBLAS call
+// you are about to perform in a given scope.
+//
+// The prior cuBLAS math mode is retained and restored when this object goes
+// out of scope.
+class ScopedCublasMathMode {
+ public:
+  // Note that, because the setting of the cublas math mode is fallible,
+  // construction of this scoped datatype must be paired with a call to
+  // Init().
+  //
+  // Parameters:
+  //  handle: The cublas library handle to act upon in setting the math mode.
+  explicit ScopedCublasMathMode(CUDAExecutor *parent, cublasHandle_t handle)
+      : parent_(parent), handle_(handle), ok_(false) {}
+
+  // Attempts the switch to the requested scoped math mode, new_mode.
+  //
+  // Note that when false is returned, an appropriate error has already been
+  // logged.
+  bool Init(cublasMath_t new_mode) {
+    cublasStatus_t ret = wrap::cublasGetMathMode(parent_, handle_, &old_mode_);
+    if (ret != CUBLAS_STATUS_SUCCESS) {
+      LOG(ERROR) << "failed to get old cublas math mode: " << ToString(ret);
+      return ok_ = false;
+    }
+
+    ret = wrap::cublasSetMathMode(parent_, handle_, new_mode);
+    if (ret != CUBLAS_STATUS_SUCCESS) {
+      LOG(ERROR) << "failed to set new cublas math mode: " << ToString(ret);
+      return ok_ = false;
+    }
+    return ok_ = true;
+  }
+
+  // Switches back to the prior math mode, if the switch operation was
+  // successful in the first place.
+  ~ScopedCublasMathMode() {
+    if (ok_) {
+      cublasStatus_t ret = wrap::cublasSetMathMode(parent_, handle_, old_mode_);
+      if (ret != CUBLAS_STATUS_SUCCESS) {
+        LOG(ERROR) << "failed to set former cublas math mode: "
+                   << ToString(ret);
+      }
+    }
+  }
+
+ private:
+  CUDAExecutor *parent_;   // Executor establishing this math mode for.
+  cublasHandle_t handle_;  // Handle to the cuBLAS instance of interest.
+  cublasMath_t old_mode_;  // Prior cuBLAS math mode, to be restored.
+  bool ok_;                // Whether the change was successful.
+};
+#endif  // CUDA_VERSION >= 9000
 
 bool CUDABlas::Init() {
   cublasStatus_t ret = wrap::cublasCreate(parent_, &blas_);
@@ -532,7 +610,7 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
 template <typename FuncT, typename... Args>
 bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
-                                  Args... args) {
+                                  bool use_tensor_op_math, Args... args) {
   mutex_lock lock{mu_};
 
   CHECK(blas_ != nullptr);
@@ -545,7 +623,14 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
     return false;
   }
-
+#if CUDA_VERSION >= 9000
+  ScopedCublasMathMode math_mode{parent_, blas_};
+  if (use_tensor_op_math) {
+    if (!math_mode.Init(CUBLAS_TENSOR_OP_MATH)) {
+      return false;
+    }
+  }
+#endif
   cublasStatus_t ret = cublas_func(parent_, blas_, args...);
   if (err_on_failure && ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to run cuBLAS routine " << cublas_func.kName << ": "
@@ -1762,14 +1847,26 @@ bool CUDABlas::DoBlasGemm(
                       "precondition violation";
     }
   }
-  // TODO(sesse): Consider supporting the Hgemm interface, which uses half
-  // calculations internally (faster on newer devices, such as Pascal and TX1,
-  // but less precise).
-  return DoBlasInternal(
+
+  bool use_tensor_ops = false;
+#if CUDA_VERSION >= 9000
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+
+  // GPUs < sm_70 don't support tensor cores
+  if (cc_major >= 7 && TensorOpMathEnabled()) {
+    use_tensor_ops = true;
+  }
+#endif
+
+  return DoBlasInternalImpl(
       wrap::cublasSgemmEx, stream, true /* = pointer_mode_host */,
-      CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-      CUDAMemory(a), SE_CUDA_DATA_HALF, lda, CUDAMemory(b), SE_CUDA_DATA_HALF,
-      ldb, &beta, CUDAMemoryMutable(c), SE_CUDA_DATA_HALF, ldc);
+      true /* = err_on_failure= */, use_tensor_ops, CUDABlasTranspose(transa),
+      CUDABlasTranspose(transb), m, n, k, &alpha, CUDAMemory(a),
+      SE_CUDA_DATA_HALF, lda, CUDAMemory(b), SE_CUDA_DATA_HALF, ldb, &beta,
+      CUDAMemoryMutable(c), SE_CUDA_DATA_HALF, ldc);
+
 #else
   LOG(ERROR) << "fp16 sgemm is not implemented in this cuBLAS version "
              << "(need at least CUDA 7.5)";
@@ -2031,6 +2128,26 @@ bool CUDABlas::DoBlasGemmWithProfilingImpl(
   return result;
 }
 
+static bool UsesTensorOps(blas::AlgorithmType algo) {
+#if CUDA_VERSION >= 9000
+  cublasGemmAlgo_t cublas_algo = static_cast<cublasGemmAlgo_t>(algo);
+  return cublas_algo >= CUBLAS_GEMM_DEFAULT_TENSOR_OP;
+#else
+  return false;
+#endif
+}
+
+template <typename InType>
+static bool TensorOpsAvailable(int cc_major) {
+#if CUDA_VERSION >= 9000
+  if (cc_major >= 7 && TensorOpMathEnabled() &&
+      std::is_same<InType, Eigen::half>::value) {
+    return true;
+  }
+#endif
+  return false;
+}
+
 template <typename InT, typename OutT, typename CompT>
 bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2046,6 +2163,10 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
           &cc_major, &cc_minor) &&
       cc_major < 5) {
+    return false;
+  }
+
+  if (UsesTensorOps(algorithm) && !TensorOpsAvailable<InT>(cc_major)) {
     return false;
   }
 
@@ -2098,10 +2219,19 @@ bool CUDABlas::GetBlasGemmAlgorithms(
 // still return the out_algorithms. Caller needs to make sure that in this case,
 // the returned vector is empty.
 #if CUDA_VERSION >= 8000
-  for (cublasGemmAlgo_t algo :
-       {CUBLAS_GEMM_DFALT, CUBLAS_GEMM_ALGO0, CUBLAS_GEMM_ALGO1,
-        CUBLAS_GEMM_ALGO2, CUBLAS_GEMM_ALGO3, CUBLAS_GEMM_ALGO4,
-        CUBLAS_GEMM_ALGO5, CUBLAS_GEMM_ALGO6, CUBLAS_GEMM_ALGO7}) {
+  for (cublasGemmAlgo_t algo : {
+         CUBLAS_GEMM_DFALT, CUBLAS_GEMM_ALGO0, CUBLAS_GEMM_ALGO1,
+             CUBLAS_GEMM_ALGO2, CUBLAS_GEMM_ALGO3, CUBLAS_GEMM_ALGO4,
+             CUBLAS_GEMM_ALGO5, CUBLAS_GEMM_ALGO6, CUBLAS_GEMM_ALGO7,
+#if CUDA_VERSION >= 9000
+             CUBLAS_GEMM_ALGO8, CUBLAS_GEMM_ALGO9, CUBLAS_GEMM_ALGO10,
+             CUBLAS_GEMM_ALGO11, CUBLAS_GEMM_ALGO12, CUBLAS_GEMM_ALGO13,
+             CUBLAS_GEMM_ALGO14, CUBLAS_GEMM_ALGO15, CUBLAS_GEMM_ALGO16,
+             CUBLAS_GEMM_ALGO17, CUBLAS_GEMM_DFALT_TENSOR_OP,
+             CUBLAS_GEMM_ALGO0_TENSOR_OP, CUBLAS_GEMM_ALGO1_TENSOR_OP,
+             CUBLAS_GEMM_ALGO2_TENSOR_OP
+#endif
+       }) {
     out_algorithms->push_back(algo);
   }
 #endif
