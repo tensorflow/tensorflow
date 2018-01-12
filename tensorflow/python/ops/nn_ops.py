@@ -2193,7 +2193,39 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     if tensor_util.constant_value(keep_prob) == 1:
       return x
 
-    noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
+    def noise_shape_func(x, noise_shape):
+      # If noise_shape is none return immediately.
+      if noise_shape is None:
+        return array_ops.shape(x)
+
+      if isinstance(noise_shape, (tuple, list)) and not noise_shape:
+        dtype = dtypes.int32
+      else:
+        dtype = None
+      noise_shape_ = ops.convert_to_tensor(
+          noise_shape,
+          dtype=dtype,
+          name="noise_shape")
+
+      # Use constant_value (vs. constant_value_as_shape) as we need
+      # the distinction between "unknown" and explicit "not use" (`-1`).
+      # If noise_shape cannot be converted to a const tensor,
+      # then no need to check the value and leave it to rest of the logic.
+      noise_shape_ = tensor_util.constant_value(noise_shape_)
+      if noise_shape_ is None:
+        return noise_shape
+
+      # Replace `-1` with shape in x
+      if noise_shape_ is not None and sum(noise_shape_ == -1) > 0:
+        if x.shape.dims is not None and len(x.shape.dims) == len(noise_shape_):
+          for i, dim in enumerate(x.shape.dims):
+            if noise_shape_[i] == -1 and dim.value is not None:
+              noise_shape_[i] = dim.value
+
+      return noise_shape_
+
+    noise_shape = noise_shape_func(x, noise_shape)
+
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(noise_shape,
