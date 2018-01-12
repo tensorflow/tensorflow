@@ -1040,8 +1040,9 @@ std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
 
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
                                              TransferToServerResponse* result) {
-  Literal literal = Literal(arg->literal());
-  const Shape& shape = literal.shape();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                      Literal::CreateFromProto(arg->literal()));
+  const Shape& shape = literal->shape();
 
   std::vector<se::StreamExecutor*> replicas;
   if (arg->has_device_handle()) {
@@ -1065,7 +1066,7 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
     if (executor->device_ordinal() == master_device_ordinal) {
       TF_RETURN_IF_ERROR(
           execute_backend_->transfer_manager()->TransferLiteralToDevice(
-              executor, literal, *shaped_buffer));
+              executor, *literal, *shaped_buffer));
     } else {
       // The replica is not the master. Create an cloned shaped buffer with
       // the replica's device ordinal. This is required because
@@ -1075,7 +1076,7 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
           CloneShapedBufferOnDevice(*shaped_buffer, executor->device_ordinal());
       TF_RETURN_IF_ERROR(
           execute_backend_->transfer_manager()->TransferLiteralToDevice(
-              executor, literal, *clone));
+              executor, *literal, *clone));
     }
   }
   TF_ASSIGN_OR_RETURN(
@@ -1111,8 +1112,10 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
     executor = replicas[arg->replica_id()];
   }
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
+                      Literal::CreateFromProto(arg->literal()));
   return execute_backend_->transfer_manager()->TransferLiteralToInfeed(
-      executor, Literal(arg->literal()));
+      executor, *literal);
 }
 
 tensorflow::Status Service::TransferFromOutfeed(
@@ -1239,18 +1242,15 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
                                           /*include_unreachable_instructions=*/
                                           false));
 
-  std::vector<Literal> parameters(arg->parameters_size());
+  std::vector<std::unique_ptr<Literal>> parameters(arg->parameters_size());
   for (int64 i = 0; i < arg->parameters_size(); ++i) {
-    parameters[i] = Literal(arg->parameters(i));
+    TF_ASSIGN_OR_RETURN(parameters[i],
+                        Literal::CreateFromProto(arg->parameters(i)));
   }
-  std::vector<const Literal*> parameter_ptrs;
-  std::transform(parameters.begin(), parameters.end(),
-                 std::back_inserter(parameter_ptrs),
-                 [](const Literal& literal) { return &literal; });
-
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<const Literal*>(
-                                               *module, parameter_ptrs));
+  TF_ASSIGN_OR_RETURN(
+      auto result_literal,
+      evaluator.Evaluate<std::unique_ptr<Literal>>(*module, parameters));
 
   // Since the shape_with_output_layout option in ExecutionOption is
   // non-effective to the Evaluator results, explicit relayout here.

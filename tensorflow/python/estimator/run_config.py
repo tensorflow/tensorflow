@@ -195,6 +195,34 @@ def _validate_task_type_and_task_id(cluster_spec, task_env, chief_task_type):
   return task_type, task_id
 
 
+def _get_global_id_in_cluster(
+    cluster_spec, task_type, task_id, chief_task_type):
+  """Returns the global id in cluster."""
+  # Note: This is implementation details, which user should not rely on.
+  # The first id is 0, which is always for the `chief` node. All other nodes,
+  # except `ps`, are ordered alphabetical based on task type (alphabetically)
+  # and task id (ascendingly). `ps` are ordered last.
+
+  # Sort task names in cluster
+  task_type_ordered_list = [chief_task_type]
+  task_type_ordered_list.extend([
+      t for t in sorted(cluster_spec.jobs)
+      if t != chief_task_type and t != TaskType.PS
+  ])
+  if TaskType.PS in cluster_spec.jobs:
+    task_type_ordered_list.append(TaskType.PS)
+
+  next_global_id = 0
+  for t in task_type_ordered_list:
+    if t == task_type:
+      return next_global_id + task_id
+    next_global_id += len(cluster_spec.job_tasks(t))
+
+  # This should never happen.
+  raise RuntimeError('Internal Error: `task_type` ({}) is not in '
+                     'cluster_spec ({}).'.format(task_type, cluster_spec))
+
+
 def _validate_save_ckpt_with_replaced_keys(new_copy, replaced_keys):
   """Validates the save ckpt properties."""
   # Ensure one (and only one) of save_steps and save_secs is not None.
@@ -456,18 +484,25 @@ class RunConfig(object):
         self._num_ps_replicas = _count_ps(self._cluster_spec)
         self._num_worker_replicas = _count_worker(
             self._cluster_spec, chief_task_type=TaskType.CHIEF)
+        self._global_id = _get_global_id_in_cluster(
+            self._cluster_spec,
+            self._task_type,
+            self._task_id,
+            chief_task_type=TaskType.CHIEF)
       else:
         # Evaluator is not part of the training cluster.
         self._cluster_spec = server_lib.ClusterSpec({})
         self._master = _LOCAL_MASTER
         self._num_ps_replicas = 0
         self._num_worker_replicas = 0
+        self._global_id = None  # undefined
 
       self._is_chief = self._task_type == TaskType.CHIEF
     else:
       # Local mode.
       self._task_type = task_env.get(_TASK_TYPE_KEY, TaskType.WORKER)
       self._task_id = int(task_env.get(_TASK_ID_KEY, 0))
+      self._global_id = 0
 
       if self._task_type != TaskType.WORKER:
         raise ValueError(
@@ -501,6 +536,12 @@ class RunConfig(object):
     if self._task_type == TaskType.EVALUATOR:
       raise ValueError('If `master` node exists in `cluster`, task_type '
                        '`evaluator` is not supported.')
+
+    self._global_id = _get_global_id_in_cluster(
+        self._cluster_spec,
+        self._task_type,
+        self._task_id,
+        chief_task_type=TaskType.MASTER)
 
     self._master = _get_session_master(self._cluster_spec, self._task_type,
                                        self._task_id, tf_config)
@@ -539,6 +580,46 @@ class RunConfig(object):
   @property
   def task_id(self):
     return self._task_id
+
+  @property
+  def global_id_in_cluster(self):
+    """The global id in the training cluster.
+
+    All global ids in the training cluster are assigned from an increasing
+    sequence of consecutive integers. The first id is 0.
+
+    Note: Task id (the property field `task_id`) is tracking the index of the
+    node among all nodes with the SAME task type. For example, given the cluster
+    definition as follows:
+
+    ```
+      cluster = {'chief': ['host0:2222'],
+                 'ps': ['host1:2222', 'host2:2222'],
+                 'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+    ```
+
+    Nodes with task type `worker` can have id 0, 1, 2.  Nodes with task type
+    `ps` can have id, 0, 1. So, `task_id` is not unique, but the pair
+    (`task_type`, `task_id`) can uniquely determine a node in the cluster.
+
+    Global id, i.e., this field, is tracking the index of the node among ALL
+    nodes in the cluster. It is uniquely assigned.  For example, for the cluster
+    spec given above, the global ids are assigned as:
+    ```
+      task_type  | task_id  |  global_id
+      --------------------------------
+      chief      | 0        |  0
+      worker     | 0        |  1
+      worker     | 1        |  2
+      worker     | 2        |  3
+      ps         | 0        |  4
+      ps         | 1        |  5
+    ```
+
+    Returns:
+      An integer id.
+    """
+    return self._global_id
 
   @property
   def task_type(self):

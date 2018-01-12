@@ -71,7 +71,7 @@ Before getting into the details of the program itself, let's investigate the
 programming environment. As the following illustration shows, TensorFlow
 provides a programming stack consisting of multiple API layers:
 
-<div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
 <div style="text-align: center">
@@ -305,7 +305,7 @@ features, we can build the estimator.
 
 ## Instantiate an Estimator
 
-The Iris problem is a classic classifier problem. Fortunately, TensorFlow
+The Iris problem is a classic classification problem. Fortunately, TensorFlow
 provides several pre-made classifier Estimators, including:
 
 * @{tf.estimator.DNNClassifier}—for deep models that perform multi-class

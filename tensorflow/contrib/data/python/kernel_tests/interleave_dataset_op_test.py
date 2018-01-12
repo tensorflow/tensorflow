@@ -524,7 +524,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
           self.read_coordination_events[expected_element].acquire()
         else:
           self.write_coordination_events[expected_element].set()
-        time.sleep(0.1)  # Sleep to consistently "avoid" the race condition.
+        time.sleep(0.5)  # Sleep to consistently "avoid" the race condition.
         actual_element = sess.run(self.next_element)
         if not done_first_event:
           done_first_event = True
@@ -611,7 +611,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
           self.read_coordination_events[expected_element].acquire()
         else:
           self.write_coordination_events[expected_element].set()
-        time.sleep(0.1)  # Sleep to consistently "avoid" the race condition.
+        time.sleep(0.5)  # Sleep to consistently "avoid" the race condition.
         actual_element = sess.run(self.next_element)
         if not done_first_event:
           done_first_event = True

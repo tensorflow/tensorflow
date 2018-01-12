@@ -433,13 +433,42 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       id = --min_id;
     }
   }
+
+  // Beware: the reduction dimensions computed by the BCast class are valid iff
+  // we assume that two distinct symbolic dimensions can't be equal and a
+  // symbolic dimension can't be equal to 1. This is often but not always true,
+  // so to make this optimization safe we filter out these cases.
+  const int common_dims = std::min(shape1.size(), shape2.size());
+  for (int i = 0; i < common_dims; ++i) {
+    if (shape1[i] >= 0 && shape2[i] >= 0) {
+      continue;
+    }
+    if (shape1[i] != shape2[i]) {
+      // We're either dealing with 2 different symbolic dimensions or a symbolic
+      // and a know dimensions. We can't be sure whether both are equal or not,
+      // so we can't be sure whether we'll be broadcasting or not.
+      return Status::OK();
+    }
+  }
+  // These extra dims could be equal to 1, in which case there is no
+  // broadcasting. It could also be greater than 1, in which case there would
+  // be broadcasting. Since we don't know, we'll just punt.
+  for (int i = common_dims; i < shape1.size(); ++i) {
+    if (shape1[i] < 0) {
+      return Status::OK();
+    }
+  }
+  for (int i = common_dims; i < shape2.size(); ++i) {
+    if (shape2[i] < 0) {
+      return Status::OK();
+    }
+  }
+
   BCast bcast(shape1, shape2);
   if (!bcast.IsValid()) {
     return Status::OK();
   }
-  // Beware: the reduction dimensions are valid iff we assume that two distinct
-  // symbolic dimensions can't be equal. This is often but not always true, so
-  // this optimization isn't safe.
+
   BCast::Vec reduce_dims[2];
   reduce_dims[0] = bcast.grad_x_reduce_idx();
   reduce_dims[1] = bcast.grad_y_reduce_idx();
@@ -447,25 +476,26 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
   for (int j = 0; j < 2; ++j) {
-    if (!reduce_dims[j].empty()) {
-      // This is the case when a tensor dimension of 1 is matched against an
-      // unknown dimension. The unknown dimension could also be equal to 1, in
-      // which case there would be no reduction.
-      out[j] = nullptr;
-    } else {
-      string const_name = OptimizedNodeName(node, strings::StrCat("-", j));
-      out[j] = node_map_->GetNode(const_name);
-      if (out[j] == nullptr) {
-        out[j] = graph_->add_node();
-        Tensor value(type, TensorShape({0}));
-        *out[j] = CreateNodeDef(const_name, TensorValue(&value));
-        out[j]->set_device(node.device());
-        node_map_->AddNode(const_name, out[j]);
-        string ctrl_dep =
-            AddControlDependency(node.name(), graph_, node_map_.get());
-        *out[j]->add_input() = ctrl_dep;
-        node_map_->AddOutput(NodeName(ctrl_dep), const_name);
+    int reduction_indices = reduce_dims[j].size();
+    Tensor value(type, TensorShape({reduction_indices}));
+    for (int i = 0; i < reduction_indices; ++i) {
+      if (type == DT_INT32) {
+        value.vec<int32>()(i) = reduce_dims[j][i];
+      } else {
+        value.vec<int64>()(i) = reduce_dims[j][i];
       }
+    }
+    string const_name = OptimizedNodeName(node, strings::StrCat("-", j));
+    out[j] = node_map_->GetNode(const_name);
+    if (out[j] == nullptr) {
+      out[j] = graph_->add_node();
+      *out[j] = CreateNodeDef(const_name, TensorValue(&value));
+      out[j]->set_device(node.device());
+      node_map_->AddNode(const_name, out[j]);
+      string ctrl_dep =
+          AddControlDependency(node.name(), graph_, node_map_.get());
+      *out[j]->add_input() = ctrl_dep;
+      node_map_->AddOutput(NodeName(ctrl_dep), const_name);
     }
   }
 
@@ -584,12 +614,11 @@ Status ConstantFolding::MaterializeReductionIndices(
 
 Status ConstantFolding::MaterializeConstants(
     const GraphProperties& properties) {
-  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   const int node_count = graph_->node_size();
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_->mutable_node(i);
     const string& op = node.op();
-    if (is_aggressive && op == "BroadcastGradientArgs") {
+    if (op == "BroadcastGradientArgs") {
       TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
     } else if (IsReduction(node)) {
       TF_RETURN_IF_ERROR(MaterializeReductionIndices(&node, properties));
@@ -1276,26 +1305,31 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
 }
 
 void ConstantFolding::ReplaceOperationWithIdentity(int input_to_forward,
-                                                   NodeDef* node) {
+                                                   NodeDef* node,
+                                                   GraphDef* graph) {
   node->set_op("Identity");
   // Propagate the designated input through the identity.
   node->mutable_input()->SwapElements(0, input_to_forward);
   // Add all other inputs as control dependencies.
   for (int i = 1; i < node->input_size(); ++i) {
-    node->set_input(i, AsControlDependency(node->input(i)));
+    node->set_input(
+        i, AddControlDependency(node->input(i), graph, node_map_.get()));
   }
   graph_modified_ = true;
 }
 
-void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node) {
+void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node,
+                                                        GraphDef* graph) {
   node->set_op("Reciprocal");
   node->mutable_input()->SwapElements(0, 1);
-  node->set_input(1, AsControlDependency(node->input(1)));
+  node->set_input(1,
+                  AddControlDependency(node->input(1), graph, node_map_.get()));
   graph_modified_ = true;
 }
 
 Status ConstantFolding::ReplaceOperationWithConstant(
-    double value, const TensorShapeProto& shape, NodeDef* node) {
+    double value, const TensorShapeProto& shape, NodeDef* node,
+    GraphDef* graph) {
   AttrValue tensor_attr;
   AttrValue dtype_attr = node->attr().at("T");
   TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(dtype_attr.type(), value,
@@ -1309,7 +1343,8 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    node->set_input(i, AsControlDependency(node->input(i)));
+    node->set_input(
+        i, AddControlDependency(node->input(i), graph, node_map_.get()));
   }
   graph_modified_ = true;
   return Status::OK();
@@ -1380,7 +1415,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           ((is_mul && x_is_one) || (is_add && x_is_zero))) {
         // TODO(rmlarsen): Handle subtraction 0 - y.
         // 1 * y = y or 0 + y = y.
-        ReplaceOperationWithIdentity(1, node);
+        ReplaceOperationWithIdentity(1, node, output);
         continue;
       }
 
@@ -1388,7 +1423,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       if (y_matches_output_shape && is_any_div && x_is_one) {
         DataType type = node->attr().at("T").type();
         if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
-          ReplaceDivisionOfOnesByReciprocal(node);
+          ReplaceDivisionOfOnesByReciprocal(node, output);
           continue;
         }
       }
@@ -1402,7 +1437,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           (((is_mul || is_any_div) && y_is_one) ||
            ((is_add || is_sub) && y_is_zero && is_aggressive))) {
         // x * 1 = x or x / 1 = x or x +/- 0 = x
-        ReplaceOperationWithIdentity(0, node);
+        ReplaceOperationWithIdentity(0, node, output);
         continue;
       }
 
@@ -1416,17 +1451,17 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
         const PartialTensorShape shp(output_shape);
         if (shp.IsFullyDefined()) {
           TF_RETURN_IF_ERROR(
-              ReplaceOperationWithConstant(0, output_shape, node));
+              ReplaceOperationWithConstant(0, output_shape, node, output));
           continue;
         }
         // Even if an input shape is only partially known, we may known that it
         // matches the output shape and thus forward the corresponding zero
         // input.
         if ((is_mul || is_any_div) && x_is_zero && x_matches_output_shape) {
-          ReplaceOperationWithIdentity(0, node);
+          ReplaceOperationWithIdentity(0, node, output);
           continue;
         } else if (is_mul && y_is_zero && y_matches_output_shape) {
-          ReplaceOperationWithIdentity(1, node);
+          ReplaceOperationWithIdentity(1, node, output);
           continue;
         }
       }

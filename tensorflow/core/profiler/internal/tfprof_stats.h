@@ -34,17 +34,17 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_code.h"
 #include "tensorflow/core/profiler/internal/tfprof_graph.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_op.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_scope.h"
 #include "tensorflow/core/profiler/internal/tfprof_show.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -92,6 +92,7 @@ class TFStats {
   // and code traces.
   void AddOpLogProto(std::unique_ptr<OpLogProto> op_log);
 
+  void SerializeToString(string* content);
   void WriteProfile(const string& filename);
 
   // For test purpose only.

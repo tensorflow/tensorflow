@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
@@ -56,6 +57,12 @@ struct ItemConfig {
 // Returns nullptr if the given meta_graph cannot be converted.
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
+
+// Factory method for creating a GrapplerItem from a FunctionDef.
+// Returns nullptr if the given function def cannot be converted.
+std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
+    const string& id, const FunctionDef& func,
+    const std::unordered_map<string, AttrValue>& func_attr);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

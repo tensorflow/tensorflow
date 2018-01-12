@@ -12,16 +12,12 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split("-", 1)
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split("."):
-    version_tuple += (str(number),)
-  return version_tuple
+  for i in range(len(bazel_version)):
+    c = bazel_version[i]
+    if not (c.isdigit() or c == "."):
+      bazel_version = bazel_version[:i]
+      break
+  return tuple([int(n) for n in bazel_version.split(".")])
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
@@ -252,6 +248,39 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
+      name = "astor_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/d8/be/c4276b3199ec3feee2a88bc64810fbea8f26d961e0a4cd9c68387a9f35de/astor-0.6.2.tar.gz",
+          "https://pypi.python.org/packages/d8/be/c4276b3199ec3feee2a88bc64810fbea8f26d961e0a4cd9c68387a9f35de/astor-0.6.2.tar.gz",
+      ],
+      sha256 = "ff6d2e2962d834acb125cc4dcc80c54a8c17c253f4cc9d9c43b5102a560bb75d",
+      strip_prefix = "astor-0.6.2",
+      build_file = str(Label("//third_party:astor.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "gast_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
+          "https://pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
+      ],
+      sha256 = "7068908321ecd2774f145193c4b34a11305bd104b4551b09273dfd1d6a374930",
+      strip_prefix = "gast-0.2.0",
+      build_file = str(Label("//third_party:gast.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "termcolor_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+          "https://pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+      ],
+      sha256 = "1d6d69ce66211143803fbc56652b41d73b4a400a2891d7bf7a1cdf4c02de613b",
+      strip_prefix = "termcolor-1.1.0",
+      build_file = str(Label("//third_party:termcolor.BUILD")),
+  )
+
+  tf_http_archive(
       name = "absl_py",
       urls = [
           "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/acec853355ef987eae48a8d87a79351c15dff593.tar.gz",
@@ -422,11 +451,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cb27e1d0da7f30562ea6c1c4f01393afbf112620.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/cb27e1d0da7f30562ea6c1c4f01393afbf112620.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cd244770af79b652d8273d27352f8aa9fd610bb5.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/cd244770af79b652d8273d27352f8aa9fd610bb5.tar.gz",
       ],
-      sha256 = "d4e4d17040a786bab13bb1b73ec2dc358f0c07214f847076e0ded8de15800782",
-      strip_prefix = "llvm-cb27e1d0da7f30562ea6c1c4f01393afbf112620",
+      sha256 = "2e017a379f43e4115aedd042696a0de36234a7202a473239a8286cb79d9dac1d",
+      strip_prefix = "llvm-cd244770af79b652d8273d27352f8aa9fd610bb5",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

@@ -32,8 +32,9 @@ namespace tensorflow {
 ///
 /// Please note that the type signature of this function may change in
 /// the future if support for other DBs is added to core.
-Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
-                             const string& experiment_name,
+///
+/// The result holds a new reference to db.
+Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result);
 

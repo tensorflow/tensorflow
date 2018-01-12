@@ -51,6 +51,9 @@ const int kTensorBundleMinProducer = 0;
 const int kTensorBundleMinConsumer = 0;
 const int kTensorBundleVersion = 1;
 
+// Size of our input buffer for streaming reads
+static const int kBufferSize = 1024 * 1024;
+
 // Key to the special BundleHeaderProto entry.  Do not change this, as clients
 // can make the assumption that the header is always the first entry in the
 // bundle.
@@ -810,8 +813,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file =
-        new io::InputBuffer(file.release(), 1024 << 10 /* 1024KB buffer */);
+    buffered_file = new io::InputBuffer(file.release(), kBufferSize);
     // The InputBuffer and RandomAccessFile objects are both released in dtor.
     data_[entry.shard_id()] = buffered_file;
   }
@@ -819,11 +821,21 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 
   TF_RETURN_IF_ERROR(buffered_file->Seek(entry.offset()));
   uint32 actual_crc32c = 0;
+
   if (DataTypeCanUseMemcpy(entry.dtype())) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
-    TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
-                                                 &unused_bytes_read));
+    if (entry.size() > kBufferSize) {
+      StringPiece sp;
+      TF_RETURN_IF_ERROR(buffered_file->file()->Read(
+          entry.offset(), entry.size(), &sp, backing_buffer));
+      if (sp.data() != backing_buffer) {
+        memmove(backing_buffer, sp.data(), entry.size());
+      }
+    } else {
+      TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
+                                                   &unused_bytes_read));
+    }
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
   } else if (entry.dtype() == DT_VARIANT) {
     // Relies on io::InputBuffer's buffering, because we issue many neighboring

@@ -45,6 +45,7 @@ from tensorflow.python.training import training
 
 class BackpropTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAggregateGradients(self):
 
     def fn(x):
@@ -61,7 +62,7 @@ class BackpropTest(test.TestCase):
     var_np = np.random.rand(4, 2).astype(np.float32)
     var = constant_op.constant(var_np)
     grad = backprop.gradients_function(fn, [0])(var)[0]
-    grad = ops.convert_to_tensor(grad).numpy()
+    grad = self.evaluate(ops.convert_to_tensor(grad))
 
     with context.graph_mode(), self.test_session():
       tf_var = array_ops.constant(var_np, dtypes.float32)

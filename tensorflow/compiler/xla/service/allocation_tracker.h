@@ -67,7 +67,7 @@ class AllocationTracker {
     // The device that the memory is allocated on.
     int device_ordinal;
 
-    // This is the number of times this memory allocation is refered to by
+    // This is the number of times this memory allocation is referred to by
     // registered data handles.
     int ref_count;
   };
