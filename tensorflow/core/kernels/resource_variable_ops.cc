@@ -83,7 +83,7 @@ class ReadVariableOp : public OpKernel {
     ResourceHandle handle = HandleFromInput(ctx, 0);
     const auto status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(ctx, status.ok(),
-                errors::NotFound(
+                errors::FailedPrecondition(
                     "Error while reading resource variable ", handle.name(),
                     " from Container: ", handle.container(),
                     ". This could mean that the variable was uninitialized. ",
