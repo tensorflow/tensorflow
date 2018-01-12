@@ -122,6 +122,8 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
