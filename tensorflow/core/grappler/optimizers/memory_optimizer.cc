@@ -481,6 +481,134 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   }
 }
 
+void SchedulingPass(Cluster* cluster, GrapplerItem* item) {
+  // Look for AddN nodes and record input names.
+  GraphView view(&item->graph);
+
+  std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
+  for (NodeDef& node : *item->graph.mutable_node()) {
+    if (!IsAddN(node)) {
+      continue;
+    }
+    for (const auto& input : view.GetFanins(node, false)) {
+      if (input.node->device() == node.device()) {
+        string tensor_name =
+            strings::StrCat(input.node->name(), ":", input.port_id);
+        addn_list[tensor_name].insert(&node);
+      }
+    }
+  }
+
+  GraphMemory memory(*item);
+  const std::unordered_map<string, DeviceProperties>& devices =
+      cluster->GetDevices();
+  Status s = memory.InferStatically(devices);
+  if (!s.ok()) {
+    VLOG(1) << "Failed to infer memory usage: " << s.error_message();
+    return;
+  }
+
+  std::unordered_set<NodeDef*> addn_to_rewrite;
+  for (const auto& device : devices) {
+    const string& name = device.first;
+    const DeviceProperties& prop = device.second;
+    if (prop.memory_size() <= 0) {
+      VLOG(1) << "Available memory unknown for device " << name;
+      continue;
+    }
+    const GraphMemory::MemoryUsage& mem_usage = memory.GetPeakMemoryUsage(name);
+
+    if (mem_usage.used_memory <= prop.memory_size() * 0.8) {
+      continue;
+    }
+
+    for (const auto& live : mem_usage.live_tensors) {
+      string tensor_name = strings::StrCat(live.node, ":", live.output_id);
+      auto it = addn_list.find(tensor_name);
+      if (it != addn_list.end()) {
+        addn_to_rewrite.insert(it->second.begin(), it->second.end());
+      }
+    }
+  }
+
+  if (addn_to_rewrite.empty()) {
+    return;
+  }
+  GraphProperties properties(*item);
+  s = properties.InferStatically(false);
+  if (!s.ok()) {
+    VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    return;
+  }
+
+  // Rewrite the AddN.
+  for (NodeDef* node : addn_to_rewrite) {
+    if (!properties.HasOutputProperties(node->name())) {
+      VLOG(1) << "Missing properties for " << node->name();
+      continue;
+    }
+    const TensorShapeProto& shape =
+        properties.GetOutputProperties(node->name())[0].shape();
+    DataType dtype = node->attr().at("T").type();
+    const string& device = node->device();
+
+    // Create the temporary variable that will hold intermediate results
+    NodeDef* tmp_var = item->graph.add_node();
+    tmp_var->set_name(strings::StrCat(node->name(), "/tmp_var"));
+    tmp_var->set_op("TemporaryVariable");
+    tmp_var->set_device(device);
+    (*tmp_var->mutable_attr())["dtype"].set_type(dtype);
+    *(*tmp_var->mutable_attr())["shape"].mutable_shape() = shape;
+    (*tmp_var->mutable_attr())["var_name"].set_s(tmp_var->name());
+
+    // Initialize it to zero
+    NodeDef* zeros = item->graph.add_node();
+    zeros->set_name(strings::StrCat(node->name(), "/tmp_var_zeros"));
+    zeros->set_op("ZerosLike");
+    zeros->set_device(device);
+    (*zeros->mutable_attr())["T"].set_type(dtype);
+    *zeros->add_input() = node->input(0);
+
+    NodeDef* initialize = item->graph.add_node();
+    initialize->set_name(strings::StrCat(node->name(), "/tmp_var_initializer"));
+    initialize->set_op("Assign");
+    initialize->set_device(device);
+    (*initialize->mutable_attr())["T"].set_type(dtype);
+    *initialize->add_input() = tmp_var->name();
+    *initialize->add_input() = zeros->name();
+
+    // Add the assignadd nodes
+    std::vector<NodeDef*> accumulates;
+    for (int i = 0; i < node->input_size(); ++i) {
+      const string& input = node->input(i);
+      if (IsControlInput(input)) {
+        *zeros->add_input() = input;
+      } else {
+        NodeDef* accumulate = item->graph.add_node();
+        accumulate->set_name(
+            strings::StrCat(node->name(), "/tmp_var_accum_", i));
+        accumulate->set_op("AssignAdd");
+        accumulate->set_device(device);
+        (*accumulate->mutable_attr())["T"].set_type(dtype);
+        *accumulate->add_input() = initialize->name();
+        *accumulate->add_input() = input;
+        accumulates.push_back(accumulate);
+      }
+    }
+
+    // Rewrite the AddN node as a DestroyTemporaryVariable ops
+    node->set_op("DestroyTemporaryVariable");
+    node->clear_input();
+    node->clear_attr();
+    (*node->mutable_attr())["T"].set_type(dtype);
+    (*node->mutable_attr())["var_name"].set_s(tmp_var->name());
+    *node->add_input() = initialize->name();
+    for (const NodeDef* accum : accumulates) {
+      *node->add_input() = AsControlDependency(accum->name());
+    }
+  }
+}
+
 Status BuildSwapPair(NodeDef* node, int input_to_swap, GraphDef* graph,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
   const OpDef* op_def;
@@ -747,6 +875,14 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   RecomputationRewritingPass(optimization_level_,
                              recomputation_targets_name_prefix_,
                              optimized_graph, item);
+
+  if ((optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
+       optimization_level_ == RewriterConfig::HEURISTICS) &&
+      cluster != nullptr) {
+    GrapplerItem optimized_item(item, std::move(*optimized_graph));
+    SchedulingPass(cluster, &optimized_item);
+    optimized_graph->Swap(&optimized_item.graph);
+  }
 
   if (optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS &&
       cluster != nullptr) {

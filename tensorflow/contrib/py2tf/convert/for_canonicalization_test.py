@@ -12,43 +12,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for gradients_function module."""
+"""Tests for for_canonicalization module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.eager.python import tfe
-from tensorflow.contrib.py2tf.convert import gradients_function
+from tensorflow.contrib.py2tf.convert import control_flow
+from tensorflow.contrib.py2tf.convert import for_canonicalization
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import gradients_impl
+from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.python.platform import test
 
 
-class GradientsFunctionTest(test.TestCase):
+class TestNamer(control_flow.SymbolNamer):
 
-  def test_transform(self):
+  def new_symbol(self, name_root, _):
+    return name_root
 
-    def loss(x, w):
-      return x * w
 
-    def test_fn(x, w):
-      l, (dw,) = tfe.value_and_gradients_function(loss, [1])(x, w)  # pylint:disable=undefined-variable
-      return l, dw
+class ControlFlowTest(test.TestCase):
 
+  def _parse_and_analyze(self, test_fn, namespace):
     node = parser.parse_object(test_fn)
-    node = gradients_function.transform(node)
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', gradients_impl)
-    setattr(result, 'loss', loss)
+    node = access.resolve(node)
+    return node
 
-    with self.test_session() as sess:
-      self.assertEqual(
-          (12, 3),
-          sess.run(
-              result.test_fn(constant_op.constant(3), constant_op.constant(4))))
+  def test_basic_for(self):
+
+    def test_fn(l):
+      s = 0
+      for e in l:
+        s += e
+      return s
+
+    node = self._parse_and_analyze(test_fn, {})
+    node = for_canonicalization.transform(node, TestNamer())
+    result = compiler.ast_to_object(node)
+
+    l = [1, 2, 3]
+    self.assertEqual(test_fn(l), result.test_fn(l))
+    l = []
+    self.assertEqual(test_fn(l), result.test_fn(l))
 
 
 if __name__ == '__main__':

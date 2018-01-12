@@ -110,6 +110,7 @@ enum BuiltinOperator : byte {
   BATCH_TO_SPACE_ND = 37,
   SPACE_TO_BATCH_ND = 38,
   TRANSPOSE = 39,
+  MEAN = 40,
 }
 
 // Options for the builtin operators.
@@ -140,6 +141,7 @@ union BuiltinOptions {
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
   TransposeOptions,
+  MeanOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -302,6 +304,11 @@ table GatherOptions {
 
 table TransposeOptions {
   perm:[int];
+}
+
+table MeanOptions {
+  axis:[int];
+  keep_dims: bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

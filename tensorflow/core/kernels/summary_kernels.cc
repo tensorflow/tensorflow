@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorboard/db/schema.h"
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -70,6 +71,7 @@ class CreateSummaryDbWriterOp : public OpKernel {
                                      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
                                      &db));
     core::ScopedUnref unref(db);
+    OP_REQUIRES_OK(ctx, SetupTensorboardSqliteDb(db));
     OP_REQUIRES_OK(
         ctx, CreateSummaryDbWriter(db, experiment_name,
                                    run_name, user_name, ctx->env(), &s));

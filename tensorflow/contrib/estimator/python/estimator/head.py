@@ -44,6 +44,7 @@ _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 def multi_class_head(n_classes,
                      weight_column=None,
                      label_vocabulary=None,
+                     loss_reduction=losses.Reduction.SUM,
                      name=None):
   """Creates a `_Head` for multi class classification.
 
@@ -76,6 +77,8 @@ def multi_class_head(n_classes,
       integer within [0, n_classes). If given, labels must be of string type and
       have any value in `label_vocabulary`. Note that errors will be raised if
       `label_vocabulary` is not provided but labels are strings.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -83,17 +86,20 @@ def multi_class_head(n_classes,
     An instance of `_Head` for multi class classification.
 
   Raises:
-    ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.
+    ValueError: if `n_classes`, `label_vocabulary` or `loss_reduction` is
+      invalid.
   """
   return head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint:disable=protected-access
       n_classes=n_classes,
       weight_column=weight_column,
       label_vocabulary=label_vocabulary,
+      loss_reduction=loss_reduction,
       name=name)
 
 
 def binary_classification_head(
-    weight_column=None, thresholds=None, label_vocabulary=None, name=None):
+    weight_column=None, thresholds=None, label_vocabulary=None,
+    loss_reduction=losses.Reduction.SUM, name=None):
   """Creates a `_Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -128,6 +134,8 @@ def binary_classification_head(
       [0, 1]. If given, labels must be string type and have any value in
       `label_vocabulary`. Note that errors will be raised if `label_vocabulary`
       is not provided but labels are strings.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -135,17 +143,20 @@ def binary_classification_head(
     An instance of `_Head` for binary classification.
 
   Raises:
-    ValueError: if `thresholds` contains a value outside of `(0, 1)`.
+    ValueError: If `thresholds` contains a value outside of `(0, 1)`.
+    ValueError: If `loss_reduction` is invalid.
   """
   return head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint:disable=protected-access
       weight_column=weight_column,
       thresholds=thresholds,
       label_vocabulary=label_vocabulary,
+      loss_reduction=loss_reduction,
       name=name)
 
 
 def regression_head(weight_column=None,
                     label_dimension=1,
+                    loss_reduction=losses.Reduction.SUM,
                     name=None):
   """Creates a `_Head` for regression using the `mean_squared_error` loss.
 
@@ -172,15 +183,21 @@ def regression_head(weight_column=None,
     label_dimension: Number of regression labels per example. This is the size
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
+
+  Raises:
+    ValueError: If `label_dimension` or `loss_reduction` is invalid.
   """
   return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
+      loss_reduction=loss_reduction,
       name=name)
 
 
@@ -188,6 +205,7 @@ def multi_label_head(n_classes,
                      weight_column=None,
                      thresholds=None,
                      label_vocabulary=None,
+                     loss_reduction=losses.Reduction.SUM,
                      loss_fn=None,
                      name=None):
   """Creates a `_Head` for multi-label classification.
@@ -237,6 +255,8 @@ def multi_label_head(n_classes,
       [0, n_classes) or multi-hot Tensor. If given, labels must be SparseTensor
       string type and have any value in `label_vocabulary`. Also there will be
       errors if vocabulary is not provided and labels are string.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
     loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
@@ -245,7 +265,8 @@ def multi_label_head(n_classes,
     An instance of `_Head` for multi-label classification.
 
   Raises:
-    ValueError: if `n_classes`, `thresholds`, or `loss_fn` is invalid.
+    ValueError: if `n_classes`, `thresholds`, `loss_reduction` or `loss_fn` is
+    invalid.
   """
   thresholds = tuple(thresholds) if thresholds else tuple()
   if n_classes is None or n_classes < 2:
@@ -267,9 +288,13 @@ def multi_label_head(n_classes,
           'Given: {}'.format(n_classes, len(label_vocabulary)))
   if loss_fn:
     _validate_loss_fn_args(loss_fn)
+  if (loss_reduction not in losses.Reduction.all() or
+      loss_reduction == losses.Reduction.NONE):
+    raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
   return _MultiLabelHead(
       n_classes=n_classes, weight_column=weight_column, thresholds=thresholds,
-      label_vocabulary=label_vocabulary, loss_fn=loss_fn, name=name)
+      label_vocabulary=label_vocabulary, loss_reduction=loss_reduction,
+      loss_fn=loss_fn, name=name)
 
 
 class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
@@ -280,12 +305,14 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                weight_column=None,
                thresholds=None,
                label_vocabulary=None,
+               loss_reduction=losses.Reduction.SUM,
                loss_fn=None,
                name=None):
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
+    self._loss_reduction = loss_reduction
     self._loss_fn = loss_fn
     self._name = name
 
@@ -356,14 +383,12 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
           unweighted_loss, axis=-1, keep_dims=True)
     weights = head_lib._get_weights_and_check_match_logits(  # pylint:disable=protected-access,
         features=features, weight_column=self._weight_column, logits=logits)
-    weighted_sum_loss = losses.compute_weighted_loss(
-        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
-    # _weights() can return 1.
-    example_weight_sum = math_ops.reduce_sum(
-        weights * array_ops.ones_like(unweighted_loss))
+    training_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=self._loss_reduction)
     return head_lib.LossSpec(
-        weighted_sum_loss=weighted_sum_loss,
-        example_weight_sum=example_weight_sum,
+        training_loss=training_loss,
+        unreduced_loss=unweighted_loss,
+        weights=weights,
         processed_labels=processed_labels)
 
   def create_estimator_spec(
@@ -394,60 +419,60 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                     export_output.PredictOutput(predictions))
             })
 
-      (weighted_sum_loss, example_weight_sum,
+      (training_loss, unreduced_loss, weights,
        processed_labels) = self.create_loss(
            features=features, mode=mode, logits=logits, labels=labels)
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        weights = head_lib._get_weights_and_check_match_logits(  # pylint:disable=protected-access,
-            features=features, weight_column=self._weight_column, logits=logits)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=weighted_sum_loss,
+            loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
-                weighted_sum_loss=weighted_sum_loss,
-                example_weight_sum=example_weight_sum))
+                unreduced_loss=unreduced_loss))
 
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
     with ops.name_scope(''):
       summary.scalar(
           head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),  # pylint:disable=protected-access
-          weighted_sum_loss)
-      summary.scalar(
-          head_lib._summary_key(  # pylint:disable=protected-access
-              self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          weighted_sum_loss / example_weight_sum)
+          training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            head_lib._summary_key(  # pylint:disable=protected-access
+                self._name, metric_keys.MetricKeys.LOSS_MEAN),
+            mean_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=weighted_sum_loss,
-        train_op=train_op_fn(weighted_sum_loss))
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
-  def _eval_metric_ops(self, labels, probabilities, weights, weighted_sum_loss,
-                       example_weight_sum):
+  def _eval_metric_ops(self, labels, probabilities, weights, unreduced_loss):
     """Returns a dict of metrics for eval_metric_ops."""
     with ops.name_scope(
         None, 'metrics',
-        [labels, probabilities, weights, weighted_sum_loss, example_weight_sum
-        ]):
+        [labels, probabilities, weights, unreduced_loss]):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           head_lib._summary_key(self._name, keys.LOSS_MEAN):  # pylint:disable=protected-access
               metrics_lib.mean(
-                  # Both values and weights here are reduced, scalar Tensors.
-                  # values is the actual mean we want, but we pass the scalar
-                  # example_weight_sum in order to return the correct update_op
-                  # alongside the value_op for streaming metrics.
-                  values=(weighted_sum_loss / example_weight_sum),
-                  weights=example_weight_sum,
+                  values=unreduced_loss,
+                  weights=weights,
                   name=keys.LOSS_MEAN),
           head_lib._summary_key(self._name, keys.AUC):  # pylint:disable=protected-access
               metrics_lib.auc(labels=labels, predictions=probabilities,

@@ -555,7 +555,7 @@ def create_parser():
       'To show all inputs and outputs TensorInfo for a specific'
       ' SignatureDef specified by the SignatureDef key in a'
       ' MetaGraph.\n'
-      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
+      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve '
       '--signature_def serving_default\n\n'
       'To show all available information in the SavedModel\n:'
       '$saved_model_cli show --dir /tmp/saved_model --all')

@@ -105,7 +105,7 @@ class LOCKABLE Sqlite : public core::RefCounted {
   }
 
   /// \brief Returns rowid assigned to last successful insert.
-  int64 last_insert_row_id() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64 last_insert_rowid() const EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_last_insert_rowid(db_);
   }
 
@@ -151,7 +151,10 @@ class SqliteStatement {
   ///
   /// This can take milliseconds if it was blocking the Sqlite
   /// connection object from being freed.
-  ~SqliteStatement();
+  ~SqliteStatement() {
+    sqlite3_finalize(stmt_);
+    if (db_ != nullptr) db_->Unref();
+  }
 
   /// \brief Returns true if statement is initialized.
   explicit operator bool() const { return stmt_ != nullptr; }
@@ -431,6 +434,10 @@ class SCOPED_LOCKABLE SqliteTransaction {
 
   TF_DISALLOW_COPY_AND_ASSIGN(SqliteTransaction);
 };
+
+#define SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(...) \
+  EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
+#define SQLITE_TRANSACTIONS_EXCLUDED(...) LOCKS_EXCLUDED(__VA_ARGS__)
 
 inline SqliteStatement Sqlite::PrepareOrDie(const StringPiece& sql) {
   SqliteStatement stmt;

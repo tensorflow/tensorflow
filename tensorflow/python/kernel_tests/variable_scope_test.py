@@ -117,7 +117,7 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.dtype.base_dtype, dtypes.float16)
 
-  def testEagerVaribleStore(self):
+  def testEagerVariableStore(self):
     with context.eager_mode():
       store = variable_scope.EagerVariableStore()
       with store.as_default():
