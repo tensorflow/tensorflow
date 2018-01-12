@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 
+#include "tensorflow/contrib/tensorboard/db/summary_converter.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -1039,23 +1040,35 @@ class SummaryDbWriter : public SummaryWriterInterface {
 
   Status WriteHistogram(int64 global_step, Tensor t,
                         const string& tag) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteHistogram not supported. Please use ",
-        "tensorboard.summary.histogram() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(
+        AddTensorAsHistogramToSummary(t, tag, e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
-  Status WriteImage(int64 global_step, Tensor tensor, const string& tag,
+  Status WriteImage(int64 global_step, Tensor t, const string& tag,
                     int max_images, Tensor bad_color) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteImage not supported. Please use ",
-        "tensorboard.summary.image() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(AddTensorAsImageToSummary(t, tag, max_images, bad_color,
+                                                 e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
-  Status WriteAudio(int64 global_step, Tensor tensor, const string& tag,
+  Status WriteAudio(int64 global_step, Tensor t, const string& tag,
                     int max_outputs, float sample_rate) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteAudio not supported. Please use ",
-        "tensorboard.summary.audio() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(AddTensorAsAudioToSummary(
+        t, tag, max_outputs, sample_rate, e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
   string DebugString() override { return "SummaryDbWriter"; }

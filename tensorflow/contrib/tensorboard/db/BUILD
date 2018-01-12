@@ -36,6 +36,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":schema",
+        ":summary_converter",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -66,6 +67,7 @@ cc_library(
     hdrs = ["summary_file_writer.h"],
     copts = tf_copts(),
     deps = [
+        ":summary_converter",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -87,6 +89,20 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "summary_converter",
+    srcs = ["summary_converter.cc"],
+    hdrs = ["summary_converter.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
