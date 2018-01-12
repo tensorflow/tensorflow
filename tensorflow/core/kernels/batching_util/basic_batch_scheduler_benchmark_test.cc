@@ -16,7 +16,7 @@ limitations under the License.
 // Benchmarks for performance (throughput and latency) of BasicBatchScheduler
 // under various rates of task injection.
 
-#include "tensorflow/contrib/batching/basic_batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/basic_batch_scheduler.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
