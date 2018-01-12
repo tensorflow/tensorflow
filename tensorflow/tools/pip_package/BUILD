@@ -10,6 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -34,7 +35,9 @@ transitive_hdrs(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 py_binary(

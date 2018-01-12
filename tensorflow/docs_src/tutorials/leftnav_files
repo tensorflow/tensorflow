@@ -1,17 +1,23 @@
 index.md
-using_gpu.md
+
+### Images
+layers.md
 image_recognition.md
 image_retraining.md
-layers.md
 deep_cnn.md
-word2vec.md
+
+### Sequences
 recurrent.md
-recurrent_quickdraw.md
 seq2seq.md
-linear.md
+recurrent_quickdraw.md
+audio_recognition.md
+
+### Data Representation
 wide.md
 wide_and_deep.md
+word2vec.md
 kernel_methods.md
-audio_recognition.md
+
+### Non-ML
 mandelbrot.md
 pdes.md

@@ -134,7 +134,7 @@ The heart of every Estimator--whether pre-made or custom--is its
 evaluation, and prediction. When you are using a pre-made Estimator,
 someone else has already implemented the model function. When relying
 on a custom Estimator, you must write the model function yourself. A
-@{$extend/estimators$companion document}
+@{$get_started/custom_estimators$companion document}
 explains how to write the model function.
 
 
@@ -186,9 +186,9 @@ est_inception_v3.train(input_fn=train_input_fn, steps=2000)
 ```
 Note that the names of feature columns and labels of a keras estimator come from
 the corresponding compiled keras model. For example, the input key names for
-@{$get_started/input_fn} in above `est_inception_v3` estimator can be obtained
-from `keras_inception_v3.input_names`, and similarly, the predicted output
-names can be obtained from `keras_inception_v3.output_names`.
+`train_input_fn` above can be obtained from `keras_inception_v3.input_names`,
+and similarly, the predicted output names can be obtained from
+`keras_inception_v3.output_names`.
 
 For more details, please refer to the documentation for
 @{tf.keras.estimator.model_to_estimator}.
