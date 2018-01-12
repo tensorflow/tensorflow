@@ -30,6 +30,8 @@ from tensorflow.python.platform import test
 import numpy as np
 
 
+# TODO(andrearaujo): Rename the create_test_network_* functions in order to have
+# more descriptive names.
 def create_test_network_1():
   """Aligned network for test.
 
@@ -206,6 +208,42 @@ def create_test_network_7():
   return g
 
 
+def create_test_network_8():
+  """Aligned network for test, including an intermediate addition.
+
+  The graph is similar to create_test_network_1(), except that it includes a few
+  more layers on top. The added layers compose two different branches whose
+  receptive fields are different. This makes this test case more challenging; in
+  particular, this test fails if a naive DFS-like algorithm is used for RF
+  computation.
+
+  Returns:
+    g: Tensorflow graph object (Graph proto).
+  """
+  g = ops.Graph()
+  with g.as_default():
+    # A 16x16 test image.
+    x = array_ops.placeholder(
+        dtypes.float32, (1, 16, 16, 1), name='input_image')
+    # Left branch before first addition.
+    l1 = slim.conv2d(x, 1, [1, 1], stride=4, scope='L1', padding='VALID')
+    # Right branch before first addition.
+    l2_pad = array_ops.pad(x, [[0, 0], [1, 0], [1, 0], [0, 0]])
+    l2 = slim.conv2d(l2_pad, 1, [3, 3], stride=2, scope='L2', padding='VALID')
+    l3 = slim.conv2d(l2, 1, [1, 1], stride=2, scope='L3', padding='VALID')
+    # First addition.
+    l4 = nn.relu(l1 + l3)
+    # Left branch after first addition.
+    l5 = slim.conv2d(l4, 1, [1, 1], stride=2, scope='L5', padding='VALID')
+    # Right branch after first addition.
+    l6_pad = array_ops.pad(l4, [[0, 0], [1, 0], [1, 0], [0, 0]])
+    l6 = slim.conv2d(l6_pad, 1, [3, 3], stride=2, scope='L6', padding='VALID')
+    # Final addition.
+    nn.relu(l5 + l6, name='output')
+
+  return g
+
+
 class RfUtilsTest(test.TestCase):
 
   def testComputeRFFromGraphDefAligned(self):
@@ -321,6 +359,21 @@ class RfUtilsTest(test.TestCase):
     self.assertEqual(effective_stride_y, 4)
     self.assertEqual(effective_padding_x, 1)
     self.assertEqual(effective_padding_y, 1)
+
+  def testComputeRFFromGraphDefWithIntermediateAddNode(self):
+    graph_def = create_test_network_8().as_graph_def()
+    input_node = 'input_image'
+    output_node = 'output'
+    (receptive_field_x, receptive_field_y, effective_stride_x,
+     effective_stride_y, effective_padding_x, effective_padding_y) = (
+         receptive_field.compute_receptive_field_from_graph_def(
+             graph_def, input_node, output_node))
+    self.assertEqual(receptive_field_x, 11)
+    self.assertEqual(receptive_field_y, 11)
+    self.assertEqual(effective_stride_x, 8)
+    self.assertEqual(effective_stride_y, 8)
+    self.assertEqual(effective_padding_x, 5)
+    self.assertEqual(effective_padding_y, 5)
 
 
 if __name__ == '__main__':

@@ -63,18 +63,30 @@ LocalClient* GetOrCreateLocalClient() {
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
-  VLOG(1) << "Infeeding literal without replica number.";
+  VLOG(1) << "Infeeding literal without replica number; shape: "
+          << literal.shape();
   LocalClient* client = GetOrCreateLocalClient();
   return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
 }
 
 Status TransferToInfeedLocalReplica(const Literal& literal,
                                     int replica_number) {
-  VLOG(1) << "Infeeding literal to replica number: " << replica_number;
+  VLOG(1) << "Infeeding shape " << literal.shape()
+          << " to replica number: " << replica_number;
   LocalClient* client = GetOrCreateLocalClient();
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferToInfeedLocal(literal, device_ordinal);
+}
+
+StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number) {
+  VLOG(1) << "Outfeeding literal from replica number: " << replica_number
+          << " shape: " << shape;
+  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  return client->TransferFromOutfeedLocal(shape, device_ordinal);
 }
 
 LocalShapedBuffer::LocalShapedBuffer(
@@ -110,6 +122,8 @@ CompiledLocalComputation::CompiledLocalComputation(
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments) {
   LocalClient* client = GetOrCreateLocalClient();
+
+  VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
 
   // Each replica populates a StatusOr result, but only replica zero actually
   // retrieves its literal value.
@@ -259,6 +273,12 @@ std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
 
 ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
   return builder_.Infeed(shape);
+}
+
+void LocalComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                      const Shape& shape,
+                                      const string& outfeed_config) {
+  builder_.Outfeed(operand, shape, outfeed_config);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConstantLiteral(
