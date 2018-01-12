@@ -560,6 +560,7 @@ py_test(
         "no_windows",
         "noasan",  # times out
         "notsan",
+        "manual",
     ],
     deps = [
         ":keras",
