@@ -5901,27 +5901,11 @@ tf_kernel_library(
 
 cc_library(
     name = "summary_interface",
-    srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
-    ],
-)
-
-tf_cc_test(
-    name = "summary_interface_test",
-    srcs = ["summary_interface_test.cc"],
-    deps = [
-        ":summary_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -5929,8 +5913,9 @@ tf_kernel_library(
     name = "summary_kernels",
     srcs = ["summary_kernels.cc"],
     deps = [
-        ":summary_interface",
+        "//tensorflow/contrib/tensorboard/db:schema",
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
+        "//tensorflow/contrib/tensorboard/db:summary_file_writer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

@@ -6,6 +6,16 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
+py_binary(
+    name = "visualize",
+    srcs = ["visualize.py"],
+    data = [
+        "//tensorflow/contrib/lite/schema:schema.fbs",
+        "@flatbuffers//:flatc",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],

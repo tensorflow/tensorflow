@@ -57,6 +57,7 @@ important to note that `current_batch_of_words` does not correspond to a
 TensorFlow will automatically sum the gradients of each batch for you.
 
 For example:
+
 ```
  t=0  t=1    t=2  t=3     t=4
 [The, brown, fox, is,     quick]

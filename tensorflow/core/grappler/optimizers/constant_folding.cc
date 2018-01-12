@@ -1256,6 +1256,7 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
   }
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
+    // TODO(rmlarsen): Make DT_HALF case compile.
     //    IS_ONES_CASE(DT_HALF);
     IS_ONES_CASE(DT_FLOAT);
     IS_ONES_CASE(DT_DOUBLE);
@@ -1268,7 +1269,7 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
     IS_ONES_CASE(DT_COMPLEX64);
     IS_ONES_CASE(DT_COMPLEX128);
     default:
-      LOG(ERROR) << "Unexpected type " << DataTypeString(dtype);
+      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
   }
   return false;
@@ -1286,6 +1287,7 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   }
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
+    // TODO(rmlarsen): Make DT_HALF case compile.
     //    IS_ZEROS_CASE(DT_HALF);
     IS_ZEROS_CASE(DT_FLOAT);
     IS_ZEROS_CASE(DT_DOUBLE);
@@ -1298,7 +1300,7 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
     IS_ZEROS_CASE(DT_COMPLEX64);
     IS_ZEROS_CASE(DT_COMPLEX128);
     default:
-      LOG(ERROR) << "Unexpected type " << DataTypeString(dtype);
+      VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
   }
   return false;

@@ -29,8 +29,8 @@ import csv
 import sys
 
 from tensorflow.contrib import framework
-from tensorflow.contrib import receptive_field
 from tensorflow.contrib import slim
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

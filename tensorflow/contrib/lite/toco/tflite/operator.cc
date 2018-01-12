@@ -525,6 +525,25 @@ class Transpose
   }
 };
 
+class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
+                                    ::tflite::BuiltinOptions_MeanOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto axis = builder->CreateVector(op.axis);
+    return ::tflite::CreateMeanOptions(*builder, axis, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->axis.insert(op->axis.end(), options.axis()->begin(),
+                    options.axis()->end());
+    op->keep_dims = options.keep_dims();
+  }
+};
+
 class Split : public CustomOperator<TensorFlowSplitOperator> {
  public:
   using CustomOperator::CustomOperator;
@@ -691,6 +710,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Svdf(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
   ops.emplace_back(new Transpose(::tflite::BuiltinOperator_TRANSPOSE,
                                  OperatorType::kTranspose));
+  ops.emplace_back(
+      new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));

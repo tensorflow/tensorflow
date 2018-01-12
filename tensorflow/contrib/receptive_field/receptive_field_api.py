@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module to compute receptive field parameters for CNN tensorflow models."""
+"""Module that declares the functions in tf.contrib.receptive_field's API."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,3 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.receptive_field.python.util.graph_compute_order import get_compute_order
 from tensorflow.contrib.receptive_field.python.util.receptive_field import compute_receptive_field_from_graph_def
 # pylint: enable=unused-import
+
+del absolute_import
+del division
+del print_function
