@@ -341,7 +341,7 @@ Status VirtualScheduler::Init() {
   // to _Recv as control dependency when creating GrapplerItem.
   std::unordered_map<string, const NodeDef*> name_to_send;
   for (const auto& node : graph.node()) {
-    if (node.op() == "_Send") {
+    if (IsSend(node)) {
       const auto& attr = node.attr();
       name_to_send[attr.at("tensor_name").s()] = &node;
     }
