@@ -45,10 +45,8 @@ using shape_inference::ShapeHandle;
 //
 // 4 Run _WaitForDistributedTPU on TPU_SYSTEM, taking as input the
 // outputs from all the _InitializeHostForDistributedTPU
-// Ops. _WaitForDistributedTPU has an attr host_specs which is a
-// vector<string> giving the partial device spec for each host. These
-// partial specs are combined in the Op with the outputs from the host
-// initialization Ops to construct a mapping from full TPU device
+// Ops. _These partial specs are combined in the Op with the outputs from
+// the host initialization Ops to construct a mapping from full TPU device
 // specs to global TPU ids. Has a single Tensor output which is a
 // matrix of int32 indicating, for each host (outer dimension) and for
 // each TPU on the host (inner dimension) what that TPU's global id
@@ -108,7 +106,6 @@ in a host.
 REGISTER_OP("_WaitForDistributedTPU")
     .Input("inputs: N * int32")
     .Output("topology: string")
-    .Attr("host_specs: list(string)")
     .Attr("startup_timeout_sec: int = 20")
     .Attr("N: int")
     .SetIsStateful()

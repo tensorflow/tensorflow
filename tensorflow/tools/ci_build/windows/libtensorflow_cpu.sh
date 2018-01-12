@@ -31,14 +31,6 @@ if [ ! -e "WORKSPACE" ]; then
   exit 1
 fi
 
-# Enable JNI support for Windows in Bazel.
-# This can be removed once
-# https://github.com/bazelbuild/bazel/pull/2599
-# has been merged and we switch to a bazel release containing it.
-cp "${JAVA_HOME}/include/win32/jni_md.h" "./tensorflow/java/src/main/native/windows_jni_md.h"
-sed -i -e "s|@bazel_tools//tools/jdk:jni_md_header-linux|windows_jni_md.h|" ./tensorflow/java/src/main/native/BUILD
-#### END HACKS TO BE RESOLVED WITH NEW BAZEL VERSIONS ####
-
 export TF_BAZEL_TARGETS="//tensorflow:libtensorflow.so"
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:clicenses_generate"
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/java:libtensorflow_jni.so"
@@ -54,11 +46,6 @@ bazel build -c opt \
   tensorflow/tools/lib_package:clicenses_generate \
   tensorflow/java:libtensorflow_jni.so \
   tensorflow/tools/lib_package:jnilicenses_generate
-
-# Revert the hacks above
-git checkout ./tensorflow/tools/pip_package/BUILD
-git checkout ./tensorflow/java/src/main/native/BUILD
-rm -f ./tensorflow/java/src/main/native/windows_jni_md.h
 
 DIR=lib_package
 rm -rf ${DIR}

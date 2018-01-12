@@ -24,7 +24,6 @@ from tensorflow.contrib.py2tf import config
 from tensorflow.contrib.py2tf import naming
 from tensorflow.contrib.py2tf.convert import call_trees
 from tensorflow.contrib.py2tf.convert import control_flow
-from tensorflow.contrib.py2tf.convert import gradients_function
 from tensorflow.contrib.py2tf.convert import logical_expressions
 from tensorflow.contrib.py2tf.convert import print_functions
 from tensorflow.contrib.py2tf.convert import side_effect_guards
@@ -143,9 +142,6 @@ def node_to_graph(node, namer, namespace, value_hints):
         * deps: A set of strings, the fully qualified names of object
             dependencies that this node has.
   """
-  # TODO(mdan): Get rid of this.
-  node = gradients_function.transform(node)
-
   node = access.resolve(node)
   node = live_values.resolve(node, namespace, config.PYTHON_LITERALS)
   node = type_info.resolve(node, value_hints)

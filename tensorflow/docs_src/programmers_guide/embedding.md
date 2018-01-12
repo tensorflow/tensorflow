@@ -120,7 +120,7 @@ data set.
   text patterns.
 
 Further useful articles are
-[How to Use t-SNE Effectively](distill.pub/2016/misread-tsne/) and
+[How to Use t-SNE Effectively](https://distill.pub/2016/misread-tsne/) and
 [Principal Component Analysis Explained Visually](http://setosa.io/ev/principal-component-analysis/).
 
 ### Exploration

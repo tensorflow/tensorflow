@@ -422,8 +422,12 @@ class ComputationBuilder {
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
-               const string& outfeed_config);
+  //
+  // shape_with_layout communicates the laid out shape that we want to outfeed
+  // -- if !ShapeUtil::Compatible(GetShape(operand), shape_with_layout) an error
+  // will occur.
+  void Outfeed(const ComputationDataHandle& operand,
+               const Shape& shape_with_layout, const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
   ComputationDataHandle Call(

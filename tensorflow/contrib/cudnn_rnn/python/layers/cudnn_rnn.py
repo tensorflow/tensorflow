@@ -358,7 +358,7 @@ class _CudnnRNN(base_layer.Layer):
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
-    if not (self.built or vs.get_variable_scope().reuse):
+    if not (self.built or vs.get_variable_scope().reuse is True):
       self._create_saveable()
     self.built = True
 
@@ -497,7 +497,7 @@ class _CudnnRNN(base_layer.Layer):
         input_mode=self.input_mode,
         direction=self.direction,
         scope=vs.get_variable_scope(),
-        name="%s_saveable" % self.trainable_variables[0].op.name)
+        name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 

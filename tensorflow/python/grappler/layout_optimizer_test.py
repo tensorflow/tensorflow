@@ -283,7 +283,12 @@ class LayoutOptimizerTest(test.TestCase):
       conv = _two_layer_model(x)
       dim = array_ops.placeholder(dtype='int32')
       split = array_ops.split(conv, 2, axis=dim)
-      output = math_ops.reduce_sum(split[0])
+      scale = constant_op.constant(0.1, shape=[32])
+      offset = constant_op.constant(0.3, shape=[32])
+      bn0 = nn.fused_batch_norm(split[0], scale, offset)
+      bn1 = nn.fused_batch_norm(split[1], scale, offset)
+      add = bn0[0] + bn1[0]
+      output = array_ops.identity(add)
 
       with session.Session() as sess:
         output_val_ref = sess.run(output, feed_dict={dim: 3})
@@ -299,12 +304,10 @@ class LayoutOptimizerTest(test.TestCase):
           num_transposes += 1
         nodes.append(node.name)
 
-      # Four transposes were initially added in the Expand phase of
-      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
-      self._assert_trans_nchw_to_nhwc('split-0-0', nodes)
+      self._assert_trans_nchw_to_nhwc('add_2-0-0', nodes)
       self._assert_map_nhwc_to_nchw('split-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
