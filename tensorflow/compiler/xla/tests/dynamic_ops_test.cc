@@ -51,10 +51,14 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {2}, {3}, {2, 3, 4});
     // Slice at dimension boundaries.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {5}, {3}, {5, 6, 7});
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
     // Zero element slice.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {2}, {0}, {});
+  }
+
+  template <typename IndexT, typename DataT>
+  void TestR1Wrap() {
+    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
   }
 
   template <typename IndexT, typename DataT>
@@ -68,9 +72,6 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {2, 1},
                          {{5}, {8}});
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
-                         {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
     // Zero element slice: 2x0.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {0, 0}, {2, 0},
                          {{}, {}});
@@ -80,23 +81,38 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
+  void TestR2Wrap() {
+    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+    RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
+                         {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
+  }
+
+  template <typename IndexT, typename DataT>
   void TestR3() {
     // R3 Shape: [2, 3, 2]
     // clang-format off
 
     // Slice at dimension start.
     RunR3<IndexT, DataT>(
-      {{{1, 2}, {3, 4}, {5, 6}},
-       {{7, 8}, {9, 10}, {11, 12}}},
-      {0, 0, 0}, {2, 1, 2},
-      {{{1, 2}}, {{7, 8}}});
+            {{{1, 2}, {3, 4}, {5, 6}},
+             {{7, 8}, {9, 10}, {11, 12}}},
+            {0, 0, 0}, {2, 1, 2},
+            {{{1, 2}}, {{7, 8}}});
 
     // Slice in the middle.
     RunR3<IndexT, DataT>(
-      {{{1, 2}, {3, 4}, {5, 6}},
-       {{7, 8}, {9, 10}, {11, 12}}},
-      {0, 1, 1}, {2, 2, 1},
-      {{{4}, {6}}, {{10}, {12}}});
+            {{{1, 2}, {3, 4}, {5, 6}},
+             {{7, 8}, {9, 10}, {11, 12}}},
+            {0, 1, 1}, {2, 2, 1},
+            {{{4}, {6}}, {{10}, {12}}});
+
+    // clang-format on
+  }
+
+  template <typename IndexT, typename DataT>
+  void TestR3Wrap() {
+    // R3 Shape: [2, 3, 2]
+    // clang-format off
 
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
     RunR3<IndexT, DataT>(
@@ -166,17 +182,35 @@ XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, double>(); }
 
+XLA_TEST_F(DynamicSliceTest, Int32R1Wrap) { TestR1Wrap<int32, int32>(); }
+
+XLA_TEST_F(DynamicSliceTest, Int64R1Wrap) { TestR1Wrap<int64, float>(); }
+
+XLA_TEST_F(DynamicSliceTest, UInt64R1Wrap) { TestR1Wrap<uint64, double>(); }
+
 XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, double>(); }
 
 XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 
+XLA_TEST_F(DynamicSliceTest, Int32R2Wrap) { TestR2Wrap<int32, float>(); }
+
+XLA_TEST_F(DynamicSliceTest, Int64R2Wrap) { TestR2Wrap<int64, double>(); }
+
+XLA_TEST_F(DynamicSliceTest, UInt64R2Wrap) { TestR2Wrap<uint64, int32>(); }
+
 XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32, int32>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, double>(); }
+
+XLA_TEST_F(DynamicSliceTest, Int32R3Wrap) { TestR3Wrap<int32, int32>(); }
+
+XLA_TEST_F(DynamicSliceTest, Int64R3Wrap) { TestR3Wrap<int64, float>(); }
+
+XLA_TEST_F(DynamicSliceTest, UInt64R3Wrap) { TestR3Wrap<uint64, double>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R1Pred) {
   // Slice at dimension start.
