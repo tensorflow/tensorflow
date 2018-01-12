@@ -297,17 +297,21 @@ void PrintHelp() {
       "See https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/"
       "g3doc/command_line.md for command line tool tutorial.\n");
   printf(
-      "profiler --profile_path=<ProfileProto binary file> # required\nor:\n"
-      "profiler --graph_path=<GraphDef proto file>  # required\n"
-      "         --run_meta_patn=<RunMetadata proto file>  # optional\n"
-      "         --run_log_path=<OpLogProto proto file>  # optional\n\n");
+      "profiler --profile_path=<ProfileProto binary file> # required\n"
+      "\nOr:\n\n"
+      "profiler --graph_path=<GraphDef proto file>  "
+      "# Contains model graph info (no needed for eager execution)\n"
+      "         --run_meta_path=<RunMetadata proto file>  "
+      "# Contains runtime info. Optional.\n"
+      "         --run_log_path=<OpLogProto proto file>  "
+      "# Contains extra source code, flops, custom type info. Optional\n\n");
   printf(
-      "\nCommands:\n"
+      "\nTo skip interactive mode, append one of the following commands:\n"
       "  scope: Organize profiles based on name scopes.\n"
       "  graph: Organize profiles based on graph node input/output.\n"
       "  op: Organize profiles based on operation type.\n"
       "  code: Organize profiles based on python codes (need op_log_path).\n"
-      "  advise: Auto-profile and advise.\n"
+      "  advise: Auto-profile and advise. (experimental)\n"
       "  set: Set options that will be default for follow up commands.\n"
       "  help: Show helps.\n");
   fflush(stdout);
