@@ -128,8 +128,6 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, inst, 2));
 
-  // We try to update in-place but it is possible that the input is a constant
-  // tensor in which case we need to make a copy of it to update it.
   poplar::program::Sequence seq;
   if (!input.isParallelWriteable()) {
     poplar::Tensor copy;
@@ -144,29 +142,39 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
     input = copy;
   }
 
-  // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
-  // Tensorflow prefers signed int. Convert if necessary.
   auto type = indices.elementType();
   if (type == poplar::INT) {
     indices = indices.reinterpret(poplar::UNSIGNED_INT);
   }
 
-  // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()
-  // optimises the order. A possible future optimisation might be to omit
-  // dimensions that aren't actually sliced.
-  std::vector<std::size_t> slice_dims(inst->shape().dimensions_size());
-  std::iota(slice_dims.begin(), slice_dims.end(), 0);
+  std::vector<std::size_t> slice_dims;
+  std::vector<std::size_t> slice_sizes;
+  poplar::Tensor slice_indices;
+  for (unsigned d=0; d<inst->shape().dimensions_size(); d++) {
+    if (inst->shape().dimensions(d) != update.shape()[d]) {
+      auto t = indices.index({d}).reshape({1});
+      if (slice_dims.size() == 0) {
+        slice_indices = t;
+      } else {
+        slice_indices = poplar::concat(slice_indices, t);
+      }
+      slice_dims.push_back(d);
+      slice_sizes.push_back(update.shape()[d]);
+    }
+  }
 
-  // Add the dynamic update operations to `seq`. This automatically
-  // creates the required compute set.
-  popstd::dynamicUpdate(graph,
-                        input,
-                        update,
-                        indices,
-                        slice_dims,
-                        update.shape(),
-                        seq,
-                        inst->name());
+  if (slice_dims.size() > 0) {
+    popstd::dynamicUpdate(graph,
+                          input,
+                          update,
+                          slice_indices,
+                          slice_dims,
+                          slice_sizes,
+                          seq,
+                          inst->name());
+  } else {
+    seq.add(poplar::program::Copy(update, input));
+  }
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
 
@@ -187,32 +195,45 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, inst, 1));
 
-  // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
-  // Tensorflow prefers signed int. Convert if necessary.
   auto type = indices.elementType();
   if (type == poplar::INT) {
     indices = indices.reinterpret(poplar::UNSIGNED_INT);
   }
 
-  // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()
-  // optimises the order. A possible future optimisation might be to omit
-  // dimensions that aren't actually sliced.
-  std::vector<std::size_t> slice_dims(inst->shape().dimensions_size());
-  std::iota(slice_dims.begin(), slice_dims.end(), 0);
+  std::vector<std::size_t> slice_dims;
+  std::vector<std::size_t> slice_sizes;
+  poplar::Tensor slice_indices;
+  for (unsigned d=0; d<inst->shape().dimensions_size(); d++) {
+    if (inst->shape().dimensions(d) != input.shape()[d]) {
+      auto t = indices.index({d}).reshape({1});
+      if (slice_dims.size() == 0) {
+        slice_indices = t;
+      } else {
+        slice_indices = poplar::concat(slice_indices, t, 0);
+      }
+      slice_dims.push_back(d);
+      slice_sizes.push_back(inst->shape().dimensions(d));
+    }
+  }
 
   // The program to execute the dynamic slice.
   poplar::program::Sequence seq;
 
   // Add the dynamic slice operations to `seq`. This automatically
   // creates the required compute set.
-  poplar::Tensor out =
-    popstd::dynamicSlice(graph,
-                         input,
-                         indices,
-                         slice_dims,
-                         PoplarShapeFromXlaShape(output_shape),
-                         seq,
-                         inst->name());
+  poplar::Tensor out;
+
+  if (slice_dims.size() > 0) {
+    out = popstd::dynamicSlice(graph,
+                               input,
+                               slice_indices,
+                               slice_dims,
+                               slice_sizes,
+                               seq,
+                               inst->name());
+  } else {
+    out = input;
+  }
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
