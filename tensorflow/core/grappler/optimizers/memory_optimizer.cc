@@ -413,6 +413,12 @@ void RecomputeSubgraph(
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
                                 const string& recomputation_targets_name_prefix,
                                 GraphDef* graph, const GrapplerItem& item) {
+  if (optimization_level != RewriterConfig::RECOMPUTATION_HEURISTICS &&
+      optimization_level != RewriterConfig::HEURISTICS &&
+      optimization_level != RewriterConfig::MANUAL) {
+    // Nothing to do
+    return;
+  }
   // The topological numberings and NodeMap will be stale as soon as we start
   // modifying the graph in RecomputeSubgraph. However, RecomputeSubgraph only
   // looks up nodes which were in the original graph, and preserves the graph
@@ -613,7 +619,9 @@ void SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   }
 }
 
-Status BuildSwapPair(NodeDef* node, int input_to_swap, GraphDef* graph,
+Status BuildSwapPair(NodeDef* node, int input_to_swap,
+                     const std::unordered_map<string, const NodeDef*>& name_map,
+                     GraphDef* graph,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
@@ -627,16 +635,23 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap, GraphDef* graph,
   }
 
   string tensor_to_swap = strings::StrCat(node->name(), "_", input_to_swap);
+  string swap_out_name = strings::StrCat("swap_out_", tensor_to_swap);
+  string swap_in_name = strings::StrCat("swap_in_", tensor_to_swap);
+  if (name_map.find(swap_out_name) != name_map.end() ||
+      name_map.find(swap_in_name) != name_map.end()) {
+    return errors::InvalidArgument("Input ", input_to_swap, " of node ",
+                                   node->name(), " is already swapped");
+  }
 
   // Force the tensor to be copied to cpu.
   NodeDef* swap_out_node = graph->add_node();
-  swap_out_node->set_name(strings::StrCat("swap_out_", tensor_to_swap));
+  swap_out_node->set_name(swap_out_name);
   swap_out_node->set_op("Identity");
   swap_out_node->set_device("/CPU");
 
   // Force the tensor to be restored to the device.
   NodeDef* swap_in_node = graph->add_node();
-  swap_in_node->set_name(strings::StrCat("swap_in_", tensor_to_swap));
+  swap_in_node->set_name(swap_in_name);
   swap_in_node->set_op("Identity");
   *swap_in_node->add_input() = swap_out_node->name();
 
@@ -955,7 +970,8 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Swap all the tensors that are marked with the 'swap_to_host' attribute.
     for (int input_id : swap_info.inputs_to_swap) {
       std::pair<NodeDef*, NodeDef*> swap_nodes;
-      if (!BuildSwapPair(node, input_id, optimized_graph, &swap_nodes).ok()) {
+      if (!BuildSwapPair(node, input_id, name_map, optimized_graph, &swap_nodes)
+               .ok()) {
         continue;
       }
       *swap_nodes.first->add_input() = node->input(input_id);
