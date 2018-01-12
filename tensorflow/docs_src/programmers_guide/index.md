@@ -1,16 +1,24 @@
 # Programmer's Guide
 
-The documents in this unit dive into the details of writing TensorFlow
-code.  For TensorFlow 1.3, we revised this document extensively.
-The units are now as follows:
+The documents in this unit dive into the details of how TensorFlow
+works. The units are as follows:
 
-  * @{$programmers_guide/estimators$Estimators}, which introduces a high-level
+## High Level APIs
+
+  * @{$programmers_guide/estimators}, which introduces a high-level
     TensorFlow API that greatly simplifies ML programming.
-  * @{$programmers_guide/tensors$Tensors}, which explains how to create,
+  * @{$programmers_guide/datasets}, which explains how to
+    set up data pipelines to read data sets into your TensorFlow program.
+
+## Low Level APIs
+
+  * @{$programmers_guide/low_level_intro}, which introduces the
+    basics of how you can to use TensorFlow outside of the high Level APIs.
+  * @{$programmers_guide/tensors}, which explains how to create,
     manipulate, and access Tensors--the fundamental object in TensorFlow.
-  * @{$programmers_guide/variables$Variables}, which details how
+  * @{$programmers_guide/variables}, which details how
     to represent shared, persistent state in your program.
-  * @{$programmers_guide/graphs$Graphs and Sessions}, which explains:
+  * @{$programmers_guide/graphs}, which explains:
       * dataflow graphs, which are TensorFlow's representation of computations
         as dependencies between operations.
       * sessions, which are TensorFlow's mechanism for running dataflow graphs
@@ -20,18 +28,40 @@ The units are now as follows:
     such as Estimators or Keras, the high-level API creates and manages
     graphs and sessions for you, but understanding graphs and sessions
     can still be helpful.
-  * @{$programmers_guide/saved_model$Saving and Restoring}, which
+  * @{$programmers_guide/saved_model}, which
     explains how to save and restore variables and models.
-  * @{$programmers_guide/datasets$Input Pipelines}, which explains how to
-    set up data pipelines to read data sets into your TensorFlow program.
-  * @{$programmers_guide/embedding$Embeddings}, which introduces the concept
+  * @{$using_gpu} explains how TensorFlow assigns operations to
+    devices and how you can change the arrangement manually.
+
+
+## ML Concepts
+
+  * @{$programmers_guide/embedding}, which introduces the concept
     of embeddings, provides a simple example of training an embedding in
     TensorFlow, and explains how to view embeddings with the TensorBoard
     Embedding Projector.
-  * @{$programmers_guide/debugger$Debugging TensorFlow Programs}, which
+
+## Debugging
+
+  * @{$programmers_guide/debugger}, which
     explains how to use the TensorFlow debugger (tfdbg).
-  * @{$programmers_guide/version_compat$TensorFlow Version Compatibility},
+
+## TensorBoard
+
+TensorBoard is a utility to visualize different aspects of machine learning.
+The following guides explain how to use TensorBoard:
+
+  * @{$programmers_guide/summaries_and_tensorboard},
+    which introduces TensorBoard.
+  * @{$programmers_guide/graph_viz}, which
+    explains how to visualize the computational graph.
+  * @{$programmers_guide/tensorboard_histograms} which demonstrates the how to
+    use TensorBoard's histogram dashboard.
+
+
+## Misc
+
+  * @{$programmers_guide/version_compat},
     which explains backward compatibility guarantees and non-guarantees.
-  * @{$programmers_guide/faq$FAQ}, which contains frequently asked
-    questions about TensorFlow. (We have not revised this document for v1.3,
-    except to remove some obsolete information.)
+  * @{$programmers_guide/faq}, which contains frequently asked
+    questions about TensorFlow.

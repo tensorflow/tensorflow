@@ -125,6 +125,9 @@ class HloExecutionProfile {
   }
 
   std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }
+  const std::vector<int64>& profile_counters() const {
+    return profile_counters_;
+  }
 
  private:
   const HloProfilePrinter& hlo_profile_printer_;

@@ -25,9 +25,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/py2tf/pyct",
-        "@astor_archive//:astor",
         "@gast_archive//:gast",
-        "@termcolor_archive//:termcolor",
     ],
 )
 
@@ -38,6 +36,7 @@ py_test(
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
     ],
 )
 

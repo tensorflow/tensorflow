@@ -41,12 +41,12 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
                damping,
                layer_collection,
                var_list=None,
-               momentum=0.,
+               momentum=0.9,
                momentum_type="regular",
                norm_constraint=None,
                name="KFAC",
                estimation_mode="gradients",
-               colocate_gradients_with_ops=False,
+               colocate_gradients_with_ops=True,
                cov_devices=None,
                inv_devices=None):
     """Initializes the KFAC optimizer with the given settings.
@@ -70,8 +70,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       var_list: Optional list or tuple of variables to train. Defaults to the
           list of variables collected in the graph under the key
           `GraphKeys.TRAINABLE_VARIABLES`.
-      momentum: The momentum value for this optimizer. Only applies when
-          momentum_type is 'regular' or 'adam'. (Default: 0)
+      momentum: The momentum decay constant to use. Only applies when
+          momentum_type is 'regular' or 'adam'. (Default: 0.9)
       momentum_type: The type of momentum to use in this optimizer, one of
           'regular', 'adam', or 'qmodel'. (Default: 'regular')
       norm_constraint: float or Tensor. If specified, the update is scaled down
@@ -85,6 +85,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           more a more detailed description of these options.
       colocate_gradients_with_ops: Whether we should request gradients we
           compute in the estimator be colocated with their respective ops.
+          (Default: True)
       cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
           computations will be placed on these devices in a round-robin fashion.
           Can be None, which means that no devices are specified.

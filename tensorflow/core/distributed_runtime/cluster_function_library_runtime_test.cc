@@ -103,10 +103,11 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
 TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {
   GraphDef actual;
   std::vector<string> send_keys, recv_keys;
-  TF_CHECK_OK(ConstructFunctionGraphHelper(
-      test::function::Swap().signature(), {{"T", DT_FLOAT}},
-      {"/job:a/replica:0/task:0/device:CPU:0"}, &actual, &send_keys,
-      &recv_keys));
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/device:CPU:0";
+  TF_CHECK_OK(ConstructFunctionGraphHelper(test::function::Swap().signature(),
+                                           {{"T", DT_FLOAT}}, instantiate_opts,
+                                           &actual, &send_keys, &recv_keys));
   GraphDef expected;
   protobuf::TextFormat::ParseFromString(R"(
 node {
@@ -307,12 +308,13 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, DISABLED_InstantiateAndRun) {
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::XTimesTwoInt32();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:localhost/replica:0/task:1/cpu:0";
 
   Tensor y;
   auto x = test::AsTensor<int32>({1, 2, 3, 4});
   TF_EXPECT_OK(InstantiateAndRun("XTimesTwoInt32", lib_def, {},
-                                 {"/job:localhost/replica:0/task:1/cpu:0"}, {x},
-                                 {&y}));
+                                 instantiate_opts, {x}, {&y}));
   test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
 }
 
@@ -321,13 +323,13 @@ TEST_F(ClusterFunctionLibraryRuntimeTest,
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::Swap();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
-
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:localhost/replica:0/task:1/cpu:0";
   Tensor y1, y2;
   auto x1 = test::AsTensor<float>({1, 2, 3, 4});
   auto x2 = test::AsTensor<float>({4, 3, 2, 1});
   TF_EXPECT_OK(InstantiateAndRun("Swap", lib_def, {{"T", DT_FLOAT}},
-                                 {"/job:localhost/replica:0/task:1/cpu:0"},
-                                 {x1, x2}, {&y1, &y2}));
+                                 instantiate_opts, {x1, x2}, {&y1, &y2}));
   test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({4, 3, 2, 1}));
   test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({1, 2, 3, 4}));
 }

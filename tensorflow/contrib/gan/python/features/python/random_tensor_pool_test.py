@@ -33,6 +33,7 @@ class TensorPoolTest(test.TestCase):
     input_value = array_ops.placeholder(
         dtype=dtypes.int32, shape=[None, None, 3])
     output_value = tensor_pool(input_value, pool_size=10)
+    self.assertEqual(output_value.shape.as_list(), [None, None, 3])
 
     with self.test_session(use_gpu=True) as session:
       for i in range(10):
@@ -44,6 +45,7 @@ class TensorPoolTest(test.TestCase):
     """Checks that values are pooled and returned maximally twice."""
     input_value = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     output_value = tensor_pool(input_value, pool_size=10)
+    self.assertEqual(output_value.shape.as_list(), [])
 
     with self.test_session(use_gpu=True) as session:
       outs = []
@@ -61,6 +63,7 @@ class TensorPoolTest(test.TestCase):
     input_value = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     output_value = tensor_pool(
         input_value, pool_size=10, pooling_probability=0.0)
+    self.assertEqual(output_value.shape.as_list(), [])
 
     with self.test_session(use_gpu=True) as session:
       for i in range(50):
@@ -76,6 +79,7 @@ class TensorPoolTest(test.TestCase):
         input_value,
         pool_size=pool_size,
         pooling_probability=pooling_probability)
+    self.assertEqual(output_value.shape.as_list(), [])
 
     with self.test_session(use_gpu=True) as session:
       not_pooled = 0
@@ -95,6 +99,8 @@ class TensorPoolTest(test.TestCase):
                     array_ops.placeholder(dtype=dtypes.int32, shape=[]))
     output_values = tensor_pool(input_values, pool_size=3)
     self.assertEqual(len(output_values), len(input_values))
+    for output_value in output_values:
+      self.assertEqual(output_value.shape.as_list(), [])
 
     with self.test_session(use_gpu=True) as session:
       for i in range(10):

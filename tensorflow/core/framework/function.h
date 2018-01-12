@@ -415,8 +415,19 @@ class FunctionLibraryRuntime {
     // instantiated on the local device.
     string target;
 
-    // TODO(b/70352992): Add an API for allowing a different
-    // FunctionLibraryDefinition to be overlaid on this runtime's library.
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-null, the runtime will use `overlay_lib` to resolve
+    // function(s) named in `function_name` and `attrs`. Otherwise,
+    // the runtime will use its internal library.
+    // NOTE(mrry): If provided, all functions defined in `overlay_lib`
+    // must be self-contained, and cannot refer to functions defined
+    // in other libraries.
+    // TODO(mrry): Provide a mechanism for sharing core functions
+    // between a set of libraries (e.g. by allowing a
+    // `FunctionLibraryDefinition` to store an `outer_scope` pointer
+    // and implementing name resolution across libraries).
+    const FunctionLibraryDefinition* overlay_lib = nullptr;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -484,13 +495,19 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Returns true iff 'function' is stateful.
+  // Returns true iff the function named `function_name` is stateful.
+  // NOTE(mrry): This method assumes that the runtime is associated with a
+  // default function library, and looks up `function_name` in that library.
+  // It does not support overlay libraries.
   virtual bool IsStateful(const string& function_name) = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
   // Returns the function library definition that backs this runtime.
+  // NOTE(mrry): The returned library definition is the default function library
+  // for this runtime. The runtime may instantiate functions from separate
+  // overlay libraries, which are not returned by this function.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 

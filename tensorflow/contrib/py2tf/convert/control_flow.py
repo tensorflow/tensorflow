@@ -67,7 +67,6 @@ class ControlFlowTransformer(gast.NodeTransformer):
     self.generic_visit(node)
     # Scrape out the data flow analysis
     body_scope = anno.getanno(node, 'body_scope')
-    parent_scope_values = anno.getanno(node, 'parent_scope_values')
     body_closure = tuple(body_scope.modified - body_scope.created)
 
     def template(
@@ -105,7 +104,7 @@ class ControlFlowTransformer(gast.NodeTransformer):
         test=node.test,
         body_name=gast.Name(body_name, gast.Load(), None),
         body=node.body,
-        state_init=[parent_scope_values.getval(n) for n in body_closure])
+        state_init=[gast.Name(n, gast.Load(), None) for n in body_closure])
 
     return node
 

@@ -1126,7 +1126,8 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
 
-    This does not support nested dicts.
+    This does not support nested dicts. `a` and `b` can be namedtuples too,
+    which are converted to dicts.
 
     Args:
       a: The expected numpy ndarray (or anything can be converted to one), or
@@ -1139,6 +1140,11 @@ class TensorFlowTestCase(googletest.TestCase):
     Raises:
       ValueError: if only one of `a` and `b` is a dict.
     """
+    # Check if a and/or b are namedtuples.
+    if hasattr(a, "_asdict"):
+      a = a._asdict()
+    if hasattr(b, "_asdict"):
+      b = b._asdict()
     is_a_dict = isinstance(a, dict)
     if is_a_dict != isinstance(b, dict):
       raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))

@@ -172,7 +172,7 @@ If you would like to run TensorFlow on multiple GPUs, you can construct your
 model in a multi-tower fashion where each tower is assigned to a different GPU.
 For example:
 
-```
+``` python
 # Creates a graph.
 c = []
 for d in ['/device:GPU:2', '/device:GPU:3']:

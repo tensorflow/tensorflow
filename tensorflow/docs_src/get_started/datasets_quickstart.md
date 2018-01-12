@@ -75,7 +75,7 @@ Let's walk through the `train_input_fn()`.
 
 In the simplest cases, @{tf.data.Dataset.from_tensor_slices} function takes an
 array and returns a @{tf.data.Dataset} representing slices of the array. For
-example, an array containing the @{$mnist/beginners$mnist training data}
+example, an array containing the @{$tutorials/layers$mnist training data}
 has a shape of `(60000, 28, 28)`. Passing this to `from_tensor_slices` returns
 a `Dataset` object containing 60000 slices, each one a 28x28 image.
 
@@ -228,7 +228,7 @@ features_result, labels_result = dataset.make_one_shot_iterator().get_next()
 The result is a structure of @{$programmers_guide/tensors$TensorFlow tensors},
 matching the layout of the items in the `Dataset`.
 For an introduction to what these objects are and how to work with them,
-see @{$get_started/get_started}.
+see @{$programmers_guide/low_level_intro}.
 
 ``` python
 print((features_result, labels_result))
@@ -291,7 +291,7 @@ calls @{tf.decode_csv} to parse a single line into its features
 and the label. Since Estimators require that features be represented as a
 dictionary, we rely on Python's built-in `dict` and `zip` functions to build
 that dictionary.  The feature names are the keys of that dictionary.
-We then then call the dictionary's `pop` method to remove the label field from
+We then call the dictionary's `pop` method to remove the label field from
 the features dictionary:
 
 ``` python

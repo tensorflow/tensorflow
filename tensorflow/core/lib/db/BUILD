@@ -13,8 +13,8 @@ cc_library(
     hdrs = ["sqlite.h"],
     deps = [
         ":snapfn",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@org_sqlite",
     ],
 )

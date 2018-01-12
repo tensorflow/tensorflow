@@ -284,31 +284,35 @@ class GraphSaver {
 
 class RunWriter {
  public:
-  RunWriter(Env* env, std::shared_ptr<Sqlite> db, const string& experiment_name,
+  RunWriter(Env* env, Sqlite* db, const string& experiment_name,
             const string& run_name, const string& user_name)
       : env_{env},
-        db_{std::move(db)},
-        id_allocator_{env_, db_.get()},
+        db_{db},
+        id_allocator_{env_, db_},
         experiment_name_{experiment_name},
         run_name_{run_name},
         user_name_{user_name},
         insert_tensor_{db_->PrepareOrDie(R"sql(
           INSERT OR REPLACE INTO Tensors (tag_id, step, computed_time, tensor)
           VALUES (?, ?, ?, snap(?))
-        )sql")} {}
+        )sql")} {
+    db_->Ref();
+  }
 
   ~RunWriter() {
-    if (run_id_ == kAbsent) return;
-    auto update = db_->PrepareOrDie(R"sql(
-      UPDATE Runs SET finished_time = ? WHERE run_id = ?
-    )sql");
-    update.BindDouble(1, GetWallTime(env_));
-    update.BindInt(2, run_id_);
-    Status s = update.StepAndReset();
-    if (!s.ok()) {
-      LOG(ERROR) << "Failed to set Runs[" << run_id_
-                 << "].finish_time: " << s.ToString();
+    if (run_id_ != kAbsent) {
+      auto update = db_->PrepareOrDie(R"sql(
+        UPDATE Runs SET finished_time = ? WHERE run_id = ?
+      )sql");
+      update.BindDouble(1, GetWallTime(env_));
+      update.BindInt(2, run_id_);
+      Status s = update.StepAndReset();
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to set Runs[" << run_id_
+                   << "].finish_time: " << s.ToString();
+      }
     }
+    db_->Unref();
   }
 
   Status InsertTensor(int64 tag_id, int64 step, double computed_time,
@@ -330,7 +334,7 @@ class RunWriter {
     TF_RETURN_IF_ERROR(InitializeRun(computed_time));
     int64 graph_id;
     TF_RETURN_IF_ERROR(
-        GraphSaver::Save(env_, db_.get(), &id_allocator_, g.get(), &graph_id));
+        GraphSaver::Save(env_, db_, &id_allocator_, g.get(), &graph_id));
     if (run_id_ != kAbsent) {
       auto set =
           db_->PrepareOrDie("UPDATE Runs SET graph_id = ? WHERE run_id = ?");
@@ -498,7 +502,7 @@ class RunWriter {
   }
 
   Env* env_;
-  std::shared_ptr<Sqlite> db_;
+  Sqlite* db_;
   IdAllocator id_allocator_;
   const string experiment_name_;
   const string run_name_;
@@ -514,12 +518,11 @@ class RunWriter {
 
 class SummaryDbWriter : public SummaryWriterInterface {
  public:
-  SummaryDbWriter(Env* env, std::shared_ptr<Sqlite> db,
+  SummaryDbWriter(Env* env, Sqlite* db,
                   const string& experiment_name, const string& run_name,
                   const string& user_name)
-      : SummaryWriterInterface(),
-        env_{env},
-        run_writer_{env, std::move(db), experiment_name, run_name, user_name} {}
+      : env_{env},
+        run_writer_{env, db, experiment_name, run_name, user_name} {}
   ~SummaryDbWriter() override {}
 
   Status Flush() override { return Status::OK(); }
@@ -621,13 +624,12 @@ class SummaryDbWriter : public SummaryWriterInterface {
 
 }  // namespace
 
-Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
-                             const string& experiment_name,
+Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
-  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db.get()));
-  *result = new SummaryDbWriter(env, std::move(db), experiment_name, run_name,
-                                user_name);
+  *result = nullptr;
+  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
+  *result = new SummaryDbWriter(env, db, experiment_name, run_name, user_name);
   return Status::OK();
 }
 
