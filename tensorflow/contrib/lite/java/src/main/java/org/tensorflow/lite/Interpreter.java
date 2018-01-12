@@ -206,5 +206,13 @@ public final class Interpreter implements AutoCloseable {
     wrapper = null;
   }
 
+  public void setUseNNAPI(Boolean nnapi) {
+    wrapper.setUseNNAPI(nnapi);
+  }
+
+  public void setNumThreads(int num_threads) {
+    wrapper.setNumThreads(num_threads);
+  }
+
   NativeInterpreterWrapper wrapper;
 }
