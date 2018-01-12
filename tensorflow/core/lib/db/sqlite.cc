@@ -173,11 +173,6 @@ Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
   return Status::OK();
 }
 
-SqliteStatement::~SqliteStatement() {
-  if (stmt_ != nullptr) sqlite3_finalize(stmt_);
-  if (db_ != nullptr) db_->Unref();
-}
-
 Status SqliteStatement::Step(bool* is_done) {
   DCHECK(stmt_ != nullptr);
   if (TF_PREDICT_FALSE(bind_error_ != SQLITE_OK)) {
