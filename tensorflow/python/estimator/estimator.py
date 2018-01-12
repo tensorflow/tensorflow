@@ -756,7 +756,10 @@ class Estimator(object):
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = config
+
+    logging.info('Calling model_fn.')
     model_fn_results = self._model_fn(features=features, **kwargs)
+    logging.info('Done calling model_fn.')
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
       raise ValueError('model_fn should return an EstimatorSpec.')
