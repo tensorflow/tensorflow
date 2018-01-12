@@ -744,6 +744,10 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
+  if dtype == dtypes.variant:
+    # TODO(apassos): need to save enough information about variant tensors to do
+    # a zeros
+    return None
   if [shape, dtype] != _last_shape_dtype:
     _last_shape_dtype[:] = [shape, dtype]
     _last_zero[0] = _fast_fill(0, shape, dtype)
