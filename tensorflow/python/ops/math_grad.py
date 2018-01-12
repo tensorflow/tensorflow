@@ -219,7 +219,7 @@ def _SparseSegmentSqrtNGrad(op, grad):
 
 @ops.RegisterGradient("SparseSegmentSqrtNWithNumSegments")
 def _SparseSegmentSqrtNWithNumSegmentsGrad(op, grad):
-  """Gradient for SparseSegmentSqrtNWithNumSegmenets."""
+  """Gradient for SparseSegmentSqrtNWithNumSegments."""
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None, None)
