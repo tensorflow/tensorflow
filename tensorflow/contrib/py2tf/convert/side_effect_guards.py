@@ -112,7 +112,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       #   tf.py_func(...)
 
       args_scope = anno.getanno(node.value, 'args_scope')
-      temp_name = self.namer.new_symbol('temp', args_scope.parent.used)
+      temp_name = self.namer.new_symbol('temp', args_scope.parent.referenced)
       # TODO(mdan): Unsafe reference modification!
       args_scope.mark_write(temp_name)
 

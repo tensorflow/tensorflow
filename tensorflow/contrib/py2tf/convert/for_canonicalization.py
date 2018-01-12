@@ -55,8 +55,10 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
         loop_iter=node.iter,
         target=node.target,
         body=node.body,
-        i=gast.Name(self.namer.new_symbol('i', body_scope.used), None, None),
-        n=gast.Name(self.namer.new_symbol('n', body_scope.used), None, None))
+        i=gast.Name(
+            self.namer.new_symbol('i', body_scope.referenced), None, None),
+        n=gast.Name(
+            self.namer.new_symbol('n', body_scope.referenced), None, None))
 
 
 def transform(node, namer):
