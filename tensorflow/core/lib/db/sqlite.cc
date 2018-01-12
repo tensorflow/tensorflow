@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 extern "C" int sqlite3_snapfn_init(sqlite3*, const char**, const void*);
 
@@ -74,11 +74,6 @@ Status PrintfStatus(int rc, const char* fmt, Args&&... args) {
           strings::Printf(fmt, std::forward<Args>(args)...)};
 }
 
-Status AsStatus(Sqlite* db, int rc) EXCLUSIVE_LOCKS_REQUIRED(*db) {
-  if (TF_PREDICT_TRUE(rc == SQLITE_OK)) return Status::OK();
-  return {GetTfErrorCode(rc), db->errmsg()};
-}
-
 sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
@@ -86,27 +81,29 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
   return stmt;
 }
 
-Status SetEnvPragmaActual(Sqlite* db, const char* pragma, const char* var) {
-  const char* value = std::getenv(var);
-  if (value == nullptr || *value == '\0') return Status::OK();
-  for (const char* p = value; *p != '\0'; ++p) {
-    if (!(('0' <= *p && *p <= '9') || *p == '-' ||
-          ('A' <= *p && *p <= 'Z') ||
-          ('a' <= *p && *p <= 'z'))) {
-      return errors::InvalidArgument("Illegal character");
+Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
+  if (value.empty()) return Status::OK();
+  for (auto p = value.begin(); p < value.end(); ++p) {
+    if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
+          ('a' <= *p && *p <= 'z') || *p == '-')) {
+      return errors::InvalidArgument("Illegal pragma character");
     }
   }
-  // We can't use Bind*() for pragmas.
   SqliteStatement stmt;
-  TF_RETURN_IF_ERROR(
+  TF_RETURN_IF_ERROR(  // We can't use Bind*() pragma statements.
       db->Prepare(strings::StrCat("PRAGMA ", pragma, "=", value), &stmt));
   bool unused_done;
   return stmt.Step(&unused_done);
 }
 
+const StringPiece GetEnv(const char* var) {
+  const char* val = std::getenv(var);
+  return (val == nullptr) ? StringPiece() : StringPiece(val);
+}
+
 Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(SetEnvPragmaActual(db, pragma, var),
-                                  "getenv(", var, ")");
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(SetPragma(db, pragma, GetEnv(var)), "getenv(",
+                                  var, ")");
   return Status::OK();
 }
 
@@ -132,9 +129,13 @@ Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   sqlite3_stmt* rollback = PrepareRawOrDie(sqlite, "ROLLBACK");
   *db = new Sqlite(sqlite, begin, commit, rollback);
   Status s = Status::OK();
+  // Up until 2016 the default SQLite page_size was 1024. This ensures
+  // the new default regardless of linkage unless configured otherwise.
+  s.Update(SetPragma(*db, "page_size", "4096"));
   // TensorFlow is designed to work well in all SQLite modes. However
   // users might find tuning some these pragmas rewarding, depending on
-  // various considerations.
+  // various considerations. Pragmas are set on a best-effort basis and
+  // might be ignored.
   s.Update(EnvPragma(*db, "secure_delete", "TF_SQLITE_SECURE_DELETE"));
   s.Update(EnvPragma(*db, "page_size", "TF_SQLITE_PAGE_SIZE"));
   s.Update(EnvPragma(*db, "journal_mode", "TF_SQLITE_JOURNAL_MODE"));
@@ -165,16 +166,11 @@ Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
                               &ps, nullptr);
   if (rc != SQLITE_OK) {
     *stmt = SqliteStatement();
-    return PrintfStatus(rc, "Prepare() failed: [%d] %s: %.*s",
-                        rc, errmsg(), sql.size(), sql.data());
+    return PrintfStatus(rc, "Prepare() failed: [%d] %s: %.*s", rc, errmsg(),
+                        sql.size(), sql.data());
   }
   *stmt = SqliteStatement(this, ps);
   return Status::OK();
-}
-
-SqliteStatement::~SqliteStatement() {
-  if (stmt_ != nullptr) sqlite3_finalize(stmt_);
-  if (db_ != nullptr) db_->Unref();
 }
 
 Status SqliteStatement::Step(bool* is_done) {
@@ -196,8 +192,8 @@ Status SqliteStatement::Step(bool* is_done) {
       return Status::OK();
     default:
       *is_done = true;
-      return PrintfStatus(rc, "Step() failed: [%d] %s: %s",
-                          rc, db_->errmsg(), sql());
+      return PrintfStatus(rc, "Step() failed: [%d] %s: %s", rc, db_->errmsg(),
+                          sql());
   }
 }
 
@@ -273,8 +269,8 @@ void SqliteTransaction::Begin() {
 Status SqliteTransaction::Commit() {
   int rc = sqlite3_step(db_->commit_);
   if (rc != SQLITE_DONE) {
-    return PrintfStatus(rc, "COMMIT failed: [%d] %s",
-                        rc, sqlite3_errmsg(db_->db_));
+    return PrintfStatus(rc, "COMMIT failed: [%d] %s", rc,
+                        sqlite3_errmsg(db_->db_));
   }
   sqlite3_reset(db_->commit_);
   sqlite3_reset(db_->begin_);

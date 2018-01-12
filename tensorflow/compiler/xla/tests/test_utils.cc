@@ -25,14 +25,21 @@ namespace {
 
 template <typename FloatT>
 void PopulateWithRandomFloatingPointData(Literal* literal) {
-  // TODO(b/69179121): Generate data that is less self-similar.
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<FloatT> generator(-0.9f, 1.0f);
+  // Create uniform numbers between 1 and 1.125 ot avoid creating denormal
+  // numbers.
+  std::uniform_real_distribution<FloatT> generator(1.0f, 1.125f);
   TF_CHECK_OK(literal->Populate<FloatT>(
-      [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
-        return generator(engine);
+      [&](tensorflow::gtl::ArraySlice<int64> indices) {
+        // Generate a random uniforma number from -0.0625 and 0.0625 and bias it
+        // with  a position dependent nubmer with mean 0.037109375. These number
+        // should allow for long chains of accumulation without being too close
+        // to zero or to large to accumulate all numbers accurately.
+        return (generator(engine) - 1.0625) +
+               static_cast<FloatT>(Product(indices) % 113 - 47) /
+                   static_cast<FloatT>(256.0f);
       }));
 }
 

@@ -111,7 +111,7 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring

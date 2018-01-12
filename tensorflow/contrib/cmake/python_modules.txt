@@ -339,6 +339,8 @@ tensorflow/contrib/quantize
 tensorflow/contrib/quantize/python
 tensorflow/contrib/receptive_field
 tensorflow/contrib/receptive_field/python
+tensorflow/contrib/receptive_field/python/util
+tensorflow/contrib/receptive_field/python/util/examples
 tensorflow/contrib/reduce_slice_ops
 tensorflow/contrib/reduce_slice_ops/kernels
 tensorflow/contrib/reduce_slice_ops/ops

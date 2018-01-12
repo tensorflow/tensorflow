@@ -245,11 +245,7 @@ void SetSourceDataType(DataType dtype, NodeDef* node) {
   SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
 }
 
-bool IsNumberType(DataType dtype) {
-  DataTypeVector number_types = NumberTypes();
-  return std::find(number_types.begin(), number_types.end(), dtype) !=
-         number_types.end();
-}
+bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 
 const char kOutputShapesAttr[] = "_output_shapes";
 

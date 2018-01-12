@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import slim
-from tensorflow.contrib.receptive_field.python.util import receptive_field
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -27,7 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
-import numpy as np
 
 
 # TODO(andrearaujo): Rename the create_test_network_* functions in order to have

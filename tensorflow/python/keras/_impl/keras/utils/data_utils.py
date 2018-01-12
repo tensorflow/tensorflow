@@ -476,16 +476,26 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
   def __init__(self, sequence, use_multiprocessing=False, shuffle=False):
     self.sequence = sequence
+    self.use_multiprocessing = use_multiprocessing
 
     # Doing Multiprocessing.Value += x is not process-safe.
     global _SEQUENCE_COUNTER
     if _SEQUENCE_COUNTER is None:
-      _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+      if self.use_multiprocessing:
+        _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+      else:
+        _SEQUENCE_COUNTER = 0
 
-    with _SEQUENCE_COUNTER.get_lock():
-      self.uid = _SEQUENCE_COUNTER.value
-      _SEQUENCE_COUNTER.value += 1
-    self.use_multiprocessing = use_multiprocessing
+    if self.use_multiprocessing:
+      with _SEQUENCE_COUNTER.get_lock():
+        self.uid = _SEQUENCE_COUNTER.value
+        _SEQUENCE_COUNTER.value += 1
+    else:
+      self.uid = _SEQUENCE_COUNTER
+      if isinstance(_SEQUENCE_COUNTER, int):
+        _SEQUENCE_COUNTER += 1
+      else:
+        _SEQUENCE_COUNTER.value += 1
     self.shuffle = shuffle
     self.workers = 0
     self.executor = None

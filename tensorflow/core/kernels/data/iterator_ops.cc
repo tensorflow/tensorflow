@@ -148,7 +148,13 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
-      TF_RETURN_IF_ERROR(captured_iterator->Restore(ctx, reader));
+      IteratorContext::Params params;
+      params.env = ctx->env();
+      params.runner = *(ctx->runner());
+      params.function_library = flib_def;
+      IteratorContext iter_ctx(std::move(params));
+
+      TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
       mutex_lock l(mu_);
       lib_def_ = std::move(flib_def);
       return Status::OK();

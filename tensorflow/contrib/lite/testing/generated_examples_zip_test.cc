@@ -270,6 +270,7 @@ INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_depth)
 INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(mean)
 
 }  // namespace testing
 }  // namespace tflite

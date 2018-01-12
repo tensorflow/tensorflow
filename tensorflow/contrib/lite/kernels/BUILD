@@ -91,6 +91,7 @@ cc_library(
         "local_response_norm.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "mean.cc",
         "mul.cc",
         "pad.cc",
         "pooling.cc",
@@ -261,6 +262,18 @@ tf_cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "mean_test",
+    size = "small",
+    srcs = ["mean_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

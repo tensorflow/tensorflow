@@ -41,6 +41,26 @@ class ScopeTest(test.TestCase):
     scope.mark_read('bar')
     self.assertFalse(scope.has('bar'))
 
+  def test_copy(self):
+    scope = access.Scope(None)
+    scope.mark_write('foo')
+
+    other = access.Scope(None)
+    other.copy_from(scope)
+
+    self.assertTrue('foo' in other.created)
+
+    scope.mark_write('bar')
+    scope.copy_from(other)
+
+    self.assertFalse('bar' in scope.created)
+
+    scope.mark_write('bar')
+    scope.merge_from(other)
+
+    self.assertTrue('bar' in scope.created)
+    self.assertFalse('bar' in other.created)
+
   def test_nesting(self):
     scope = access.Scope(None)
     scope.mark_write('foo')
@@ -75,6 +95,11 @@ class AccessResolverTest(test.TestCase):
     self.assertTrue(anno.getanno(node.body[0].body[2].value,
                                  'is_local'))  # b in return b
 
+  def assertScopeIs(self, scope, used, modified, created):
+    self.assertItemsEqual(used, scope.used)
+    self.assertItemsEqual(modified, scope.modified)
+    self.assertItemsEqual(created, scope.created)
+
   def test_print_statement(self):
 
     def test_fn(a):
@@ -96,12 +121,9 @@ class AccessResolverTest(test.TestCase):
       # The call node should be the one being annotated.
       print_node = print_node.value
       print_args_scope = anno.getanno(print_node, 'args_scope')
-
     # We basically need to detect which variables are captured by the call
     # arguments.
-    self.assertItemsEqual(['a', 'b'], print_args_scope.used)
-    self.assertItemsEqual([], print_args_scope.modified)
-    self.assertItemsEqual([], print_args_scope.created)
+    self.assertScopeIs(print_args_scope, ('a', 'b'), (), ())
 
   def test_call(self):
 
@@ -115,13 +137,10 @@ class AccessResolverTest(test.TestCase):
     node = access.resolve(node)
 
     call_node = node.body[0].body[2].value
-    call_args_scope = anno.getanno(call_node, 'args_scope')
-
     # We basically need to detect which variables are captured by the call
     # arguments.
-    self.assertItemsEqual(['a', 'b'], call_args_scope.used)
-    self.assertItemsEqual([], call_args_scope.modified)
-    self.assertItemsEqual([], call_args_scope.created)
+    self.assertScopeIs(
+        anno.getanno(call_node, 'args_scope'), ('a', 'b'), (), ())
 
   def test_while(self):
 
@@ -136,16 +155,61 @@ class AccessResolverTest(test.TestCase):
     node = access.resolve(node)
 
     while_node = node.body[0].body[1]
-    while_body_scope = anno.getanno(while_node, 'body_scope')
-    while_parent_scope = anno.getanno(while_node, 'parent_scope')
+    self.assertScopeIs(
+        anno.getanno(while_node, 'body_scope'), ('b',), ('b', 'c'), ('c',))
+    self.assertScopeIs(
+        anno.getanno(while_node, 'body_parent_scope'), ('a', 'b', 'c'),
+        ('a', 'b', 'c'), ('a', 'b', 'c'))
 
-    self.assertItemsEqual(['b'], while_body_scope.used)
-    self.assertItemsEqual(['b', 'c'], while_body_scope.modified)
-    self.assertItemsEqual(['c'], while_body_scope.created)
+  def test_for(self):
 
-    self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.used)
-    self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.modified)
-    self.assertItemsEqual(['a', 'b', 'c'], while_parent_scope.created)
+    def test_fn(a):
+      b = a
+      for _ in a:
+        c = b
+        b -= 1
+      return b, c
+
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+
+    for_node = node.body[0].body[1]
+    self.assertScopeIs(
+        anno.getanno(for_node, 'body_scope'), ('b',), ('b', 'c'), ('c',))
+    self.assertScopeIs(
+        anno.getanno(for_node, 'body_parent_scope'), ('a', 'b', 'c'),
+        ('a', 'b', 'c', '_'), ('a', 'b', 'c', '_'))
+
+  def test_if(self):
+
+    def test_fn(x):
+      if x > 0:
+        x = -x
+        y = 2 * x
+        z = -y
+      else:
+        x = 2 * x
+        y = -x
+        u = -y
+      return z, u
+
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+
+    if_node = node.body[0].body[0]
+    self.assertScopeIs(
+        anno.getanno(if_node, 'body_scope'), ('x', 'y'), ('x', 'y', 'z'),
+        ('y', 'z'))
+    # TODO(mdan): Double check: is it ok to not mark a local symbol as not read?
+    self.assertScopeIs(
+        anno.getanno(if_node, 'body_parent_scope'), ('x', 'z', 'u'),
+        ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
+    self.assertScopeIs(
+        anno.getanno(if_node, 'orelse_scope'), ('x', 'y'), ('x', 'y', 'u'),
+        ('y', 'u'))
+    self.assertScopeIs(
+        anno.getanno(if_node, 'body_parent_scope'), ('x', 'z', 'u'),
+        ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
 
 
 if __name__ == '__main__':

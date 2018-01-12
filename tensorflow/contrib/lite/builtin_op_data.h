@@ -198,6 +198,14 @@ typedef struct {
   int num_dimensions;
 } TfLiteTransposeParams;
 
+typedef struct {
+  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
+  // For now we will fix the maximum possible number of dimensions.
+  int axis[8];
+  int num_axis_dimensions;
+  bool keep_dims;
+} TfLiteMeanParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

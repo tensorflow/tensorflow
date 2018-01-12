@@ -34,10 +34,15 @@ class LogicalExpressionTransformer(gast.NodeTransformer):
     self.op_mapping = {
         gast.And: 'tf.logical_and',
         gast.Or: 'tf.logical_or',
+        gast.Not: 'tf.logical_not',
     }
 
   def visit_UnaryOp(self, node):
-    raise NotImplementedError()
+    if isinstance(node.op, gast.Not):
+      tf_function = parser.parse_str(self.op_mapping[type(
+          node.op)]).body[0].value
+      node = gast.Call(func=tf_function, args=[node.operand], keywords=[])
+    return node
 
   def visit_BoolOp(self, node):
     # TODO(mdan): A normalizer may be useful here. Use ANF?
