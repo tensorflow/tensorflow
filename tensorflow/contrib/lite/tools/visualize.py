@@ -266,7 +266,7 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
     # print tensor.keys()
     for h, mapper in keys_to_print:
       val = tensor[h] if h in tensor else None
-      val = tensor[h] if mapper is None else mapper(val)
+      val = val if mapper is None else mapper(val)
       html += "<td>%s</td>\n"%val
 
     html += "</tr>\n"
