@@ -193,6 +193,7 @@ chips on the host.
 REGISTER_OP("ConfigureDistributedTPU")
     .Output("topology: string")
     .Attr("embedding_config: string = ''")
+    .Attr("tpu_embedding_config: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -201,6 +202,9 @@ system.
 
 topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
 topology.
+tpu_embedding_config: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
+describes the embedding lookups of the program.
+embedding_config: Reserved. Do not use.
 )doc");
 
 REGISTER_OP("ShutdownDistributedTPU")

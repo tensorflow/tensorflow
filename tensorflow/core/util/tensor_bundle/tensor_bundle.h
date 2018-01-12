@@ -107,7 +107,14 @@ extern const char* const kHeaderEntryKey;
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
-  BundleWriter(Env* env, StringPiece prefix);
+  struct Options {
+    Options() {}
+    // Alignment, in bytes, for tensor data.
+    // Must be >= 1. The default size of 1 densely packs tensors.
+    int data_alignment{1};
+  };
+  BundleWriter(Env* env, StringPiece prefix,
+               const Options& options = Options());
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
@@ -140,6 +147,7 @@ class BundleWriter {
 
  private:
   Env* const env_;  // Not owned.
+  const Options options_;
   const string prefix_;
   const string tmp_metadata_path_;
   const string tmp_data_path_;
@@ -296,6 +304,8 @@ class BundleReader {
   // bundle. This is a temporary measure that will be removed on Jan 1st 2018.
   // TODO(b/64763924): Remove after Jan 1st 2018.
   bool lenient_names_;
+
+  friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };

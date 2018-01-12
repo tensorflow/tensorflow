@@ -17,7 +17,6 @@ For example, if your model is constructed using the function
 
 ```python
 import tensorflow as tf
-from tensorflow.contrib import receptive_field
 
 # Construct graph.
 g = tf.Graph()
@@ -27,7 +26,7 @@ with g.as_default():
 
 # Compute receptive field parameters.
 rf_x, rf_y, eff_stride_x, eff_stride_y, eff_pad_x, eff_pad_y = \
-  receptive_field.compute_receptive_field_from_graph_def( \
+  tf.contrib.receptive_field.compute_receptive_field_from_graph_def( \
     g.as_graph_def(), 'input_image', 'my_output_endpoint')
 ```
 
@@ -47,7 +46,6 @@ You can then compute the receptive field parameters for Inception-Resnet-v2 as:
 ```python
 from nets import inception
 import tensorflow as tf
-from tensorflow.contrib import receptive_field
 
 # Construct graph.
 g = tf.Graph()
@@ -57,7 +55,7 @@ with g.as_default():
 
 # Compute receptive field parameters.
 rf_x, rf_y, eff_stride_x, eff_stride_y, eff_pad_x, eff_pad_y = \
-  receptive_field.compute_receptive_field_from_graph_def( \
+  tf.contrib.receptive_field.compute_receptive_field_from_graph_def( \
     g.as_graph_def(), 'input_image', 'InceptionResnetV2/Conv2d_7b_1x1/Relu')
 ```
 

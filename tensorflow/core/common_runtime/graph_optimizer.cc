@@ -37,7 +37,8 @@ void GraphOptimizer::Optimize(
     FunctionLibraryRuntime* runtime, Env* env, Device* device,
     std::unique_ptr<Graph>* graph,
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
-        shape_map) {
+        shape_map,
+    const std::function<bool(const Node*)>& cse_consider_fn) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -80,7 +81,7 @@ void GraphOptimizer::Optimize(
       changed = true;
     }
     if (opts_.do_common_subexpression_elimination() &&
-        OptimizeCSE(g, nullptr)) {
+        OptimizeCSE(g, cse_consider_fn)) {
       DumpGraph("OptimizeCSE", g);
       changed = true;
     }

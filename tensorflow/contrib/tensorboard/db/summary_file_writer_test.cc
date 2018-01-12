@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/summary_interface.h"
+#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -37,7 +37,7 @@ class FakeClockEnv : public EnvWrapper {
   uint64 current_millis_;
 };
 
-class SummaryInterfaceTest : public ::testing::Test {
+class SummaryFileWriterTest : public ::testing::Test {
  protected:
   Status SummaryTestHelper(
       const string& test_name,
@@ -47,8 +47,8 @@ class SummaryInterfaceTest : public ::testing::Test {
     CHECK(tests->insert(test_name).second) << ": " << test_name;
 
     SummaryWriterInterface* writer;
-    TF_CHECK_OK(CreateSummaryWriter(1, 1, testing::TmpDir(), test_name, &env_,
-                                    &writer));
+    TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(), test_name,
+                                        &env_, &writer));
     core::ScopedUnref deleter(writer);
 
     TF_CHECK_OK(writer_fn(writer));
@@ -87,7 +87,7 @@ class SummaryInterfaceTest : public ::testing::Test {
   FakeClockEnv env_;
 };
 
-TEST_F(SummaryInterfaceTest, WriteTensor) {
+TEST_F(SummaryFileWriterTest, WriteTensor) {
   TF_CHECK_OK(SummaryTestHelper("tensor_test",
                                 [](SummaryWriterInterface* writer) {
                                   Tensor one(DT_FLOAT, TensorShape({}));
@@ -105,7 +105,7 @@ TEST_F(SummaryInterfaceTest, WriteTensor) {
                                 }));
 }
 
-TEST_F(SummaryInterfaceTest, WriteScalar) {
+TEST_F(SummaryFileWriterTest, WriteScalar) {
   TF_CHECK_OK(SummaryTestHelper(
       "scalar_test",
       [](SummaryWriterInterface* writer) {
@@ -123,7 +123,7 @@ TEST_F(SummaryInterfaceTest, WriteScalar) {
       }));
 }
 
-TEST_F(SummaryInterfaceTest, WriteHistogram) {
+TEST_F(SummaryFileWriterTest, WriteHistogram) {
   TF_CHECK_OK(SummaryTestHelper("hist_test",
                                 [](SummaryWriterInterface* writer) {
                                   Tensor one(DT_FLOAT, TensorShape({}));
@@ -141,7 +141,7 @@ TEST_F(SummaryInterfaceTest, WriteHistogram) {
                                 }));
 }
 
-TEST_F(SummaryInterfaceTest, WriteImage) {
+TEST_F(SummaryFileWriterTest, WriteImage) {
   TF_CHECK_OK(SummaryTestHelper(
       "image_test",
       [](SummaryWriterInterface* writer) {
@@ -162,7 +162,7 @@ TEST_F(SummaryInterfaceTest, WriteImage) {
       }));
 }
 
-TEST_F(SummaryInterfaceTest, WriteAudio) {
+TEST_F(SummaryFileWriterTest, WriteAudio) {
   TF_CHECK_OK(SummaryTestHelper(
       "audio_test",
       [](SummaryWriterInterface* writer) {
@@ -180,7 +180,7 @@ TEST_F(SummaryInterfaceTest, WriteAudio) {
       }));
 }
 
-TEST_F(SummaryInterfaceTest, WriteEvent) {
+TEST_F(SummaryFileWriterTest, WriteEvent) {
   TF_CHECK_OK(
       SummaryTestHelper("event_test",
                         [](SummaryWriterInterface* writer) {
@@ -198,7 +198,7 @@ TEST_F(SummaryInterfaceTest, WriteEvent) {
                         }));
 }
 
-TEST_F(SummaryInterfaceTest, WallTime) {
+TEST_F(SummaryFileWriterTest, WallTime) {
   env_.AdvanceByMillis(7023);
   TF_CHECK_OK(SummaryTestHelper(
       "wall_time_test",

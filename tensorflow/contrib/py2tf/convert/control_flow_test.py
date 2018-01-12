@@ -31,8 +31,13 @@ from tensorflow.python.platform import test
 
 class TestNamer(control_flow.SymbolNamer):
 
-  def new_symbol(self, name_root, _):
-    return name_root
+  def new_symbol(self, name_root, used):
+    i = 0
+    while True:
+      name = '%s%d' % (name_root, i)
+      if name not in used:
+        return name
+      i += 1
 
 
 class ControlFlowTest(test.TestCase):
@@ -77,6 +82,43 @@ class ControlFlowTest(test.TestCase):
 
     with self.test_session() as sess:
       self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
+
+  def test_simple_if(self):
+
+    def test_fn(n):
+      a = 0
+      b = 0
+      if n > 0:
+        a = -n
+      else:
+        b = 2 * n
+      return a, b
+
+    node = self._parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, TestNamer())
+    result = compiler.ast_to_object(node)
+    setattr(result, 'tf', control_flow_ops)
+
+    with self.test_session() as sess:
+      self.assertEqual((-1, 0), sess.run(
+          result.test_fn(constant_op.constant(1))))
+      self.assertEqual((0, -2),
+                       sess.run(result.test_fn(constant_op.constant(-1))))
+
+  def test_if_single_var(self):
+
+    def test_fn(n):
+      if n > 0:
+        n = -n
+      return n
+
+    node = self._parse_and_analyze(test_fn, {})
+    node = control_flow.transform(node, TestNamer())
+    result = compiler.ast_to_object(node)
+    setattr(result, 'tf', control_flow_ops)
+
+    with self.test_session() as sess:
+      self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
 
 
 if __name__ == '__main__':

@@ -27,6 +27,58 @@ struct Dims {
   int strides[N];
 };
 
+// Gets next index to iterate through a multidimensional array.
+inline bool NextIndex(const int num_dims, const int* dims, int* current) {
+  TFLITE_DCHECK_GT(num_dims, 0);
+  TFLITE_DCHECK(dims != nullptr);
+  TFLITE_DCHECK(current != nullptr);
+  int carry = 1;
+  for (int idx = num_dims - 1; idx >= 0; --idx) {
+    int current_val = current[idx] + carry;
+    TFLITE_DCHECK_GE(dims[idx], current_val);
+    if (dims[idx] == current_val) {
+      current[idx] = 0;
+    } else {
+      current[idx] = current_val;
+      carry = 0;
+      break;
+    }
+  }
+  return (carry == 0);
+}
+
+// Gets offset of index if reducing on axis. When reducing, the flattened offset
+// will not change, if the input index changes on the given axis. For example,
+// if you have a 3D tensor and you are reducing to 2D by eliminating axis 0,
+// then index (0, 1, 2) and index (1, 1, 2) will map to the same flattened
+// offset.
+// TODO(kanlig): uses Dims to represent dimensions.
+inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
+                                  const int* index, const int num_axis,
+                                  const int* axis) {
+  TFLITE_DCHECK_GT(num_dims, 0);
+  TFLITE_DCHECK(dims != nullptr);
+  TFLITE_DCHECK(index != nullptr);
+  size_t offset = 0;
+  for (int idx = 0; idx < num_dims; ++idx) {
+    // if we need to skip this axis
+    bool is_axis = false;
+    if (axis != nullptr) {
+      for (int axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
+        if (idx == axis[axis_idx]) {
+          is_axis = true;
+          break;
+        }
+      }
+    }
+    if (!is_axis) {
+      offset = offset * static_cast<size_t>(dims[idx]) +
+               static_cast<size_t>(index[idx]);
+    }
+  }
+  return offset;
+}
+
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < dims.sizes[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims.sizes[1]);

@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -34,6 +35,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
 
 
+@test_util.with_c_api
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
@@ -67,7 +69,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(d)
 
-    d.op.node_def.attr['_swap_to_host'].i = 0
+    d.op._set_attr('_swap_to_host', attr_value_pb2.AttrValue(i=0))
 
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
     graph_size = len(mg.graph_def.node)
@@ -93,6 +95,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
         self.assertEqual('c', node.input[1])
 
 
+@test_util.with_c_api
 class MemoryOptimizerRecomputeTest(test.TestCase):
   """Tests the Python interface to recomputation rewrites.
 
