@@ -408,9 +408,8 @@ fi
 # Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
 
-  docker login --username "${TF_DOCKER_USERNAME}" \
-  --email "${TF_DOCKER_EMAIL}" \
-  --password "${TF_DOCKER_PASSWORD}"
+  docker login -u "${TF_DOCKER_USERNAME}" \
+  -p "${TF_DOCKER_PASSWORD}"
 
   if [[ $? != "0" ]]; then
     die "FAIL: Unable to login. Invalid credentials."
