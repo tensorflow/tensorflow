@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -44,15 +45,28 @@ SubComputationVisitor::SubComputationVisitor(
   inputs_.resize(temp_inputs_.size());
 }
 
+static bool InputIsUnused(HloInstruction* inst) {
+
+}
+
 Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   ArgVector inputs;
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   for (unsigned int i=0; i<shapes.size(); i++) {
     auto& t = temp_inputs_[inst->parameter_number()][i];
-    poplar::Tensor out = graph_->clone(t);
-    inputs.push_back(out);
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    auto src = std::make_pair(inst, i);
+    if (resources_.tensor_allocation_map.count(src) > 0 &&
+        t.containsConstant()) {
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, src, shapes[i], resources_));
+      inputs.push_back(out);
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    } else {
+      poplar::Tensor out = graph_->clone(t);
+      inputs.push_back(out);
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+    }
   }
 
   inputs_[inst->parameter_number()] = inputs;
