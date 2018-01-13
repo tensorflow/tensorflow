@@ -1,5 +1,6 @@
 
 # Creating Custom Estimators
+
 This document introduces custom Estimators. In particular, this document
 demonstrates how to create a custom @{tf.estimator.Estimator$Estimator} that
 mimics the behavior of the pre-made Estimator
@@ -23,9 +24,9 @@ python custom_estimator.py
 ```
 
 If you are feeling impatient, feel free to compare and contrast
-[`custom_estimatr.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py)
+[`custom_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py)
 with
-[`premade_estimatr.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
+[`premade_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
 (which is in the same directory).
 
 
@@ -37,7 +38,7 @@ As the following figure shows, pre-made Estimators are subclasses of the
 of tf.estimator.Estimator:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%"
+<img style="display:block; margin: 0 auto"
   alt="Premade estimators are sub-classes of `Estimator`. Custom Estimators are usually (direct) instances of `Estimator`"
   src="../images/custom_estimators/estimator_types.png">
 </div>
@@ -71,7 +72,7 @@ Let's see how to solve the Iris problem with a custom Estimator. A quick
 reminder--here's the organization of the Iris model that we're trying to mimic:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
+<img style="display:block; margin: 0 auto"
   alt="A diagram of the network architecture: Inputs, 2 hidden layers, and outputs"
   src="../images/custom_estimators/full_network.png">
 </div>
@@ -105,7 +106,7 @@ This input function builds an input pipeline that yields batches of
 
 ## Create feature columns
 
-As detailed in the @{$get_started/estimator$Premade Estimators} and
+As detailed in the @{$get_started/premade_estimators$Premade Estimators} and
 @{$get_started/feature_columns$Feature Columns} chapters, you must define
 your model's feature columns to specify how the model should use each feature.
 Whether working with pre-made Estimators or custom Estimators, you define
@@ -190,7 +191,7 @@ The preceding line applies the transformations defined by your feature columns,
 creating the model's input layer.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
+<img style="display:block; margin: 0 auto"
   alt="A diagram of the input layer, in this case a 1:1 mapping from raw-inputs to features."
   src="../images/custom_estimators/input_layer.png">
 </div>
@@ -225,7 +226,7 @@ After creating two hidden layers, our network looks as follows. For
 simplicity, the figure does not show all the units in each layer.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
+<img style="display:block; margin: 0 auto"
   alt="The input layer with two hidden layers added."
   src="../images/custom_estimators/add_hidden_layer.png">
 </div>
@@ -249,7 +250,7 @@ Here, `net` signifies the final hidden layer. Therefore, the full set of layers
 is now connected as follows:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
+<img style="display:block; margin: 0 auto"
   alt="A logit output layer connected to the top hidden layer"
   src="../images/custom_estimators/add_logits.png">
 </div>
@@ -266,7 +267,7 @@ Versicolor, or Virginica, respectively.
 Later on, these logits will be transformed into probabilities by the
 @{tf.nn.softmax} function.
 
-## Implement training, evaluation, and prediction {modes}
+## Implement training, evaluation, and prediction {#modes}
 
 The final step in creating a model function is to write branching code that
 implements prediction, evaluation, and training.
@@ -335,9 +336,9 @@ The prediction dictionary contains everything that your model returns when run
 in prediction mode.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
+<img style="display:block; margin: 0 auto"
   alt="Additional outputs added to the output layer."
-  src="../images/custom_estimators/full_network.png">
+  src="../images/custom_estimators/add_predictions.png">
 </div>
 
 The `predictions` holds the following three key/value pairs:
@@ -517,13 +518,24 @@ TensorBoard to log. For the custom Estimator you just created, TensorBoard
 generates the following:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="height:260px"
-  alt="Accuracy, steps/second, and loss 'scalar' graphs from tensorboard"
-  src="../images/custom_estimators/tensorboard.png">
+
+<img style="display:block; margin: 0 auto"
+  alt="Accuracy, 'scalar' graph from tensorboard"
+  src="../images/custom_estimators/accuracy.png">
+
+<img style="display:block; margin: 0 auto"
+  alt="loss 'scalar' graph from tensorboard"
+  src="../images/custom_estimators/loss.png">
+
+<img style="display:block; margin: 0 auto"
+  alt="steps/second 'scalar' graph from tensorboard"
+  src="../images/custom_estimators/steps_per_second.png">
 </div>
+
 <div style="text-align: center">
 TensorBoard displays three graphs.
 </div>
+
 
 In brief, here's what the three graphs tell you:
 
@@ -558,7 +570,7 @@ As suggested in the following figure, you may see and also selectively
 disable/enable the reporting using the controls on the left side.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="margin:auto;display:block;"
+<img style="display:block; margin: 0 auto"
   alt="Check-boxes allowing the user to select which runs are shown."
   src="../images/custom_estimators/select_run.jpg">
 </div>

@@ -66,6 +66,8 @@ inline std::string CurrentStackTrace() {
 
   ss << "*** End stack trace ***" << std::endl;
   return ss.str();
+#else
+  return std::string();
 #endif  // defined(TF_GENERATE_BACKTRACE)
 }
 

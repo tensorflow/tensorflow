@@ -173,7 +173,15 @@ class OpCompatibilityTest : public OpsTestBase {
     // Validate that the NodeDef is valid.
     TF_ASSERT_OK(ValidateNodeDef(*node_def(), *new_op_def));
 
-    ExpectIncompatible(old_op_def, *new_op_def, compatibility_error);
+    Status status = OpDefAttrDefaultsUnchanged(old_op_def, *new_op_def);
+    if (status.ok()) {
+      ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
+                    << SummarizeOpDef(*new_op_def);
+    } else {
+      EXPECT_TRUE(
+          StringPiece(status.error_message()).contains(compatibility_error))
+          << status << " does not contain " << compatibility_error;
+    }
   }
 };
 

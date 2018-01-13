@@ -262,9 +262,19 @@ class Estimator(object):
     """Trains a model given training data input_fn.
 
     Args:
-      input_fn: Input function returning a tuple of:
-          features - `Tensor` or dictionary of string feature name to `Tensor`.
-          labels - `Tensor` or dictionary of `Tensor` with labels.
+      input_fn: A function that provides input data for training as minibatches.
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+            tuple (features, labels) with same constraints as below.
+          * A tuple (features, labels): Where features is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and labels is a
+            `Tensor` or a dictionary of string label name to `Tensor`. Both
+            features and labels are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
@@ -332,10 +342,19 @@ class Estimator(object):
     `StopIteration`).
 
     Args:
-      input_fn: Input function returning a tuple of:
-          features - Dictionary of string feature name to `Tensor` or
-            `SparseTensor`.
-          labels - `Tensor` or dictionary of `Tensor` with labels.
+      input_fn: A function that constructs the input data for evaluation.
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+            tuple (features, labels) with same constraints as below.
+          * A tuple (features, labels): Where features is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and labels is a
+            `Tensor` or a dictionary of string label name to `Tensor`. Both
+            features and labels are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
@@ -382,11 +401,20 @@ class Estimator(object):
     """Yields predictions for given features.
 
     Args:
-      input_fn: Input function returning features which is a dictionary of
-        string feature name to `Tensor` or `SparseTensor`. If it returns a
-        tuple, first item is extracted as features. Prediction continues until
-        `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+      input_fn: A function that constructs the features. Prediction continues
+        until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
         `StopIteration`).
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must have
+            same constraints as below.
+          * features: A `Tensor` or a dictionary of string feature name to
+            `Tensor`. features are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+          * A tuple, in which case the first item is extracted as features.
+
       predict_keys: list of `str`, name of the keys to predict. It is used if
         the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
         then rest of the predictions will be filtered from the dictionary. If
@@ -614,7 +642,7 @@ class Estimator(object):
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
-            'input_fn should return (feautures, labels) as a len 2 tuple.')
+            'input_fn should return (features, labels) as a len 2 tuple.')
       return result[0], result[1], input_hooks
     return result, None, input_hooks
 
@@ -728,7 +756,10 @@ class Estimator(object):
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = config
+
+    logging.info('Calling model_fn.')
     model_fn_results = self._model_fn(features=features, **kwargs)
+    logging.info('Done calling model_fn.')
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
       raise ValueError('model_fn should return an EstimatorSpec.')

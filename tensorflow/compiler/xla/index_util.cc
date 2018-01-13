@@ -149,4 +149,33 @@ namespace xla {
   return stride;
 }
 
+/* static */ bool IndexUtil::IndexInBounds(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> index) {
+  int64 rank = ShapeUtil::Rank(shape);
+  if (rank != index.size()) {
+    return false;
+  }
+  for (int64 d = 0; d < rank; ++d) {
+    if (index[d] >= shape.dimensions(d)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* static */ int IndexUtil::CompareIndices(
+    tensorflow::gtl::ArraySlice<int64> lhs,
+    tensorflow::gtl::ArraySlice<int64> rhs) {
+  int64 rank = lhs.size();
+  CHECK_EQ(rhs.size(), rank);
+  for (int64 dim = 0; dim < rank; ++dim) {
+    if (lhs[dim] < rhs[dim]) {
+      return -1;
+    } else if (lhs[dim] > rhs[dim]) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 }  // namespace xla

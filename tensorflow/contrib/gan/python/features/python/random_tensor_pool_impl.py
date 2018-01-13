@@ -128,6 +128,10 @@ def tensor_pool(input_values,
         pool_queue.size() < pool_size, _get_input_value_pooled,
         _get_random_pool_value_and_enqueue_input))
 
+    # Make sure that the shape of `output_value` is set.
+    for input_value, output_value in zip(input_values, output_values):
+      output_value.set_shape(input_value.shape)
+
   if isinstance(original_input_values, list):
     return list(output_values)
   elif isinstance(original_input_values, tuple):

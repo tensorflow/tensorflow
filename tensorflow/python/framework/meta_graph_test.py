@@ -59,6 +59,7 @@ def _TestDir(test_name):
 # pylint: enable=invalid-name
 
 
+@test_util.with_c_api
 class SimpleMetaGraphTest(test.TestCase):
 
   def testNoVariables(self):
@@ -103,7 +104,8 @@ class SimpleMetaGraphTest(test.TestCase):
       # Re-exports the current graph state for comparison to the original.
       new_meta_graph_def, _ = meta_graph.export_scoped_meta_graph(filename +
                                                                   "_new")
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+      test_util.assert_meta_graph_protos_equal(self, meta_graph_def,
+                                               new_meta_graph_def)
 
       # Ensures that we can still get a reference to our graph collections.
       new_input_tensor = ops.get_collection("input_tensor")[0]
@@ -226,7 +228,7 @@ class SimpleMetaGraphTest(test.TestCase):
       double_nested_complex_node_def = None
       for function_def in meta_graph_def.graph_def.library.function:
         for node_def in function_def.node_def:
-          if node_def.name == "double_nested_complex":
+          if node_def.name.startswith("double_nested_complex"):
             double_nested_complex_node_def = node_def
             break
         if double_nested_complex_node_def:
@@ -258,6 +260,7 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
 
 
+@test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):
@@ -435,10 +438,13 @@ class ScopedMetaGraphTest(test.TestCase):
     ]
     orig_meta_graphs = self._testScopedExport(test_dir, filenames)
     new_meta_graphs = self._testScopedImport(test_dir, filenames)
-    # Delete the unbound_inputs to allow directly calling ProtoEqual.
-    del orig_meta_graphs[0].collection_def["unbound_inputs"]
-    del new_meta_graphs[0].collection_def["unbound_inputs"]
     for a, b in zip(orig_meta_graphs, new_meta_graphs):
+      # The unbound input strings are slightly different with the C API enabled
+      # ("images" vs "images:0") due to the original import_graph_def code
+      # vs. ImportGraphDef in C++.
+      # TODO(skyewm): update the pbtxts once _USE_C_API is removed.
+      del a.collection_def["unbound_inputs"]
+      del b.collection_def["unbound_inputs"]
       test_util.assert_meta_graph_protos_equal(self, a, b)
 
   def testScopedImportUnderNameScope(self):
@@ -572,7 +578,8 @@ class ScopedMetaGraphTest(test.TestCase):
                                                       "exported_queue1.pbtxt")
     new_meta_graph = self._testScopedImportWithQueue(
         test_dir, "exported_queue1.pbtxt", "exported_new_queue1.pbtxt")
-    self.assertProtoEquals(orig_meta_graph, new_meta_graph)
+    test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
+                                             new_meta_graph)
 
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
@@ -718,6 +725,7 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
 
 
+@test_util.with_c_api
 class MetaGraphWithVariableScopeTest(test.TestCase):
 
   def testMetricsCollection(self):
@@ -775,6 +783,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
         initializer = variables.local_variables_initializer()
 
 
+@test_util.with_c_api
 class ExportImportAcrossScopesTest(test.TestCase):
 
   def testPartionedVariables(self):
@@ -845,7 +854,7 @@ class ExportImportAcrossScopesTest(test.TestCase):
             if shared_name_value.s:
               node.attr[shared_name_attr].s = b""
 
-    self.assertProtoEquals(expected, result)
+    test_util.assert_meta_graph_protos_equal(self, expected, result)
 
 
 if __name__ == "__main__":

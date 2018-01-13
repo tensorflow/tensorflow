@@ -264,7 +264,6 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 // space, the returned `NameRangeMap` objects borrow the input/output
 // argument names from `op_def`. The `op_def` must outlive the
 // returned `NameRangeMap` objects.
-// TODO(irving): Remove the NodeDef version; keep only the Node version.
 typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
     NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,

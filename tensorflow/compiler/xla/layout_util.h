@@ -36,6 +36,10 @@ class LayoutUtil {
   // convenience function for protobuf construction.)
   static Layout MakeLayout(tensorflow::gtl::ArraySlice<int64> minor_to_major);
 
+  // Creates a sparse layout with the given maximum number of elements. (This is
+  // a convenience function for protobuf construction.)
+  static Layout MakeSparseLayout(int64 max_sparse_elements);
+
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
 
@@ -72,7 +76,7 @@ class LayoutUtil {
   static void ClearLayout(ProgramShape* program_shape);
 
   // Returns whether the given Shape is an array and has a dense format layout.
-  static bool IsDense(const Shape& shape);
+  static bool IsDenseArray(const Shape& shape);
 
   // Returns whether the given Layout has a dense format.
   static bool IsDense(const Layout& layout);
@@ -106,6 +110,17 @@ class LayoutUtil {
   // Returns the padding_value for the given Shape.  Requires that the shape is
   // an array and has a dense layout.
   static PaddingValue GetPaddingValue(const Shape& shape);
+
+  // Returns whether the given Shape is an array (i.e. not a tuple) and has a
+  // sparse format layout.
+  static bool IsSparseArray(const Shape& shape);
+
+  // Returns whether the given Layout has a sparse format.
+  static bool IsSparse(const Layout& layout);
+
+  // Returns the maximum number of elements that can be stored in a sparse
+  // layout.
+  static int64 MaxSparseElements(const Layout& layout);
 
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
@@ -183,6 +198,8 @@ class LayoutUtil {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
+
+std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 

@@ -350,7 +350,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   for (int i = 0; i < item.graph.node_size(); ++i) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
-  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -423,7 +423,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
 
       GrapplerItem item;
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
-      ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+      ArithmeticOptimizer optimizer;
       GraphDef output;
       Status status = optimizer.Optimize(nullptr, item, &output);
       TF_EXPECT_OK(status);
@@ -625,8 +625,7 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
@@ -650,8 +649,7 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
@@ -673,8 +671,7 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));

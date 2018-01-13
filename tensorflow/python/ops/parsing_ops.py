@@ -749,6 +749,8 @@ def parse_single_example(serialized, features, name=None, example_names=None):
   """
   if not features:
     raise ValueError("Missing features.")
+  if example_names is None:
+    return parse_single_example_v2(serialized, features, name)
   features = _prepend_none_dimension(features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
@@ -1314,6 +1316,7 @@ def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
       match up.
   """
   with ops.name_scope(name, "ParseSingleExample", [serialized]):
+    serialized = ops.convert_to_tensor(serialized, name="serialized")
     dense_defaults = collections.OrderedDict(
     ) if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys

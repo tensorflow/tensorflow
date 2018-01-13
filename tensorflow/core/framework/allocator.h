@@ -198,6 +198,9 @@ class Allocator {
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
+  // Clears the internal stats except for the `in_use` field.
+  virtual void ClearStats() {}
+
  private:
   // No constructors or destructors are run for simple types
   template <typename T>

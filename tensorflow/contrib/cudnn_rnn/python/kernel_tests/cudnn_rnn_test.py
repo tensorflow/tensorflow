@@ -29,6 +29,8 @@ import numpy as np
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn_lib
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -354,6 +356,60 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       saver.save(sess, save_path)
       saver.restore(sess, save_path)
       sess.run(outputs)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesEager(self):
+    # Checks that kernel caching does not cause sharing of temporary storage
+    # across different input shapes when executing eagerly.
+    with context.eager_mode():
+      with ops.device("gpu:0"):
+        first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 28]))
+        second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+            array_ops.zeros([28, 100, 100]))
+        self.assertAllEqual([28, 100, 100], first_output.shape)
+        self.assertAllEqual([28, 100, 100], second_output.shape)
+
+        def _LossFunc():
+          first_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 28]))
+          second_output, _ = cudnn_rnn.CudnnGRU(1, 100)(
+              array_ops.zeros([28, 100, 100]))
+          return (math_ops.reduce_sum(first_output) +
+                  math_ops.reduce_sum(second_output))
+
+        backprop.implicit_grad(_LossFunc)()
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testDifferentShapesGraph(self):
+    # Tests that a single kernel instance presented with multiple input shapes
+    # does not crash with graph execution.
+    with ops.device("gpu:0"):
+      layer = cudnn_rnn.CudnnGRU(1, 100)
+      layer(array_ops.zeros([28, 100, 100]))
+
+      def _Cond(index, accumulation):
+        del accumulation  # unused
+        return math_ops.less(index, 4)
+
+      def _Body(index, accumulation):
+        layer_input = accumulation[:, :, 10 * (1 + index % 2):]
+        output, _ = layer(layer_input)
+        return index + 1, accumulation + output
+
+      original_input = array_ops.zeros([28, 100, 100])
+      _, accumulation = control_flow_ops.while_loop(_Cond, _Body,
+                                                    [0, original_input])
+      grad, = gradients.gradients(
+          math_ops.reduce_sum(accumulation), (original_input,))
+    init_op = variables.global_variables_initializer()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      accumulation_eval, grad_eval = sess.run((accumulation, grad))
+      self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
+      self.assertAllEqual([28, 100, 100], grad_eval.shape)
 
 
 # TODO(jamesqin): Transform to parameterized test after it is included in the

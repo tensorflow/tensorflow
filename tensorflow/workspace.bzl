@@ -12,16 +12,12 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split("-", 1)
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split("."):
-    version_tuple += (str(number),)
-  return version_tuple
+  for i in range(len(bazel_version)):
+    c = bazel_version[i]
+    if not (c.isdigit() or c == "."):
+      bazel_version = bazel_version[:i]
+      break
+  return tuple([int(n) for n in bazel_version.split(".")])
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
@@ -97,11 +93,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
       ],
-      sha256 = "0a8ac1e83ef9c26c0e362bd7968650b710ce54e2d883f0df84e5e45a3abe842a",
-      strip_prefix = "eigen-eigen-034b6c3e1017",
+      sha256 = "2b526c6888639025323fd4f2600533c0f982d304ea48e4f1663e8066bd9f6368",
+      strip_prefix = "eigen-eigen-14e1418fcf12",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -249,6 +245,39 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = str(Label("//third_party:six.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "astor_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/d8/be/c4276b3199ec3feee2a88bc64810fbea8f26d961e0a4cd9c68387a9f35de/astor-0.6.2.tar.gz",
+          "https://pypi.python.org/packages/d8/be/c4276b3199ec3feee2a88bc64810fbea8f26d961e0a4cd9c68387a9f35de/astor-0.6.2.tar.gz",
+      ],
+      sha256 = "ff6d2e2962d834acb125cc4dcc80c54a8c17c253f4cc9d9c43b5102a560bb75d",
+      strip_prefix = "astor-0.6.2",
+      build_file = str(Label("//third_party:astor.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "gast_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
+          "https://pypi.python.org/packages/5c/78/ff794fcae2ce8aa6323e789d1f8b3b7765f601e7702726f430e814822b96/gast-0.2.0.tar.gz",
+      ],
+      sha256 = "7068908321ecd2774f145193c4b34a11305bd104b4551b09273dfd1d6a374930",
+      strip_prefix = "gast-0.2.0",
+      build_file = str(Label("//third_party:gast.BUILD")),
+  )
+
+  tf_http_archive(
+      name = "termcolor_archive",
+      urls = [
+          "https://mirror.bazel.build/pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+          "https://pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+      ],
+      sha256 = "1d6d69ce66211143803fbc56652b41d73b4a400a2891d7bf7a1cdf4c02de613b",
+      strip_prefix = "termcolor-1.1.0",
+      build_file = str(Label("//third_party:termcolor.BUILD")),
   )
 
   tf_http_archive(
@@ -422,11 +451,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cb27e1d0da7f30562ea6c1c4f01393afbf112620.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/cb27e1d0da7f30562ea6c1c4f01393afbf112620.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/649870608ee53da0c86f688e27e87cb5c6b0e090.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/649870608ee53da0c86f688e27e87cb5c6b0e090.tar.gz",
       ],
-      sha256 = "d4e4d17040a786bab13bb1b73ec2dc358f0c07214f847076e0ded8de15800782",
-      strip_prefix = "llvm-cb27e1d0da7f30562ea6c1c4f01393afbf112620",
+      sha256 = "1a046b18f3f67a95f6b58f92872008f215caa7a7fdeec609bac7dc6f374e1859",
+      strip_prefix = "llvm-649870608ee53da0c86f688e27e87cb5c6b0e090",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
