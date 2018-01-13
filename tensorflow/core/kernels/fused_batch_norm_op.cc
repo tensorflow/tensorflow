@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -250,7 +250,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     Tensor x_maybe_transformed = x;
     Tensor x_transformed;
-    Tensor y_transformed;
     perftools::gputools::DeviceMemory<T> y_ptr;
 
     if (tensor_format == FORMAT_NCHW) {
@@ -266,13 +265,13 @@ struct FusedBatchNorm<GPUDevice, T, U> {
           const_cast<const Tensor&>(x_maybe_transformed).tensor<T, 4>(),
           x_transformed.tensor<T, 4>());
       x_maybe_transformed = x_transformed;
-
-      OP_REQUIRES_OK(context, context->allocate_temp(
-                                  DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NCHW, batch_size,
-                                                  height, width, channels),
-                                  &y_transformed));
-      y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(y_transformed);
+      // We do not allocate additional memory for y, because
+      // cudnnBatchNormalizationForwardTraining and
+      // cudnnBatchNormalizationForwardInference can perform the
+      // computation in place.
+      // NOTE: this property is not mentioned by the NVIDIA documentation,
+      // and may change in the future.
+      y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(x_transformed);
     } else {
       context->SetStatus(
           errors::Internal("Unsupported tensor format: ", tensor_format));
@@ -353,7 +352,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     if (tensor_format == FORMAT_NHWC) {
       functor::NCHWToNHWC<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(y_transformed).tensor<T, 4>(),
+          const_cast<const Tensor&>(x_transformed).tensor<T, 4>(),
           y->tensor<T, 4>());
     }
   }
