@@ -46,10 +46,16 @@ public:
     return outputs_;
   }
 
+  bool input_valid(unsigned int param, unsigned int index) {
+    return input_valid_[param][index];
+  }
+
 private:
   ArgVectors temp_inputs_;
   ArgVectors inputs_;
   OutVector outputs_;
+
+  std::vector<std::vector<bool>> input_valid_;
 };
 
 }  // namespace poplarplugin

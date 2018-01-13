@@ -144,7 +144,9 @@ CreateCallOp(poplar::Graph &graph,
                           "Mismatched number of inputs");
     }
     for (int64 i = 0; i < inputs.size(); i++) {
-      seq.add(poplar::program::Copy(args[o][i], inputs[i]));
+      if (subcomp_visitor->second.input_valid(o, i)) {
+        seq.add(poplar::program::Copy(args[o][i], inputs[i]));
+      }
     }
   }
 
@@ -252,17 +254,25 @@ CreateWhileOp(poplar::Graph &graph,
   // - an independent new tensor (0)
   // - containing an alias for one of the inputs (1)
   // - a simple passthrough of its own input (2)
+  // - not required because the input is unused (3)
 
   // Find outputs which are aliases of inputs
   std::vector<int> alias_type(param_count, 0);
   for (unsigned int o = 0; o < param_count; o++) {
-    for (unsigned int i=0; i<param_count; i++) {
-      if (body_outputs[o].intersectsWith(body_inputs[i])) {
-        alias_type[o] = 1;
+    if (body->second.input_valid(0, o)) {
+      for (unsigned int i=0; i<param_count; i++) {
+        if (body->second.input_valid(0, i)) {
+          if (body_outputs[o].intersectsWith(body_inputs[i])) {
+            alias_type[o] = 1;
+          }
+        }
       }
-    }
-    if (body_outputs[o] == body_inputs[o]) {
-      alias_type[o] = 2;
+
+      if (body_outputs[o] == body_inputs[o]) {
+        alias_type[o] = 2;
+      }
+    } else {
+      alias_type[o] = 3;
     }
   }
 
@@ -284,6 +294,7 @@ CreateWhileOp(poplar::Graph &graph,
         body_seq.add(poplar::program::Copy(copies[o], body_inputs[o]));
         break;
       case 2:
+      case 3:
         // nothing required
         break;
     }
@@ -293,10 +304,12 @@ CreateWhileOp(poplar::Graph &graph,
   // Condition
   poplar::program::Sequence cond_seq;
   for (unsigned int i=0; i<param_count; i++) {
-    cond_seq.add(poplar::program::Copy(body_outputs[i], cond_inputs[i]));
+    if (cond->second.input_valid(0, i)) {
+      cond_seq.add(poplar::program::Copy(body_outputs[i], cond_inputs[i]));
+    }
   }
   cond_seq.add(cond->second.sequence);
-  popstd::allTrue(graph, cond_outputs[0], cond_seq);
+  popstd::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
 
   // Main
   main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, body_seq));
