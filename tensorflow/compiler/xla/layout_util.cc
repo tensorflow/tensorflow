@@ -371,6 +371,11 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
+  if (IsSparse(layout)) {
+    return tensorflow::strings::StrCat("sparse{", layout.max_sparse_elements(),
+                                       "}");
+  }
+  CHECK(IsDense(layout));
   return tensorflow::strings::StrCat(
       "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
 }
@@ -453,6 +458,11 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
     }
   }
   return true;
+}
+
+std::ostream& operator<<(std::ostream& out, const Layout& layout) {
+  out << LayoutUtil::HumanString(layout);
+  return out;
 }
 
 }  // namespace xla
