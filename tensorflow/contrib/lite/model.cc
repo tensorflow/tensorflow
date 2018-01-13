@@ -12,22 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fcntl.h>
+#ifdef _WIN32
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#else
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
-#include "tensorflow/contrib/lite/nnapi_delegate.h"
 #include "tensorflow/contrib/lite/version.h"
 
+#ifdef TFLITE_FEATURE_NNAPI
+#include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 namespace tflite {
 
 namespace {
@@ -73,8 +78,12 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
-      allocation_ = new NNAPIAllocation(filename, error_reporter);
+    if (use_nnapi){
+      #ifdef TFLITE_FEATURE_NNAPI
+      if( NNAPIExists() )
+        allocation_ = new NNAPIAllocation(filename, error_reporter);
+      #endif
+    }
     else
       allocation_ = new MMAPAllocation(filename, error_reporter);
   } else {

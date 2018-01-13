@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif // _WIN32
+
 #include <cassert>
 #include <cstdarg>
 #include <cstdint>
@@ -26,41 +29,75 @@ limitations under the License.
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
-#include "tensorflow/contrib/lite/nnapi_delegate.h"
 
 namespace tflite {
 
-MMAPAllocation::MMAPAllocation(const char* filename,
+#ifdef _WIN32
+  static constexpr void* MAP_FAILED = nullptr;
+
+  MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
     : Allocation(error_reporter), mmapped_buffer_(MAP_FAILED) {
-  mmap_fd_ = open(filename, O_RDONLY);
-  if (mmap_fd_ == -1) {
-    error_reporter_->Report("Could not open '%s'.", filename);
-    return;
-  }
-  struct stat sb;
-  fstat(mmap_fd_, &sb);
-  buffer_size_bytes_ = sb.st_size;
-  mmapped_buffer_ =
-      mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
-  if (mmapped_buffer_ == MAP_FAILED) {
-    error_reporter_->Report("Mmap of '%s' failed.", filename);
-    return;
-  }
+
+  // mmap_fd_ = open(filename, O_RDONLY);
+  // if (mmap_fd_ == -1) {
+  //   error_reporter_->Report("Could not open '%s'.", filename);
+  //   return;
+  // }
+  // struct stat sb;
+  // fstat(mmap_fd_, &sb);
+  // buffer_size_bytes_ = sb.st_size;
+  // mmapped_buffer_ =
+  //     mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
+  // if (mmapped_buffer_ == MAP_FAILED) {
+  //   error_reporter_->Report("Mmap of '%s' failed.", filename);
+  //   return;
+  // }
 }
 
 MMAPAllocation::~MMAPAllocation() {
-  if (valid()) {
-    munmap(const_cast<void*>(mmapped_buffer_), buffer_size_bytes_);
-  }
-  if (mmap_fd_ != -1) close(mmap_fd_);
+  // if (valid()) {
+  //   munmap(const_cast<void*>(mmapped_buffer_), buffer_size_bytes_);
+  // }
+  // if (mmap_fd_ != -1) close(mmap_fd_);
 }
+
+#else
+  MMAPAllocation::MMAPAllocation(const char* filename,
+                                 ErrorReporter* error_reporter)
+      : Allocation(error_reporter), mmapped_buffer_(MAP_FAILED) {
+    mmap_fd_ = open(filename, O_RDONLY);
+    if (mmap_fd_ == -1) {
+      error_reporter_->Report("Could not open '%s'.", filename);
+      return;
+    }
+    struct stat sb;
+    fstat(mmap_fd_, &sb);
+    buffer_size_bytes_ = sb.st_size;
+    mmapped_buffer_ =
+        mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
+    if (mmapped_buffer_ == MAP_FAILED) {
+      error_reporter_->Report("Mmap of '%s' failed.", filename);
+      return;
+    }
+  }
+
+  MMAPAllocation::~MMAPAllocation() {
+    if (valid()) {
+      munmap(const_cast<void*>(mmapped_buffer_), buffer_size_bytes_);
+    }
+    if (mmap_fd_ != -1) close(mmap_fd_);
+  }
+
+#endif
 
 const void* MMAPAllocation::base() const { return mmapped_buffer_; }
 
 size_t MMAPAllocation::bytes() const { return buffer_size_bytes_; }
 
 bool MMAPAllocation::valid() const { return mmapped_buffer_ != MAP_FAILED; }
+
+
 
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
