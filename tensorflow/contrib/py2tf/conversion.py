@@ -22,8 +22,10 @@ import six
 
 from tensorflow.contrib.py2tf import config
 from tensorflow.contrib.py2tf import naming
+from tensorflow.contrib.py2tf.convert import builtin_functions
 from tensorflow.contrib.py2tf.convert import call_trees
 from tensorflow.contrib.py2tf.convert import control_flow
+from tensorflow.contrib.py2tf.convert import for_canonicalization
 from tensorflow.contrib.py2tf.convert import logical_expressions
 from tensorflow.contrib.py2tf.convert import print_functions
 from tensorflow.contrib.py2tf.convert import side_effect_guards
@@ -150,6 +152,20 @@ def node_to_graph(node, namer, namespace, value_hints):
   # These include:
   #   * keeping track of symbols that have been created
   #   * marking nodes (e.g. py_func wrappers) to suppress further processing
+
+  node = for_canonicalization.transform(node, namer)
+  node = builtin_functions.transform(node)
+
+  # The transformation steps above insert new variables. Although less
+  # efficient, it is most robust to re-run the analysis.
+  # We also need to ensure the namespace contains any new references that may
+  # have been created.
+  namespace['len'] = len
+  namespace['print'] = print
+
+  node = access.resolve(node)
+  node = live_values.resolve(node, namespace, config.PYTHON_LITERALS)
+  node = type_info.resolve(node, value_hints)
 
   node = print_functions.transform(node)
   node = call_trees.transform(node, namer, config.DEFAULT_UNCOMPILED_MODULES)

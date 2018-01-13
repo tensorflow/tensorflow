@@ -302,7 +302,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(3.0, self.evaluate(v.value()))
     self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
-    with self.assertRaises(errors.NotFoundError):
+    with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(v.value())
     # Handle to a resource not actually created.
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])

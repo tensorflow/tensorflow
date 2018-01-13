@@ -1656,5 +1656,42 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
   ASSERT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
 }
 
+TEST_F(LiteralUtilTest, SortSparseElements) {
+  auto literal =
+      Literal::CreateSparse<float>({10, 10, 10}, SparseIndexArray(10, 3), {});
+  literal->AppendSparseElement<float>({2, 3, 4}, 2.0);
+  literal->AppendSparseElement<float>({3, 4, 5}, 3.0);
+  literal->AppendSparseElement<float>({1, 2, 3}, 1.0);
+  literal->SortSparseElements();
+  ASSERT_EQ(literal->ToString(false),
+            "f32[10,10,10]{[1, 2, 3]: 1, [2, 3, 4]: 2, [3, 4, 5]: 3}");
+}
+
+TEST_F(LiteralUtilTest, GetSparseElementAsString) {
+  std::vector<int64> dimensions = {10, 10, 10};
+  SparseIndexArray indices(10, {{1, 2, 3}, {2, 3, 4}, {3, 4, 5}});
+
+  ASSERT_EQ(
+      Literal::CreateSparse<bool>(dimensions, indices, {true, false, true})
+          ->GetSparseElementAsString(1),
+      "false");
+  ASSERT_EQ(Literal::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(int64{2}));
+  ASSERT_EQ(Literal::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(double{2.0}));
+  ASSERT_EQ(Literal::CreateSparse<half>(dimensions, indices,
+                                        {half{1.0}, half{2.0}, half{3.0}})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(half{2.0}));
+  ASSERT_EQ(
+      Literal::CreateSparse<complex64>(
+          dimensions, indices,
+          std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
+          ->GetSparseElementAsString(1),
+      tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+}
+
 }  // namespace
 }  // namespace xla

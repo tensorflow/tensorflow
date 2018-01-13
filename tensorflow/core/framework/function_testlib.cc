@@ -165,11 +165,9 @@ FunctionDef WXPlusB(){return FDH::Define(
        {"w", "x"},
        {
            {"T", "$T"}, {"transpose_a", false}, {"transpose_b", false},
-#ifdef INTEL_MKL
-       }},
-#else
-         {"_kernel", "eigen"}}},
-#endif
+           {"_kernel", "eigen"}
+       }
+      },
       {
         {"y"}, "Add", {"mm", "b"}, {
           { "T", "$T" }

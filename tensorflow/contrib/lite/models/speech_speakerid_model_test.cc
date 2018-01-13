@@ -43,7 +43,7 @@ constexpr int kLstmLayer3OutputStateTensor = 61;
 constexpr int kLstmLayer3CellStateTensor = 62;
 constexpr int kModelOutputTensor = 66;
 
-TEST(SpeechSpeakerId, OkGoogleTest) {
+void SpeakerIdTest(bool useNNAPI) {
   // Read the model.
   string tflite_file_path =
       StrCat(TestDataPath(), "/", "speech_speakerid_model.tflite");
@@ -56,6 +56,9 @@ TEST(SpeechSpeakerId, OkGoogleTest) {
   std::unique_ptr<Interpreter> interpreter;
   InterpreterBuilder(*model, resolver)(&interpreter);
   CHECK(interpreter != nullptr);
+
+  interpreter->UseNNAPI(useNNAPI);
+
   interpreter->AllocateTensors();
 
   // Load the input frames.
@@ -109,6 +112,10 @@ TEST(SpeechSpeakerId, OkGoogleTest) {
     }
   }
 }
+
+TEST(SpeechSpeakerId, OkGoogleTest) { SpeakerIdTest(false); }
+
+TEST(SpeechSpeakerId, OkGoogleTestUsingNNAPI) { SpeakerIdTest(true); }
 
 }  // namespace models
 }  // namespace tflite

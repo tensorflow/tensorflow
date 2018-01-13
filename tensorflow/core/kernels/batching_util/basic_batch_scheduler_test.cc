@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/batching/basic_batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/basic_batch_scheduler.h"
 
 #include <utility>
 
-#include "tensorflow/contrib/batching/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"

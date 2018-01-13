@@ -140,10 +140,12 @@ int Run(int argc, char** argv) {
   }
   port::InitMain(argv[0], &argc, &argv);
 
-  if (!FLAGS_profile_path.empty() && !FLAGS_graph_path.empty()) {
+  if (!FLAGS_profile_path.empty() &&
+      (!FLAGS_graph_path.empty() || !FLAGS_run_meta_path.empty())) {
     fprintf(stderr,
-            "both --graph_path and --profile_path are set. "
-            "Ignore graph_path\n");
+            "--profile_path is set, do not set --graph_path or "
+            "--run_meta_path\n");
+    return 1;
   }
 
   std::vector<string> account_type_regexes =
@@ -165,7 +167,8 @@ int Run(int argc, char** argv) {
   CHECK(s.ok()) << s.ToString();
 
   string cmd = "";
-  if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty()) {
+  if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
+      FLAGS_run_meta_path.empty()) {
     PrintHelp();
     return 0;
   } else if (argc > 1) {
@@ -202,8 +205,10 @@ int Run(int argc, char** argv) {
         "Try to use a single --profile_path instead of "
         "graph_path,op_log_path,run_meta_path\n");
     std::unique_ptr<GraphDef> graph(new GraphDef());
-    TF_CHECK_OK(
-        ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
+    if (!FLAGS_graph_path.empty()) {
+      TF_CHECK_OK(
+          ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
+    }
 
     std::unique_ptr<OpLogProto> op_log(new OpLogProto());
     if (!FLAGS_op_log_path.empty()) {

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Identity converter. Useful for testing and diagnostic."""
+"""Handles control flow statements: while, if."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -40,6 +40,17 @@ class SymbolNamer(object):
     raise NotImplementedError()
 
 
+class SymbolRenamer(gast.NodeTransformer):
+
+  def __init__(self, name_map):
+    self.name_map = name_map
+
+  def visit_Name(self, node):
+    if node.id in self.name_map:
+      node.id = self.name_map[node.id]
+    return node
+
+
 class ControlFlowTransformer(gast.NodeTransformer):
   """Transforms control flow structures like loops an conditionals."""
 
@@ -48,63 +59,124 @@ class ControlFlowTransformer(gast.NodeTransformer):
 
   # pylint:disable=invalid-name
 
-  def _tuple_or_item(self, elts):
-    elts = tuple(elts)
-    if len(elts) == 1:
-      return elts[0]
-    return elts
-
-  def _ast_tuple_or_item(self, elts, ctx):
-    elts = list(elts)
-    if len(elts) == 1:
-      return elts[0]
-    return gast.Tuple(elts, ctx)
+  def visit_For(self, node):
+    assert False, 'for statement should have been canonicalized at this point'
 
   def visit_If(self, node):
-    raise NotImplementedError()
+    self.generic_visit(node)
+
+    body_scope = anno.getanno(node, 'body_scope')
+    orelse_scope = anno.getanno(node, 'orelse_scope')
+
+    if body_scope.created - orelse_scope.created:
+      raise ValueError(
+          'The if branch creates new symbols that the else branch does not.')
+    if orelse_scope.created - body_scope.created:
+      raise ValueError(
+          'The else branch creates new symbols that the if branch does not.')
+
+    def template(  # pylint:disable=missing-docstring
+        test,
+        body_name,
+        body,
+        orelse_name,
+        orelse,
+        aliased,
+        aliases,  # pylint:disable=unused-argument
+        aliased_results,
+        results):  # pylint:disable=unused-argument
+
+      def body_name():  # pylint:disable=function-redefined
+        aliases, = aliased,  # pylint:disable=unused-variable
+        body  # pylint:disable=pointless-statement
+        return (aliased_results,)
+
+      def orelse_name():  # pylint:disable=function-redefined
+        aliases, = aliased,  # pylint:disable=unused-variable
+        orelse  # pylint:disable=pointless-statement
+        return (aliased_results,)
+
+      results = tf.cond(test, body_name, orelse_name)  # pylint:disable=undefined-variable
+
+    all_modified = tuple(body_scope.modified | orelse_scope.modified)
+    all_referenced = body_scope.referenced | orelse_scope.referenced
+
+    # Alias the closure variables inside the conditional functions
+    # to avoid errors caused by the local variables created in the branch
+    # functions.
+    need_alias = (
+        (body_scope.modified | orelse_scope.modified) -
+        (body_scope.created | orelse_scope.created))
+    aliased = tuple(need_alias)
+    aliases = tuple(
+        self.namer.new_symbol(s, all_referenced) for s in aliased)
+    alias_map = dict(zip(aliased, aliases))
+    node_body = node.body
+    node_body = [SymbolRenamer(alias_map).visit(n) for n in node_body]
+    node_orelse = node.orelse
+    node_orelse = [SymbolRenamer(alias_map).visit(n) for n in node_orelse]
+
+    if len(all_modified) == 1:
+      results = gast.Name(all_modified[0], None, None)
+    else:
+      results = gast.Tuple(
+          tuple(gast.Name(s, None, None) for s in all_modified), None)
+
+    return templates.replace(
+        template,
+        test=node.test,
+        body_name=gast.Name(
+            self.namer.new_symbol('if_true', all_referenced), None, None),
+        body=node_body,
+        orelse_name=gast.Name(
+            self.namer.new_symbol('if_false', all_referenced), None, None),
+        orelse=node_orelse,
+        aliased=tuple(gast.Name(s, None, None) for s in aliased),
+        aliases=tuple(gast.Name(s, None, None) for s in aliases),
+        aliased_results=tuple(
+            gast.Name(alias_map[s] if s in aliased else s, None, None)
+            for s in all_modified),
+        results=results)
 
   def visit_While(self, node):
     self.generic_visit(node)
-    # Scrape out the data flow analysis
+
     body_scope = anno.getanno(node, 'body_scope')
     body_closure = tuple(body_scope.modified - body_scope.created)
 
     def template(
-        state_args,  # pylint:disable=unused-argument
-        state_locals,
-        state_results,  # pylint:disable=unused-argument
+        state,  # pylint:disable=unused-argument
+        state_ast_tuple,  # pylint:disable=unused-argument
         test_name,
         test,  # pylint:disable=unused-argument
         body_name,
-        body,
-        state_init):
+        body):
 
-      def test_name(state_args):  # pylint:disable=function-redefined,unused-argument
+      def test_name(state):  # pylint:disable=function-redefined,unused-argument
         return test
 
-      def body_name(state_args):  # pylint:disable=function-redefined,unused-argument
+      def body_name(state):  # pylint:disable=function-redefined,unused-argument
         body  # pylint:disable=pointless-statement
-        return state_locals
+        return state,
 
-      state_results = tf.while_loop(test_name, body_name, [state_init])  # pylint:disable=undefined-variable
+      state_ast_tuple = tf.while_loop(test_name, body_name, [state])  # pylint:disable=undefined-variable
 
-    test_name = self.namer.new_symbol('loop_test', body_scope.used)
-    body_name = self.namer.new_symbol('loop_body', body_scope.used)
+    test_name = self.namer.new_symbol('loop_test', body_scope.referenced)
+    body_name = self.namer.new_symbol('loop_body', body_scope.referenced)
+    if len(body_closure) == 1:
+      state = gast.Name(body_closure[0], None, None)
+      state_ast_tuple = state
+    else:
+      state = tuple(gast.Name(n, None, None) for n in body_closure)
+      state_ast_tuple = gast.Tuple(state, None)
     node = templates.replace(
         template,
-        state_args=self._tuple_or_item(
-            gast.Name(n, gast.Param(), None) for n in body_closure),
-        state_locals=self._ast_tuple_or_item(
-            (gast.Name(n, gast.Load(), None) for n in body_closure),
-            gast.Load()),
-        state_results=self._ast_tuple_or_item(
-            (gast.Name(n, gast.Store(), None) for n in body_closure),
-            gast.Store()),
+        state=state,
+        state_ast_tuple=state_ast_tuple,
         test_name=gast.Name(test_name, gast.Load(), None),
         test=node.test,
         body_name=gast.Name(body_name, gast.Load(), None),
-        body=node.body,
-        state_init=[gast.Name(n, gast.Load(), None) for n in body_closure])
+        body=node.body)
 
     return node
 
