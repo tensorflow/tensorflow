@@ -190,6 +190,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
     # flaky test
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/model_analyzer_test.py"
     # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     # requires scipy
