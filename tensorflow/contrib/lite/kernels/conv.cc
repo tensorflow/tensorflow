@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -338,6 +338,10 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<float>(output), GetTensorDims(output),
         GetTensorData<float>(im2col), GetTensorDims(im2col));
   } else {
+    // TODO(shaurya) : visual studio 2017 compiler gets stuck on
+    // multithreaded_ops::Conv, most likely due to template magic in
+    // eigen_spatial_convolutions.h
+    #ifndef _MSC_VER
     multithreaded_ops::Conv(
         GetTensorData<float>(input), GetTensorDims(input), filter_data,
         GetTensorDims(filter), GetTensorData<float>(bias), GetTensorDims(bias),
@@ -346,6 +350,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         output_activation_max, GetTensorData<float>(output),
         GetTensorDims(output), GetTensorData<float>(im2col),
         GetTensorDims(im2col));
+    #endif
   }
 }
 

@@ -1252,7 +1252,7 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     ++*output_shift;
   }
   TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits = __builtin_clz(input) - 1;
+  const unsigned max_left_shift_bits = clz(input) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -2654,7 +2654,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
         int32 fixed_sum_of_exps = sum_of_exps.raw();
         // TODO(starka): Use a NEON intrinsic like vclzq_u32 instead.
         int headroom_plus_one =
-            __builtin_clz(static_cast<uint32>(fixed_sum_of_exps));
+            clz(static_cast<uint32>(fixed_sum_of_exps));
         // This is the number of bits to the left of the binary point above 1.0.
         // Consider fixed_sum_of_exps=1.25.  In that case shifted_scale=0.8 and
         // no later adjustment will be needed.

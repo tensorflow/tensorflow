@@ -5,7 +5,7 @@ project(tensorflow-lite C CXX)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4" )
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
 set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
 set(TENSORFLOW_LITE_ROOT_DIR "C:/Development/tensorflow/tensorflow/contrib/lite")
@@ -14,6 +14,9 @@ set(TENSORFLOW_LITE_DOWNLOADED_DEPENDENCIES_DIR "C:/Development/tensorflow/tenso
 set(TENSORFLOW_LITE_GEMMLOWP_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/gemmlowp")
 set(TENSORFLOW_LITE_EIGEN_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/eigen")
 set(TENSORFLOW_LITE_FLATBUFFERS_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/flatbuffers/include")
+set(TENSORFLOW_LITE_FARMHASH_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/farmhash/src")
+set(TENSORFLOW_LITE_GMOCK_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/googletest/googlemock/include")
+set(TENSORFLOW_LITE_GTEST_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/googletest/googletest/include")
 
 # TODO: SIMD Visual studio
 add_definitions(-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
@@ -54,7 +57,7 @@ SET (TENSORFLOW_LITE_KERNEL_SOURCES
     ${TENSORFLOW_LITE_KERNEL_DIR}/space_to_batch_nd.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/space_to_depth.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/svdf.cc
-    ${TENSORFLOW_LITE_KERNEL_DIR}/test_util.cc
+    # ${TENSORFLOW_LITE_KERNEL_DIR}/test_util.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/transpose.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/unidirectional_sequence_rnn.cc
     )
@@ -75,4 +78,7 @@ include_directories(${TENSORFLOW_ROOT_DIR}
     ${TENSORFLOW_LITE_GEMMLOWP_DIR}
     ${TENSORFLOW_LITE_FLATBUFFERS_DIR}
     ${TENSORFLOW_LITE_EIGEN_DIR}
+    ${TENSORFLOW_LITE_FARMHASH_DIR}
+    ${TENSORFLOW_LITE_GMOCK_DIR}
+    ${TENSORFLOW_LITE_GTEST_DIR}
     )

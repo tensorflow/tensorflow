@@ -27,6 +27,18 @@ limitations under the License.
 #include <arm_neon.h>
 #endif
 
+
+#ifdef __GNUC__
+inline unsigned int clz(unsigned int x){
+  return __builtin_clz(x);
+}
+#elif _MSC_VER
+#include <intrin.h>
+inline unsigned int clz(unsigned int x){
+  return __lzcnt(x);
+}
+#endif
+
 #if defined __GNUC__ && defined __SSE4_1__
 #define USE_NEON
 

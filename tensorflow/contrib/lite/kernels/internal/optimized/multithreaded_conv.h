@@ -134,7 +134,8 @@ class EigenTensorConvFunctor {
       ConstEigenMatrix filter(filter_data, input_depth, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);
-    } else if (filter_height == input_height && filter_width == input_width &&
+    }
+   else if (filter_height == input_height && filter_width == input_width &&
                pad_width == 0 && pad_height == 0) {
       // If the input data and filter have the same height/width,
       // the 2D convolution is reduced to matrix multiplication.
@@ -147,7 +148,8 @@ class EigenTensorConvFunctor {
       ConstEigenMatrix filter(filter_data, k, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);
-    } else {
+    }
+    else {
       EigenTensor output(output_data, input_batches, output_height,
                          output_width, filter_count);
       ConstEigenTensor input(input_data, input_batches, input_height,
