@@ -5,13 +5,13 @@ intermediaries between raw data and Estimators. Feature columns are very rich,
 enabling you to transform a diverse range of raw data into formats that
 Estimators can use, allowing easy experimentation.
 
-In @{$get_started/estimator$Premade Estimators}, we used the premade Estimator,
-@{tf.estimator.DNNClassifier$`DNNClassifier`} to train a model to predict
-different types of Iris flowers from four input features. That example created
-only numerical feature columns (of type @{tf.feature_column.numeric_column}).
-Although numerical feature columns model the lengths of petals and sepals
-effectively, real world data sets contain all kinds of features, many of which
-are non-numerical.
+In @{$get_started/premade_estimators$Premade Estimators}, we used the premade
+Estimator, @{tf.estimator.DNNClassifier$`DNNClassifier`} to train a model to
+predict different types of Iris flowers from four input features. That example
+created only numerical feature columns (of type
+@{tf.feature_column.numeric_column}). Although numerical feature columns model
+the lengths of petals and sepals effectively, real world data sets contain all
+kinds of features, many of which are non-numerical.
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/feature_columns/feature_cloud.jpg">

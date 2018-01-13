@@ -42,6 +42,8 @@ REGISTER_KERNEL_BUILDER(Name("RefIdentity").Device(DEVICE_CPU), IdentityOp);
 // Python).
 REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity").Device(DEVICE_CPU),
                         IdentityOp);
+REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
+                        IdentityOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                                           \

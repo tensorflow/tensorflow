@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
+#include "tensorflow/contrib/lite/model.h"
 
 namespace tflite {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 void RunTestPermutation(const std::vector<int>& shape,
                         const std::vector<int>& perms,
@@ -64,14 +68,14 @@ void RunTestPermutation(const std::vector<int>& shape,
                                   reversed_perms);
 }
 
-TEST(TransposeTest, Test1D) {
+TEST(TransposeTest, TestRefOps1D) {
   // Basic 1D identity.
   std::vector<float> out;
   RunTestPermutation({3}, {0}, &out);
   ASSERT_EQ(out, std::vector<float>({0, 1, 2}));
 }
 
-TEST(TransposeTest, Test2D) {
+TEST(TransposeTest, TestRefOps2D) {
   std::vector<float> out;
   // Basic 2D.
   RunTestPermutation({3, 2}, {1, 0}, &out);
@@ -81,7 +85,7 @@ TEST(TransposeTest, Test2D) {
   ASSERT_EQ(out, std::vector<float>({0, 1, 2, 3, 4, 5}));
 }
 
-TEST(TransposeTest, Test3D) {
+TEST(TransposeTest, TestRefOps3D) {
   std::vector<float> out;
   // Test 3 dimensional
   {
@@ -99,7 +103,7 @@ TEST(TransposeTest, Test3D) {
   }
 }
 
-TEST(TransposeTest, Test4D) {
+TEST(TransposeTest, TestRefOps4D) {
   std::vector<float> out;
   // Basic 4d.
   RunTestPermutation({2, 3, 4, 5}, {2, 0, 1, 3}, &out);
@@ -119,6 +123,118 @@ TEST(TransposeTest, Test4D) {
   std::vector<float> ref(out.size());
   for (int k = 0; k < ref.size(); k++) ref[k] = k;
   ASSERT_EQ(out, ref);
+}
+
+class TransposeOpModel : public SingleOpModel {
+ public:
+  TransposeOpModel(std::initializer_list<int> input_shape,
+                   std::initializer_list<int> perm) {
+    input_ = AddInput(TensorType_FLOAT32);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(
+        BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+        CreateTransposeOptions(builder_, builder_.CreateVector<int>(perm))
+            .Union());
+    BuildInterpreter({input_shape});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor<float>(input_, data);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int output_;
+};
+
+TEST(TransposeTest, TestUnequalPermSize) {
+  EXPECT_DEATH(TransposeOpModel({1, 3, 3, 1}, {2, 2}),
+               "dims != op_context.params->num_dimensions");
+}
+
+TEST(TransposeTest, TestPermOutOfBounds) {
+  EXPECT_DEATH(TransposeOpModel({1, 3, 3, 1}, {0, -1, -2, -3}),
+               "Transpose op permutations array is out of bounds.");
+  EXPECT_DEATH(TransposeOpModel({1, 3, 3, 1}, {0, 1, 2, 4}),
+               "Transpose op permutations array is out of bounds.");
+}
+
+TEST(TransposeTest, Test1DInputTensor) {
+  TransposeOpModel m({3}, {0});
+  m.SetInput({1, 2, 3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
+}
+
+TEST(TransposeTest, Test2DInputTensor) {
+  TransposeOpModel m({3, 2}, {1, 0});
+  m.SetInput({0, 1, 2, 3, 4, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
+}
+
+TEST(TransposeTest, Test3DInputTensor) {
+  TransposeOpModel m({2, 3, 4}, {2, 0, 1});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
+                                2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
+}
+
+TEST(TransposeTest, Test5DInputTensor) {
+  EXPECT_DEATH(TransposeOpModel({1, 2, 3, 4, 5}, {0, 1, 2, 3, 4}),
+               "Transpose op only supports 1D-4D input arrays.");
+}
+
+TEST(TransposeTest, SimpleTestNoReorder) {
+  TransposeOpModel m({1, 2, 3, 1}, {0, 1, 2, 3});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(TransposeTest, SimpleTestWithReorder) {
+  TransposeOpModel m({1, 2, 3, 1}, {2, 1, 3, 0});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+}
+
+TEST(TransposeTest, ComplexTestWithReorder) {
+  TransposeOpModel m({2, 3, 4, 5}, {2, 0, 1, 3});
+  m.SetInput({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
+              12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,
+              24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,
+              36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,
+              48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,
+              60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,  71,
+              72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,
+              84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
+              96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
+              108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3, 5}));
+  auto result = ElementsAreArray(
+      {0,  1,  2,  3,  4,  20, 21, 22, 23, 24, 40,  41,  42,  43,  44,
+       60, 61, 62, 63, 64, 80, 81, 82, 83, 84, 100, 101, 102, 103, 104,
+       5,  6,  7,  8,  9,  25, 26, 27, 28, 29, 45,  46,  47,  48,  49,
+       65, 66, 67, 68, 69, 85, 86, 87, 88, 89, 105, 106, 107, 108, 109,
+       10, 11, 12, 13, 14, 30, 31, 32, 33, 34, 50,  51,  52,  53,  54,
+       70, 71, 72, 73, 74, 90, 91, 92, 93, 94, 110, 111, 112, 113, 114,
+       15, 16, 17, 18, 19, 35, 36, 37, 38, 39, 55,  56,  57,  58,  59,
+       75, 76, 77, 78, 79, 95, 96, 97, 98, 99, 115, 116, 117, 118, 119});
+  EXPECT_THAT(m.GetOutput(), result);
 }
 
 }  // namespace

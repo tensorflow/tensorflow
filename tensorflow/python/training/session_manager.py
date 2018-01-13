@@ -480,7 +480,9 @@ class SessionManager(object):
     if self._local_init_op is not None:
       is_ready_for_local_init, msg = self._model_ready_for_local_init(sess)
       if is_ready_for_local_init:
+        logging.info("Running local_init_op.")
         sess.run(self._local_init_op)
+        logging.info("Done running local_init_op.")
         return True, None
       else:
         return False, msg

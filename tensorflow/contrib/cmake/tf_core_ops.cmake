@@ -26,6 +26,7 @@ set(tf_op_lib_names
     "image_ops"
     "io_ops"
     "linalg_ops"
+		"list_ops"
     "lookup_ops"
     "logging_ops"
     "math_ops"

@@ -917,8 +917,10 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
   TF_EXPECT_OK(status);
   int found = 0;
   for (const auto& node : output.node()) {
-    EXPECT_NE(AddPrefixToNodeName("s-0", kConstantFoldingConst), node.name());
-    EXPECT_NE(AddPrefixToNodeName("s-1", kConstantFoldingConst), node.name());
+    EXPECT_NE(AddPrefixToNodeName("s-matshapes-0", kConstantFoldingConst),
+              node.name());
+    EXPECT_NE(AddPrefixToNodeName("s-matshapes-1", kConstantFoldingConst),
+              node.name());
     if (node.name() == "i1a" || node.name() == "i1b") {
       ++found;
       EXPECT_EQ("s", node.input(0));
@@ -929,7 +931,7 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
     }
     if (node.name() == "i3a" || node.name() == "i3b") {
       ++found;
-      EXPECT_EQ(AddPrefixToNodeName("s-2", kConstantFoldingConst),
+      EXPECT_EQ(AddPrefixToNodeName("s-matshapes-2", kConstantFoldingConst),
                 node.input(0));
     }
     if (node.name() == "s") {
@@ -939,7 +941,8 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
       EXPECT_EQ("v2", node.input(1));
       EXPECT_EQ("v3", node.input(2));
     }
-    if (node.name() == AddPrefixToNodeName("s-2", kConstantFoldingConst)) {
+    if (node.name() ==
+        AddPrefixToNodeName("s-matshapes-2", kConstantFoldingConst)) {
       ++found;
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ("^s", node.input(0));
@@ -1351,19 +1354,19 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
     if (node.name() == "o1") {
       ++found;
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/f-0", node.input(0));
+      EXPECT_EQ("ConstantFolding/f-bcastargs-0", node.input(0));
     } else if (node.name() == "o2") {
       ++found;
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/f-1", node.input(0));
-    } else if (node.name() == "ConstantFolding/f-0") {
+      EXPECT_EQ("ConstantFolding/f-bcastargs-1", node.input(0));
+    } else if (node.name() == "ConstantFolding/f-bcastargs-0") {
       ++found;
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^f", node.input(0));
       EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
                        .num_elements());
-    } else if (node.name() == "ConstantFolding/f-1") {
+    } else if (node.name() == "ConstantFolding/f-bcastargs-1") {
       ++found;
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
@@ -1373,21 +1376,14 @@ TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
     } else if (node.name() == "p1") {
       ++found;
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/i-0", node.input(0));
+      EXPECT_EQ("i", node.input(0));
     } else if (node.name() == "p2") {
       ++found;
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("i:1", node.input(0));
-    } else if (node.name() == "ConstantFolding/i-0") {
-      ++found;
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^i", node.input(0));
-      EXPECT_EQ(0, TensorShape(node.attr().at("value").tensor().tensor_shape())
-                       .num_elements());
     }
   }
-  EXPECT_EQ(7, found);
+  EXPECT_EQ(6, found);
 }
 
 TEST_F(ConstantFoldingTest, MaterializeReductionIndices) {

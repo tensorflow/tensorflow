@@ -94,8 +94,6 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # Gather doesn't support int64 indices.
-    r"gather.*indices_dtype=int64": "XXXX",
     # BatchToSpaceND doesn't support cropping.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
@@ -672,6 +670,51 @@ def make_add_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_mean_tests(zip_path):
+  """Make a set of tests to do mean."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[3, 2, 4]],
+      "axis": [
+          None, 0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+          [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
+          [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+      ],
+      "keep_dims": [True, False],
+  }, {
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[1, 224, 224, 3]],
+      "axis": [
+          None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
+          [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
+          -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
+          [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
+      ],
+      "keep_dims": [True, False],
+  }]
+
+  def build_graph(parameters):
+    """Build the mean op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.reduce_mean(
+        input_tensor,
+        axis=parameters["axis"],
+        keep_dims=parameters["keep_dims"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_mul_tests(zip_path):
   """Make a set of tests to do mul with and without broadcast."""
 
@@ -1048,16 +1091,21 @@ def make_local_response_norm_tests(zip_path):
 def make_pad_tests(zip_path):
   """Make a set of tests to do pad."""
 
-  test_parameters = [{
-      "dtype": [tf.int32, tf.float32],
-      "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
-      "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0], [0, 0],
-                                                      [2, 3]]],
-  }, {
-      "dtype": [tf.int32, tf.float32],
-      "input_shape": [[1, 2], [0, 1, 2]],
-      "paddings": [[[0, 1], [2, 3]]],
-  }]
+  # TODO(nupurgarg): Add test for tf.uint8.
+  test_parameters = [
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
+          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0],
+                                                          [0, 0], [2, 3]]],
+      },
+      # Non-4D use case.
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 2], [0, 1, 2]],
+          "paddings": [[[0, 1], [2, 3]]],
+      },
+  ]
 
   def build_graph(parameters):
     input_tensor = tf.placeholder(
@@ -1283,6 +1331,41 @@ def make_batch_to_space_nd_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_transpose_tests(zip_path):
+  """Make a set of tests to do transpose."""
+
+  # TODO(nupurgarg): Add test for uint8.
+  test_parameters = [{
+      "dtype": [tf.int32, tf.int64, tf.float32],
+      "input_shape": [[2, 2, 3]],
+      "perm": [[0, 1, 2], [0, 2, 1]],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4]],
+      "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4, 5]],
+      "perm": [[0, 1, 2, 3, 4]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.transpose(input_tensor, perm=parameters["perm"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
   """Given an input perform a sequence of TensorFlow ops to produce l2pool."""
   return tf.sqrt(tf.nn.avg_pool(
@@ -1336,6 +1419,8 @@ def main(unused_args):
         "sigmoid.zip": make_sigmoid_tests,
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
+        "transpose.zip": make_transpose_tests,
+        "mean.zip": make_mean_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

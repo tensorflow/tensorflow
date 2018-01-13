@@ -177,7 +177,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
   tensorflow::Tensor* src = &(h->t);
-  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+  if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
+                   !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat("Can't copy Tensor with type ",
@@ -186,8 +187,11 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
             .c_str());
     return nullptr;
   }
-  tensorflow::Tensor dst(dstd->GetAllocator(tensorflow::AllocatorAttributes()),
-                         src->dtype(), src->shape());
+  tensorflow::AllocatorAttributes attr;
+  if (src->dtype() == tensorflow::DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+  tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
@@ -542,7 +546,7 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
   // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def,
   // which is GUARDED_BY(ctx->functions_mu). But knowledge of the implementation
-  // of FunctionLibraryRuntime tells use that func_lib_def is not accessed by
+  // of FunctionLibraryRuntime tells us that func_lib_def is not accessed by
   // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
   // This is quite subtle. Re-work things to make this better?  (Would it make
   // sense for FunctionLibraryRuntime to ensure thread-safe access to

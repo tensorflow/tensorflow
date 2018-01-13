@@ -364,6 +364,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "override_eigen_strong_inline",
+    values = {"define": "override_eigen_strong_inline=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -529,6 +535,7 @@ filegroup(
         "//tensorflow/contrib/periodic_resample:all_files",
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/py2tf:all_files",
+        "//tensorflow/contrib/py2tf/convert:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
         "//tensorflow/contrib/quantize:all_files",
@@ -583,6 +590,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/batching_util:all_files",
         "//tensorflow/core/kernels/data:all_files",
         "//tensorflow/core/kernels/data/sql:all_files",
         "//tensorflow/core/kernels/fuzzing:all_files",
@@ -792,6 +800,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
     ],
 )

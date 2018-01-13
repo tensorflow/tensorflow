@@ -83,13 +83,14 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
     LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
                                             &literal_proto));
-    Literal literal(literal_proto);
+    std::unique_ptr<Literal> literal =
+        Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
     if (result.find("expected") != string::npos) {
-      EXPECT_EQ("2", literal.ToString());
+      EXPECT_EQ("2", literal->ToString());
     } else if (result.find("actual") != string::npos) {
-      EXPECT_EQ("4", literal.ToString());
+      EXPECT_EQ("4", literal->ToString());
     } else if (result.find("miscompares") != string::npos) {
-      EXPECT_EQ("true", literal.ToString());
+      EXPECT_EQ("true", literal->ToString());
     } else {
       FAIL() << "unknown file in temporary directory: " << result;
     }

@@ -22,27 +22,29 @@ namespace tensorflow {
 namespace sql {
 
 SqliteQueryConnection::SqliteQueryConnection() {}
-SqliteQueryConnection::~SqliteQueryConnection() {}
+
+SqliteQueryConnection::~SqliteQueryConnection() {
+  if (db_ != nullptr) db_->Unref();
+}
 
 Status SqliteQueryConnection::Open(const string& data_source_name,
                                    const string& query,
                                    const DataTypeVector& output_types) {
   if (db_ != nullptr) {
     return errors::FailedPrecondition(
-        "Failed to open query connection: Connection already opeend.");
+        "Failed to open query connection: Connection already opened.");
   }
-  auto s = Sqlite::Open(data_source_name);
-  if (s.ok()) {
-    db_ = std::move(s.ValueOrDie());
-    query_ = query;
-    output_types_ = output_types;
-  }
-  return s.status();
+  TF_RETURN_IF_ERROR(Sqlite::Open(
+      data_source_name, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, &db_));
+  query_ = query;
+  output_types_ = output_types;
+  return Status::OK();
 }
 
 Status SqliteQueryConnection::Close() {
   stmt_ = SqliteStatement();
-  db_.reset();
+  db_->Unref();
+  db_ = nullptr;
   return Status::OK();
 }
 
@@ -62,16 +64,15 @@ Status SqliteQueryConnection::GetNext(std::vector<Tensor>* out_tensors,
 }
 
 Status SqliteQueryConnection::PrepareQuery() {
-  auto prep = db_->Prepare(query_);
-  TF_RETURN_IF_ERROR(prep.status());
-  int column_count = prep.ValueOrDie().ColumnCount();
+  TF_RETURN_IF_ERROR(db_->Prepare(query_, &stmt_));
+  int column_count = stmt_.ColumnCount();
   if (column_count != output_types_.size()) {
+    stmt_ = SqliteStatement();
     return errors::InvalidArgument(tensorflow::strings::Printf(
         "The number of columns in query (%d) must match the number of "
         "elements in output_types (%zu).",
         column_count, output_types_.size()));
   }
-  stmt_ = prep.ConsumeValueOrDie();
   column_count_ = column_count;
   return Status::OK();
 }
@@ -85,6 +86,7 @@ void SqliteQueryConnection::FillTensorWithResultSetEntry(
 #define INT_CASE(T) CASE(T, ColumnInt)
 #define DOUBLE_CASE(T) CASE(T, ColumnDouble)
 #define STRING_CASE(T) CASE(T, ColumnString)
+  // clang-format off
   switch (data_type) {
     TF_CALL_int8(INT_CASE)
     TF_CALL_uint8(INT_CASE)
@@ -100,13 +102,13 @@ void SqliteQueryConnection::FillTensorWithResultSetEntry(
     case DT_BOOL:
       tensor->scalar<bool>()() = stmt_.ColumnInt(column_index) != 0;
       break;
-      // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.
-    default: {
+    // Error preemptively thrown by SqlDatasetOp::MakeDataset in this case.
+    default:
       LOG(FATAL)
           << "Use of unsupported TensorFlow data type by 'SqlQueryConnection': "
           << DataTypeString(data_type) << ".";
-    }
   }
+  // clang-format on
 }
 
 }  // namespace sql

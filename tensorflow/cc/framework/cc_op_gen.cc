@@ -1057,15 +1057,8 @@ string MakeInternal(const string& fname) {
 }  // namespace
 
 void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& dot_h_fname, const string& dot_cc_fname,
-                const string& overrides_fnames) {
+                const string& dot_h_fname, const string& dot_cc_fname) {
   Env* env = Env::Default();
-
-  // Load the override map.
-  OpGenOverrideMap override_map;
-  if (!overrides_fnames.empty()) {
-    TF_CHECK_OK(override_map.LoadFileList(env, overrides_fnames));
-  }
 
   // Write the initial boilerplate to the .h and .cc files.
   std::unique_ptr<WritableFile> h = nullptr;

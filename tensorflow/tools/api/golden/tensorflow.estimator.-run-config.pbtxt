@@ -11,6 +11,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "global_id_in_cluster"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "is_chief"
     mtype: "<type \'property\'>"
   }

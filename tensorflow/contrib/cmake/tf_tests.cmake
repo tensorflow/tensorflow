@@ -226,6 +226,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/list_ops_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
