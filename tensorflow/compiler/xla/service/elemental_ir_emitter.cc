@@ -1264,14 +1264,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
                             get_next_uniform_float())));
         return ir_builder_->CreateFAdd(ir_builder_->CreateFMul(r, s), m);
       }
-      case RNG_BERNOULLI: {
-        TF_ASSIGN_OR_RETURN(llvm::Value * p,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        return ir_builder_->CreateZExt(
-            ir_builder_->CreateFCmpOLT(get_next_uniform_float(), p),
-            llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           module_));
-      }
       default:
         return InvalidArgument(
             "unhandled distribution %s",

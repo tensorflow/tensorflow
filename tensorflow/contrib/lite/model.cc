@@ -80,8 +80,7 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
   } else {
     allocation_ = new FileCopyAllocation(filename, error_reporter);
   }
-  if (!allocation_->valid()) return;
-  if (!CheckModelIdentifier()) return;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
   model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
 }
@@ -518,6 +517,26 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPACE_TO_BATCH_ND: {
+      auto* params = MallocPOD<TfLiteSpaceToBatchNDParams>();
+      if (auto* schema_params =
+              op->builtin_options_as_SpaceToBatchNDOptions()) {
+        const auto& block_shape = schema_params->block_shape();
+        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
+                                   params->block_shape, error_reporter);
+        const auto& before_paddings = schema_params->before_paddings();
+        FlatBufferIntVectorToArray(sizeof(params->before_paddings),
+                                   before_paddings, params->before_paddings,
+                                   error_reporter);
+        const auto& after_paddings = schema_params->after_paddings();
+        FlatBufferIntVectorToArray(sizeof(params->after_paddings),
+                                   after_paddings, params->after_paddings,
+                                   error_reporter);
+        params->num_spatial_dimensions = block_shape->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_BATCH_TO_SPACE_ND: {
       auto* params = MallocPOD<TfLiteBatchToSpaceNDParams>();
       if (auto* schema_params =
@@ -532,6 +551,29 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         FlatBufferIntVectorToArray(sizeof(params->after_crops), after_crops,
                                    params->after_crops, error_reporter);
         params->num_spatial_dimensions = block_shape->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_TRANSPOSE: {
+      auto* params = MallocPOD<TfLiteTransposeParams>();
+      if (auto* schema_params = op->builtin_options_as_TransposeOptions()) {
+        const auto& perm = schema_params->perm();
+        FlatBufferIntVectorToArray(sizeof(params->perm), perm, params->perm,
+                                   error_reporter);
+        params->num_dimensions = perm->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_MEAN: {
+      auto* params = MallocPOD<TfLiteMeanParams>();
+      if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
+        const auto& axis = schema_params->axis();
+        FlatBufferIntVectorToArray(sizeof(params->axis), axis, params->axis,
+                                   error_reporter);
+        params->keep_dims = schema_params->keep_dims();
+        params->num_axis_dimensions = axis->Length();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

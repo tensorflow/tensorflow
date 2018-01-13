@@ -38,6 +38,7 @@ load(
     "tf_mkl_kernel_library",
     "cc_header_only_library",
     "if_not_windows",
+    "if_override_eigen_strong_inline",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -194,10 +195,9 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "fill_functor",
-    srcs = ["fill_functor.cc"],
-    hdrs = ["fill_functor.h"],
+    prefix = "fill_functor",
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -1867,6 +1867,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
+        ":critical_section",
         ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
@@ -1876,6 +1877,23 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:resource_variable_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "list_kernels",
+    srcs = ["list_kernels.cc"],
+    hdrs = ["list_kernels.h"],
+    gpu_srcs = [
+        "list_kernels.cu.cc",
+        "list_kernels.h",
+    ],
+    deps = [
+        ":concat_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:list_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -3043,6 +3061,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     hdrs = [
+        "fill_functor.h",
         "conv_grad_ops.h",
         "deep_conv2d.h",
         "gemm_functors.h",
@@ -3051,6 +3070,10 @@ tf_kernel_library(
         ":xsmm": ["xsmm_conv2d.h"],
         "//conditions:default": [],
     }),
+    # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
+    # So that it doesn't take 20 minutes to compile conv_grad_ops_3d.cc and conv_ops_3d.cc
+    # on Windows. See https://github.com/tensorflow/tensorflow/issues/10521
+    copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     defines = select({
         ":xsmm": [
             "TENSORFLOW_USE_LIBXSMM",
@@ -3067,6 +3090,7 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":image_resizer_state",
+        ":fill_functor",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -3173,7 +3197,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [
+        ":fill_functor",
+    ],
 )
 
 tf_kernel_library(
@@ -3370,6 +3396,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
@@ -3983,6 +4010,12 @@ tf_kernel_library(
     name = "variable_ops",
     prefix = "variable_ops",
     deps = STATE_DEPS,
+)
+
+tf_kernel_library(
+    name = "critical_section",
+    prefix = "critical_section",
+    deps = STATE_DEPS + [":captured_function"],
 )
 
 tf_cc_test(
@@ -4934,6 +4967,7 @@ filegroup(
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
+            "critical_section.*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -5889,27 +5923,11 @@ tf_kernel_library(
 
 cc_library(
     name = "summary_interface",
-    srcs = ["summary_interface.cc"],
     hdrs = ["summary_interface.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
-    ],
-)
-
-tf_cc_test(
-    name = "summary_interface_test",
-    srcs = ["summary_interface_test.cc"],
-    deps = [
-        ":summary_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -5917,8 +5935,9 @@ tf_kernel_library(
     name = "summary_kernels",
     srcs = ["summary_kernels.cc"],
     deps = [
-        ":summary_interface",
+        "//tensorflow/contrib/tensorboard/db:schema",
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
+        "//tensorflow/contrib/tensorboard/db:summary_file_writer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

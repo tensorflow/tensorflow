@@ -107,6 +107,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
               // sequence has been reached, we return an OutOfRange error to
               // terminate the iteration. (Otherwise, this iterator may loop
               // infinitely and never produce a value.)
+              *end_of_sequence = true;
               return errors::OutOfRange(
                   "Attempted to repeat an empty dataset infinitely.");
             }
@@ -199,7 +200,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
 

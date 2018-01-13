@@ -346,6 +346,23 @@ xla_test(
 )
 
 xla_test(
+    name = "xla_hlo_profile_test",
+    srcs = ["xla_hlo_profile_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
     name = "axpy_simple_test",
     srcs = ["axpy_simple_test.cc"],
     deps = [
@@ -1384,6 +1401,31 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "execution_profile_test",
+    srcs = ["execution_profile_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "execution_profile_test_with_xla_hlo_profile",
+    srcs = ["execution_profile_test.cc"],
+    args = ["--xla_hlo_profile"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )

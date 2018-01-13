@@ -46,6 +46,7 @@ class Thunk {
     kCudnnBatchNormBackward,
     kCudnnBatchNormForwardInference,
     kCudnnBatchNormForwardTraining,
+    kFft,
     kGemm,
     kInfeed,
     kKernel,

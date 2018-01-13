@@ -387,4 +387,255 @@ REGISTER_OP("FuncAttr")
     .Attr("f: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("Simple")
+    .Input("a: int32")
+    .Output("out: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("OutT").Output("a: T").Attr("T: type").SetShapeFn(
+    shape_inference::UnknownShape);
+
+REGISTER_OP("ReservedInput")
+    .Input("input: int32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Polymorphic")
+    .Input("a: T")
+    .Output("out: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("PolymorphicOut")
+    .Output("out: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("PolymorphicDefaultOut")
+    .Output("out: T")
+    .Attr("T: type = DT_STRING")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Binary")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("out: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Restrict")
+    .Input("a: T")
+    .Output("out: T")
+    .Attr("T: {string, bool}")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TypeList")
+    .Input("a: T")
+    .Attr("T: list(type) >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TypeListTwice")
+    .Input("a: T")
+    .Input("b: T")
+    .Attr("T: list(type) >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("OutTypeList")
+    .Output("out: T")
+    .Attr("T: list(type) >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TypeListRestrict")
+    .Input("a: T")
+    .Attr("T: list({string, bool})")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("OutTypeListRestrict")
+    .Output("out: t")
+    .Attr("t: list({string, bool})")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("Attr").Attr("a: int").SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrFloat")
+    .Attr("a: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrBool")
+    .Attr("a: bool")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrBoolList")
+    .Attr("a: list(bool)")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrMin")
+    .Attr("a: int >= 5")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrListMin")
+    .Attr("a: list(int) >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrEnum")
+    .Attr("a: {'apples', 'oranges'}")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrEnumList")
+    .Attr("a: list({'apples', 'oranges'})")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrShape")
+    .Attr("a: shape")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrShapeList")
+    .Attr("a: list(shape)")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrPartialShape")
+    .Attr("a: shape")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrPartialShapeList")
+    .Attr("a: list(shape)")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrDefault")
+    .Attr("a: string = 'banana'")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrListDefault")
+    .Attr("a: list(int) = [5, 15]")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrEmptyListDefault")
+    .Attr("a: list(float) = []")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("ReservedAttr")
+    .Attr("range: int")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrTypeDefault")
+    .Input("a: T")
+    .Attr("T: type = DT_INT32")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AttrListTypeDefault")
+    .Input("a: N * T")
+    .Input("b: N * T")
+    .Attr("T: type = DT_INT32")
+    .Attr("N: int")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NIntsIn")
+    .Input("a: N * int32")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NPolymorphicIn")
+    .Input("a: N * T")
+    .Attr("T: type")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NPolymorphicRestrictIn")
+    .Input("a: N * T")
+    .Attr("T: {string, bool}")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NInTwice")
+    .Input("a: N * int32")
+    .Input("b: N * string")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NInPolymorphicTwice")
+    .Input("a: N * T")
+    .Input("b: N * T")
+    .Attr("T: type")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NInTwoTypeVariables")
+    .Input("a: N * S")
+    .Input("b: N * T")
+    .Attr("S: type")
+    .Attr("T: type")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("InPolymorphicTwice")
+    .Input("a: N * T")
+    .Input("b: M * T")
+    .Attr("T: type")
+    .Attr("N: int >= 0")
+    .Attr("M: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NIntsOut")
+    .Output("a: N * int32")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NIntsOutDefault")
+    .Output("a: N * int32")
+    .Attr("N: int >= 2 = 3")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NPolymorphicOut")
+    .Output("a: N * T")
+    .Attr("T: type")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NPolymorphicOutDefault")
+    .Output("a: N * T")
+    .Attr("T: type = DT_BOOL")
+    .Attr("N: int >= 2 = 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("NPolymorphicRestrictOut")
+    .Output("a: N * T")
+    .Attr("T: {string, bool}")
+    .Attr("N: int >= 2")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefIn")
+    .Input("a: Ref(T)")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TwoRefsIn")
+    .Input("a: Ref(T)")
+    .Input("b: Ref(T)")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("RefOut")
+    .Output("a: Ref(T)")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("SimpleStruct")
+    .Output("a: n_a * int32")
+    .Attr("n_a: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("MixedStruct")
+    .Output("a: n_a * int32")
+    .Output("b: float")
+    .Attr("n_a: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("ComplexStruct")
+    .Output("a: n_a * int32")
+    .Output("b: n_b * int64")
+    .Output("c: t_c")
+    .Attr("n_a: int >= 0")
+    .Attr("n_b: int >= 0")
+    .Attr("t_c: list(type) >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

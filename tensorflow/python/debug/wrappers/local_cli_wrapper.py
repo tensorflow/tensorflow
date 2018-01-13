@@ -82,6 +82,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
+      dump_root = os.path.expanduser(dump_root)
       if os.path.isfile(dump_root):
         raise ValueError("dump_root path points to a file: %s" % dump_root)
       elif os.path.isdir(dump_root) and os.listdir(dump_root):

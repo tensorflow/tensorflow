@@ -48,6 +48,7 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<OpLogProto> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
+      miss_gpu_stream_(false),
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph) << "Must at least have GraphDef";
 
@@ -70,7 +71,9 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
 
 TFStats::TFStats(const string& filename,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
-    : has_code_traces_(false), ckpt_reader_(std::move(ckpt_reader)) {
+    : has_code_traces_(false),
+      miss_gpu_stream_(false),
+      ckpt_reader_(std::move(ckpt_reader)) {
   string str;
   Status s = ReadFileToString(Env::Default(), filename, &str);
   if (!s.ok()) {
@@ -258,7 +261,17 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   }
   steps_.insert(step);
 
+  bool has_gpu_scheduling = false;
+  bool has_gpu_stream = false;
+
   for (const auto& dev_stat : run_meta->step_stats().dev_stats()) {
+    string dev = str_util::Lowercase(dev_stat.device());
+    if (IsPlacedOnAccelerator(dev)) {
+      has_gpu_scheduling = true;
+      if (CountAsAcceleratorTime(dev)) {
+        has_gpu_stream = true;
+      }
+    }
     for (const NodeExecStats& node_stat : dev_stat.node_stats()) {
       string name = node_stat.node_name();
       // Sometimes the node_name is suffixed with unnecessary information.
@@ -280,9 +293,24 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
       }
     }
   }
+
+  if (has_gpu_scheduling && !has_gpu_stream) {
+    miss_gpu_stream_ = true;
+  }
 }
 
-void TFStats::WriteProfile(const string& filename) {
+void TFStats::MaybeReportMissingTrace() const {
+  if (miss_gpu_stream_) {
+    fprintf(stderr,
+            "\n\nFound accelerator operation but misses accelerator "
+            "stream stats!\n\n"
+            "It's likely a gpu tracing issue rather than tf-profiler issue.\n"
+            "If you found your operation missing accelerator time, "
+            "consider filing a bug to xprof-dev@!\n\n");
+  }
+}
+
+void TFStats::SerializeToString(string* content) {
   ProfileProto profile;
   for (const auto& entry : id_to_string_) {
     (*profile.mutable_id_to_string())[entry.first] = entry.second;
@@ -299,14 +327,20 @@ void TFStats::WriteProfile(const string& filename) {
   for (int64 s : steps_) {
     profile.add_steps(s);
   }
-  Status s =
-      WriteStringToFile(Env::Default(), filename, profile.SerializeAsString());
+  *content = profile.SerializeAsString();
+}
+
+void TFStats::WriteProfile(const string& filename) {
+  string content;
+  SerializeToString(&content);
+  Status s = WriteStringToFile(Env::Default(), filename, content);
   if (!s.ok()) {
     fprintf(stderr, "%s\n", s.ToString().c_str());
   }
 }
 
 bool TFStats::Validate(const Options& opts) const {
+  MaybeReportMissingTrace();
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
     fprintf(stderr,
             "Options -step=%lld not found.\nAvailable steps: ", opts.step);

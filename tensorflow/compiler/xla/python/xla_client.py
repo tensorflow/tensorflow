@@ -80,14 +80,51 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F64: np.dtype(np.float64),
     xla_data_pb2.S32: np.dtype(np.int32),
     xla_data_pb2.S64: np.dtype(np.int64),
+    xla_data_pb2.U32: np.dtype(np.uint32),
+    xla_data_pb2.U64: np.dtype(np.uint64),
     xla_data_pb2.PRED: np.dtype(np.bool),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
+# Note the conversion on the key. Numpy has a known issue wherein dtype hashing
+# doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
+# when keying by dtype in this dict, we use the string form of dtypes.
 DTYPE_TO_XLA_ELEMENT_TYPE = {
     str(v): k
     for k, v in XLA_ELEMENT_TYPE_TO_DTYPE.items()
 }
+
+
+class LocalBuffer(object):
+  """Represents a handle to data owned by XLA.
+
+  The referent is ready for use in executing a local, compiled
+  Computation. On XLA platforms involving a device (e.g. GPU), this
+  means the referent is in device memory.
+  """
+
+  def __init__(self, c_local_shaped_buffer):
+    self.c_local_shaped_buffer = c_local_shaped_buffer
+    self._delete = c_api.DeleteLocalShapedBuffer
+
+  @staticmethod
+  def from_py(npval):
+    npval = require_numpy_array_layout(npval)
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval))
+
+  def to_py(self):
+    return self.c_local_shaped_buffer.ToLiteral()
+
+  def delete(self):
+    if self.c_local_shaped_buffer is not None:
+      self._delete(self.c_local_shaped_buffer)
+      self.c_local_shaped_buffer = None
+
+  def is_deleted(self):
+    return self.c_local_shaped_buffer is None
+
+  def __del__(self):
+    self.delete()
 
 
 class Shape(object):
@@ -101,6 +138,10 @@ class Shape(object):
   def __init__(self, np_dtype, dimensions):
     self.np_dtype = np_dtype
     self._dimensions = dimensions
+
+  def __repr__(self):
+    return 'xla_client.Shape(np_dtype={!r}, dimensions={!r})'.format(
+        self.np_dtype, self._dimensions)
 
   def element_type(self):
     return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.np_dtype)]
@@ -172,6 +213,41 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
+def transfer_to_infeed(value, replica_number=None):
+  """Transfers the given value into the XLA infeed queue.
+
+  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
+  a totally ordered stream of values. This is dequeued from XLA computations via
+  the Infeed() operation.
+
+  Args:
+    value: the value that the caller would like to enqueue into the XLA infeed
+      queue
+    replica_number: the replica number to infeed the value to -- if not
+      provided, then the default replica (trivially replica 0) is used.
+  """
+  if replica_number is None:
+    c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+  else:
+    c_api.TransferToInfeedLocalReplica(
+        require_numpy_array_layout(value), replica_number)
+
+
+def transfer_from_outfeed(shape, replica_number=None):
+  """Transfers a literal of the given shape from replica_number's outfeed.
+
+  Args:
+    shape: The shape of the value to transfer from outfeed.
+    replica_number: The replica number ordinal to transfer the outfeed value
+      from. (Each replica has a distinct outfeed queue.)
+
+  Returns:
+    The literal value that is produced from the outfeed queue.
+  """
+  return c_api.TransferFromOutfeedLocalReplica(
+      _unwrap_shape(shape), replica_number or 0)
+
+
 class LocalComputation(object):
   """Python wrapper for a local XLA Computation.
 
@@ -207,6 +283,17 @@ class LocalComputation(object):
     arguments = tuple(map(require_numpy_array_layout, arguments))
     return self.c_local_computation.Execute(arguments)
 
+  def ExecuteWithLocalBuffers(self, arguments=()):
+    """Execute with LocalBuffer arguments and return value."""
+    if not self.is_compiled:
+      raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    arguments = tuple(arguments)
+    if any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    return LocalBuffer(
+        self.c_local_computation.ExecuteWithShapedBuffers(
+            [arg.c_local_shaped_buffer for arg in arguments]))
+
   def __del__(self):
     self._delete(self.c_local_computation)
 
@@ -232,6 +319,27 @@ class ComputationBuilder(object):
 
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
+
+  def Infeed(self, shape):
+    """Enqueues an infeed op onto the computation.
+
+    Infeed operations dequeue data of the given shape from the device's infeed
+    queue for subsequent use in the computation.
+
+    Returns:
+      A  ComputationDataHandle message.
+    """
+    return _wrap_data_handle(self._client.Infeed(_unwrap_shape(shape)))
+
+  def Outfeed(self, operand):
+    """Enqueues an outfeed op onto the computation.
+
+    Outfeed operations enqueue data, using the given operand, onto the XLA
+    outfeed queue for subsequent dequeue via the client API.
+    """
+    self._client.Outfeed(
+        _unwrap_data_handle(operand), _unwrap_shape(self.GetShape(operand)),
+        ''.encode('utf-8'))
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.
@@ -573,6 +681,58 @@ class ComputationBuilder(object):
             computation_to_apply.c_local_computation,
             dimensions))
 
+  def RngNormal(self, mu, sigma, dims):
+    """Enqueues an RngNormal operation onto the computation.
+
+    Args:
+      mu: A ComputationDataHandle to an F32 scalar specifying the mean.
+      sigma: A ComputationDataHandle to an F32 scalar specifying the standard
+        deviation.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of F32 values.
+    """
+    shape = Shape(self.GetShape(mu).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngNormal(
+            _unwrap_data_handle(mu), _unwrap_data_handle(sigma),
+            _unwrap_shape(shape)))
+
+  def RngUniform(self, a, b, dims):
+    """Enqueues an RngUniform operation onto the computation.
+
+    Args:
+      a: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of b) specifying the low end of the interval [a, b) over which
+        values are generated.
+      b: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of a) specifying the high end of the interval [a, b) over which
+        values are generated.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of values with the
+      same numeric type (F32, S32, or U32) as the arguments a and b.
+    """
+    shape = Shape(self.GetShape(a).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngUniform(
+            _unwrap_data_handle(a), _unwrap_data_handle(b),
+            _unwrap_shape(shape)))
+
+  def RngBernoulli(self, mean, dims):
+    """Enqueues an RngBernoulli operation onto the computation.
+
+    Args:
+      mean: A ComputationDataHandle to an F32 scalar specifying the mean.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of U32 values.
+    """
+    shape = Shape(np.dtype(np.uint32), dims)
+    return _wrap_data_handle(
+        self._client.RngBernoulli(
+            _unwrap_data_handle(mean), _unwrap_shape(shape)))
+
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
 
@@ -705,3 +865,25 @@ def _forward_methods_to_local_builder():
 
 
 _forward_methods_to_local_builder()
+
+
+def initialize_replica_count(replica_count):
+  """Initializes the desired replica count to use on XLA service init.
+
+  Args:
+    replica_count: number of replicas that are desired for set up during XLA
+      initalization.
+
+  Raises:
+    A runtime exception if the XLA service has already been initialized.
+  """
+  c_api.InitializeReplicaCount(replica_count)
+
+
+def get_replica_count():
+  """Returns the current replica count used for the XLA service.
+
+  Note: this will return a value whether the XLA service has been initialized
+  yet or not.
+  """
+  return c_api.GetReplicaCount()

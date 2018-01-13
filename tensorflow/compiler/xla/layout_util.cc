@@ -64,6 +64,13 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
+  Layout layout;
+  layout.set_format(SPARSE);
+  layout.set_max_sparse_elements(max_sparse_elements);
+  return layout;
+}
+
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
@@ -234,7 +241,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::ClearLayout(program_shape->mutable_result());
 }
 
-/* static */ bool LayoutUtil::IsDense(const Shape& shape) {
+/* static */ bool LayoutUtil::IsDenseArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && shape.has_layout() &&
          IsDense(shape.layout());
 }
@@ -260,7 +267,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       shape.layout().padded_dimensions_size() == 0) {
     return false;
   }
-  CHECK(IsDense(shape));
+  CHECK(IsDenseArray(shape));
   CHECK_EQ(shape.dimensions_size(), shape.layout().padded_dimensions_size());
   for (int64 i = 0; i < shape.dimensions_size(); ++i) {
     if (shape.layout().padded_dimensions(i) > shape.dimensions(i)) {
@@ -272,19 +279,33 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::PaddedDimensions(
     const Shape& shape) {
-  CHECK(IsDense(shape));
+  CHECK(IsDenseArray(shape));
   return AsInt64Slice(shape.layout().padded_dimensions());
 }
 
 /* static */ int64 LayoutUtil::PaddedDimension(const Shape& shape,
                                                int64 index) {
-  CHECK(IsDense(shape));
+  CHECK(IsDenseArray(shape));
   return shape.layout().padded_dimensions(index);
 }
 
 /* static */ PaddingValue LayoutUtil::GetPaddingValue(const Shape& shape) {
-  CHECK(IsDense(shape));
+  CHECK(IsDenseArray(shape));
   return shape.layout().padding_value();
+}
+
+/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
+  return ShapeUtil::IsArray(shape) && shape.has_layout() &&
+         IsSparse(shape.layout());
+}
+
+/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
+  return layout.format() == SPARSE;
+}
+
+/* static */ int64 LayoutUtil::MaxSparseElements(const Layout& layout) {
+  CHECK(IsSparse(layout));
+  return layout.max_sparse_elements();
 }
 
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
@@ -313,7 +334,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ tensorflow::gtl::ArraySlice<int64> LayoutUtil::MinorToMajor(
     const Shape& shape) {
-  CHECK(IsDense(shape));
+  CHECK(IsDenseArray(shape));
   return AsInt64Slice(shape.layout().minor_to_major());
 }
 
@@ -350,6 +371,11 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
+  if (IsSparse(layout)) {
+    return tensorflow::strings::StrCat("sparse{", layout.max_sparse_elements(),
+                                       "}");
+  }
+  CHECK(IsDense(layout));
   return tensorflow::strings::StrCat(
       "{", tensorflow::str_util::Join(layout.minor_to_major(), ","), "}");
 }
@@ -419,6 +445,7 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
 
 /* static */ bool LayoutUtil::AreDimensionsConsecutive(
     const Layout& layout, tensorflow::gtl::ArraySlice<int64> dims) {
+  CHECK(IsDense(layout));
   std::vector<int64> positions_in_layout;
   for (int64 dim : dims) {
     positions_in_layout.push_back(
@@ -431,6 +458,11 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
     }
   }
   return true;
+}
+
+std::ostream& operator<<(std::ostream& out, const Layout& layout) {
+  out << LayoutUtil::HumanString(layout);
+  return out;
 }
 
 }  // namespace xla

@@ -37,6 +37,8 @@ class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
   void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
+
+  template <typename T>
   void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
@@ -60,37 +62,6 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
-}
-
-void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
-  ComputationBuilder builder(client_, TestName());
-  auto shape = ShapeUtil::MakeShape(U32, dims);
-  builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
-  ExecutionOptions execution_options = execution_options_;
-  execution_options.set_seed(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto actual, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                               &execution_options));
-  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  int32 sum = 0;
-  actual->EachCell<uint32>(
-      [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
-        EXPECT_TRUE(value == 0 || value == 1);
-        sum += value;
-      });
-  int32 total = ShapeUtil::ElementsIn(shape);
-  float p_tilde = sum / static_cast<float>(total);
-
-  // Test within expected range using normal approximation. The test uses a
-  // fixed seed and has a fixed output per p and backend. Using the normal
-  // approximation as this test is invoked for different `p` and the different
-  // backends could use different random number generators and produce different
-  // values. Choose 95% confidence level, so that z_{1-\alpha/2} = 1.96.
-  float normal_approximation_term = 1.96 * sqrt(p * (1 - p) / total);
-  EXPECT_GE(p_tilde, p - normal_approximation_term);
-  EXPECT_LE(p_tilde, p + normal_approximation_term);
 }
 
 // Uniform random number generation tests
@@ -181,10 +152,12 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
                        computation,
                        /*arguments=*/{param0_data.get()}, &execution_options));
 
-  EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
-  for (int i = 0; i < param0_literal->f32s_size(); ++i) {
-    EXPECT_GE(actual->f32s(i), param0_literal->f32s(i));
-    EXPECT_LT(actual->f32s(i), param0_literal->f32s(i) + 1.0f);
+  EXPECT_EQ(ShapeUtil::ElementsIn(actual->shape()),
+            ShapeUtil::ElementsIn(param0_literal->shape()));
+  for (int i = 0; i < ShapeUtil::ElementsIn(actual->shape()); ++i) {
+    EXPECT_GE(actual->data<float>()[i], param0_literal->data<float>()[i]);
+    EXPECT_LT(actual->data<float>()[i],
+              param0_literal->data<float>()[i] + 1.0f);
   }
 }
 
@@ -249,10 +222,6 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   LiteralTestUtil::ExpectNotEqual(*result4, *result5);
   LiteralTestUtil::ExpectNotEqual(*result5, *result6);
 }
-
-// Bernoulli random number generation tests
-XLA_TEST_F(PrngTest, HundredValuesB10p5) { BernoulliTest(0.5, {100}); }
-XLA_TEST_F(PrngTest, HundredValuesB10p1) { BernoulliTest(0.1, {100}); }
 
 XLA_TEST_F(PrngTest, TenValuesN01) {
   ComputationBuilder builder(client_, TestName());

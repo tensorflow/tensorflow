@@ -446,7 +446,13 @@ class RunManyGraphs {
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
-    if (!s.ok()) {
+    auto resp = get(index)->resp.get();
+    if (resp->status_code() != error::Code::OK) {
+      // resp->status_code will only be non-OK if s.ok().
+      mutex_lock l(mu_);
+      UpdateStatusLocked(
+          Status(resp->status_code(), resp->status_error_message()));
+    } else if (!s.ok()) {
       mutex_lock l(mu_);
       UpdateStatusLocked(s);
     }
@@ -539,6 +545,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
+    c->req->set_store_errors_in_response_body(true);
     // If any feeds are provided, send the feed values together
     // in the RunGraph request.
     // In the partial case, we only want to include feeds provided in the req.

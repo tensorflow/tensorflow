@@ -59,6 +59,21 @@ class WindowDataset : public DatasetBase {
       return Status::OK();
     }
 
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+      return Status::OK();
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      int64 i;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i));
+      i_ = size_t(i);
+      return Status::OK();
+    }
+
     mutex mu_;
     size_t i_ GUARDED_BY(mu_) = 0;
   };

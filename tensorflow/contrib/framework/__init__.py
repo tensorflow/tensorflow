@@ -81,7 +81,10 @@ See the @{$python/contrib.framework} guide.
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
 
+@@py_func
 @@sort
+
+@@CriticalSection
 """
 
 from __future__ import absolute_import

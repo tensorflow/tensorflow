@@ -90,6 +90,9 @@ class FileBlockCache {
   /// Remove all cached blocks for `filename`.
   void RemoveFile(const string& filename) LOCKS_EXCLUDED(mu_);
 
+  /// Remove all cached data.
+  void Flush() LOCKS_EXCLUDED(mu_);
+
   /// Accessors for cache parameters.
   size_t block_size() const { return block_size_; }
   size_t max_bytes() const { return max_bytes_; }

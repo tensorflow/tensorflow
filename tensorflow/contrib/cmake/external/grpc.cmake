@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 54e8f37e537794c2d814c1604c1282125f64f093)
+set(GRPC_TAG 730b778632e79cc3c96ad237f282d687ee325ce7)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES

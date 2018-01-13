@@ -96,19 +96,19 @@ NSString* FilePathForResourceName(NSString* name, NSString* extension) {
 }
 
 NSString* RunInferenceOnImage() {
-  std::string graph;
+  NSString* graph = @"mobilenet_v1_1.0_224";
   const int num_threads = 1;
   std::string input_layer_type = "float";
   std::vector<int> sizes = {1, 224, 224, 3};
 
-  NSString* graph_path = FilePathForResourceName(@"mobilenet_v1_1.0_224", @"tflite");
+  const NSString* graph_path = FilePathForResourceName(graph, @"tflite");
 
   std::unique_ptr<tflite::FlatBufferModel> model(
       tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
   if (!model) {
-    LOG(FATAL) << "Failed to mmap model " << graph;
+    LOG(FATAL) << "Failed to mmap model " << [graph UTF8String];
   }
-  LOG(INFO) << "Loaded model " << graph;
+  LOG(INFO) << "Loaded model " << [graph UTF8String];
   model->error_reporter();
   LOG(INFO) << "resolved reporter";
 

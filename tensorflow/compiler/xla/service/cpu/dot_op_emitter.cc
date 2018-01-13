@@ -23,10 +23,11 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
+#include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/vector_support_library.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -175,7 +176,7 @@ class ColumnMajorMatrixVectorProductEmitter {
   }
 
   // Load a tile of values from the RHS.  For the RHS a "tile" is a contiguous
-  // sequnce of `count` values, each one broadcasted to the vector width.
+  // sequence of `count` values, each one broadcasted to the vector width.
   std::vector<llvm::Value*> LoadRhsTile(llvm::Value* offset, int64 count) {
     llvm::Value* base_pointer = vsl_.ComputeOffsetPointer(rhs_, offset);
     std::vector<llvm::Value*> result;
@@ -526,7 +527,8 @@ DotOpEmitter::DotOpEmitter(
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-    const HloModuleConfig& hlo_module_config)
+    const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features)
     : dot_(dot),
       transpose_lhs_(transpose_lhs),
       transpose_rhs_(transpose_rhs),
@@ -536,20 +538,22 @@ DotOpEmitter::DotOpEmitter(
       addend_array_(addend_array),
       executable_run_options_value_(executable_run_options_value),
       ir_builder_(ir_builder),
-      hlo_module_config_(hlo_module_config) {}
+      hlo_module_config_(hlo_module_config),
+      target_machine_features_(target_machine_features) {}
 
 /* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
     const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-    const HloModuleConfig& hlo_module_config) {
+    const HloModuleConfig& hlo_module_config,
+    const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, addend_array,
                            executable_run_options_value, ir_builder,
-                           hlo_module_config);
+                           hlo_module_config, target_machine_features);
   return dot_emitter.Emit();
 }
 
@@ -624,10 +628,23 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
   const bool optimize_for_size =
       options::OptimizeForSizeRequested(hlo_module_config_);
 
+  const int target_vector_register_element_size =
+      target_machine_features_.vector_register_num_elements(
+          *ir_builder_->GetInsertBlock()->getParent(), primitive_type);
+
+  // We may not always know the vector register size for the target we're
+  // compiling against, in which case target_vector_register_element_size is 0.
+  // In these cases we choose a default LLVM IR register size.
+  const int kUnknownTargetVectorRegisterSize = 4;
+  const int vector_register_element_size =
+      target_vector_register_element_size == 0
+          ? kUnknownTargetVectorRegisterSize
+          : target_vector_register_element_size;
+
   if (is_column_major_matrix_vector) {
     VLOG(2) << "Emitting column major matrix-vector multiply with m = " << m
             << " and k = " << k;
-    int64 tile_rows = 8;
+    int64 tile_rows = vector_register_element_size;
     int64 tile_cols = tiling_factor;
 
     string kernel_name = tensorflow::strings::StrCat(
@@ -651,7 +668,7 @@ bool DotOpEmitter::EmitLlvmIrDotIfProfitable() {
     VLOG(2) << "Emitting row major matrix-vector multiply with m = " << m
             << " and k = " << k;
     int64 tile_rows = tiling_factor;
-    int64 tile_cols = 8;
+    int64 tile_cols = vector_register_element_size;
 
     string kernel_name = tensorflow::strings::StrCat(
         "row_major_gemv_", PrimitiveType_Name(primitive_type), "_", tile_rows,

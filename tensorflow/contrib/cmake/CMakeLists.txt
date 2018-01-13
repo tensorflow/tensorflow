@@ -106,6 +106,9 @@ else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 endif()
 
+# TODO(jart): We should make this only apply to snapfn.cc
+add_definitions(-DSQLITE_OMIT_LOAD_EXTENSION)
+
 if (tensorflow_DISABLE_EIGEN_FORCEINLINE)
   add_definitions(-DEIGEN_STRONG_INLINE=inline)
 endif()
@@ -404,7 +407,9 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_stream_executor.cmake)
+if (tensorflow_ENABLE_GPU)
+  include(tf_stream_executor.cmake)
+endif()
 
 include(tf_core_cpu.cmake)
 include(tf_core_ops.cmake)

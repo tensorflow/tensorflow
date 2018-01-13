@@ -27,6 +27,7 @@ limitations under the License.
 // __attribute__((__vector_size__(*))).  Unfortunately, the typedef for the ARM
 // NEON SIMD types is not portable, so the type has to come from <arm_neon.h>
 #include <arm_neon.h>
+#define TF_XLA_HAS_NEON
 #endif  // __ARM_NEON__
 
 namespace xla {
@@ -36,12 +37,9 @@ namespace runtime {
 extern const char *const kExpV4F32NEONSymbolName;
 extern const char *const kLogV4F32NEONSymbolName;
 
-#ifdef __ARM_NEON__
+#ifdef TF_XLA_HAS_NEON
 typedef float32x4_t V4F32NEON;
-#else
-// On non-ARM platforms ensure the declaration is present
-struct V4F32NEON;
-#endif  // __ARM_NEON__
+#endif  // TF_XLA_HAS_NEON
 
 }  // namespace runtime
 }  // namespace cpu
@@ -49,7 +47,7 @@ struct V4F32NEON;
 
 extern "C" {
 
-#ifdef __ARM_NEON__
+#ifdef TF_XLA_HAS_NEON
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
@@ -58,7 +56,7 @@ xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_ExpV4F32NEON(
 
 xla::cpu::runtime::V4F32NEON __xla_cpu_runtime_LogV4F32NEON(
     xla::cpu::runtime::V4F32NEON x);
-#endif  // __ARM_NEON__
+#endif  // TF_XLA_HAS_NEON
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_NEON_H_

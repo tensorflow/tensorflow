@@ -25,14 +25,21 @@ namespace {
 
 template <typename FloatT>
 void PopulateWithRandomFloatingPointData(Literal* literal) {
-  // TODO(b/69179121): Generate data that is less self-similar.
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<FloatT> generator(0.0f, 1.0f);
+  // Create uniform numbers between 1 and 1.125 ot avoid creating denormal
+  // numbers.
+  std::uniform_real_distribution<FloatT> generator(1.0f, 1.125f);
   TF_CHECK_OK(literal->Populate<FloatT>(
-      [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
-        return generator(engine);
+      [&](tensorflow::gtl::ArraySlice<int64> indices) {
+        // Generate a random uniforma number from -0.0625 and 0.0625 and bias it
+        // with  a position dependent nubmer with mean 0.037109375. These number
+        // should allow for long chains of accumulation without being too close
+        // to zero or to large to accumulate all numbers accurately.
+        return (generator(engine) - 1.0625) +
+               static_cast<FloatT>(Product(indices) % 113 - 47) /
+                   static_cast<FloatT>(256.0f);
       }));
 }
 
@@ -42,7 +49,7 @@ template <>
 void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal) {
   CHECK_EQ(literal->shape().element_type(), BF16);
   std::minstd_rand0 engine;
-  std::uniform_real_distribution<float> generator(0.0f, 1.0f);
+  std::uniform_real_distribution<float> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<bfloat16>(
       [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
         return static_cast<bfloat16>(generator(engine));
@@ -126,6 +133,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
                                 fused_uses.end());
       } else if (NeedsZeroInitValue(use)) {
         constrained_uses.push_back(instruction);
+      } else if (opcode == HloOpcode::kConvert ||
+                 opcode == HloOpcode::kReducePrecision) {
+        auto converted_uses = FindConstrainedUses(dataflow, *instruction);
+        constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
+                                converted_uses.end());
       }
     }
   }
@@ -145,7 +157,6 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
-        TF_RET_CHECK(ShapeUtil::Equal(param.shape(), use->operand(0)->shape()));
         if (needs_index != nullptr &&
             !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
           return Unimplemented(
@@ -173,7 +184,8 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
         needs_index->ToString().c_str(), needs_zero->ToString().c_str());
   }
   if (needs_index != nullptr) {
-    return MakeRandomNonwrappingSliceIndex(param.shape(), needs_index->shape());
+    return MakeRandomNonwrappingSliceIndex(needs_index->operand(0)->shape(),
+                                           needs_index->shape());
   } else if (needs_zero != nullptr) {
     return Literal::CreateFromShape(param.shape());
   } else {
@@ -266,13 +278,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
 
 Status VerifyHloModule(const perftools::gputools::Platform& platform,
                        HloModule* const module) {
-  return HloVerifier(
-             std::bind(
-                 &TransferManager::GetByteSizeRequirement,
-                 TransferManager::GetForPlatform(&platform).ConsumeValueOrDie(),
-                 std::placeholders::_1))
-      .Run(module)
-      .status();
+  return HloVerifier().Run(module).status();
 }
 
 }  // namespace xla

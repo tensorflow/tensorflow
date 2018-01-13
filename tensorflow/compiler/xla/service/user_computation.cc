@@ -369,14 +369,6 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
 
   // Check the number of parameters per RNG distribution.
   switch (rng_request.distribution()) {
-    case RandomDistribution::RNG_BERNOULLI:
-      if (rng_request.parameter_size() != 1) {
-        return InvalidArgument(
-            "RNG distribution (%s) expects 1 parameters, but got %d",
-            RandomDistribution_Name(rng_request.distribution()).c_str(),
-            rng_request.parameter_size());
-      }
-      break;
     case RandomDistribution::RNG_NORMAL:
     case RandomDistribution::RNG_UNIFORM:
       if (rng_request.parameter_size() != 2) {
@@ -1121,6 +1113,31 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddFftInstruction(
+    const FftRequest& fft_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(fft_request.operand()));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferFftShape(
+                          operand->output_shape(), fft_request.fft_type(),
+                          AsInt64Slice(fft_request.fft_length())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_fft_request() = fft_request;
+
+  VLOG(1) << "AddFftInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << fft_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
     const CrossReplicaSumRequest& cross_replica_sum_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1675,6 +1692,13 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      PureFunctionalVisitor(session_computation, fft_request.operand(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::kCrossReplicaSumRequest: {
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
       *is_functional = false;
@@ -2122,6 +2146,13 @@ UserComputation::GetEmbeddedComputations(
   return computations;
 }
 
+StatusOr<const OperationRequest*>
+UserComputation::LookUpRequestForErrorReporting(
+    const ComputationDataHandle& handle) const {
+  tensorflow::mutex_lock lock(mutex_);
+  return LookUpRequest(handle);
+}
+
 Status UserComputation::RemapEmbeddedComputations(
     const std::map<int64, ComputationHandle>& old_to_new) {
   auto update = [&old_to_new](ComputationHandle* to_update) -> Status {
@@ -2403,6 +2434,12 @@ static void ForEachOperand(
           request.request().convolve_request();
       apply(convolve_request.lhs());
       apply(convolve_request.rhs());
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      apply(fft_request.operand());
       break;
     }
 
@@ -2801,7 +2838,8 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          Literal(constant_request.literal()).CloneToUnique()));
+          Literal::CreateFromProto(constant_request.literal())
+              .ConsumeValueOrDie()));
       break;
     }
 
@@ -2877,6 +2915,15 @@ void ComputationLowerer::Visit(
       hlo_instruction = add_instruction(HloInstruction::CreateConvolve(
           request.output_shape(), lhs, rhs, convolve_request.window(),
           convolve_request.dimension_numbers()));
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      HloInstruction* operand = lookup_instruction(fft_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateFft(
+          request.output_shape(), operand, fft_request.fft_type(),
+          AsInt64Slice(fft_request.fft_length())));
       break;
     }
 

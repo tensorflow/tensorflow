@@ -452,6 +452,7 @@ class _WithSpaceToBatch(object):
     self.input_shape = input_shape
     self.spatial_dims = spatial_dims
     self.dilation_rate = dilation_rate
+    self.data_format = data_format
     self.op = build_op(num_spatial_dims, "VALID")
     self.call = self._with_space_to_batch_call
 
@@ -496,6 +497,14 @@ class _WithSpaceToBatch(object):
 
     result_converted = array_ops.batch_to_space_nd(
         input=result, block_shape=dilation_rate, crops=crops)
+
+    # Recover channel information for output shape if channels are not last.
+    if self.data_format is not None and self.data_format.startswith("NC"):
+      if not result_converted.shape[1].value:
+        output_shape = result_converted.shape.as_list()
+        output_shape[1] = filter.shape[-1]
+        result_converted.set_shape(output_shape)
+
     return result_converted
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -823,7 +832,8 @@ class Convolution(object):
         padding=padding,
         build_op=self._build_op,
         filter_shape=filter_shape,
-        spatial_dims=spatial_dims)
+        spatial_dims=spatial_dims,
+        data_format=data_format)
 
   def _build_op(self, _, padding):
     return _NonAtrousConvolution(
@@ -1488,7 +1498,7 @@ def bias_add_v1(value, bias, name=None):
     return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-def crelu(features, name=None):
+def crelu(features, name=None, axis=-1):
   """Computes Concatenated ReLU.
 
   Concatenates a ReLU which selects only the positive part of the activation
@@ -1500,13 +1510,14 @@ def crelu(features, name=None):
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
       `int16`, or `int8`.
     name: A name for the operation (optional).
+    axis: The axis that the output values are concatenated along. Default is -1.
 
   Returns:
     A `Tensor` with the same type as `features`.
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat([features, -features], -1, name=name)
+    c = array_ops.concat([features, -features], axis, name=name)
     return gen_nn_ops.relu(c)
 
 
@@ -1628,7 +1639,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
-  logits = _swap_axis(logits, dim, math_ops.subtract(input_rank, 1))
+  dim_axis = dim % shape.ndims
+  logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
   shape_after_swap = array_ops.shape(logits)
 
   # Reshape logits into a matrix.
@@ -1639,7 +1651,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Transform back the output tensor.
   output = array_ops.reshape(output, shape_after_swap)
-  output = _swap_axis(output, dim, math_ops.subtract(input_rank, 1), name=name)
+  output = _swap_axis(
+      output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.

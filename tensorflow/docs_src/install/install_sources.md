@@ -25,8 +25,10 @@ like to try to build TensorFlow on Windows anyway, use either of the
 following:
 
 *   [Bazel on Windows](https://bazel.build/versions/master/docs/windows.html)
-*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/r0.12/tensorflow/contrib/cmake)
+*   [TensorFlow CMake build](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/cmake)
 
+Note: Starting from 1.6 release, our prebuilt binaries will use AVX
+instructions. Older CPUs may not be able to execute these binaries.
 
 ## Determine which TensorFlow to install
 
@@ -359,10 +361,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.4.0 on Linux:
+for TensorFlow 1.5.0rc0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.4.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.5.0rc0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation

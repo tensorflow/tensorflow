@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/core:lib",
         "@llvm//:core",
@@ -152,18 +153,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
-    name = "vector_support_library",
-    srcs = ["vector_support_library.cc"],
-    hdrs = ["vector_support_library.h"],
-    deps = [
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@llvm//:core",
     ],
 )

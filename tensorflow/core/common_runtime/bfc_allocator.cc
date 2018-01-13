@@ -691,6 +691,13 @@ void BFCAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
+void BFCAllocator::ClearStats() {
+  mutex_lock l(lock_);
+  stats_.num_allocs = 0;
+  stats_.max_bytes_in_use = stats_.bytes_in_use;
+  stats_.max_alloc_size = 0;
+}
+
 std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>
 BFCAllocator::get_bin_debug_info() {
   std::array<BinDebugInfo, kNumBins> bin_infos;

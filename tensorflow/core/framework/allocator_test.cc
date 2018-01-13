@@ -110,6 +110,8 @@ TEST(CPUAllocatorTest, Simple) {
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
+  a->ClearStats();
+  CheckStats(a, 0, 0, 0, 0);
   EnableCPUAllocatorStats(false);
 }
 

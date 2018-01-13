@@ -495,5 +495,25 @@ TEST(FileBlockCacheTest, CoalesceConcurrentReads) {
 
   EXPECT_EQ(1, num_requests);
 }
+
+TEST(FileBlockCacheTest, Flush) {
+  int calls = 0;
+  auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
+                          char* buffer, size_t* bytes_transferred) {
+    calls++;
+    memset(buffer, 'x', n);
+    *bytes_transferred = n;
+    return Status::OK();
+  };
+  FileBlockCache cache(16, 32, 0, fetcher);
+  std::vector<char> out;
+  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  EXPECT_EQ(calls, 1);
+  cache.Flush();
+  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  EXPECT_EQ(calls, 2);
+}
+
 }  // namespace
 }  // namespace tensorflow

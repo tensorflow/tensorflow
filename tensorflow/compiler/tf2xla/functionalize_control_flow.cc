@@ -37,6 +37,8 @@ namespace tensorflow {
 
 namespace {
 
+using xla::StatusOr;
+
 const char* const kArgOp = "_Arg";
 const char* const kRetValOp = "_Retval";
 
@@ -74,6 +76,20 @@ struct Frame {
 
   // Set of nodes that belong to the loop frame.
   std::unordered_set<Node*> nodes;
+};
+
+// Comparison function used for sorting nodes consistently.
+// a) resource variables are last, and
+// b) sort lexicographically by name (for deterministic output).
+struct NodeCmp {
+  bool operator()(const Node* lhs, const Node* rhs) const {
+    bool lhs_is_resource =
+        lhs->num_inputs() > 0 ? (lhs->input_type(0) == DT_RESOURCE) : false;
+    bool rhs_is_resource =
+        rhs->num_inputs() > 0 ? (rhs->input_type(0) == DT_RESOURCE) : false;
+    return std::tie(lhs_is_resource, lhs->name()) <
+           std::tie(rhs_is_resource, rhs->name());
+  }
 };
 
 // Returns a textual representation of the names of the nodes in the input.
@@ -141,7 +157,7 @@ Status CopySubgraph(const Graph& graph, const Frame* frame,
   return Status::OK();
 }
 
-xla::StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
+StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
   Status status;
   Node* inserted_node = graph->AddNode(node_def, &status);
   if (!status.ok()) {
@@ -150,7 +166,7 @@ xla::StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
   return inserted_node;
 }
 
-xla::StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
+StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   NodeDef arg_def;
   NodeDefBuilder builder(strings::StrCat(kArgOp, index), kArgOp);
   builder.Attr("T", type);
@@ -159,7 +175,7 @@ xla::StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   return AddNode(arg_def, graph);
 }
 
-xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
+StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   NodeDef ret_def;
   ret_def.set_op(kRetValOp);
   ret_def.set_name(strings::StrCat(kRetValOp, index));
@@ -310,16 +326,9 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
   }
   frame->args = std::move(args);
 
-  // Order the arguments so that:
-  // a) resource variables are last, and
-  // b) sort lexicographically by name (for deterministic output).
-  std::sort(frame->args.begin(), frame->args.end(),
-            [](const Arg& a, const Arg& b) {
-              bool a_is_resource = (a.enter->input_type(0) == DT_RESOURCE);
-              bool b_is_resource = (b.enter->input_type(0) == DT_RESOURCE);
-              return std::tie(a_is_resource, a.enter->name()) <
-                     std::tie(b_is_resource, b.enter->name());
-            });
+  std::sort(
+      frame->args.begin(), frame->args.end(),
+      [](const Arg& a, const Arg& b) { return NodeCmp()(a.enter, b.enter); });
 
   if (frame->loop_cond == nullptr) {
     return errors::InvalidArgument("Loop ", frame->name,
@@ -542,18 +551,6 @@ class FunctionalizeCond {
   // Returns a textual representation of the Branch b.
   static string Branch_Name(FunctionalizeCond::Branch b);
 
-  // Comparison function used for sorting nodes consistently.
-  struct CondCmp {
-    bool operator()(const Node* lhs, const Node* rhs) const {
-      bool lhs_is_resource =
-          lhs->num_inputs() > 0 ? (lhs->input_type(0) == DT_RESOURCE) : false;
-      bool rhs_is_resource =
-          rhs->num_inputs() > 0 ? (rhs->input_type(0) == DT_RESOURCE) : false;
-      return std::tie(lhs_is_resource, lhs->name()) <
-             std::tie(rhs_is_resource, rhs->name());
-    }
-  };
-
   // Functionalize all the switch-merge nodes of a loop-free graph into XlaIf
   // nodes. That is, attempt to transform every remaining switch and merge nodes
   // in the graph into XlaIf nodes.
@@ -561,6 +558,20 @@ class FunctionalizeCond {
   static Status Functionalize(Graph* graph, FunctionLibraryDefinition* library);
 
  private:
+  // CondArgNode represents a input to the conditional and its corresponding
+  // switch nodes.
+  struct CondArgNode {
+    explicit CondArgNode(Node* input) : input(input) {}
+    string ToString() const {
+      return strings::StrCat("input=", input->name(),
+                             " switches=", NodesToString(switch_nodes));
+    }
+
+    Node* input;
+    std::vector<Node*> switch_nodes;
+  };
+  using CondArgNodes = std::vector<CondArgNode>;
+
   struct ForwardFlowNode {
     explicit ForwardFlowNode(Branch branch = Branch::kNeither)
         : branch(branch), count(0) {}
@@ -571,6 +582,13 @@ class FunctionalizeCond {
     int count;
   };
 
+  struct PredicateSwitches {
+    explicit PredicateSwitches(Node* predicate) : predicate(predicate) {}
+
+    Node* predicate;
+    std::vector<Node*> switches;
+  };
+
   FunctionalizeCond(Graph* graph, FunctionLibraryDefinition* library)
       : library_(library), graph_(graph) {}
 
@@ -579,44 +597,61 @@ class FunctionalizeCond {
   // extract into XlaIf nodes.
   Status FunctionalizeInternal();
 
-  // Converts a Merge node to a XlaIf. This encapsulates the process of
-  // extracting the bodies needed for the then and else branch, creates a XlaIf
-  // node, removing the nodes of the branches from the graph and replacing the
-  // merge node with a XlaIf.
-  Status ConvertCorrespondingMergeToXlaIf(
-      const std::vector<Node*>& switch_nodes,
-      const std::vector<Node*>& merge_nodes, Node* predicate);
+  // Determines the branch_map (mapping from node to branch of cond) and
+  // frontier (the nodes where the cond ends).
+  StatusOr<std::pair<std::unordered_map<Node*, ForwardFlowNode>,
+                     std::unordered_set<Node*>>>
+  DetermineBranchMapAndFrontier(const std::vector<Node*>& switches);
+
+  // Returns XlaIf node created from subgraph of merge and switch nodes. This
+  // encapsulates the process of extracting the bodies needed for the then and
+  // else branch, creates a XlaIf node, removing the nodes of the branches from
+  // the graph and replacing the merge node with a XlaIf.
+  StatusOr<Node*> ConvertToXlaIf(const CondArgNodes& cond_arg_nodes,
+                                 const std::vector<Node*>& switch_nodes,
+                                 const std::vector<Node*>& merge_nodes,
+                                 Node* predicate);
 
   // Builds a XlaIfOp to replace the Switch-Graph-Merge cluster with.
-  xla::StatusOr<Node*> BuildAndAddXlaIfOp(
-      const std::vector<Node*>& switch_nodes,
-      const std::vector<Node*>& merge_nodes, Node* predicate);
+  StatusOr<Node*> BuildAndAddXlaIfOp(const CondArgNodes& cond_arg_nodes,
+                                     const std::vector<Node*>& switch_nodes,
+                                     const std::vector<Node*>& merge_nodes,
+                                     Node* predicate);
 
   // Extracts a function body corresponding to the given input edge of the merge
   // node.
-  Status ExtractBody(const std::vector<Node*>& switch_nodes,
+  Status ExtractBody(const CondArgNodes& cond_arg_nodes,
+                     const std::vector<Node*>& switch_nodes,
                      const std::vector<Node*>& merge_nodes, int input_edge,
                      Graph* body);
 
   // Adds all the input edges to `if_node` corresponding to the arguments.
-  Status AddInputEdges(const std::vector<Node*>& cond_args, Node* predicate,
+  Status AddInputEdges(const CondArgNodes& cond_arg_nodes, Node* predicate,
                        Node* if_node);
 
   // Adds all output edges from the `if_node`.
   Status AddOutputEdges(const std::vector<Node*>& outputs, Node* if_node);
 
-  // Returns the switches of graph_ in postorder. Dead switch nodes are skipped
-  // and removed from the graph.
-  std::vector<Node*> DetermineSwitchOrder();
+  // Returns the switches of graph_ (along with grouping predicates) in
+  // postorder. Dead switch nodes are skipped and removed from the graph.
+  std::vector<PredicateSwitches> DeterminePredicateSwitchOrder();
 
   // Update the state for destination based on the state of source and the node
   // being updated.
   Status Join(const ForwardFlowNode& src_state, const Node* dst,
               ForwardFlowNode* dst_state);
 
-  // Validates that the branch_map and frontier of nodes for the conditional
+  // Ensure that all nodes in the branch_map are dominated by the switch
+  // nodes. Returns nodes that are not dominated by the switches but are a
+  // control dependency of a node in the cond, and remove such control
+  // dependencies.
+  StatusOr<std::vector<Node*>> EnsureDominanceAndReturnNonDominatedControlNodes(
+      const std::unordered_map<Node*, ForwardFlowNode>& branch_map,
+      const std::vector<Node*>& switches);
+
+  // Validates that the frontier of nodes for the conditional
   // section are as expected.
-  Status ValidBranchMapAndFrontier(
+  Status ValidateFrontier(
       const std::unordered_map<Node*, ForwardFlowNode>& branch_map,
       const std::unordered_set<Node*>& frontier);
 
@@ -645,23 +680,11 @@ string FunctionalizeCond::Branch_Name(FunctionalizeCond::Branch b) {
   return branch_name[b];
 }
 
-Status FunctionalizeCond::ValidBranchMapAndFrontier(
+Status FunctionalizeCond::ValidateFrontier(
     const std::unordered_map<Node*, FunctionalizeCond::ForwardFlowNode>&
         branch_map,
     const std::unordered_set<Node*>& frontier) {
   std::unordered_set<const Node*> pending[kNumBranchTypes];
-  for (const auto& kv : branch_map) {
-    if (kv.second.count != kv.first->in_edges().size()) {
-      return errors::FailedPrecondition("Value ", kv.first->DebugString(),
-                                        " not dominated by switch nodes.");
-    }
-    if (VLOG_IS_ON(1)) {
-      // Append attribute to the graph if running with logging to make the
-      // changes clearer in the visualization.
-      kv.first->AddAttr("_XlaFunctionalizeBranch",
-                        Branch_Name(kv.second.branch));
-    }
-  }
   for (Node* n : frontier) {
     pending[branch_map.at(n).branch].insert(n);
   }
@@ -680,6 +703,10 @@ Status FunctionalizeCond::ValidBranchMapAndFrontier(
           "Node (", n->DebugString().c_str(),
           ") in both Else and Then branch should be in Both.");
     }
+  }
+  if (pending[kBoth].empty() && pending[kThenBranch].empty() &&
+      pending[kElseBranch].empty()) {
+    return errors::Internal("Unexpected empty frontier for switch nodes");
   }
   return Status::OK();
 }
@@ -707,7 +734,8 @@ Status FunctionalizeCond::Join(const ForwardFlowNode& src_state,
   return Status::OK();
 }
 
-std::vector<Node*> FunctionalizeCond::DetermineSwitchOrder() {
+std::vector<FunctionalizeCond::PredicateSwitches>
+FunctionalizeCond::DeterminePredicateSwitchOrder() {
   std::vector<Node*> dead_switches;
   std::vector<Node*> switch_order;
   DFS(*graph_, nullptr, [this, &dead_switches, &switch_order](Node* n) {
@@ -722,28 +750,16 @@ std::vector<Node*> FunctionalizeCond::DetermineSwitchOrder() {
 
   // Remove all dead switch nodes.
   for (Node* n : dead_switches) {
+    VLOG(2) << "Removing dead switch: " << n->DebugString();
     graph_->RemoveNode(n);
   }
 
-  return switch_order;
-}
-
-Status FunctionalizeCond::FunctionalizeInternal() {
-  std::vector<Node*> switch_order = DetermineSwitchOrder();
-  // If there are no switch nodes, then terminate.
+  std::vector<PredicateSwitches> predicate_switch_order;
   if (switch_order.empty()) {
-    return Status::OK();
+    return predicate_switch_order;
   }
 
-  struct PredicateSwitches {
-    explicit PredicateSwitches(Node* predicate) : predicate(predicate) {}
-
-    Node* predicate;
-    std::vector<Node*> switches;
-  };
-
   // Merge Switch nodes with common predicate.
-  std::vector<PredicateSwitches> predicate_switch_order;
   std::unordered_map<Node*, int> predicate_index;
   // The nodes in switch_order are in reverse topological order, but the
   // clustered switches need not be (i.e., when considered as a cluster one
@@ -759,76 +775,168 @@ Status FunctionalizeCond::FunctionalizeInternal() {
     }
     predicate_switch_order[predicate_index[pred]].switches.push_back(*it);
   }
+  return predicate_switch_order;
+}
+
+StatusOr<std::vector<Node*>>
+FunctionalizeCond::EnsureDominanceAndReturnNonDominatedControlNodes(
+    const std::unordered_map<Node*, ForwardFlowNode>& branch_map,
+    const std::vector<Node*>& switches) {
+  std::vector<Node*> old_control_nodes;
+  for (const auto& kv : branch_map) {
+    if (kv.second.count != kv.first->in_edges().size()) {
+      std::vector<const Edge*> delete_edges;
+      for (const Edge* in : kv.first->in_edges()) {
+        auto it = branch_map.find(in->src());
+        if (it == branch_map.end()) {
+          if (in->IsControlEdge()) {
+            old_control_nodes.push_back(in->src());
+            delete_edges.push_back(in);
+          } else {
+            if (IsSwitch(in->src())) {
+              if (std::find(switches.begin(), switches.end(), in->src()) ==
+                  switches.end()) {
+                return errors::Internal(
+                    "Unexpected switch node found during flow forward: ",
+                    in->src()->DebugString());
+              }
+              continue;
+            }
+            return errors::InvalidArgument(
+                "Value ", kv.first->name(), "'s input, ", in->src()->name(),
+                ", is not dominated by switch nodes ", NodesToString(switches));
+          }
+        }
+      }
+      // Remove control edges from nodes that are not dominated by the switch
+      // nodes. New control dependencies will be added between these nodes and
+      // the XlaIf node inserted.
+      for (const Edge* e : delete_edges) {
+        graph_->RemoveEdge(e);
+      }
+    }
+  }
+  return old_control_nodes;
+}
+
+StatusOr<
+    std::pair<std::unordered_map<Node*, FunctionalizeCond::ForwardFlowNode>,
+              std::unordered_set<Node*>>>
+FunctionalizeCond::DetermineBranchMapAndFrontier(
+    const std::vector<Node*>& switches) {
+  std::unordered_map<Node*, ForwardFlowNode> branch_map;
+  std::unordered_set<Node*> frontier;
+  std::vector<Node*> stack = switches;
+  std::vector<bool> visited(graph_->num_node_ids(), false);
+  while (!stack.empty()) {
+    Node* n = stack.back();
+    stack.pop_back();
+
+    if (visited[n->id()]) {
+      continue;
+    }
+    visited[n->id()] = true;
+
+    // Propagate branch state along each edge of a switch node.
+    bool sink_only = true;
+    for (const Edge* e : n->out_edges()) {
+      Node* out = e->dst();
+      if (!out->IsOp()) {
+        continue;
+      }
+      sink_only = false;
+      // Propagate branch information.
+      ForwardFlowNode& ffn = branch_map[out];
+      if (IsSwitch(n)) {
+        int index = e->IsControlEdge() ? Branch::kNeither : e->src_output();
+        TF_RETURN_IF_ERROR(Join(ForwardFlowNode(Branch(index)), out, &ffn));
+      } else {
+        TF_RETURN_IF_ERROR(Join(branch_map[n], out, &ffn));
+      }
+      if (IsMerge(out)) {
+        if (out->in_edges().size() == ffn.count) {
+          frontier.insert(out);
+        }
+      } else if (!visited[out->id()]) {
+        stack.push_back(out);
+      }
+    }
+    if (sink_only) {
+      if (!IsIdentity(n)) {
+        VLOG(1) << "Feeding into sink: " << n->DebugString();
+      }
+    }
+  }
+
+  if (VLOG_IS_ON(2)) {
+    for (const auto& kv : branch_map) {
+      // Append attribute to the graph if running with logging to make the
+      // changes clearer in the visualization.
+      kv.first->AddAttr("_XlaFunctionalizeBranch",
+                        Branch_Name(kv.second.branch));
+    }
+  }
+  return std::make_pair(std::move(branch_map), std::move(frontier));
+}
+
+Status FunctionalizeCond::FunctionalizeInternal() {
+  std::vector<PredicateSwitches> predicate_switch_order =
+      DeterminePredicateSwitchOrder();
 
   // Iterate from innermost set of clustered switches to outermost, replacing
   // matching switch->merge subgraphs with single XlaIf nodes.
   for (auto it = predicate_switch_order.rbegin();
        it != predicate_switch_order.rend(); ++it) {
     auto& ps = *it;
-    VLOG(3) << "Flow down from: " << ps.predicate->name() << " -> "
-            << NodesToString(ps.switches);
+    VLOG(3) << "Flow down from: " << NodesToString(ps.switches) << " ("
+            << ps.predicate->name() << ")";
 
     std::unordered_map<Node*, ForwardFlowNode> branch_map;
     std::unordered_set<Node*> frontier;
+    TF_ASSIGN_OR_RETURN(std::tie(branch_map, frontier),
+                        DetermineBranchMapAndFrontier(ps.switches));
 
-    std::vector<Node*> stack = ps.switches;
-    std::vector<bool> visited(graph_->num_node_ids(), false);
-    while (!stack.empty()) {
-      Node* n = stack.back();
-      stack.pop_back();
-
-      if (visited[n->id()]) {
-        continue;
-      }
-      visited[n->id()] = true;
-
-      // Propagate branch state along each edge of a switch node.
-      bool sink_only = true;
-      for (const Edge* e : n->out_edges()) {
-        Node* out = e->dst();
-        if (!out->IsOp()) {
-          continue;
-        }
-        sink_only = false;
-        // Propagate branch information.
-        ForwardFlowNode& ffn = branch_map[out];
-        if (IsSwitch(n)) {
-          int index = e->IsControlEdge() ? Branch::kNeither : e->src_output();
-          TF_RETURN_IF_ERROR(Join(ForwardFlowNode(Branch(index)), out, &ffn));
-        } else {
-          TF_RETURN_IF_ERROR(Join(branch_map[n], out, &ffn));
-        }
-        if (IsMerge(out)) {
-          if (out->in_edges().size() == ffn.count) {
-            frontier.insert(out);
-          }
-        } else if (!visited[out->id()] && ffn.count == out->in_edges().size()) {
-          // If all predecessors are dominated by the switch nodes, then add
-          // the output to the stack.
-          stack.push_back(out);
-        }
-      }
-      if (sink_only) {
-        if (!IsIdentity(n)) {
-          VLOG(1) << "Feeding into sink: " << n->DebugString();
-        }
-      }
-    }
-
-    TF_RETURN_IF_ERROR(ValidBranchMapAndFrontier(branch_map, frontier));
     VLOG(2) << "FunctionalizeControlFlow (before XlaIf conversion): "
             << dump_graph::DumpGraphToFile("functionalize_bc", *graph_);
-    std::vector<Node*> switch_nodes(ps.switches);
-    std::sort(switch_nodes.begin(), switch_nodes.end(), CondCmp());
+    TF_RETURN_IF_ERROR(ValidateFrontier(branch_map, frontier));
+
+    // Sort the merge and switch nodes using NodeCmp. The switch-nodes are
+    // further grouped (post sorting) by input to the switch node as in the
+    // functionalized form each input will be passed in only once. This grouping
+    // should retain the sorted order.
+    CondArgNodes cond_arg_nodes;
+    std::unordered_map<Node*, int> input_index;
+    std::sort(ps.switches.begin(), ps.switches.end(), NodeCmp());
+    for (Node* switch_node : ps.switches) {
+      Node* in;
+      TF_RETURN_IF_ERROR(switch_node->input_node(0, &in));
+      if (input_index.find(in) == input_index.end()) {
+        input_index[in] = cond_arg_nodes.size();
+        cond_arg_nodes.emplace_back(in);
+      }
+      cond_arg_nodes.at(input_index.at(in)).switch_nodes.push_back(switch_node);
+    }
     std::vector<Node*> merge_nodes(frontier.begin(), frontier.end());
-    std::sort(merge_nodes.begin(), merge_nodes.end(), CondCmp());
-    TF_RETURN_IF_ERROR(ConvertCorrespondingMergeToXlaIf(
-        switch_nodes, merge_nodes, ps.predicate));
+    std::sort(merge_nodes.begin(), merge_nodes.end(), NodeCmp());
+
+    TF_ASSIGN_OR_RETURN(std::vector<Node*> old_control_nodes,
+                        EnsureDominanceAndReturnNonDominatedControlNodes(
+                            branch_map, ps.switches));
+
+    TF_ASSIGN_OR_RETURN(
+        Node * if_node,
+        ConvertToXlaIf(cond_arg_nodes, ps.switches, merge_nodes, ps.predicate));
+    for (Node* old : old_control_nodes) {
+      graph_->AddControlEdge(old, if_node);
+    }
+
     for (auto& del_kv : branch_map) {
       graph_->RemoveNode(del_kv.first);
     }
-    for (Node* node : switch_nodes) {
-      graph_->RemoveNode(node);
+    for (auto& kv : cond_arg_nodes) {
+      for (Node* node : kv.switch_nodes) {
+        graph_->RemoveNode(node);
+      }
     }
     VLOG(2) << "FunctionalizeControlFlow (after XlaIf conversion): "
             << dump_graph::DumpGraphToFile("functionalize_ac", *graph_);
@@ -836,8 +944,8 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   return Status::OK();
 }
 
-xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
-    const std::vector<Node*>& switch_nodes,
+StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
+    const CondArgNodes& cond_arg_nodes, const std::vector<Node*>& switch_nodes,
     const std::vector<Node*>& merge_nodes, Node* predicate) {
   VLOG(2) << "Build if op for " << NodesToString(merge_nodes) << " with input "
           << NodesToString(switch_nodes);
@@ -854,8 +962,12 @@ xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
     body_name.set_name(
         strings::StrCat("_functionalize_if_", branch[i], "_", id));
     auto body = xla::MakeUnique<Graph>(graph_->op_registry());
-    TF_RETURN_IF_ERROR(ExtractBody(switch_nodes, merge_nodes, i, body.get()));
+    TF_RETURN_IF_ERROR(
+        ExtractBody(cond_arg_nodes, switch_nodes, merge_nodes, i, body.get()));
     VLOG(3) << "Body " << branch[i] << ": " << DebugString(body.get());
+    VLOG(4) << "FunctionalizeControlFlow (" << branch[i] << "): "
+            << dump_graph::DumpGraphToFile(
+                   strings::StrCat("functionalize_", branch[i]), *body);
     FunctionDef body_fdef;
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*body, body_name.name(), &body_fdef));
     TF_RETURN_IF_ERROR(library_->AddFunctionDef(body_fdef));
@@ -865,16 +977,22 @@ xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
   // Build input type.
   std::vector<NodeDefBuilder::NodeOut> inputs;
   DataTypeVector in_arg_types;
-  for (const Node* arg : switch_nodes) {
-    const Edge* in_edge;
-    TF_RETURN_IF_ERROR(arg->input_edge(0, &in_edge));
-    if (in_edge->IsControlEdge()) {
-      builder.ControlInput(in_edge->src()->name());
-    } else {
-      DataType dtype = arg->input_type(0);
-      inputs.emplace_back(NodeDefBuilder::NodeOut(
-          in_edge->src()->name(), in_edge->src_output(), dtype));
-      in_arg_types.push_back(dtype);
+  for (auto& kv : cond_arg_nodes) {
+    bool inserted = false;
+    for (const Node* arg : kv.switch_nodes) {
+      const Edge* in_edge;
+      TF_RETURN_IF_ERROR(arg->input_edge(0, &in_edge));
+      if (in_edge->IsControlEdge()) {
+        builder.ControlInput(in_edge->src()->name());
+      } else {
+        if (!inserted) {
+          DataType dtype = arg->input_type(0);
+          inputs.emplace_back(NodeDefBuilder::NodeOut(
+              in_edge->src()->name(), in_edge->src_output(), dtype));
+          in_arg_types.push_back(dtype);
+          inserted = true;
+        }
+      }
     }
   }
   builder.Attr("Tin", in_arg_types);
@@ -900,7 +1018,8 @@ xla::StatusOr<Node*> FunctionalizeCond::BuildAndAddXlaIfOp(
   return if_node;
 }
 
-Status FunctionalizeCond::ExtractBody(const std::vector<Node*>& switch_nodes,
+Status FunctionalizeCond::ExtractBody(const CondArgNodes& cond_arg_nodes,
+                                      const std::vector<Node*>& switch_nodes,
                                       const std::vector<Node*>& merge_nodes,
                                       int input_edge, Graph* body) {
   VLOG(2) << "ExtractBody for " << NodesToString(merge_nodes) << " along edge "
@@ -908,16 +1027,20 @@ Status FunctionalizeCond::ExtractBody(const std::vector<Node*>& switch_nodes,
   std::vector<bool> squash_src_outputs(graph_->num_node_ids(), false);
   std::vector<Node*> node_map(graph_->num_node_ids(), nullptr);
   int arg_count = 0;
-  for (const auto* arg : switch_nodes) {
-    DataType dtype = arg->input_type(0);
-    TF_ASSIGN_OR_RETURN(Node * arg_node,
-                        BuildArgNode(body, dtype, arg_count++));
-    node_map.at(arg->id()) = arg_node;
-    squash_src_outputs.at(arg->id()) = true;
+  for (auto& kv : cond_arg_nodes) {
+    Node* arg_node = nullptr;
+    for (const auto* arg : kv.switch_nodes) {
+      DataType dtype = arg->input_type(0);
+      if (arg_node == nullptr) {
+        TF_ASSIGN_OR_RETURN(arg_node, BuildArgNode(body, dtype, arg_count++));
+      }
+      node_map.at(arg->id()) = arg_node;
+      squash_src_outputs.at(arg->id()) = true;
+    }
   }
 
   std::vector<Node*> stack;
-  stack.reserve(switch_nodes.size());
+  stack.reserve(merge_nodes.size());
   for (int j = 0; j < merge_nodes.size(); ++j) {
     Node* node = merge_nodes[j];
     TF_ASSIGN_OR_RETURN(node_map.at(node->id()),
@@ -946,18 +1069,25 @@ Status FunctionalizeCond::ExtractBody(const std::vector<Node*>& switch_nodes,
                       body);
 }
 
-Status FunctionalizeCond::AddInputEdges(const std::vector<Node*>& cond_args,
+Status FunctionalizeCond::AddInputEdges(const CondArgNodes& cond_arg_nodes,
                                         Node* predicate, Node* if_node) {
   VLOG(3) << "AddInputEdges for " << if_node->name();
-  int i = 0;
-  graph_->AddEdge(predicate, 0, if_node, i++);
-  for (const Node* arg : cond_args) {
-    const Edge* in_edge;
-    TF_RETURN_IF_ERROR(arg->input_edge(0, &in_edge));
-    if (in_edge->IsControlEdge()) {
-      graph_->AddControlEdge(in_edge->src(), if_node);
-    } else {
-      graph_->AddEdge(in_edge->src(), in_edge->src_output(), if_node, i++);
+  int index = 0;
+  graph_->AddEdge(predicate, 0, if_node, index++);
+  for (auto& kv : cond_arg_nodes) {
+    bool inserted = false;
+    for (const Node* arg : kv.switch_nodes) {
+      const Edge* in_edge;
+      TF_RETURN_IF_ERROR(arg->input_edge(0, &in_edge));
+      if (in_edge->IsControlEdge()) {
+        graph_->AddControlEdge(in_edge->src(), if_node);
+      } else {
+        if (!inserted) {
+          graph_->AddEdge(in_edge->src(), in_edge->src_output(), if_node,
+                          index++);
+          inserted = true;
+        }
+      }
     }
   }
   return Status::OK();
@@ -988,19 +1118,20 @@ Status FunctionalizeCond::AddOutputEdges(const std::vector<Node*>& outputs,
   return Status::OK();
 }
 
-Status FunctionalizeCond::ConvertCorrespondingMergeToXlaIf(
-    const std::vector<Node*>& switch_nodes,
+StatusOr<Node*> FunctionalizeCond::ConvertToXlaIf(
+    const CondArgNodes& cond_arg_nodes, const std::vector<Node*>& switch_nodes,
     const std::vector<Node*>& merge_nodes, Node* predicate) {
-  VLOG(1) << "ConvertMergeToXlaIf for " << NodesToString(switch_nodes) << " -> "
+  VLOG(1) << "ConvertToXlaIf for " << NodesToString(switch_nodes) << " -> "
           << NodesToString(merge_nodes);
 
   // Extract bodies and builds a If operator.
-  TF_ASSIGN_OR_RETURN(Node * if_node,
-                      BuildAndAddXlaIfOp(switch_nodes, merge_nodes, predicate));
-  TF_RETURN_IF_ERROR(AddInputEdges(switch_nodes, predicate, if_node));
+  TF_ASSIGN_OR_RETURN(
+      Node * if_node,
+      BuildAndAddXlaIfOp(cond_arg_nodes, switch_nodes, merge_nodes, predicate));
+  TF_RETURN_IF_ERROR(AddInputEdges(cond_arg_nodes, predicate, if_node));
   TF_RETURN_IF_ERROR(AddOutputEdges(merge_nodes, if_node));
 
-  return Status::OK();
+  return if_node;
 }
 
 Status FunctionalizeCond::Functionalize(Graph* graph,

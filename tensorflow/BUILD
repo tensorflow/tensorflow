@@ -364,6 +364,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "override_eigen_strong_inline",
+    values = {"define": "override_eigen_strong_inline=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -401,6 +407,7 @@ filegroup(
         "//tensorflow/c:all_files",
         "//tensorflow/cc:all_files",
         "//tensorflow/cc/saved_model:all_files",
+        "//tensorflow/cc/saved_model/python:all_files",
         "//tensorflow/compiler/aot:all_files",
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
@@ -520,8 +527,6 @@ filegroup(
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/model_pruning/examples/cifar10:all_files",
-        "//tensorflow/contrib/mpi:all_files",
-        "//tensorflow/contrib/mpi_collectives:all_files",
         "//tensorflow/contrib/nccl:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",
@@ -529,7 +534,10 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/periodic_resample:all_files",
         "//tensorflow/contrib/predictor:all_files",
-        "//tensorflow/contrib/quantization:all_files",
+        "//tensorflow/contrib/py2tf:all_files",
+        "//tensorflow/contrib/py2tf/convert:all_files",
+        "//tensorflow/contrib/py2tf/pyct:all_files",
+        "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
@@ -582,6 +590,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/batching_util:all_files",
         "//tensorflow/core/kernels/data:all_files",
         "//tensorflow/core/kernels/data/sql:all_files",
         "//tensorflow/core/kernels/fuzzing:all_files",
@@ -664,8 +673,6 @@ filegroup(
         "//third_party/fft2d:all_files",
         "//third_party/flatbuffers:all_files",
         "//third_party/hadoop:all_files",
-        "//third_party/mpi:all_files",
-        "//third_party/mpi_collectives:all_files",
         "//third_party/sycl:all_files",
         "//third_party/sycl/sycl:all_files",
     ],
@@ -793,6 +800,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
     ],
 )

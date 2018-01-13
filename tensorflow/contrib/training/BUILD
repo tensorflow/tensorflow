@@ -26,7 +26,6 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
-        "python/training/sgdr_learning_rate_decay.py",
         "python/training/training.py",
         "python/training/tuner.py",
     ],

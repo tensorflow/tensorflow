@@ -15,7 +15,6 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 py_library(
     name = "receptive_field_pip",
     deps = [
-        ":graph_compute_order_py",
         ":receptive_field_py",
     ],
 )
@@ -23,7 +22,6 @@ py_library(
 py_library(
     name = "graph_compute_order_py",
     srcs = [
-        "__init__.py",
         "python/util/graph_compute_order.py",
     ],
     srcs_version = "PY2AND3",
@@ -32,8 +30,8 @@ py_library(
 py_library(
     name = "receptive_field_py",
     srcs = [
-        "__init__.py",
         "python/util/receptive_field.py",
+        "receptive_field_api.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
