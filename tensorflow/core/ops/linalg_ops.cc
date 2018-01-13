@@ -143,12 +143,16 @@ Status QrShapeFn(InferenceContext* c) {
 
 // Input is [...,M,M].
 // First and second outputs are:
-//   [...,M,M]; [...,M,M]
+//   [...,M,M]; [...,M,M]; [...,M,M]; [...,M,M]
 Status LuShapeFn(InferenceContext* c) {
   ShapeHandle l_shape;
   ShapeHandle u_shape;
+  ShapeHandle q_shape;
+  ShapeHandle r_shape;
   c->set_output(0, l_shape);
   c->set_output(1, u_shape);
+  c->set_output(2, q_shape);
+  c->set_output(3, r_shape);
   return Status::OK();
 }
 
@@ -525,15 +529,12 @@ full_matrices: If true, compute full-sized `q` and `r`. If false
   (the default), compute only the leading `P` columns of `q`.
 )doc");
 
-// .SetShapeFn(LuShapeFn)      .SetShapeFn(BatchUnchangedSquareShapeFnTmp)    
-//.Output("u: T") 
-//u: Shape is `[..., M, M]`.
-
-
 REGISTER_OP("Lu")
     .Input("input: T")
     .Output("l: T")
     .Output("u: T")
+    .Output("p: T")
+    .Output("q: T")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(LuShapeFn)  
     .Doc(R"doc(
@@ -541,6 +542,16 @@ Computes the LU decomposition of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices.
+
+
+```python
+# l is a tensor of lower triangular matrices.
+# u is a tensor of upper triangular matrices.
+# p is a tensor.
+# q is a tensor.
+# a = p.inverse()*l*u*q.inverse()
+l, u, p, q = lu(a) 
+```
 
 The input has to be square matrix. 
 
@@ -550,6 +561,8 @@ containing the LU decompositions for all input submatrices `[..., :, :]`.
 input: Shape is `[..., M, M]`.
 l: Shape is `[..., M, M]`.
 u: Shape is `[..., M, M]`.
+p: Shape is `[..., M, M]`.
+q: Shape is `[..., M, M]`.
 )doc");
 
 REGISTER_OP("Svd")

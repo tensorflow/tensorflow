@@ -39,43 +39,38 @@ class LuOp : public LinearAlgebraOp<Scalar> {
 
   explicit LuOp(OpKernelConstruction* context) : Base(context) {}
  
-  //using TensorShapes = typename Base::TensorShapes;
-  
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0); 
-    return TensorShapes({TensorShape({m, m}), TensorShape({m, m})});
+    int64 m = input_matrix_shapes[0].dim_size(0); // input square matrix 
+    return TensorShapes({TensorShape({m, m}), TensorShape({m, m}),
+                         TensorShape({m, m}), TensorShape({m, m})});
   }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final {    
+                     MatrixMaps* outputs) final { 
     const ConstMatrixMap& input = inputs[0];    
     if (input.rows() == 0) {
       return;
     }
+
     // Perform the actual LU decomposition.
-    
     Eigen::FullPivLU<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
         lu_decomposition(input);
     
     OP_REQUIRES(context, lu_decomposition.isInvertible() == true, errors::InvalidArgument(kErrMsg));
-    //std::cout<<lu_decomposition.permutationP()<<std::endl;
     // Output the lower triangular in a dense form.
-    outputs->at(0) = lu_decomposition.matrixLU();//.template triangularView<Eigen::StrictlyLower>();
+    outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
     outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
-    //LOG(WARNING) << " in LU after outputs assignment.";
+    outputs->at(2) = lu_decomposition.permutationP();
+    outputs->at(3) = lu_decomposition.permutationQ();
   }
 };
-
 
 REGISTER_LINALG_OP("Lu", (LuOp<float>), float);
 REGISTER_LINALG_OP("Lu", (LuOp<double>), double);
 REGISTER_LINALG_OP("Lu", (LuOp<complex64>), complex64);
 REGISTER_LINALG_OP("Lu", (LuOp<complex128>), complex128);
-
-
 //REGISTER_LINALG_OP("BatchLu", (LuOp<float>), float);
 //REGISTER_LINALG_OP("BatchLu", (LuOp<double>), double);
-
 }  // namespace tensorflow

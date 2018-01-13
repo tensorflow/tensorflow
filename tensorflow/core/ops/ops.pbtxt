@@ -11861,12 +11861,22 @@ op {
   }
   output_arg {
     name: "l"
-    description: "The lower triangular matrix."
+    description: "The lower triangular matrix L."
     type_attr: "T"
   }
   output_arg {
     name: "u"
-    description: "The upper triangular matrix."
+    description: "The upper triangular matrix U."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "p"
+    description: "The permutation matrix P."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    description: "The permutation matrix Q."
     type_attr: "T"
   }
   attr {
