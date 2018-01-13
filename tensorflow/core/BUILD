@@ -203,6 +203,8 @@ CORE_PROTO_SRCS = [
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/control_flow.proto",
+    # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+    # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
