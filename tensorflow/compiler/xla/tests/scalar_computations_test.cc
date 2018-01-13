@@ -69,6 +69,13 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   }
 };
 
+XLA_TEST_F(ScalarComputationsTest, ReturnScalarF32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.ConstantR0<float>(2.1f);
+
+  ComputeAndCompareR0<float>(&builder, 2.1f, {}, error_spec_);
+}
+
 XLA_TEST_F(ScalarComputationsTest, NegateScalarF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<float>(2.1f));
