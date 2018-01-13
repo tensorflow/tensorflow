@@ -20,7 +20,7 @@ set(TENSORFLOW_LITE_GTEST_DIR "C:/Development/tensorflow/tensorflow/contrib/lite
 
 # TODO: SIMD Visual studio
 add_definitions(-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
-    -DNONMINMAX)
+    -DNOMINMAX)
 
 
 SET (TENSORFLOW_LITE_KERNEL_SOURCES
