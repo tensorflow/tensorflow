@@ -366,8 +366,10 @@ class Interpreter {
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_allocate_node_id_;
 
+#ifdef TFLITE_FEATURE_NNAPI
   // Whether to delegate to NN API
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
+#endif //TFLITE_FEATURE_NNAPI
 };
 
 }  // namespace tflite
