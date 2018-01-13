@@ -1881,6 +1881,23 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "list_kernels",
+    srcs = ["list_kernels.cc"],
+    hdrs = ["list_kernels.h"],
+    gpu_srcs = [
+        "list_kernels.cu.cc",
+        "list_kernels.h",
+    ],
+    deps = [
+        ":concat_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:list_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "fact_op",
     prefix = "fact_op",
     deps = [

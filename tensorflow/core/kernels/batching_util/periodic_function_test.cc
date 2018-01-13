@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/batching/util/periodic_function.h"
+#include "tensorflow/core/kernels/batching_util/periodic_function.h"
 
 #include <memory>
 #include <string>
 
-#include "tensorflow/contrib/batching/test_util/fake_clock_env.h"
+#include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

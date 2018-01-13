@@ -82,7 +82,7 @@ class ExecutableRunOptions {
 
   ExecutableRunOptions& set_device_assignment(
       DeviceAssignment* device_assignment);
-  DeviceAssignment* device_assignment() const;
+  const DeviceAssignment* device_assignment() const;
 
  private:
   DeviceMemoryAllocator* allocator_ = nullptr;
