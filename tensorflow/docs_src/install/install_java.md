@@ -123,12 +123,12 @@ instead:
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>libtensorflow</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0-rc1</version>
 </dependency>
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>libtensorflow_jni_gpu</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0-rc1</version>
 </dependency>
 ```
 
