@@ -1636,7 +1636,7 @@ def yiq_to_rgb(images):
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(_yiq_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
-  return math_ops.tensordot(images, _yiq_to_rgb_kernel, axes=[[ndims-1], [0]])
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
 
 _rgb_to_yuv_kernel = [[0.299, -0.14714119, 0.61497538],
@@ -1660,7 +1660,7 @@ def rgb_to_yuv(images):
   """
   images = ops.convert_to_tensor(images, name='images')
   ndims = images.get_shape().ndims
-  return math_ops.tensordot(images, _rgb_to_yuv_kernel, axes=[[ndims-1], [0]])
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
 
 _yuv_to_rgb_kernel = [[1, 1, 1],
@@ -1685,5 +1685,5 @@ def yuv_to_rgb(images):
   """
   images = ops.convert_to_tensor(images, name='images')
   ndims = images.get_shape().ndims
-  return math_ops.tensordot(images, _yuv_to_rgb_kernel, axes=[[ndims-1], [0]])
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
