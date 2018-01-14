@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef NN_API_SHIM_H0
 #define NN_API_SHIM_H0
 
-#include <dlfcn.h>
+#include "tensorflow/contrib/lite/tflite_osal.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,11 +34,14 @@ limitations under the License.
 inline void* loadLibrary(const char* name) {
   // TODO: change RTLD_LOCAL? Assumes there can be multiple instances of nn
   // api RT
-  void* handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+  // void* handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
+
+  void *handle = tflite::osal::load_dynamic_library(name);
   if (handle == nullptr) {
     NNAPI_LOG("nnapi error: unable to open library %s", name);
   }
   return handle;
+
 }
 
 inline void* getLibraryHandle() {
@@ -49,7 +52,8 @@ inline void* getLibraryHandle() {
 inline void* loadFunction(const char* name) {
   void* fn = nullptr;
   if (getLibraryHandle() != nullptr) {
-    fn = dlsym(getLibraryHandle(), name);
+    // fn = dlsym(getLibraryHandle(), name);
+	  fn = tflite::osal::load_dynamic_symbol(getLibraryHandle(), name);
   }
   if (fn == nullptr) {
     NNAPI_LOG("nnapi error: unable to open function %s", name);

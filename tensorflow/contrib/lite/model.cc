@@ -29,10 +29,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/version.h"
-
-#ifdef TFLITE_FEATURE_NNAPI
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
-#endif
+
 namespace tflite {
 
 namespace {
@@ -79,10 +77,8 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
                                      : DefaultErrorReporter()) {
   if (mmap_file) {
     if (use_nnapi){
-      #ifdef TFLITE_FEATURE_NNAPI
       if( NNAPIExists() )
         allocation_ = new NNAPIAllocation(filename, error_reporter);
-      #endif
     }
     else
       allocation_ = new MMAPAllocation(filename, error_reporter);

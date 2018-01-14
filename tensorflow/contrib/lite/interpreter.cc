@@ -21,10 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
-
-#ifdef TFLITE_FEATURE_NNAPI
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
-#endif
 
 namespace {
 
@@ -386,7 +383,6 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
-#ifdef TFLITE_FEATURE_NNAPI
   if (nnapi_delegate_) {
     if (AllocateTensorsWhoseSizesAreKnown() == kTfLiteError) {
       return kTfLiteError;
@@ -403,7 +399,6 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
-#endif
   for (int i = 0; i < nodes_and_registration_.size(); i++) {
     // Ensure we have allocated up to this node. The point of this is to
     // allocate as much as possible before running any evaluation, but
@@ -554,14 +549,12 @@ void Interpreter::UseNNAPI(bool enable) {
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
 
-#ifdef TFLITE_FEATURE_NNAPI
   if (!NNAPIExists()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
-#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {

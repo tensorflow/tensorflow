@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -32,34 +34,51 @@ limitations under the License.
 
 namespace tflite {
 
+
 #ifdef _WIN32
   static constexpr void* MAP_FAILED = nullptr;
 
+  //#TODO (shaurya) : avoid code duplication for mmapallocation
   MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
-    : Allocation(error_reporter), mmapped_buffer_(MAP_FAILED) {
+    : Allocation(error_reporter)
+    , mmapped_buffer_(MAP_FAILED)
+    , file_handle_( nullptr )
+    , file_mapping_( nullptr ) {
 
-  // mmap_fd_ = open(filename, O_RDONLY);
-  // if (mmap_fd_ == -1) {
-  //   error_reporter_->Report("Could not open '%s'.", filename);
-  //   return;
-  // }
-  // struct stat sb;
-  // fstat(mmap_fd_, &sb);
-  // buffer_size_bytes_ = sb.st_size;
-  // mmapped_buffer_ =
-  //     mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
-  // if (mmapped_buffer_ == MAP_FAILED) {
-  //   error_reporter_->Report("Mmap of '%s' failed.", filename);
-  //   return;
-  // }
+  file_handle_ = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, 0);
+  if (file_handle_ == INVALID_HANDLE_VALUE) {
+    error_reporter_->Report("Could not open '%s'.", filename);
+    return;
+  }
+
+  buffer_size_bytes_ = GetFileSize( file_handle_, nullptr );
+
+  file_mapping_ = CreateFileMapping(file_handle_, NULL, PAGE_READONLY, 0, 0, NULL);
+  if (file_mapping_ == NULL)
+    return;
+
+  mmapped_buffer_ = MapViewOfFile(file_mapping_, FILE_MAP_READ, 0, 0, buffer_size_bytes_);
+
+  if (mmapped_buffer_ == MAP_FAILED) {
+    error_reporter_->Report("Mmap of '%s' failed.", filename);
+    return;
+  }
 }
 
 MMAPAllocation::~MMAPAllocation() {
-  // if (valid()) {
-  //   munmap(const_cast<void*>(mmapped_buffer_), buffer_size_bytes_);
-  // }
-  // if (mmap_fd_ != -1) close(mmap_fd_);
+   if (valid()) {
+     UnmapViewOfFile( mmapped_buffer_ );
+   }
+
+   if (file_mapping_ != nullptr) {
+    CloseHandle( file_mapping_ );
+   }
+
+   if (file_handle_ != nullptr){
+    CloseHandle( file_handle_ );
+   }
+
 }
 
 #else

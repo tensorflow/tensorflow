@@ -9,18 +9,19 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
 set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
 set(TENSORFLOW_LITE_ROOT_DIR "C:/Development/tensorflow/tensorflow/contrib/lite")
-set(TENSORFLOW_LITE_KERNEL_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/kernels")
-set(TENSORFLOW_LITE_DOWNLOADED_DEPENDENCIES_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads")
-set(TENSORFLOW_LITE_GEMMLOWP_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/gemmlowp")
-set(TENSORFLOW_LITE_EIGEN_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/eigen")
-set(TENSORFLOW_LITE_FLATBUFFERS_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/flatbuffers/include")
-set(TENSORFLOW_LITE_FARMHASH_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/farmhash/src")
-set(TENSORFLOW_LITE_GMOCK_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/googletest/googlemock/include")
-set(TENSORFLOW_LITE_GTEST_DIR "C:/Development/tensorflow/tensorflow/contrib/lite/downloads/googletest/googletest/include")
+set(TENSORFLOW_LITE_KERNEL_DIR "${TENSORFLOW_LITE_ROOT_DIR}/kernels")
+set(TENSORFLOW_LITE_DOWNLOADED_DEPENDENCIES_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads")
+set(TENSORFLOW_LITE_GEMMLOWP_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/gemmlowp")
+set(TENSORFLOW_LITE_EIGEN_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/eigen")
+set(TENSORFLOW_LITE_FLATBUFFERS_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/flatbuffers/include")
+set(TENSORFLOW_LITE_FARMHASH_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/farmhash/src")
+set(TENSORFLOW_LITE_GMOCK_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/googlemock/include")
+set(TENSORFLOW_LITE_GTEST_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/googletest/include")
 
 # TODO: SIMD Visual studio
 add_definitions(-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
-    -DNOMINMAX)
+    -DNOMINMAX
+    -DFARMHASH_NO_BUILTIN_EXPECT)
 
 
 SET (TENSORFLOW_LITE_KERNEL_SOURCES
@@ -63,16 +64,22 @@ SET (TENSORFLOW_LITE_KERNEL_SOURCES
     )
 
 add_library(tensorflow-lite STATIC
-    simple_memory_arena.cc
-    context.c
-    error_reporter.cc
-    interpreter.cc
-    string_util.cc
-    allocation.cc
-    model.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/simple_memory_arena.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/context.c
+    ${TENSORFLOW_LITE_ROOT_DIR}/error_reporter.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/interpreter.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/string_util.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/allocation.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/model.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/tflite_osal.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/nnapi_delegate.cc
     ${TENSORFLOW_LITE_KERNEL_SOURCES}
+    ${TENSORFLOW_LITE_FARMHASH_DIR}/farmhash.cc
     )
 
+
+add_executable(testapp ${TENSORFLOW_LITE_ROOT_DIR}/testapp/testapp.cc)
+target_link_libraries(testapp tensorflow-lite)
 
 include_directories(${TENSORFLOW_ROOT_DIR}
     ${TENSORFLOW_LITE_GEMMLOWP_DIR}
