@@ -87,11 +87,10 @@ class DecodeImageOp : public OpKernel {
       channels_ = 3;
     } else {
       OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-      OP_REQUIRES(
-          context,
-          channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
-          errors::InvalidArgument("channels must be 0, 1, 3, or 4, got ",
-                                  channels_));
+      OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
+                               channels_ == 4,
+                  errors::InvalidArgument(
+                      "channels must be 0, 1, 3, or 4, got ", channels_));
     }
     flags_.components = channels_;
 
@@ -115,9 +114,8 @@ class DecodeImageOp : public OpKernel {
 
     if (format_ == kJpgFormat) {
       OP_REQUIRES_OK(context, context->GetAttr("ratio", &flags_.ratio));
-      OP_REQUIRES(context,
-                  flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
-                      flags_.ratio == 8,
+      OP_REQUIRES(context, flags_.ratio == 1 || flags_.ratio == 2 ||
+                               flags_.ratio == 4 || flags_.ratio == 8,
                   errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
                                           flags_.ratio));
       OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
@@ -132,9 +130,8 @@ class DecodeImageOp : public OpKernel {
       string dct_method;
       OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
       OP_REQUIRES(
-          context,
-          (dct_method.empty() || dct_method == "INTEGER_FAST" ||
-           dct_method == "INTEGER_ACCURATE"),
+          context, (dct_method.empty() || dct_method == "INTEGER_FAST" ||
+                    dct_method == "INTEGER_ACCURATE"),
           errors::InvalidArgument("dct_method must be one of "
                                   "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
       if (dct_method == "INTEGER_FAST") {
@@ -160,9 +157,9 @@ class DecodeImageOp : public OpKernel {
         errors::InvalidArgument("Expected image (JPEG, PNG, or GIF), got ",
                                 FileFormatString(magic, input)));
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    FileFormatString(magic, input),
-                    " contents are too large for int: ", input.size()));
+                errors::InvalidArgument(FileFormatString(magic, input),
+                                        " contents are too large for int: ",
+                                        input.size()));
     OP_REQUIRES(context, magic == kPngFormat || channel_bits_ == 8,
                 errors::InvalidArgument(FileFormatString(magic, input),
                                         " does not support uint16 output"));
@@ -215,10 +212,9 @@ class DecodeImageOp : public OpKernel {
             input.data(), input.size(), flags, nullptr /* nwarn */,
             [=, &output](int width, int height, int channels) -> uint8* {
               Status status(context->allocate_output(
-                  0,
-                  format_ == kGifFormat
-                      ? TensorShape({1, height, width, channels})
-                      : TensorShape({height, width, channels}),
+                  0, format_ == kGifFormat
+                         ? TensorShape({1, height, width, channels})
+                         : TensorShape({height, width, channels}),
                   &output));
               if (!status.ok()) {
                 VLOG(1) << status;
@@ -321,8 +317,10 @@ class DecodeImageOp : public OpKernel {
                         return nullptr;
                       }
                       return output->flat<uint8>().data();
-                    }, &error_string),
-        errors::InvalidArgument("Invalid GIF data (size ", input.size(), "), ", error_string));
+                    },
+                    &error_string),
+        errors::InvalidArgument("Invalid GIF data (size ", input.size(), "), ",
+                                error_string));
   }
 
  private:

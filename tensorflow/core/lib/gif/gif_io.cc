@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace gif {
@@ -45,7 +45,8 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
 }
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int, int)> allocate_output, std::string *error_string) {
+              std::function<uint8*(int, int, int, int)> allocate_output,
+              std::string* error_string) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
   GifFileType* gif_file =
@@ -58,11 +59,13 @@ uint8* Decode(const void* srcdata, int datasize,
     }
   });
   if (error_code != D_GIF_SUCCEEDED) {
-    *error_string = strings::StrCat("failed to open gif file: ", GifErrorString(error_code));
+    *error_string = strings::StrCat("failed to open gif file: ",
+                                    GifErrorString(error_code));
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
-    *error_string = strings::StrCat("failed to slurp gif file: ", GifErrorString(gif_file->Error));
+    *error_string = strings::StrCat("failed to slurp gif file: ",
+                                    GifErrorString(gif_file->Error));
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {

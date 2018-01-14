@@ -43,7 +43,8 @@ namespace tensorflow {
 namespace gif {
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int, int)> allocate_output, std::string *error_string);
+              std::function<uint8*(int, int, int, int)> allocate_output,
+              std::string* error_string);
 
 }  // namespace gif
 }  // namespace tensorflow
