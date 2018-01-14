@@ -94,7 +94,7 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in [np.float32, np.float64]:
-      inp = np.random.randint(0, 255, *shape).astype(nptype) / 255
+      inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YIQ and back, as a batch and individually
       with self.test_session(use_gpu=True) as sess:
@@ -109,9 +109,9 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate
-      self.assertAllClose(batch1, join1)
-      self.assertAllClose(batch2, join2)
-      self.assertAllClose(batch2, inp)
+      self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
 
 
 class RGBToYUVTest(test_util.TensorFlowTestCase):
@@ -123,7 +123,7 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in [np.float32, np.float64]:
-      inp = np.random.randint(0, 255, *shape).astype(nptype) / 255
+      inp = np.random.rand(shape).astype(nptype)
 
       # Convert to YUV and back, as a batch and individually
       with self.test_session(use_gpu=True) as sess:
@@ -138,9 +138,9 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
 
       # Verify that processing batch elements together is the same as separate
-      self.assertAllClose(batch1, join1)
-      self.assertAllClose(batch2, join2)
-      self.assertAllClose(batch2, inp)
+      self.assertAllClose(batch1, join1, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(batch2, join2, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(batch2, inp, rtol=1e-4, atol=1e-4)
 
 
 class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
