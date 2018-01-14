@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
 set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
-set(TENSORFLOW_LITE_ROOT_DIR "C:/Development/tensorflow/tensorflow/contrib/lite")
+set(TENSORFLOW_LITE_ROOT_DIR "${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/lite")
 set(TENSORFLOW_LITE_KERNEL_DIR "${TENSORFLOW_LITE_ROOT_DIR}/kernels")
 set(TENSORFLOW_LITE_DOWNLOADED_DEPENDENCIES_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads")
 set(TENSORFLOW_LITE_GEMMLOWP_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/gemmlowp")
@@ -73,6 +73,7 @@ add_library(tensorflow-lite STATIC
     ${TENSORFLOW_LITE_ROOT_DIR}/model.cc
     ${TENSORFLOW_LITE_ROOT_DIR}/tflite_osal.cc
     ${TENSORFLOW_LITE_ROOT_DIR}/nnapi_delegate.cc
+    ${TENSORFLOW_LITE_ROOT_DIR}/optional_debug_tools.cc
     ${TENSORFLOW_LITE_KERNEL_SOURCES}
     ${TENSORFLOW_LITE_FARMHASH_DIR}/farmhash.cc
     )

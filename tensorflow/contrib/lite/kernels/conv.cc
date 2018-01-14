@@ -338,6 +338,10 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<float>(output), GetTensorDims(output),
         GetTensorData<float>(im2col), GetTensorDims(im2col));
   } else {
+    #ifdef _MSC_VER
+    context->ReportError(context, __FILE__ " multithreaded conv unsupported with msvc compiler" );
+    return;
+    #endif
     // TODO(shaurya) : visual studio 2017 compiler gets stuck on
     // multithreaded_ops::Conv, most likely due to template magic in
     // eigen_spatial_convolutions.h
