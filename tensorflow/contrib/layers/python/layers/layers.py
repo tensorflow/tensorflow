@@ -29,6 +29,7 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -69,7 +70,7 @@ __all__ = ['avg_pool2d',
            'convolution2d_transpose',
            'convolution3d',
            'convolution3d_transpose',
-           'ctc_loss_dense_labels'
+           'ctc_loss_dense_labels',
            'dropout',
            'elu',
            'flatten',
@@ -1427,7 +1428,7 @@ def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
   with variable_scope.variable_scope(
       scope, 'ctc_loss_dense_labels', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    indices = array_ops.where(math_ops.not_equal(labels, eos_token))
+    indices = array_ops.where(math_ops.not_equal(labels, constant_op.constant(eos_token, labels.dtype)))
     values = array_ops.gather_nd(labels, indices)
     shape = array_ops.shape(labels, out_type=dtypes.int64)
     sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
