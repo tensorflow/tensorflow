@@ -60,7 +60,7 @@ def res_net_model(features, labels, mode):
         filters=64,
         kernel_size=7,
         activation=tf.nn.relu)
-    net = tf.layers.batch_normalization(net)
+    net = tf.layers.batch_normalization(net, training=mode == tf.estimator.ModeKeys.TRAIN)
 
   # Max pool
   net = tf.layers.max_pooling2d(
@@ -88,7 +88,7 @@ def res_net_model(features, labels, mode):
             kernel_size=1,
             padding='valid',
             activation=tf.nn.relu)
-        conv = tf.layers.batch_normalization(conv)
+        conv = tf.layers.batch_normalization(conv, training=mode == tf.estimator.ModeKeys.TRAIN)
 
       with tf.variable_scope(name + '/conv_bottleneck'):
         conv = tf.layers.conv2d(
@@ -97,7 +97,7 @@ def res_net_model(features, labels, mode):
             kernel_size=3,
             padding='same',
             activation=tf.nn.relu)
-        conv = tf.layers.batch_normalization(conv)
+        conv = tf.layers.batch_normalization(conv, training=mode == tf.estimator.ModeKeys.TRAIN)
 
       # 1x1 convolution responsible for restoring dimension
       with tf.variable_scope(name + '/conv_out'):
@@ -108,7 +108,7 @@ def res_net_model(features, labels, mode):
             kernel_size=1,
             padding='valid',
             activation=tf.nn.relu)
-        conv = tf.layers.batch_normalization(conv)
+        conv = tf.layers.batch_normalization(conv, training=mode == tf.estimator.ModeKeys.TRAIN)
 
       # shortcut connections that turn the network into its counterpart
       # residual function (identity shortcut)
