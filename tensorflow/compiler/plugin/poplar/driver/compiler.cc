@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/wide_const_finder.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -211,6 +212,7 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
           [](const Shape&, const Shape&) { return false; });
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
+  pipeline.AddPass<WideConstFinder>();
   pipeline.AddPass<Outliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<FuseOps>();

@@ -124,8 +124,15 @@ ReducePrecisionAccuracyTest POPLAR // Don't support this
 
 CustomCallTest POPLAR // Don't support this
 
-DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR // Bad test
-DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Bad test
+DynamicSliceTest.UInt64R1Wrap POPLAR // Tests wrapping
+DynamicSliceTest.Int32R2Wrap POPLAR // Tests wrapping
+DynamicSliceTest.Int64R2Wrap POPLAR // Tests wrapping
+DynamicSliceTest.UInt64R2Wrap POPLAR // Tests wrapping
+DynamicSliceTest.Int32R3Wrap POPLAR // Tests wrapping
+DynamicSliceTest.Int64R3Wrap POPLAR // Tests wrapping
+DynamicSliceTest.UInt64R3Wrap POPLAR // Tests wrapping
+DynamicUpdateSliceTest.R3ContiguousMultipleWrapping POPLAR // Tests wrapping
+DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR // Too long
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
 CopyOpTest.CopyParameterScalar POPLAR // We return the parameter - not a copy
@@ -140,12 +147,11 @@ LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasin
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 
-DynamicUpdateSliceTest.Int32R1 POPLAR // Tests for invalid wrapping behaviour
-DynamicUpdateSliceTest.Int32R2 POPLAR // Tests for invalid wrapping behaviour
-DynamicUpdateSliceTest.Int32R3 POPLAR // Tests for invalid wrapping behaviour
 
 ConditionalOpTest POPLAR // No Cond
 
 ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 
 SelectAndScatterTest.R4Randomized POPLAR // Timeout
+
+HloProfileTest POPLAR // Don't support profiling

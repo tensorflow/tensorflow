@@ -26,7 +26,7 @@ DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   std::unique_ptr<Literal> double_lit;
   TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
 
-  const double* val = static_cast<const double*>(double_lit->InternalData());
+  const double* val = static_cast<const double*>(double_lit->untyped_data());
   return *val;
 }
 
@@ -213,29 +213,6 @@ RandomUniform(poplar::Graph &graph,
 
   poplar::program::Sequence seq;
   res.random.uniform(graph, out, lower_val, upper_val, seq, inst->name());
-
-  return seq;
-}
-
-port::StatusOr<poplar::program::Program>
-Bernoulli(poplar::Graph &graph,
-          CompilerResources& res,
-          const HloInstruction *inst,
-          const xla::Shape& output_shape,
-          TensorMap& tensor_map) {
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* prob = root->operand(0);
-
-  double prob_val;
-  TF_ASSIGN_OR_RETURN(prob_val, DoubleValueOfScalarLiteral(prob->literal()));
-
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst,0),
-                                     output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  poplar::program::Sequence seq;
-  res.random.bernoulli(graph, out, prob_val, seq, inst->name());
 
   return seq;
 }

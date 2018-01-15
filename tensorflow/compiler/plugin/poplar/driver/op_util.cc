@@ -84,7 +84,7 @@ template<typename TYPE>
 static void SetVertexField(poplar::Graph& graph,
                            const poplar::FieldRef &field,
                            const Literal& literal) {
-  const TYPE* value(static_cast<const TYPE*>(literal.InternalData()));
+  const TYPE* value(static_cast<const TYPE*>(literal.untyped_data()));
   graph.setInitialValue<TYPE>(field, *value);
 }
 

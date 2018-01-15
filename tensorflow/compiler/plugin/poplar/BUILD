@@ -25,6 +25,7 @@ cc_library(
         "driver/outliner.cc",
         "driver/scheduler.cc",
         "driver/util.cc",
+        "driver/wide_const_finder.cc",
     ],
     hdrs = [
         "driver/allocation_finder.h",
@@ -35,6 +36,7 @@ cc_library(
         "driver/outliner.h",
         "driver/scheduler.h",
         "driver/util.h",
+        "driver/wide_const_finder.h",
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",
@@ -211,6 +213,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "wide_const_finder_test",
+    srcs = ["tests/wide_const_finder_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 py_test(
     name = "device_test",
     size = "small",
@@ -341,6 +354,7 @@ test_suite(
         "fuse_ops_test",
         "outliner_test",
         "hlo_matcher_test",
+        "wide_const_finder_test",
     ],
 )
 
@@ -360,6 +374,7 @@ test_suite(
         "batch_norm_test",
         "fuse_ops_test",
         "hlo_matcher_test",
+        "wide_const_finder_test",
     ],
 )
 

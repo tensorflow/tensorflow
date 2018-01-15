@@ -32,6 +32,13 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
       }
       break;
     }
+    case HloOpcode::kDynamicUpdateSlice:
+    {
+      if (inst->operand(0) != current_route.back()) {
+        return;
+      }
+      break;
+    }
     case HloOpcode::kAdd:
     case HloOpcode::kSubtract:
     case HloOpcode::kMultiply:

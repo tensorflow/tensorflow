@@ -85,6 +85,13 @@ public:
     return Status::OK();
   }
 
+  Status HandleCall(HloInstruction* inst) override {
+    if (inst->to_apply()->name().substr(0, 17) == "_pop_op_wide_const") {
+      allocating_instructions.push_back(std::make_pair(inst, 0));
+    }
+    return Status::OK();
+  }
+
   Status HandleReduceWindow(HloInstruction* inst) override {
     allocating_instructions.push_back(std::make_pair(inst, 0));
     return Status::OK();
@@ -137,6 +144,22 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           tensor_allocation_map.insert(std::make_pair(src, t));
           return;
+        }
+        case HloOpcode::kDynamicSlice:
+        {
+          if (op_index == 0) {
+            auto t = std::make_pair(user, op_index);
+            tensor_allocation_map.insert(std::make_pair(src, t));
+          }
+          break;
+        }
+        case HloOpcode::kDynamicUpdateSlice:
+        {
+          if (op_index == 0 || op_index==1) {
+            auto t = std::make_pair(user, op_index);
+            tensor_allocation_map.insert(std::make_pair(src, t));
+          }
+          break;
         }
         case HloOpcode::kCall:
         {

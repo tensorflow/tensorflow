@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
 
+#include <array>
+
 // 'tensorflow' namespace is used so that int64 and other types don't require
 // qualification.
 namespace tensorflow {

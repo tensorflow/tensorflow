@@ -55,6 +55,7 @@ AddTensor(poplar::Graph& graph,
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
+                  const TensorSource& src,
                   const xla::Shape& shape,
                   const xla::Literal& literal,
                   CompilerResources& resources);

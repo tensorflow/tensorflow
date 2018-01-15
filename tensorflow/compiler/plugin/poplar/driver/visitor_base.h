@@ -127,6 +127,8 @@ public:
 
   Status HandleBatchNormGrad(HloInstruction* inst) override;
 
+  Status HandleFft(HloInstruction* inst) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;
