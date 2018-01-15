@@ -525,11 +525,14 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   std::vector<std::size_t> poplar_shape = operand.shape();
   poplar_shape.push_back(1);
 
+  auto name = port::StrCat(inst->name(), "_partial");
   poplar::Tensor extended_operand = operand.reshape(poplar_shape);
-  poplar::Tensor partial = graph.clone(extended_operand);
+  poplar::Tensor partial = graph.clone(extended_operand, name);
 
   for (int64 i=1; i<overlap_count; i++) {
-    partial = poplar::concat(partial, graph.clone(extended_operand), partial.rank() - 1);
+    partial = poplar::concat(partial,
+                             graph.clone(extended_operand, name),
+                             partial.rank() - 1);
   }
 
   xla::Shape partial_shape(output_shape);

@@ -103,7 +103,7 @@ CreateSliceOp(poplar::Graph &graph,
   }
 
   poplar::Tensor slice = input.slice(s_begin, s_end);
-  poplar::Tensor out = graph.clone(slice);
+  poplar::Tensor out = graph.clone(slice, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 

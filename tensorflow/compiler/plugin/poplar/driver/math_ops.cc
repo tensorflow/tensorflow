@@ -394,7 +394,7 @@ CreateReluOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t);
+  poplar::Tensor out = graph.clone(t, inst->name());
 
   seq.add(poplar::program::Copy(t, out));
   popnn::relu(graph, out, seq, inst->name());
@@ -441,7 +441,7 @@ CreateSigmoidOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = graph.clone(t);
+  poplar::Tensor out = graph.clone(t, inst->name());
 
   seq.add(poplar::program::Copy(t, out));
   popnn::sigmoid(graph, out, seq, inst->name());

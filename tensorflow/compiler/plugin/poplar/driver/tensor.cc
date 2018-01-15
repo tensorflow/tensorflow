@@ -143,6 +143,24 @@ AddPlainTensor(poplar::Graph& graph,
   return out;
 }
 
+port::StatusOr<poplar::Tensor>
+AddRnnSequence(poplar::Graph& graph,
+               const HloInstruction* inst,
+               const xla::Shape& shape) {
+  poplar::Tensor out;
+  std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
+  poplar::Type poplar_type;
+  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
+
+  out = graph.addVariable(poplar_type, dim, inst->name());
+
+  for (auto i = 0; i != dim[0]; ++i) {
+    popstd::mapTensorLinearly(graph, out[i]);
+  }
+
+  return out;
+}
+
 static port::StatusOr<poplar::Tensor>
 AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* inst,
@@ -269,7 +287,11 @@ AddTensor(poplar::Graph& graph,
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
       {
-        TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        if (ShapeUtil::Rank(shape) == 3) {
+          TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+        } else {
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        }
         break;
       }
       default:
