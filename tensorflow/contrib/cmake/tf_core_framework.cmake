@@ -191,10 +191,6 @@ file(GLOB_RECURSE tf_core_lib_srcs
     "${tensorflow_source_dir}/tensorflow/core/lib/*.h"
     "${tensorflow_source_dir}/tensorflow/core/lib/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/public/*.h"
-    # TODO(@jart): Move StatusOr into core.
-    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.cc"
-    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.h"
-    "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor_internals.h"
 )
 
 file(GLOB tf_core_platform_srcs
@@ -317,6 +313,8 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/loader.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/vacuum.cc"
 )
 
 # TODO(jart): Why doesn't this work?

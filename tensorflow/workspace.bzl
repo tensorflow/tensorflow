@@ -13,16 +13,12 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split("-", 1)
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split("."):
-    version_tuple += (str(number),)
-  return version_tuple
+  for i in range(len(bazel_version)):
+    c = bazel_version[i]
+    if not (c.isdigit() or c == "."):
+      bazel_version = bazel_version[:i]
+      break
+  return tuple([int(n) for n in bazel_version.split(".")])
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
@@ -99,11 +95,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/034b6c3e1017.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
       ],
-      sha256 = "0a8ac1e83ef9c26c0e362bd7968650b710ce54e2d883f0df84e5e45a3abe842a",
-      strip_prefix = "eigen-eigen-034b6c3e1017",
+      sha256 = "2b526c6888639025323fd4f2600533c0f982d304ea48e4f1663e8066bd9f6368",
+      strip_prefix = "eigen-eigen-14e1418fcf12",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -457,11 +453,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/81a623d6d61cf87847f839e80b047c267020ab0e.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/81a623d6d61cf87847f839e80b047c267020ab0e.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/649870608ee53da0c86f688e27e87cb5c6b0e090.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/649870608ee53da0c86f688e27e87cb5c6b0e090.tar.gz",
       ],
-      sha256 = "be0259c0bd5349200df346c92ba7708341e18ef313fcf7398682b5cff2469137",
-      strip_prefix = "llvm-81a623d6d61cf87847f839e80b047c267020ab0e",
+      sha256 = "1a046b18f3f67a95f6b58f92872008f215caa7a7fdeec609bac7dc6f374e1859",
+      strip_prefix = "llvm-649870608ee53da0c86f688e27e87cb5c6b0e090",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

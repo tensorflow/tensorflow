@@ -228,7 +228,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
@@ -266,13 +266,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreCurrentElements(OpKernelContext* ctx,
+      Status RestoreCurrentElements(IteratorContext* ctx,
                                     IteratorStateReader* reader)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        IteratorContext iter_ctx(std::move(params));
         for (int idx = 0; idx < current_elements_.size(); idx++) {
           if (reader->Contains(
                   full_name(strings::StrCat("args_size[", idx, "]")))) {
@@ -287,9 +283,8 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                   &args_list_[idx][i]));
             }
             TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
-                &iter_ctx, args_list_[idx], idx,
-                dataset()->captured_func_.get(), prefix(),
-                &current_elements_[idx]));
+                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
+                prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
                 RestoreParent(ctx, reader, current_elements_[idx]));
           } else {

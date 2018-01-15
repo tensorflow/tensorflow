@@ -296,7 +296,7 @@ class LayoutAssignment : public HloPassInterface {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
-  // By default LayoutAssignment ensures that inputs and ouptuts of CustomCalls
+  // By default LayoutAssignment ensures that inputs and outputs of CustomCalls
   // have the "major-first" layout (i.e.  {n, n-1, ..., 0}).
   //
   // If this function returns true, LayoutAssignment does not set a layout for

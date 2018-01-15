@@ -566,6 +566,18 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_MEAN: {
+      auto* params = MallocPOD<TfLiteMeanParams>();
+      if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
+        const auto& axis = schema_params->axis();
+        FlatBufferIntVectorToArray(sizeof(params->axis), axis, params->axis,
+                                   error_reporter);
+        params->keep_dims = schema_params->keep_dims();
+        params->num_axis_dimensions = axis->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
   }
   return builtin_data;
 }

@@ -304,10 +304,12 @@ class RemoteCallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     AttrValueMap attr_values = func_.attr();
+    FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+    instantiate_opts.target = target_device;
     FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(ctx,
                          lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                                          {target_device}, &handle),
+                                          instantiate_opts, &handle),
                          done);
 
     OpInputList arguments;

@@ -48,6 +48,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
     ],
 )
 
@@ -75,5 +76,6 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
     ],
 )

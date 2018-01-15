@@ -449,18 +449,21 @@ def _slice_helper(tensor, slice_spec, var=None):
   This operation extracts the specified region from the tensor.
   The notation is similar to NumPy with the restriction that
   currently only support basic indexing. That means that
-  using a tensor as input is not currently allowed
+  using a non-scalar tensor as input is not currently allowed.
 
   Some useful examples:
 
   ```python
   # strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # [3,4]
+  print(foo[2:-2].eval())  # => [3,4]
 
   # skip every row and reverse every column
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+
+  # Use scalar tensors as indices on both dimensions
+  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
@@ -471,9 +474,9 @@ def _slice_helper(tensor, slice_spec, var=None):
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   ```
 
   Notes:
@@ -1274,6 +1277,16 @@ def sparse_mask(a, mask_indices, name=None):
     out_indices, to_gather = setdiff1d(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
+
+
+def unique(x, out_idx=dtypes.int32, name=None):
+  # TODO (yongtang): switch to v2 once API deprecation
+  # period (3 weeks) pass.
+  # TODO (yongtang): The documentation should also
+  # be updated when switch  to v2.
+  return gen_array_ops._unique(x, out_idx, name)
+
+unique.__doc__ = gen_array_ops._unique.__doc__
 
 
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):

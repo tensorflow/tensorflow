@@ -17,9 +17,10 @@ filegroup(
 py_library(
     name = "convert",
     srcs = [
+        "builtin_functions.py",
         "call_trees.py",
         "control_flow.py",
-        "gradients_function.py",
+        "for_canonicalization.py",
         "logical_expressions.py",
         "print_functions.py",
         "side_effect_guards.py",
@@ -54,11 +55,21 @@ py_test(
 )
 
 py_test(
-    name = "gradients_function_test",
-    srcs = ["gradients_function_test.py"],
+    name = "builtin_functions_test",
+    srcs = ["builtin_functions_test.py"],
     deps = [
         ":convert",
-        "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "for_canonicalization_test",
+    srcs = ["for_canonicalization_test.py"],
+    deps = [
+        ":convert",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",

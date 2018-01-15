@@ -155,6 +155,9 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           inequality_test.feature_id.id.value = (
               _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE %
               (sorted_feature_names[feature_id], split.dimension_id))
+          model_and_features.features.pop(sorted_feature_names[feature_id])
+          (model_and_features.features[inequality_test.feature_id.id.value]
+           .SetInParent())
           inequality_test.type = (
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold
@@ -169,6 +172,9 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           inequality_test.feature_id.id.value = (
               _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE %
               (sorted_feature_names[feature_id], split.dimension_id))
+          model_and_features.features.pop(sorted_feature_names[feature_id])
+          (model_and_features.features[inequality_test.feature_id.id.value]
+           .SetInParent())
           inequality_test.type = (
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold

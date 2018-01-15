@@ -15,20 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 #define TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 
-#include <cstddef>
-#include <memory>
 #include <mutex>
-#include <utility>
 
 #include "sqlite3.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 /// TensorFlow SQLite Veneer
 ///
@@ -55,20 +50,23 @@ class SqliteTransaction;
 /// Reference counting ensures that happens after its statements are
 /// destructed.
 ///
-/// This class offers the same thread safety behaviors and guarantees
-/// as the SQLite API itself.
+/// Instances are reference counted and can be shared between threads.
+/// This class offers the same thread safety behaviors as the SQLite
+/// API itself.
 ///
 /// This veneer uses auto-commit mode by default, which means a 4ms
 /// fsync() happens after every write unless a SqliteTransaction is
 /// used or WAL mode is enabled beforehand.
-class LOCKABLE Sqlite {
+class LOCKABLE Sqlite : public core::RefCounted {
  public:
   /// \brief Closes SQLite connection, which can take milliseconds.
-  ~Sqlite();
+  virtual ~Sqlite();
 
   /// \brief Opens SQLite database file.
   ///
-  /// Notes on a few of the flags:
+  /// Most users will want to set flags to SQLITE_OPEN_READWRITE |
+  /// SQLITE_OPEN_CREATE. There are many other open flags; here are
+  /// notes on a few of them:
   ///
   /// - SQLITE_OPEN_READONLY: Allowed if no WAL journal is active.
   /// - SQLITE_OPEN_SHAREDCACHE: Will be ignored because this veneer
@@ -79,23 +77,17 @@ class LOCKABLE Sqlite {
   ///
   /// This function sets PRAGMA values from TF_SQLITE_* environment
   /// variables. See sqlite.cc to learn more.
-  static xla::StatusOr<std::shared_ptr<Sqlite>> Open(string path, int flags);
-  static xla::StatusOr<std::shared_ptr<Sqlite>> Open(string path) {
-    return Open(std::move(path), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-  }
-  static std::shared_ptr<Sqlite> OpenOrDie(string path, int flags) {
-    return Open(std::move(path), flags).ValueOrDie();
-  }
-  static std::shared_ptr<Sqlite> OpenOrDie(string path) {
-    return Open(std::move(path)).ValueOrDie();
-  }
+  static Status Open(const string& path, int flags, Sqlite** db);
 
   /// \brief Creates SQLite statement.
   ///
-  /// If sql references tables then system calls taking microseconds
-  /// are needed and failure can happen on schema change. Otherwise
-  /// this should only fail on syntax error.
-  xla::StatusOr<SqliteStatement> Prepare(const StringPiece& sql);
+  /// This routine should never fail if sql is valid and does not
+  /// reference tables. When tables are referenced, system calls are
+  /// needed which can take microseconds. When the schema changes, this
+  /// routine will retry automatically and then possibly fail.
+  ///
+  /// The returned statement holds a reference to this object.
+  Status Prepare(const StringPiece& sql, SqliteStatement* stmt);
   SqliteStatement PrepareOrDie(const StringPiece& sql);
 
   /// \brief Returns extended result code of last error.
@@ -113,8 +105,13 @@ class LOCKABLE Sqlite {
   }
 
   /// \brief Returns rowid assigned to last successful insert.
-  int64 last_insert_row_id() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64 last_insert_rowid() const EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_last_insert_rowid(db_);
+  }
+
+  /// \brief Returns number of rows directly changed by last write.
+  int64 changes() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+    return sqlite3_changes(db_);
   }
 
  private:
@@ -122,21 +119,18 @@ class LOCKABLE Sqlite {
   friend class SqliteStatement;
   friend class SqliteTransaction;
 
-  Sqlite(sqlite3* db, const string path, sqlite3_stmt* begin,
-         sqlite3_stmt* commit, sqlite3_stmt* rollback) noexcept
+  Sqlite(sqlite3* db, sqlite3_stmt* begin, sqlite3_stmt* commit,
+         sqlite3_stmt* rollback) noexcept
       : db_(db),
-        path_(std::move(path)),
         begin_(begin),
         commit_(commit),
         rollback_(rollback) {}
 
   sqlite3* const db_;
-  const string path_;
   sqlite3_stmt* const begin_;
   sqlite3_stmt* const commit_;
   sqlite3_stmt* const rollback_;
   bool is_in_transaction_ = false;
-  std::weak_ptr<Sqlite> self_;  // so prepare can pass to statements
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sqlite);
 };
@@ -157,7 +151,10 @@ class SqliteStatement {
   ///
   /// This can take milliseconds if it was blocking the Sqlite
   /// connection object from being freed.
-  ~SqliteStatement() { /* ignore */ sqlite3_finalize(stmt_); }
+  ~SqliteStatement() {
+    sqlite3_finalize(stmt_);
+    if (db_ != nullptr) db_->Unref();
+  }
 
   /// \brief Returns true if statement is initialized.
   explicit operator bool() const { return stmt_ != nullptr; }
@@ -323,9 +320,10 @@ class SqliteStatement {
 
   /// \brief Move constructor, after which <other> is reset to empty.
   SqliteStatement(SqliteStatement&& other) noexcept
-      : stmt_(other.stmt_),
-        db_(std::move(other.db_)),
+      : db_(other.db_),
+        stmt_(other.stmt_),
         bind_error_(other.bind_error_) {
+    other.db_ = nullptr;
     other.stmt_ = nullptr;
     other.bind_error_ = SQLITE_OK;
   }
@@ -333,13 +331,16 @@ class SqliteStatement {
   /// \brief Move assignment, after which <other> is reset to empty.
   SqliteStatement& operator=(SqliteStatement&& other) noexcept {
     if (&other != this) {
-      sqlite3_finalize(stmt_);
+      if (db_ != nullptr) db_->Unref();
+      if (stmt_ != nullptr) sqlite3_finalize(stmt_);
+      db_ = other.db_;
       stmt_ = other.stmt_;
       bind_error_ = other.bind_error_;
-      db_ = std::move(other.db_);
-      size_ = 0;
+      size_ = other.size_;
+      other.db_ = nullptr;
       other.stmt_ = nullptr;
       other.bind_error_ = SQLITE_OK;
+      other.size_ = 0;
     }
     return *this;
   }
@@ -347,8 +348,10 @@ class SqliteStatement {
  private:
   friend class Sqlite;
 
-  SqliteStatement(sqlite3_stmt* stmt, std::shared_ptr<Sqlite> db) noexcept
-      : stmt_(stmt), db_(std::move(db)) {}
+  SqliteStatement(Sqlite* db, sqlite3_stmt* stmt) noexcept
+      : db_(db), stmt_(stmt) {
+    db_->Ref();
+  }
 
   void Update(int rc, int parameter) {
     // Binding strings can fail if they exceed length limit.
@@ -366,8 +369,8 @@ class SqliteStatement {
     return index;
   }
 
+  Sqlite* db_ = nullptr;
   sqlite3_stmt* stmt_ = nullptr;
-  std::shared_ptr<Sqlite> db_;
   int bind_error_ = SQLITE_OK;
   int bind_error_parameter_ = 0;
   uint64 size_ = 0;
@@ -432,8 +435,14 @@ class SCOPED_LOCKABLE SqliteTransaction {
   TF_DISALLOW_COPY_AND_ASSIGN(SqliteTransaction);
 };
 
+#define SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(...) \
+  EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
+#define SQLITE_TRANSACTIONS_EXCLUDED(...) LOCKS_EXCLUDED(__VA_ARGS__)
+
 inline SqliteStatement Sqlite::PrepareOrDie(const StringPiece& sql) {
-  return Prepare(sql).ValueOrDie();
+  SqliteStatement stmt;
+  TF_CHECK_OK(Prepare(sql, &stmt));
+  return stmt;
 }
 
 }  // namespace tensorflow
