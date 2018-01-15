@@ -489,7 +489,6 @@ void RdmaAdapter::Process_CQ() {
             response->Start();
           });
         } else if (rm.type_ == RDMA_MESSAGE_META_DATA_UPDATE) {
-          // remote host requests to create a tensor buffer;
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
           request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
                                       rm.is_dead_, rm.tensor_bytes_);
@@ -663,13 +662,6 @@ void RdmaChannel::Recv() {
   CHECK(!ibv_post_recv(qp_, &wr, &bad_wr)) << "Failed to post recv";
 }
 
-// Insert callback to the callback_table.
-// The callback is activated when the corresponding tensor is received.
-// Arg:
-//   key: the name of the tensor
-//   recv_done: the callback associated with the tensor.
-// Returns:
-//   None
 RdmaTensorRequest* RdmaChannel::InsertTensorRequest(
     const string& key, int64 step_id, Device* dst_dev,
     const Rendezvous::Args recv_args,
@@ -685,21 +677,11 @@ RdmaTensorRequest* RdmaChannel::InsertTensorRequest(
   return &it.first->second;
 }
 
-// Remove callback from the callback_table.
-// Arg:
-//   key: the name of the tensor
-// Returns:
-//   None
 void RdmaChannel::RemoveTensorRequest(uint32_t request_index) {
   mutex_lock lock{ct_mu_};
   request_table_.erase(request_index);
 }
 
-// Run named callback in the callback_table.
-// Arg:
-//   key: the name of the tensor
-// Returns:
-//   None
 RdmaTensorRequest* RdmaChannel::GetTensorRequest(uint32_t request_index) {
   mutex_lock lock{ct_mu_};
   RequestTable::iterator iter = request_table_.find(request_index);
@@ -785,9 +767,6 @@ void RdmaMessageBuffer::FreeBuffer() {
   if ((buffer_ != nullptr) && buffer_on_host_) {
     free(buffer_);
   }
-  // TODO
-  // release buffer if it is on device.
-  // We don't support RDMABuffer on device at this moment.
 }
 
 // Allocate CPU memory for the Rdma buffer
@@ -1044,9 +1023,6 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
                                     << src_dev->tensorflow_gpu_device_info();
 
     if (can_memcpy) {
-      AllocatorAttributes host_alloc_attrs;
-      host_alloc_attrs.set_gpu_compatible(true);
-      host_alloc_attrs.set_on_host(true);
       Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
       copy = Tensor(alloc, in.dtype(), in.shape());
 
@@ -1060,8 +1036,6 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
             Send(copy, proto, is_dead);
           });
     } else {
-      // "val" is on a GPU. No longer uses GPUUtil to fill the proto, use
-      // aync instead
       GPUUtil::SetProtoFromGPU(
           in, src_dev, send_args.device_context, &proto, is_dead,
           [this, in, proto, is_dead](const Status& s) mutable {
