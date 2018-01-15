@@ -39,8 +39,8 @@ void DoRoll(OpKernelContext* context, const int64 num_elements,
             const int num_dims, const gtl::ArraySlice<int>& dim_size,
             const T* input, T* output, const gtl::ArraySlice<int>& threshold,
             const gtl::ArraySlice<int64>& dim_range) {
-  auto work = [input, output, num_dims, &dim_size, &threshold,
-               &dim_range](int64 start, int64 end) {
+  auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
+                  int64 start, int64 end) {
     // array of indices for each dimension
     gtl::InlinedVector<int, 4> indices(num_dims);
     int offset = 0;  // the shift along the flattened tensor for current element

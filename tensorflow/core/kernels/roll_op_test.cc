@@ -121,17 +121,16 @@ TEST_F(RollOpTest, Simple_TwoD32_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({3, 5}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l", "m", "n", "o"});
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+                             "k", "l", "m", "n", "o"});
   AddInputFromArray<int32>(TensorShape({2}), {2, -1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({3, 5}));
-  test::FillValues<string>(&expected,
-                          {"g", "h", "i", "j", "f", "l", "m", "n", "o", "k",
-                           "b", "c", "d", "e", "a"});
+  test::FillValues<string>(&expected, {"g", "h", "i", "j", "f", "l", "m", "n",
+                                       "o", "k", "b", "c", "d", "e", "a"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
@@ -155,17 +154,17 @@ TEST_F(RollOpTest, Simple_ThreeD32_NoMemcpy) {
   MakeOp(DT_STRING, DT_INT32);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2, 2, 3}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l"});
+  AddInputFromArray<string>(
+      TensorShape({2, 2, 3}),
+      {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
   AddInputFromArray<int32>(TensorShape({3}), {1, -1, -1});
   AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({2, 2, 3}));
-  test::FillValues<string>(&expected, {"k", "l", "j", "h", "i", "g", "e", "f",
-                                       "d", "b", "c", "a"});
+  test::FillValues<string>(
+      &expected, {"k", "l", "j", "h", "i", "g", "e", "f", "d", "b", "c", "a"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
@@ -191,17 +190,16 @@ TEST_F(RollOpTest, Simple_TwoD64_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({5, 3}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l", "m", "n", "o"});
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+                             "k", "l", "m", "n", "o"});
   AddInputFromArray<int64>(TensorShape({2}), {-1, 4});
   AddInputFromArray<int64>(TensorShape({2}), {0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({5, 3}));
-  test::FillValues<string>(&expected,
-                          {"f", "d", "e", "i", "g", "h", "l", "j", "k", "o",
-                           "m", "n", "c", "a", "b"});
+  test::FillValues<string>(&expected, {"f", "d", "e", "i", "g", "h", "l", "j",
+                                       "k", "o", "m", "n", "c", "a", "b"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
@@ -225,16 +223,17 @@ TEST_F(RollOpTest, Simple_ThreeD64_NoMemcpy) {
   MakeOp(DT_STRING, DT_INT64);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({4, 1, 3}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l"});
+  AddInputFromArray<string>(
+      TensorShape({4, 1, 3}),
+      {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
   AddInputFromArray<int64>(TensorShape({3}), {4, 3, 2});
   AddInputFromArray<int64>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({4, 1, 3}));
-  test::FillValues<string>(&expected, {"b", "c", "a", "e", "f", "d", "h", "i", "g", "k", "l", "j"});
+  test::FillValues<string>(
+      &expected, {"b", "c", "a", "e", "f", "d", "h", "i", "g", "k", "l", "j"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
@@ -258,17 +257,17 @@ TEST_F(RollOpTest, ZeroShift_ThreeD32_NoMemcpy) {
   MakeOp(DT_STRING, DT_INT32);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2, 2, 3}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l"});
+  AddInputFromArray<string>(
+      TensorShape({2, 2, 3}),
+      {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
   AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
   AddInputFromArray<int32>(TensorShape({3}), {0, 1, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({2, 2, 3}));
-  test::FillValues<string>(&expected, {"a", "b", "c", "d", "e", "f", "g", "h",
-                                       "i", "j", "k", "l"});
+  test::FillValues<string>(
+      &expected, {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
@@ -352,17 +351,16 @@ TEST_F(RollOpTest, DuplicateShifts_TwoD32_NoMemcpy) {
 
   // Feed and run
   AddInputFromArray<string>(TensorShape({3, 5}),
-                           {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
-                            "k", "l", "m", "n", "o"});
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+                             "k", "l", "m", "n", "o"});
   AddInputFromArray<int32>(TensorShape({4}), {-2, 2, -1, 1});
   AddInputFromArray<int32>(TensorShape({4}), {1, 0, 0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
   Tensor expected(allocator(), DT_STRING, TensorShape({3, 5}));
-  test::FillValues<string>(&expected,
-                          {"l", "m", "n", "o", "k", "b", "c", "d", "e", "a",
-                           "g", "h", "i", "j", "f"});
+  test::FillValues<string>(&expected, {"l", "m", "n", "o", "k", "b", "c", "d",
+                                       "e", "a", "g", "h", "i", "j", "f"});
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
