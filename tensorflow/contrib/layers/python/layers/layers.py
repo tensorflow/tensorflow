@@ -34,7 +34,6 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import constant_op
 from tensorflow.python.layers import base
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
@@ -1422,7 +1421,7 @@ def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
   See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss
   for more info on the other parameters not discussed here
   """
-  indices = array_ops.where(math_ops.not_equal(labels, constant_op.constant(eos_token, labels.dtype)))
+  indices = array_ops.where(math_ops.not_equal(labels, eos_token))
   values = array_ops.gather_nd(labels, indices)
   shape = array_ops.shape(labels, out_type=dtypes.int64)
   sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
