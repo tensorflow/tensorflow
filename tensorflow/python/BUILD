@@ -186,6 +186,7 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
