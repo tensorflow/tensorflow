@@ -399,6 +399,20 @@ batch_size: A scalar representing the number of elements to accumulate in a
   batch.
 )doc");
 
+REGISTER_OP("SlideDataset")
+    .Input("input_dataset: variant")
+    .Input("slide_size: int64")
+    .Input("slide_step: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Test.
+
+Todo.
+)doc");
+
 REGISTER_OP("PaddedBatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")

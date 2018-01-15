@@ -21,6 +21,7 @@ from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import enumerate_ops
 from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.contrib.data.python.ops import sliding
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.ops import gen_dataset_ops
@@ -427,6 +428,12 @@ class Dataset(dataset_ops.Dataset):
       A `Dataset`.
     """
     return Dataset(dataset_ops.BatchDataset(self._dataset, batch_size))
+
+
+  def slide(self, slide_size, slide_step):
+    """Todo"""
+    return Dataset(sliding.SlideDataset(self, slide_size, slide_step))
+
 
   def padded_batch(self, batch_size, padded_shapes, padding_values=None):
     """Combines consecutive elements of this dataset into padded batches.
