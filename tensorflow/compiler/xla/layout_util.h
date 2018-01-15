@@ -199,6 +199,8 @@ class LayoutUtil {
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
 
+std::ostream& operator<<(std::ostream& out, const Layout& layout);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_

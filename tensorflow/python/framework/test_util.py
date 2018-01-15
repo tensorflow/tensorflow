@@ -202,6 +202,10 @@ def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
 
 
+def InstallStackTraceHandler():
+  pywrap_tensorflow.InstallStacktraceHandler()
+
+
 def NHWCToNCHW(input_tensor):
   """Converts the input from the NHWC format to NCHW.
 

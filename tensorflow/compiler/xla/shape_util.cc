@@ -386,7 +386,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
-  if (shape.element_type() == TUPLE) {
+  if (IsTuple(shape)) {
     string text = "(";
     const char* prefix = "";
     for (const Shape& elem_shape : shape.tuple_shapes()) {
@@ -453,7 +453,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
 }  // namespace
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
-  if (shape.element_type() == TUPLE) {
+  if (IsTuple(shape)) {
     string text = "(";
     const char* prefix = "";
     for (const Shape& elem_shape : shape.tuple_shapes()) {
@@ -524,26 +524,35 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
   string element_type_string;
   string dimensions_string;
+  string format_string;
   string layout_string;
   // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our StringPiece type.
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
-  if (RE2::Consume(&s_consumable,
-                   "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*{([\\d,]*)})?",
-                   &element_type_string, &dimensions_string, &layout_string)) {
+  if (RE2::Consume(
+          &s_consumable,
+          "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?",
+          &element_type_string, &dimensions_string, &format_string,
+          &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
+    auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
+      int64 element;
+      if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
+        return InvalidArgument(
+            "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
+            input.c_str(), s->ToString().c_str());
+      }
+      return element;
+    };
+
     auto comma_list_to_int64s =
-        [&s](const string& input) -> StatusOr<std::vector<int64>> {
+        [&s,
+         string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
       for (const string& piece : tensorflow::str_util::Split(input, ',')) {
-        int64 element;
-        if (!tensorflow::strings::safe_strto64(piece.c_str(), &element)) {
-          return InvalidArgument(
-              "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-              piece.c_str(), s->ToString().c_str());
-        }
+        TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
         results.push_back(element);
       }
       return results;
@@ -563,15 +572,23 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     }
 
     Shape result;
-    if (layout_string.empty()) {
+    if (format_string.empty() && layout_string.empty()) {
       // Create a shape without a layout set.
       result = ShapeUtil::MakeShape(primitive_type, dimensions);
-    } else {
+    } else if (format_string == "sparse") {
+      TF_ASSIGN_OR_RETURN(int64 max_elements, string_to_int64(layout_string));
+      result = ShapeUtil::MakeShapeWithSparseLayout(primitive_type, dimensions,
+                                                    max_elements);
+    } else if (format_string.empty() || format_string == "dense") {
       // Extract the layout minor-to-major and set it.
       TF_ASSIGN_OR_RETURN(std::vector<int64> min2maj,
                           comma_list_to_int64s(layout_string));
       TF_ASSIGN_OR_RETURN(result, MakeShapeWithLayoutInternal(
                                       primitive_type, dimensions, min2maj));
+    } else {
+      // This should not be reached.
+      LOG(FATAL) << "Unhandled condition when parsing shape; format: \""
+                 << format_string << "\", layout: \"" << layout_string << "\"";
     }
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(result));
     return std::move(result);
@@ -584,7 +601,12 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
 /* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(
     tensorflow::StringPiece s) {
-  return ParseShapeStringInternal(&s);
+  TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
+  if (!s.empty()) {
+    return InvalidArgument("Invalid shape string to parse: \"%s\"",
+                           s.ToString().c_str());
+  }
+  return shape;
 }
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,

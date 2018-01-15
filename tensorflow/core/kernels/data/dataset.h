@@ -326,7 +326,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator.
-  virtual Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     return RestoreInternal(ctx, reader);
   }
 
@@ -342,7 +342,7 @@ class IteratorBase {
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
   // `RepeatDataasetOp::Dataset`.
-  Status RestoreParent(OpKernelContext* ctx, IteratorStateReader* reader,
+  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
   }
@@ -353,7 +353,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator recursively.
-  virtual Status RestoreInternal(OpKernelContext* ctx,
+  virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }

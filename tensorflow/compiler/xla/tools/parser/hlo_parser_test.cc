@@ -688,7 +688,37 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 }
 
 )"
+},
+{
+"Sparse",
+R"(HloModule sparse_f32
+
+ENTRY %sparse () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
 }
+
+)"
+},
+{
+"SparseEmpty",
+R"(HloModule sparse_f32_empty
+
+ENTRY %sparse_f32_empty () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{})
+}
+
+)"
+},
+{
+"SparseR1",
+R"(HloModule sparse_f32_r1
+
+ENTRY %sparse_f32_r1 () -> f32[9] {
+  ROOT %foo = f32[9]sparse{10} constant(f32[9]{1: 2, 3: 4, 5: 6})
+}
+
+)"
+},
   });
   // clang-format on
 }

@@ -345,10 +345,27 @@ table::Options TableBuilderOptions() {
   return o;
 }
 
+// Writes zeros to output buffer to align the next write to the requested
+// alignment. "size" is the current size of the buffer and is updated to the
+// new size.
+Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
+  int bytes_over = *size % alignment;
+  if (bytes_over == 0) {
+    return Status::OK();
+  }
+  int bytes_to_write = alignment - bytes_over;
+  Status status = out->Append(string(bytes_to_write, '\0'));
+  if (status.ok()) {
+    *size += bytes_to_write;
+  }
+  return status;
+}
+
 }  // namespace
 
-BundleWriter::BundleWriter(Env* env, StringPiece prefix)
+BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
+      options_(options),
       prefix_(prefix.ToString()),
       tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
                                          random::New64())),
@@ -402,6 +419,7 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
     entry->set_size(data_bytes_written);
     entry->set_crc32c(crc32c::Mask(crc32c));
     size_ += data_bytes_written;
+    status_ = PadAlignment(out_.get(), options_.data_alignment, &size_);
   }
   return status_;
 }

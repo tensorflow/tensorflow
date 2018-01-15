@@ -28,6 +28,7 @@ cc_library(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
+        ":tpu_embedding_ops_op_lib",
     ],
 )
 
@@ -69,9 +70,11 @@ tf_gen_op_libs(
         "outfeed_ops",
         "replication_ops",
         "tpu_configuration_ops",
+        "tpu_embedding_ops",
     ],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -83,6 +86,11 @@ tf_custom_op_library(
         "ops/outfeed_ops.cc",
         "ops/replication_ops.cc",
         "ops/tpu_configuration_ops.cc",
+        "ops/tpu_embedding_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -94,6 +102,7 @@ tf_gen_op_wrapper_py(
         ":outfeed_ops_op_lib",
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
+        ":tpu_embedding_ops_op_lib",
     ],
 )
 

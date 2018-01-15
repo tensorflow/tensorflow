@@ -98,11 +98,14 @@ class TFStats {
   // For test purpose only.
   void AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node);
 
+  void MaybeReportMissingTrace() const;
+
  private:
   bool Validate(const Options& opts) const;
 
   std::set<int64> steps_;
   bool has_code_traces_;
+  bool miss_gpu_stream_;
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
   std::unique_ptr<TFCode> code_view_;

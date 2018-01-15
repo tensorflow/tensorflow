@@ -260,8 +260,6 @@ def random_flip_left_right(image, seed=None):
                                    lambda: array_ops.reverse(image, [1]),
                                    lambda: image,
                                    name=scope)
-    print('scope: ' + scope)
-    print('result name: ' + result.name)
     return fix_image_flip_shape(image, result)
 
 
