@@ -408,9 +408,11 @@ REGISTER_OP("SlideDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Test.
+Creates a dataset that slides a fixed window on `input_dataset`.
 
-Todo.
+slide_size: A scalar representing the number of elements in the fixed window.
+slide_step: A scalar representing the steps moving forward in one iteration.
+  The default is `1`. It must be in [1, `slide_size`).
 )doc");
 
 REGISTER_OP("PaddedBatchDataset")

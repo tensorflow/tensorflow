@@ -429,11 +429,20 @@ class Dataset(dataset_ops.Dataset):
     """
     return Dataset(dataset_ops.BatchDataset(self._dataset, batch_size))
 
+  def slide(self, slide_size, slide_step=1):
+    """Creates a sliding window on this dataset.
 
-  def slide(self, slide_size, slide_step):
-    """Todo"""
+    Args:
+      slide_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        elements in the window.
+      slide_step: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
+        the steps moving forward for one iteration. The default is `1`. It
+        must be in [1, `slide_size`).
+
+    Returns:
+      A `Dataset`.
+    """
     return Dataset(sliding.SlideDataset(self, slide_size, slide_step))
-
 
   def padded_batch(self, batch_size, padded_shapes, padding_values=None):
     """Combines consecutive elements of this dataset into padded batches.

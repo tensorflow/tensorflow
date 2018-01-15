@@ -27,9 +27,10 @@ from tensorflow.python.ops import gen_dataset_ops
 
 
 class SlideDataset(dataset_ops.Dataset):
-  """Todo"""
+  """A `Dataset` that slides a fixed window on its input."""
 
-  def __init__(self, input_dataset, slide_size, slide_step):
+  def __init__(self, input_dataset, slide_size, slide_step=1):
+    """See `Dataset.slide()` for details."""
     super(SlideDataset, self).__init__()
     self._input_dataset = input_dataset
     self._slide_size = ops.convert_to_tensor(
@@ -62,5 +63,3 @@ class SlideDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
-
-
