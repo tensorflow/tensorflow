@@ -1401,7 +1401,10 @@ def convolution3d_transpose(
 def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
                           preprocess_collapse_repeated=False,
                           ctc_merge_repeated=True,
-                          ignore_longer_outputs_than_inputs=False, time_major=True):
+                          ignore_longer_outputs_than_inputs=False,
+                          time_major=True,
+                          output_collections=None,
+                          scope=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss
   using dense labels, and an end of sentence token.
 
@@ -1421,15 +1424,19 @@ def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
   See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss
   for more info on the other parameters not discussed here
   """
-  indices = array_ops.where(math_ops.not_equal(labels, eos_token))
-  values = array_ops.gather_nd(labels, indices)
-  shape = array_ops.shape(labels, out_type=dtypes.int64)
-  sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
-  return nn.ctc_loss(inputs, sparse_labels, sequence_length,
-                     preprocess_collapse_repeated,
-                     ctc_merge_repeated,
-                     ignore_longer_outputs_than_inputs,
-                     time_major)
+  with variable_scope.variable_scope(
+      scope, 'ctc_loss_dense_labels', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    indices = array_ops.where(math_ops.not_equal(labels, eos_token))
+    values = array_ops.gather_nd(labels, indices)
+    shape = array_ops.shape(labels, out_type=dtypes.int64)
+    sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
+    outputs = nn.ctc_loss(inputs, sparse_labels, sequence_length,
+                          preprocess_collapse_repeated,
+                          ctc_merge_repeated,
+                          ignore_longer_outputs_than_inputs,
+                          time_major)
+    return utils.collect_named_outputs(output_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -2710,18 +2717,18 @@ def spatial_softmax(features,
                                         indexing='ij')
       pos_x = array_ops.reshape(pos_x, [height * width])
       pos_y = array_ops.reshape(pos_y, [height * width])
-      
+
       if temperature is None:
         temp_initializer = init_ops.ones_initializer()
       else:
         temp_initializer = init_ops.constant_initializer(temperature)
-          
+
       if not trainable:
         temp_collections = None
       else:
         temp_collections = utils.get_variable_collections(
               variables_collections, 'temperature')
-      
+
       temperature = variables.model_variable(
           'temperature',
           shape=(),
