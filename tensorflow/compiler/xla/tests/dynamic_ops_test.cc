@@ -725,4 +725,3 @@ BENCHMARK(BM_DynamicSlice);
 
 }  // namespace
 }  // namespace xla
-
