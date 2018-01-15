@@ -38,6 +38,7 @@ See the @{$python/train} guide.
 @@clip_by_global_norm
 @@global_norm
 @@cosine_decay
+@@cosine_decay_restarts
 @@linear_cosine_decay
 @@noisy_linear_cosine_decay
 @@exponential_decay

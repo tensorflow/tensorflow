@@ -1153,7 +1153,7 @@ TEST_F(HloInstructionTest, Stringification) {
 
   EXPECT_EQ(dot->ToString(options),
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
-            "%transpose), lhs_contracting_dims=1,rhs_contracting_dims=0");
+            "%transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 
   HloModule module(TestName());
   auto* computation = module.AddEntryComputation(builder.Build());
@@ -1162,7 +1162,7 @@ TEST_F(HloInstructionTest, Stringification) {
 
   EXPECT_EQ(
       fusion->ToString(options),
-      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      "%dot_fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
       "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(

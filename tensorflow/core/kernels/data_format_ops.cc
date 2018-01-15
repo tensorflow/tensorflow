@@ -50,16 +50,11 @@ class DataFormatDimMapOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(
-        context, input.dims() == 0,
-        errors::InvalidArgument("input must be a scalar, but got shape ",
-                                input.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     functor::DataFormatDimMap<Device, T>()(context->eigen_device<Device>(),
-                                           input.scalar<T>(),
-                                           output->scalar<T>());
+                                           input.flat<T>(), output->flat<T>());
   }
 };
 
@@ -137,11 +132,11 @@ TF_CALL_int64(REGISTER_KERNEL);
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                  \
-  template <>                                                \
-  void DataFormatDimMap<GPUDevice, T>::operator()(           \
-      const GPUDevice& d, typename TTypes<T>::ConstScalar x, \
-      typename TTypes<T>::Scalar y);                         \
+#define DECLARE_GPU_SPEC(T)                                \
+  template <>                                              \
+  void DataFormatDimMap<GPUDevice, T>::operator()(         \
+      const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
+      typename TTypes<T>::Flat y);                         \
   extern template struct DataFormatDimMap<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);

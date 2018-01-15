@@ -15,6 +15,8 @@ https://github.com/jekbradbury/examples/blob/spinn/snli/spinn.py,
 which was released under the BSD 3-Clause License at:
 https://github.com/jekbradbury/examples/blob/spinn/LICENSE
 
+Other eager execution examples can be found under [tensorflow/contrib/eager/python/examples](../../../../tensorflow/contrib/eager/python/examples).
+
 ##  Content
 
 Python source file(s):

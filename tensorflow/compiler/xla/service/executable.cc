@@ -24,14 +24,14 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 
+using tensorflow::gtl::ArraySlice;
+
 namespace xla {
 
 StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>>
 Executable::ExecuteOnStreams(
-    tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions> run_options,
-    tensorflow::gtl::ArraySlice<
-        tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
-        arguments) {
+    ArraySlice<const ServiceExecutableRunOptions> run_options,
+    ArraySlice<ArraySlice<const ShapedBuffer*>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
   std::vector<std::unique_ptr<ShapedBuffer>> return_values(run_options.size());
@@ -55,6 +55,74 @@ Executable::ExecuteOnStreams(
     TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
   }
   return std::move(return_values);
+}
+
+StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+    ArraySlice<const ShapedBuffer*> arguments) {
+  perftools::gputools::Stream* stream = run_options->stream();
+  std::unique_ptr<perftools::gputools::Timer> timer;
+  if (profile != nullptr) {
+    timer.reset(new perftools::gputools::Timer(stream->parent()));
+    stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
+  }
+
+  VLOG(1) << "enqueueing executable on stream...";
+  // If the profiling flag isn't enabled, we pass nullptr as the profile to
+  // indicate profiling is not requested.
+  std::unique_ptr<HloExecutionProfile> profile_ptr =
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer(),
+                                            &hlo_profile_index_map())
+          : nullptr;
+
+  StatusOr<std::unique_ptr<ShapedBuffer>> return_value =
+      ExecuteOnStream(run_options, arguments, profile_ptr.get());
+
+  if (profile != nullptr) {
+    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
+    stream->ThenStopTimer(timer.get());
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    VLOG(1) << "done with block-host-until-done";
+
+    // Merge in run-time profile information from execution_profile.
+    //
+    // TODO(b/71713097): This is buggy -- even though the mutex takes care of
+    // C++ level races, some other concurrent ExecuteOnStreamWrapper call could
+    // have rewritten the execution_profile before we get to it.
+    profile->MergeFrom(execution_profile());
+
+    // Overall execution time (in nanoseconds) from the executor timer.
+    if (stream->ok()) {
+      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
+      // illegal.
+      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    }
+
+    // TODO(b/28123297): On GPU we end up including transfer time in
+    // the compute time this way. Instead, we should get the correct
+    // value by measuring it. Setting the field here at least lets
+    // benchmarks provide *some* value for GPU computations.
+    //
+    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
+    // the compute time without the transfer time, so this way we get the
+    // correct compute time. We should instead have the correct value for
+    // compute_and_transfer_time and set compute_time to the compute time.
+    if (profile->compute_time_ns() == 0) {
+      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
+    }
+  }
+
+  if (profile_ptr != nullptr) {
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
+    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
+                                         profile_ptr.get());
+  }
+
+  return return_value;
 }
 
 Status Executable::DumpSessionModule() {

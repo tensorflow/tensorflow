@@ -45,6 +45,7 @@ from tensorflow.python.training import training
 
 class BackpropTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAggregateGradients(self):
 
     def fn(x):
@@ -61,7 +62,7 @@ class BackpropTest(test.TestCase):
     var_np = np.random.rand(4, 2).astype(np.float32)
     var = constant_op.constant(var_np)
     grad = backprop.gradients_function(fn, [0])(var)[0]
-    grad = ops.convert_to_tensor(grad).numpy()
+    grad = self.evaluate(ops.convert_to_tensor(grad))
 
     with context.graph_mode(), self.test_session():
       tf_var = array_ops.constant(var_np, dtypes.float32)
@@ -151,6 +152,20 @@ class BackpropTest(test.TestCase):
       expected = tf_embedding.eval()
     opt.apply_gradients([(grad, embedding)])
     self.assertAllClose(expected, embedding.read_value())
+
+  def testImplicitGradOrdering(self):
+    v0 = resource_variable_ops.ResourceVariable(1.0)
+    v1 = resource_variable_ops.ResourceVariable(2.0)
+
+    def f():
+      x = v1 * v1
+      y = v0 * v0
+      return x + y
+
+    grads = backprop.implicit_grad(f)()
+    ordered_variables = [x[1] for x in grads]
+    self.assertTrue(ordered_variables[0] is v0)
+    self.assertTrue(ordered_variables[1] is v1)
 
   @test_util.assert_no_new_tensors
   def testGradientNone(self):

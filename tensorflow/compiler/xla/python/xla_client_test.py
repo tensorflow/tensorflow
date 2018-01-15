@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import threading
 
 import numpy as np
 
@@ -34,10 +35,13 @@ class LocalComputationTest(unittest.TestCase):
       name = self.id()
     return xla_client.ComputationBuilder(name)
 
+  def _Execute(self, c, arguments):
+    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    return compiled_c.Execute(arguments)
+
   def _ExecuteAndAssertWith(self, assert_func, c, arguments, expected):
     assert expected is not None
-    compiled_c = c.Build().CompileWithExampleArguments(arguments)
-    result = compiled_c.Execute(arguments)
+    result = self._Execute(c, arguments)
     # Numpy's comparison methods are a bit too lenient by treating inputs as
     # "array-like", meaning that scalar 4 will be happily compared equal to
     # [[4]]. We'd like to be more strict so assert shapes as well.
@@ -309,6 +313,48 @@ class ParametersTest(LocalComputationTest):
         expected=[-4.3, 1.3, -6.3, 3.3])
 
 
+class LocalBufferTest(LocalComputationTest):
+  """Tests focusing on execution with LocalBuffers."""
+
+  def _Execute(self, c, arguments):
+    compiled_c = c.Build().CompileWithExampleArguments(arguments)
+    arg_buffers = [xla_client.LocalBuffer.from_py(arg) for arg in arguments]
+    result_buffer = compiled_c.ExecuteWithLocalBuffers(arg_buffers)
+    return result_buffer.to_py()
+
+  def testConstantSum(self):
+    c = self._NewComputation()
+    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    self._ExecuteAndCompareClose(c, expected=4.25)
+
+  def testOneParameterSum(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
+    self._ExecuteAndCompareClose(
+        c,
+        arguments=[NumpyArrayF32(1.11)],
+        expected=4.25)
+
+  def testTwoParameterSum(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)),
+          c.ParameterFromNumpy(NumpyArrayF32(0.)))
+    self._ExecuteAndCompareClose(
+        c,
+        arguments=[NumpyArrayF32(1.11), NumpyArrayF32(3.14)],
+        expected=4.25)
+
+  def testCannotCallWithDeletedBuffers(self):
+    c = self._NewComputation()
+    c.Add(c.ParameterFromNumpy(NumpyArrayF32(0.)), c.ConstantF32Scalar(3.14))
+    arg = NumpyArrayF32(1.11)
+    compiled_c = c.Build().CompileWithExampleArguments([arg])
+    arg_buffer = xla_client.LocalBuffer.from_py(arg)
+    arg_buffer.delete()
+    with self.assertRaises(ValueError):
+      compiled_c.ExecuteWithLocalBuffers([arg_buffer])
+
+
 class SingleOpTest(LocalComputationTest):
   """Tests for single ops.
 
@@ -358,6 +404,18 @@ class SingleOpTest(LocalComputationTest):
     for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
       _ConvertAndTest(x, src_dtype, dst_dtype)
 
+  def testCrossReplicaSumOneReplica(self):
+    samples = [
+        NumpyArrayF32(42.0),
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples:
+      c = self._NewComputation()
+      c.CrossReplicaSum(c.Constant(lhs))
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
   def testDotMatrixVectorF32(self):
     c = self._NewComputation()
     lhs = NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]])
@@ -385,6 +443,46 @@ class SingleOpTest(LocalComputationTest):
     rhs = NumpyArrayF64([[10.0, 20.0], [100.0, 200.0]])
     c.Dot(c.Constant(lhs), c.Constant(rhs))
     self._ExecuteAndCompareClose(c, expected=np.dot(lhs, rhs))
+
+  def testConvF32Same(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 2, 3, 4)
+    rhs = a(1, 2, 1, 2) * 10
+    c.Conv(c.Constant(lhs), c.Constant(rhs),
+           [1, 1], xla_client.PaddingType.SAME)
+    result = np.array([[[[640., 700., 760., 300.],
+                         [880., 940., 1000., 380.],
+                         [1120., 1180., 1240., 460.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvF32Valid(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 2, 3, 4)
+    rhs = a(1, 2, 1, 2) * 10
+    c.Conv(c.Constant(lhs), c.Constant(rhs),
+           [2, 1], xla_client.PaddingType.VALID)
+    result = np.array([[[[640., 700., 760.],
+                         [1120., 1180., 1240.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvWithGeneralPaddingF32(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+    c.ConvWithGeneralPadding(c.Constant(lhs), c.Constant(rhs),
+                             strides, pads, lhs_dilation, rhs_dilation)
+    result = np.array([[[[0., 0., 0.],
+                         [10., 20., 0.],
+                         [0., 0., 0.],
+                         [40., 50., 0.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
 
   def testBooleanNot(self):
     c = self._NewComputation()
@@ -554,6 +652,21 @@ class SingleOpTest(LocalComputationTest):
         new_sizes=[2, 3])
     self._ExecuteAndCompareExact(c, expected=[[1, 2, 3], [4, 5, 6]])
 
+  def testCollapse(self):
+    c = self._NewComputation()
+    c.Collapse(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[1, 2])
+    self._ExecuteAndCompareExact(c, expected=[[1, 2, 3, 4], [5, 6, 7, 8]])
+
+  def testRev(self):
+    c = self._NewComputation()
+    c.Rev(
+        c.Constant(NumpyArrayS32([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])),
+        dimensions=[0, 2])
+    self._ExecuteAndCompareExact(
+        c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
+
   def testSelect(self):
     c = self._NewComputation()
     c.Select(
@@ -608,6 +721,42 @@ class SingleOpTest(LocalComputationTest):
     c.Broadcast(c.Constant(NumpyArrayS32([10, 20, 30, 40])), sizes=(3,))
     self._ExecuteAndCompareExact(
         c, expected=[[10, 20, 30, 40], [10, 20, 30, 40], [10, 20, 30, 40]])
+
+  def testRngNormal(self):
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngNormal(c.Constant(NumpyArrayF32(0.)), c.Constant(NumpyArrayF32(1.)),
+                dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape and uniqueness
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(len(np.unique(result)), np.prod(shape))
+
+  def testRngUniformF32(self):
+    lo, hi = 2., 4.
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngUniform(c.Constant(NumpyArrayF32(lo)), c.Constant(NumpyArrayF32(hi)),
+                 dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape, uniqueness, and range
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(len(np.unique(result)), np.prod(shape))
+    self.assertTrue(np.all(lo <= result))
+    self.assertTrue(np.all(result < hi))
+
+  def testRngUniformS32(self):
+    lo, hi = 2, 4
+    shape = (2, 3)
+    c = self._NewComputation()
+    c.RngUniform(c.Constant(NumpyArrayS32(lo)), c.Constant(NumpyArrayS32(hi)),
+                 dims=shape)
+    result = c.Build().Compile().Execute()
+    # since the result is random, we just check shape, integrality, and range
+    self.assertEqual(result.shape, shape)
+    self.assertEqual(result.dtype, np.int32)
+    self.assertTrue(np.all(lo <= result))
+    self.assertTrue(np.all(result < hi))
 
 
 class EmbeddedComputationsTest(LocalComputationTest):
@@ -892,6 +1041,49 @@ class EmbeddedComputationsTest(LocalComputationTest):
     init = c.ConstantF64Scalar(1.)
     c.While(cond, body, init)
     self._ExecuteAndCompareClose(c, expected=16.)
+
+  def testInfeedS32Values(self):
+    to_infeed = NumpyArrayS32([1, 2, 3, 4])
+    c = self._NewComputation()
+    c.Infeed(xla_client.Shape.from_numpy(to_infeed[0]))
+    compiled_c = c.Build().CompileWithExampleArguments()
+    for item in to_infeed:
+      xla_client.transfer_to_infeed(item)
+
+    for item in to_infeed:
+      result = compiled_c.Execute()
+      self.assertEqual(result, item)
+
+  def testInfeedThenOutfeedS32(self):
+    to_round_trip = NumpyArrayS32([1, 2, 3, 4])
+    c = self._NewComputation()
+    x = c.Infeed(xla_client.Shape.from_numpy(to_round_trip[0]))
+    c.Outfeed(x)
+
+    compiled_c = c.Build().CompileWithExampleArguments()
+
+    for want in to_round_trip:
+      execution = threading.Thread(target=compiled_c.Execute)
+      execution.start()
+      xla_client.transfer_to_infeed(want)
+      got = xla_client.transfer_from_outfeed(
+          xla_client.Shape.from_numpy(to_round_trip[0]))
+      execution.join()
+      self.assertEqual(want, got)
+
+
+class ErrorTest(LocalComputationTest):
+
+  def setUp(self):
+    self.f32_scalar_2 = NumpyArrayF32(2.0)
+    self.s32_scalar_2 = NumpyArrayS32(2)
+
+  def testInvokeWithWrongElementType(self):
+    c = self._NewComputation()
+    c.ParameterFromNumpy(self.s32_scalar_2)
+    self.assertRaisesRegexp(
+        RuntimeError, r"invalid argument shape.*expected s32\[\], got f32\[\]",
+        lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
 
 
 if __name__ == "__main__":

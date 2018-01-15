@@ -65,6 +65,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
   OutfeedRequest outfeed_request;
   *outfeed_request.mutable_operand() = constant_handle;
+  *outfeed_request.mutable_shape() = kVectorShape;
   outfeed_request.set_outfeed_config("abc");
   TF_ASSERT_OK(computation.AddOutfeedInstruction(outfeed_request));
 

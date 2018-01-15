@@ -202,11 +202,12 @@ class ExecutorBarrier {
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
-        done = done_cb_;
-        done_cb_ = nullptr;
+        std::swap(done, done_cb_);
       }
 
-      status = status_;
+      if (!status_.ok()) {
+        status = status_;
+      }
     }
 
     if (error) {

@@ -70,6 +70,7 @@ StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-nam
 
 def main(argv=None):
   """Runs all unit tests."""
+  _test_util.InstallStackTraceHandler()
   return _googletest.main(argv)
 
 

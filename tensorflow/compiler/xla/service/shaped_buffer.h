@@ -34,12 +34,12 @@ namespace xla {
 // particular XLA shape.
 class ShapedBuffer {
  public:
-  // Construct a ScopedShapedBuffer with null DeviceMemoryBases at each
-  // index. The shape of the data on the host and the device may differ because
-  // the device may have a different representation for different data
-  // types. Therefore, both the on-host and on-device shape are required. The
-  // on-device shape determines the number of device allocations
-  // (DeviceMemoryBase) held by the ShapedBuffer.
+  // Construct a ShapedBuffer with null DeviceMemoryBases at each index. The
+  // shape of the data on the host and the device may differ because the device
+  // may have a different representation for different data types. Therefore,
+  // both the on-host and on-device shape are required. The on-device shape
+  // determines the number of device allocations (DeviceMemoryBase) held by the
+  // ShapedBuffer.
   ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
                const perftools::gputools::Platform* platform,
                int device_ordinal);

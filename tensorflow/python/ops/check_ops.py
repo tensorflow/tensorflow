@@ -23,6 +23,7 @@ See the @{$python/check_ops} guide.
 @@assert_non_positive
 @@assert_equal
 @@assert_none_equal
+@@assert_near
 @@assert_less
 @@assert_less_equal
 @@assert_greater
@@ -70,6 +71,7 @@ __all__ = [
     'assert_non_positive',
     'assert_equal',
     'assert_none_equal',
+    'assert_near',
     'assert_integer',
     'assert_less',
     'assert_less_equal',
@@ -338,8 +340,11 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
       eq = math_ops.equal(x, y)
       condition = math_ops.reduce_all(eq)
       if not condition:
-        # Prepare a message with first elements of x and y
+        # Prepare a message with first elements of x and y.
         summary_msg = ''
+        # Default to printing 3 elements like control_flow_ops.Assert (used
+        # by graph mode) does.
+        summarize = 3 if summarize is None else summarize
         if summarize:
           # reshape((-1,)) is the fastest way to get a flat array view.
           x_np = x.numpy().reshape((-1,))
@@ -351,15 +356,13 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                          (x_sum, x_np[:x_sum],
                           y_sum, y_np[:y_sum]))
 
-        # Get the values that actually differed and their indices
+        # Get the values that actually differed and their indices.
         mask = math_ops.logical_not(eq)
         indices = array_ops.where(mask)
         indices_np = indices.numpy()
         x_vals = array_ops.boolean_mask(x, mask)
         y_vals = array_ops.boolean_mask(y, mask)
-        diff_to_print = 0
-        if summarize:
-          diff_to_print = min(summarize, indices_np.size)
+        summarize = min(summarize, indices_np.shape[0])
 
         raise errors.InvalidArgumentError(
             node_def=None, op=None,
@@ -370,9 +373,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
                      '%s'
                      %
                      (message or '',
-                      diff_to_print, indices_np[:diff_to_print],
-                      x_vals.numpy().reshape((-1,))[:diff_to_print],
-                      y_vals.numpy().reshape((-1,))[:diff_to_print],
+                      summarize, indices_np[:summarize],
+                      x_vals.numpy().reshape((-1,))[:summarize],
+                      y_vals.numpy().reshape((-1,))[:summarize],
                       summary_msg)))
       return
 
@@ -439,6 +442,83 @@ def assert_none_equal(
           'y (%s) = ' % y_name, y
       ]
     condition = math_ops.reduce_all(math_ops.not_equal(x, y))
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_near(
+    x, y, rtol=None, atol=None, data=None, summarize=None, message=None,
+    name=None):
+  """Assert the condition `x` and `y` are close element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_near(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have
+
+  ```tf.abs(x[i] - y[i]) <= atol + rtol * tf.abs(y[i])```.
+
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  The default `atol` and `rtol` is `10 * eps`, where `eps` is the smallest
+  representable positive number such that `1 + eps != eps`.  This is about
+  `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, and `0.00977` in `16bit`.
+  See `numpy.finfo`.
+
+  Args:
+    x:  Float or complex `Tensor`.
+    y:  Float or complex `Tensor`, same `dtype` as, and broadcastable to, `x`.
+    rtol:  `Tensor`.  Same `dtype` as, and broadcastable to, `x`.
+      The relative tolerance.  Default is `10 * eps`.
+    atol:  `Tensor`.  Same `dtype` as, and broadcastable to, `x`.
+      The absolute tolerance.  Default is `10 * eps`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
+    name: A name for this operation (optional).  Defaults to "assert_near".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x` and `y` are not close enough.
+
+  @compatibility(numpy)
+  Similar to `numpy.assert_allclose`, except tolerance depends on data type.
+  This is due to the fact that `TensorFlow` is often used with `32bit`, `64bit`,
+  and even `16bit` data.
+  @end_compatibility
+  """
+  message = message or ''
+  with ops.name_scope(name, 'assert_near', [x, y, rtol, atol, data]):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y', dtype=x.dtype)
+
+    eps = np.finfo(x.dtype.as_numpy_dtype).eps
+    rtol = 10 * eps if rtol is None else rtol
+    atol = 10 * eps if atol is None else atol
+
+    rtol = ops.convert_to_tensor(rtol, name='rtol', dtype=x.dtype)
+    atol = ops.convert_to_tensor(atol, name='atol', dtype=x.dtype)
+
+    if context.in_eager_mode():
+      x_name = _shape_and_dtype_str(x)
+      y_name = _shape_and_dtype_str(y)
+    else:
+      x_name = x.name
+      y_name = y.name
+
+    if data is None:
+      data = [
+          message,
+          'x and y not equal to tolerance rtol = %s, atol = %s' % (rtol, atol),
+          'x (%s) = ' % x_name, x, 'y (%s) = ' % y_name, y
+      ]
+    tol = atol + rtol * math_ops.abs(y)
+    diff = math_ops.abs(x - y)
+    condition = math_ops.reduce_all(math_ops.less(diff, tol))
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 

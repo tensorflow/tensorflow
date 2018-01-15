@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -78,17 +80,29 @@ Status SingleMachine::Provision() {
 
   TF_RETURN_IF_ERROR(ResetSession());
 
-  DeviceProperties attr = GetLocalCPUInfo();
-  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
-
-  VLOG(1) << "Number of GPUs: " << num_gpus_;
-  for (int i = 0; i < num_gpus_; ++i) {
-    string device_name =
-        strings::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i);
-    VLOG(1) << "Adding GPU device " << device_name;
-    devices_[device_name] = GetLocalGPUInfo(i);
+  std::vector<DeviceAttributes> devices;
+  TF_RETURN_IF_ERROR(session_->ListDevices(&devices));
+  int gpu_id = 0;
+  for (const auto& dev : devices) {
+    DeviceProperties attr;
+    if (dev.device_type() == "CPU") {
+      attr = GetLocalCPUInfo();
+    } else if (dev.device_type() == "GPU") {
+      attr = GetLocalGPUInfo(gpu_id++);
+    } else {
+      attr.set_type(dev.device_type());
+    }
+    // Overwrite the memory size since users might have requested to use only a
+    // fraction of the available device memory.
+    attr.set_memory_size(dev.memory_limit());
+    devices_[dev.name()] = attr;
   }
   already_provisioned = true;
+
+  // Clear highmark stats of all local allocators.
+  if (cpu_allocator_stats_enabled_) {
+    TF_RETURN_IF_ERROR(ClearAllocatorStats());
+  }
   return Status::OK();
 }
 
@@ -175,6 +189,41 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   } else {
     return RunWithTimeout(feed, fetch, nullptr);
   }
+  return Status::OK();
+}
+
+Status SingleMachine::EnablePeakMemoryStats(bool enable) {
+  EnableCPUAllocatorStats(enable);
+  cpu_allocator_stats_enabled_ = enable;
+  // No need to enable GPU allocator stats since its stats are always collected.
+  return Status::OK();
+}
+
+Status SingleMachine::GetPeakMemoryUsage(
+    std::unordered_map<string, uint64>* device_peak_memory) const {
+  // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
+  // the AllocatorStats would be collected.
+  if (!cpu_allocator_stats_enabled_) {
+    return Status(error::INVALID_ARGUMENT,
+                  "Tracking allocation for CPU is not enabled.");
+  }
+
+  const DeviceMgr* device_mgr;
+  TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
+  std::vector<Device*> devices = device_mgr->ListDevices();
+
+  device_peak_memory->clear();
+  for (Device* device : devices) {
+    AllocatorStats stats;
+    auto* allocator = device->GetAllocator(AllocatorAttributes());
+    if (!allocator->TracksAllocationSizes()) {
+      return Status(error::INVALID_ARGUMENT,
+                    "Tracking allocation is not enabled.");
+    }
+    allocator->GetStats(&stats);
+    (*device_peak_memory)[device->name()] = stats.max_bytes_in_use;
+  }
+
   return Status::OK();
 }
 
@@ -338,6 +387,30 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
     }
     graph_costs->add_node()->MergeFrom(node);
   }
+}
+
+Status SingleMachine::ClearAllocatorStats() const {
+  // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
+  // the AllocatorStats would be collected.
+  if (!cpu_allocator_stats_enabled_) {
+    return Status(error::INVALID_ARGUMENT,
+                  "Tracking allocation for CPU is not enabled.");
+  }
+
+  const DeviceMgr* device_mgr;
+  TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
+  std::vector<Device*> devices = device_mgr->ListDevices();
+
+  for (Device* device : devices) {
+    AllocatorStats stats;
+    auto* allocator = device->GetAllocator(AllocatorAttributes());
+    if (!allocator->TracksAllocationSizes()) {
+      return Status(error::INVALID_ARGUMENT,
+                    "Tracking allocation is not enabled.");
+    }
+    allocator->ClearStats();
+  }
+  return Status::OK();
 }
 
 }  // namespace grappler

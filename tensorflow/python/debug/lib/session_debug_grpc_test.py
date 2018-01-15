@@ -248,7 +248,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
     self.assertEqual(
         14, len(dump.get_tensors("v/read", 0, "DebugNumericSummary")[0]))
 
-  def testTensorBoardDebugHooWorks(self):
+  def testTensorBoardDebugHookWorks(self):
     u = variables.Variable(2.1, name="u")
     v = variables.Variable(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
@@ -261,7 +261,62 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
         ["localhost:%d" % self._server_port])
     sess = monitored_session._HookedSession(sess, [grpc_debug_hook])
 
+    # Activate watch point on a tensor before calling sess.run().
+    self._server.request_watch("u/read", 0, "DebugIdentity")
     self.assertAllClose(42.0, sess.run(w))
+
+    # self.assertAllClose(42.0, sess.run(w))
+    dump = debug_data.DebugDumpDir(self._dump_root)
+    self.assertAllClose([2.1], dump.get_tensors("u/read", 0, "DebugIdentity"))
+
+    # Check that the server has received the stack trace.
+    self.assertTrue(self._server.query_op_traceback("u"))
+    self.assertTrue(self._server.query_op_traceback("u/read"))
+    self.assertTrue(self._server.query_op_traceback("v"))
+    self.assertTrue(self._server.query_op_traceback("v/read"))
+    self.assertTrue(self._server.query_op_traceback("w"))
+
+    # Check that the server has received the python file content.
+    # Query an arbitrary line to make sure that is the case.
+    with open(__file__, "rt") as this_source_file:
+      first_line = this_source_file.readline().strip()
+      self.assertEqual(
+          first_line, self._server.query_source_file_line(__file__, 1))
+
+    self._server.clear_data()
+    # Call sess.run() again, and verify that this time the traceback and source
+    # code is not sent, because the graph version is not newer.
+    self.assertAllClose(42.0, sess.run(w))
+    with self.assertRaises(ValueError):
+      self._server.query_op_traceback("delta_1")
+    with self.assertRaises(ValueError):
+      self._server.query_source_file_line(__file__, 1)
+
+  def testTensorBoardDebugHookDisablingTracebackSourceCodeSendingWorks(self):
+    u = variables.Variable(2.1, name="u")
+    v = variables.Variable(20.0, name="v")
+    w = math_ops.multiply(u, v, name="w")
+
+    sess = session.Session(config=no_rewrite_session_config())
+    sess.run(variables.global_variables_initializer())
+
+    grpc_debug_hook = hooks.TensorBoardDebugHook(
+        ["localhost:%d" % self._server_port],
+        send_traceback_and_source_code=False)
+    sess = monitored_session._HookedSession(sess, [grpc_debug_hook])
+
+    # Activate watch point on a tensor before calling sess.run().
+    self._server.request_watch("u/read", 0, "DebugIdentity")
+    self.assertAllClose(42.0, sess.run(w))
+
+    # Check that the server has _not_ received any tracebacks, as a result of
+    # the disabling above.
+    with self.assertRaisesRegexp(
+        ValueError, r"Op .*u/read.* does not exist"):
+      self.assertTrue(self._server.query_op_traceback("u/read"))
+    with self.assertRaisesRegexp(
+        ValueError, r".* has not received any source file"):
+      self._server.query_source_file_line(__file__, 1)
 
   def testConstructGrpcDebugHookWithOrWithouGrpcInUrlWorks(self):
     hooks.GrpcDebugHook(["grpc://foo:42424"])
@@ -747,6 +802,62 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
           # After the end of runs 1 and 3, the server has received the requests
           # to disable the breakpoint at delta:0:DebugIdentity.
           self.assertSetEqual(set(), self._server_1.breakpoints)
+
+        if i == 0:
+          # Check that the server has received the stack trace.
+          self.assertTrue(self._server_1.query_op_traceback("delta_1"))
+          self.assertTrue(self._server_1.query_op_traceback("delta_2"))
+          self.assertTrue(self._server_1.query_op_traceback("inc_v_1"))
+          self.assertTrue(self._server_1.query_op_traceback("inc_v_2"))
+          # Check that the server has received the python file content.
+          # Query an arbitrary line to make sure that is the case.
+          with open(__file__, "rt") as this_source_file:
+            first_line = this_source_file.readline().strip()
+          self.assertEqual(
+              first_line, self._server_1.query_source_file_line(__file__, 1))
+        else:
+          # In later Session.run() calls, the traceback shouldn't have been sent
+          # because it is already sent in the 1st call. So calling
+          # query_op_traceback() should lead to an exception, because the test
+          # debug server clears the data at the beginning of every iteration.
+          with self.assertRaises(ValueError):
+            self._server_1.query_op_traceback("delta_1")
+          with self.assertRaises(ValueError):
+            self._server_1.query_source_file_line(__file__, 1)
+
+  def testTensorBoardDebuggerWrapperDisablingTracebackSourceSendingWorks(self):
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      v_1 = variables.Variable(50.0, name="v_1")
+      v_2 = variables.Variable(-50.0, name="v_2")
+      delta_1 = constant_op.constant(5.0, name="delta_1")
+      delta_2 = constant_op.constant(-5.0, name="delta_2")
+      inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
+      inc_v_2 = state_ops.assign_add(v_2, delta_2, name="inc_v_2")
+
+      sess.run(variables.global_variables_initializer())
+
+      # Disable the sending of traceback and source code.
+      sess = grpc_wrapper.TensorBoardDebugWrapperSession(
+          sess, self._debug_server_url_1, send_traceback_and_source_code=False)
+
+      for i in xrange(4):
+        self._server_1.clear_data()
+
+        if i == 0:
+          self._server_1.request_watch(
+              "delta_1", 0, "DebugIdentity", breakpoint=True)
+
+        output = sess.run([inc_v_1, inc_v_2])
+        self.assertAllClose([50.0 + 5.0 * (i + 1), -50 - 5.0 * (i + 1)], output)
+
+        # No op traceback or source code should have been received by the debug
+        # server due to the disabling above.
+        with self.assertRaisesRegexp(
+            ValueError, r"Op .*delta_1.* does not exist"):
+          self.assertTrue(self._server_1.query_op_traceback("delta_1"))
+        with self.assertRaisesRegexp(
+            ValueError, r".* has not received any source file"):
+          self._server_1.query_source_file_line(__file__, 1)
 
   def testGetGrpcDebugWatchesReturnsCorrectAnswer(self):
     with session.Session() as sess:

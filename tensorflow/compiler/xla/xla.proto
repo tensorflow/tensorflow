@@ -175,6 +175,10 @@ message DebugOptions {
   // assignments, if available.
   bool xla_hlo_tfgraph_device_scopes = 93;
 
+  // If true, the GPU backend is free to use cudnn for HLO batch normalization
+  // ops.
+  bool xla_gpu_use_cudnn_batchnorm = 94;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

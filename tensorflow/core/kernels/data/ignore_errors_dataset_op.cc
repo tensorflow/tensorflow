@@ -108,7 +108,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("input_impls_empty")))

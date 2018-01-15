@@ -449,7 +449,6 @@ tf_gen_op_wrappers_cc(
         "ops/const_op.h",
         "ops/standard_ops.h",
     ],
-    override_file = "ops/op_gen_overrides.pbtxt",
     pkg = "//tensorflow/core",
 )
 
@@ -535,7 +534,6 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -548,15 +546,11 @@ tf_cc_test(
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_test.cc",
     ],
-    data = [
-        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
-    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

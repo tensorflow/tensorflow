@@ -417,52 +417,17 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Raises:
     ValueError: if environment variable `TF_CONFIG` is incorrectly set.
   """
-
-  if not isinstance(estimator, estimator_lib.Estimator):
-    raise TypeError('`estimator` must have type `tf.estimator.Estimator`, '
-                    'given {}'.format(type(estimator)))
-  config = estimator.config
-
   executor = _TrainingExecutor(estimator=estimator, train_spec=train_spec,
                                eval_spec=eval_spec)
 
-  if (not config.cluster_spec and
-      config.task_type != run_config_lib.TaskType.EVALUATOR):
-    logging.info('Running training and evaluation locally (non-distributed).')
-    executor.run_local()
-    return
-
-  # Distributed case.
-  if not config.task_type:
-    # TODO(xiejw): Improve the error message about how to set the TF_CONFIG
-    # correctly.
-    raise ValueError(
-        '`estimator.config` must have task_type set. This usually means '
-        'TF_CONFIG environment is not set correctly.')
-
-  if config.task_type == 'local':
-    raise ValueError(
-        '`task.type` in TF_CONFIG cannot be `local`. Leaving `cluster` and '
-        '`task` properties in TF_CONFIG absent triggers train and evaluate '
-        '`Estimator` locally (non-distributed).')
-
+  config = estimator.config
   if (config.task_type == run_config_lib.TaskType.EVALUATOR and
       config.task_id > 0):
     raise ValueError(
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  # For task type foo, call executor.run_foo.
-  available_tasks = [x for x in dir(executor) if x.startswith('run_')
-                     and x != 'run_local'
-                     and callable(getattr(executor, x))]
-  task_to_run = 'run_' + config.task_type
-  if task_to_run not in available_tasks:
-    raise ValueError(
-        'Task type {} is not supported. Supported task types are {}'.format(
-            config.task_type, [x[len('run_'):] for x in available_tasks]))
-  getattr(executor, task_to_run)()
-  return
+  executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):
@@ -492,6 +457,7 @@ class _TrainingExecutor(object):
                estimator,
                train_spec,
                eval_spec,
+               train_hooks=None,
                continuous_eval_listener=None):
     if not isinstance(estimator, estimator_lib.Estimator):
       raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
@@ -505,6 +471,8 @@ class _TrainingExecutor(object):
       raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`.')
     self._eval_spec = eval_spec
 
+    self._train_hooks = _validate_hooks(train_hooks)
+
     if (continuous_eval_listener and
         not isinstance(continuous_eval_listener, _ContinuousEvalListener)):
       raise TypeError('`continuous_eval_listener` must have type '
@@ -515,6 +483,52 @@ class _TrainingExecutor(object):
   @property
   def estimator(self):
     return self._estimator
+
+  def run(self):
+    """Executes the run_foo for task type `foo`.
+
+    `_TrainingExecutor` predefines the procedure for task type 'chief',
+    'worker', 'ps', and 'evaluator'. For task type `foo`, the corresponding
+    procedure is `run_foo'. This `run` method invoke the procedure base on the
+    `RunConfig.task_type`.
+
+    Raises:
+      ValueError: if the estimator.config is mis-configured.
+    """
+    config = self._estimator.config
+
+    if (not config.cluster_spec and
+        config.task_type != run_config_lib.TaskType.EVALUATOR):
+      logging.info('Running training and evaluation locally (non-distributed).')
+      self.run_local()
+      return
+
+    # Distributed case.
+    if not config.task_type:
+      # TODO(xiejw): Improve the error message about how to set the TF_CONFIG
+      # correctly.
+      raise ValueError(
+          '`estimator.config` must have task_type set. This usually means '
+          'TF_CONFIG environment is not set correctly.')
+
+    if config.task_type == 'local':
+      raise ValueError(
+          '`task.type` in TF_CONFIG cannot be `local`. Leaving `cluster` and '
+          '`task` properties in TF_CONFIG absent triggers train and evaluate '
+          '`Estimator` locally (non-distributed).')
+
+    # For task type foo, call executor.run_foo.
+    available_tasks = [
+        x for x in dir(self)
+        if x.startswith('run_') and x != 'run_local' and
+        callable(getattr(self, x))
+    ]
+    task_to_run = 'run_' + config.task_type
+    if task_to_run not in available_tasks:
+      raise ValueError(
+          'Task type {} is not supported. Supported task types are {}'.format(
+              config.task_type, [x[len('run_'):] for x in available_tasks]))
+    getattr(self, task_to_run)()
 
   def run_chief(self):
     """Runs task chief."""
@@ -607,7 +621,8 @@ class _TrainingExecutor(object):
                            self._eval_spec.throttle_secs))
 
     stop_hook = _StopAtSecsHook(self._eval_spec.throttle_secs)
-    train_hooks = list(self._train_spec.hooks) + [stop_hook]
+    train_hooks = (
+        list(self._train_spec.hooks) + [stop_hook] + list(self._train_hooks))
     logging.info('Start train and evaluate loop. The evaluate will happen '
                  'after {} secs (eval_spec.throttle_secs) or training is '
                  'finished.'.format(self._eval_spec.throttle_secs))
@@ -662,11 +677,19 @@ class _TrainingExecutor(object):
             'RunConfig or set the TF_CONFIG environment variable.')
 
     logging.info('Start Tensorflow server.')
+
+    if config.session_config is None:
+      session_config=config_pb2.ConfigProto(log_device_placement=False)
+    else:
+      session_config=config_pb2.ConfigProto(
+          log_device_placement=False,
+          gpu_options=config.session_config.gpu_options)
+
     server = server_lib.Server(
         config.cluster_spec,
         job_name=config.task_type,
         task_index=config.task_id,
-        config=config_pb2.ConfigProto(log_device_placement=False),
+        config=session_config,
         start=False)
     server.start()
     return server
@@ -695,10 +718,11 @@ class _TrainingExecutor(object):
                    start_delay_secs)
       time.sleep(start_delay_secs)
 
-    self._estimator.train(input_fn=self._train_spec.input_fn,
-                          max_steps=self._train_spec.max_steps,
-                          hooks=self._train_spec.hooks,
-                          saving_listeners=saving_listeners)
+    self._estimator.train(
+        input_fn=self._train_spec.input_fn,
+        max_steps=self._train_spec.max_steps,
+        hooks=list(self._train_spec.hooks) + list(self._train_hooks),
+        saving_listeners=saving_listeners)
 
   def _start_continuous_evaluation(self):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""

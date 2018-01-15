@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/stats_aggregator.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -129,7 +129,7 @@ class IteratorResource : public ResourceBase {
     GraphRunner graph_runner(ctx->env());
 
     // Build a new FLR that knows about the functions in the graph.
-    std::unique_ptr<FunctionLibraryDefinition> flib_def(
+    std::shared_ptr<FunctionLibraryDefinition> flib_def(
         new FunctionLibraryDefinition(
             *ctx->function_library()->GetFunctionLibraryDefinition()));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
@@ -148,13 +148,27 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
-      return captured_iterator->Restore(ctx, reader);
+      IteratorContext::Params params;
+      params.env = ctx->env();
+      params.runner = *(ctx->runner());
+      params.function_library = flib_def;
+      IteratorContext iter_ctx(std::move(params));
+
+      TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
+      mutex_lock l(mu_);
+      lib_def_ = std::move(flib_def);
+      return Status::OK();
     } else {
       return errors::FailedPrecondition(
           "Failed to restore iterator. Make sure the checkpoint ",
           "is not corrupt. If the checkpoint does not contain the GraphDef, ",
           "you will need to initialize your iterator before restoring.");
     }
+  }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    tf_shared_lock l(mu_);
+    return lib_def_;
   }
 
   // Transfers ownership of iterator to this. This method is thread-safe.
@@ -191,6 +205,7 @@ class IteratorResource : public ResourceBase {
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
   std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
+  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -705,37 +720,39 @@ class IteratorGetNextOp : public AsyncOpKernel {
     IteratorResource* iterator;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
-
     // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
-    thread_pool_->Schedule([this, ctx, iterator, done]() {
-      core::ScopedUnref unref_iterator(iterator);
+    thread_pool_->Schedule(std::bind(
+        [this, ctx, iterator](DoneCallback done) {
+          core::ScopedUnref unref_iterator(iterator);
 
-      std::vector<Tensor> components;
-      bool end_of_sequence = false;
+          std::vector<Tensor> components;
+          bool end_of_sequence = false;
 
-      IteratorContext::Params params;
-      params.env = ctx->env();
-      params.stats_aggregator_getter = [iterator]() {
-        return iterator->stats_aggregator();
-      };
-      params.runner = *(ctx->runner());
-      IteratorContext iter_ctx(std::move(params));
+          IteratorContext::Params params;
+          params.env = ctx->env();
+          params.stats_aggregator_getter = [iterator]() {
+            return iterator->stats_aggregator();
+          };
+          params.runner = *(ctx->runner());
+          params.function_library = iterator->function_library();
+          IteratorContext iter_ctx(std::move(params));
 
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                        errors::OutOfRange("End of sequence"), done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
+              done);
+          OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
+                            errors::OutOfRange("End of sequence"), done);
 
-      for (int i = 0; i < components.size(); ++i) {
-        // TODO(mrry): Check that the shapes match the shape attrs.
-        ctx->set_output(i, components[i]);
-      }
+          for (int i = 0; i < components.size(); ++i) {
+            // TODO(mrry): Check that the shapes match the shape attrs.
+            ctx->set_output(i, components[i]);
+          }
 
-      done();
-    });
+          done();
+        },
+        std::move(done)));
   }
 
  private:

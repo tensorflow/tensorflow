@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
 
@@ -91,6 +92,10 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
+  const std::function<bool(const HloInstruction*, const HloInstruction*)>
+      eq_instructions = std::equal_to<const HloInstruction*>();
+  const std::function<bool(const HloComputation*, const HloComputation*)>
+      eq_computations = std::equal_to<const HloComputation*>();
   for (auto* computation : module->computations()) {
     changed |= CombineConstants(computation, is_layout_sensitive_);
 
@@ -110,9 +115,11 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
       // of this instruction.
       const HloInstruction* operand = instruction->operand(0);
 
-      std::vector<HloInstruction*> equivalent_instructions;
+      tensorflow::gtl::InlinedVector<HloInstruction*, 8>
+          equivalent_instructions;
       for (HloInstruction* user : operand->users()) {
-        if (user != instruction && user->Identical(*instruction) &&
+        if (user != instruction &&
+            user->Identical(*instruction, eq_instructions, eq_computations) &&
             (!is_layout_sensitive_ ||
              ShapeUtil::Equal(user->shape(), instruction->shape()))) {
           equivalent_instructions.push_back(user);

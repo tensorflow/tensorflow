@@ -626,7 +626,8 @@ class IndexToStringTableFromFileTest(test.TestCase):
       with self.test_session():
         table = lookup_ops.index_to_string_table_from_file(
             vocabulary_file=vocabulary_file)
-        features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
+        features = table.lookup(
+            constant_op.constant([0, 1, 2, 3], dtypes.int64))
         self.assertRaises(errors_impl.OpError, features.eval)
         lookup_ops.tables_initializer().run()
         self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),

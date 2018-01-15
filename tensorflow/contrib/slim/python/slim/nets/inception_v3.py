@@ -548,7 +548,10 @@ def inception_v3(inputs,
       parameters or computation cost of the model.
     prediction_fn: a function to get predictions out of logits.
     spatial_squeeze: if True, logits is of shape is [B, C], if false logits is
-        of shape [B, 1, 1, C], where B is batch_size and C is number of classes.
+      of shape [B, 1, 1, C], where B is batch_size and C is number of classes.
+      To use this parameter, the input images must be smaller
+      than 300x300 pixels, in which case the output logit layer
+      does not contain spatial information and can be removed.
     reuse: whether or not the network and its variables should be reused. To be
       able to reuse 'scope' must be given.
     scope: Optional variable_scope.

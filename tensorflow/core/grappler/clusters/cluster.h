@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -37,6 +38,9 @@ class Cluster {
  public:
   explicit Cluster(int timeout_s);
   virtual ~Cluster();
+
+  // Returns a string that represent the type of cluster that was instantiated.
+  virtual string type() const = 0;
 
   // Provision the hardware resources needed to run TensorFlow and start a
   // TensorFlow session that can take advantage of these resources.
@@ -87,6 +91,21 @@ class Cluster {
   // Convenience method that returns the set of device names. These names are
   // sorted alphabetically.
   const std::vector<string> GetDeviceNames() const;
+
+  // Enables collecting the allocator stats. Call with enable=true must be made
+  // before Provision().
+  virtual Status EnablePeakMemoryStats(bool enable) {
+    return errors::Unimplemented(strings ::StrCat(
+        "Peak Memory Stats are not supported on ", type(), " clusters"));
+  }
+
+  // Returns peak memory of all devices during the session creation and session
+  // runs.
+  virtual Status GetPeakMemoryUsage(
+      std::unordered_map<string, uint64>* device_peak_memory) const {
+    return errors::Unimplemented(
+        "GetPeakMemoryUsage is not implemented for this type of cluster.");
+  }
 
   // Prepare the session to run the specified grappler item. This include
   // initializing all the model variables.

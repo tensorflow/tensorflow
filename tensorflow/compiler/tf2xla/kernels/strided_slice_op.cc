@@ -106,7 +106,11 @@ class StridedSliceOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP(Name("StridedSlice"), StridedSliceOp);
+REGISTER_XLA_OP(Name("StridedSlice")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceOp);
 
 class StridedSliceGradOp : public XlaOpKernel {
  public:
@@ -211,7 +215,12 @@ class StridedSliceGradOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP(Name("StridedSliceGrad"), StridedSliceGradOp);
+REGISTER_XLA_OP(Name("StridedSliceGrad")
+                    .CompileTimeConstInput("shape")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceGradOp);
 
 class StridedSliceAssignOp : public XlaOpKernel {
  public:
@@ -320,7 +329,11 @@ class StridedSliceAssignOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP(Name("ResourceStridedSliceAssign"), StridedSliceAssignOp);
+REGISTER_XLA_OP(Name("ResourceStridedSliceAssign")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceAssignOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -68,7 +68,24 @@ def capture_value(tensor_map, value, dtype, name):
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
-      captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
+      handle_data = value._handle_data  # pylint: disable=protected-access
+      captured_value._handle_data = handle_data  # pylint: disable=protected-access
+      if handle_data is not None and handle_data.is_set:
+        # Ensure that shapes and dtypes are propagated.
+        shapes, types = zip(*[(pair.shape, pair.dtype)
+                              for pair in handle_data.shape_and_type])
+        ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
+        shapes = [[d.size for d in s.dim]
+                  if not s.unknown_rank else None for s in shapes]
+        with errors.raise_exception_on_not_ok_status() as status:
+          pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+              captured_value._op._graph._c_graph,  # pylint: disable=protected-access
+              captured_value._as_tf_output(),  # pylint: disable=protected-access
+              shapes,
+              ranks,
+              types,
+              status)
+
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
@@ -422,7 +439,8 @@ class GraphModeFunction(object):
 
   @property
   def name(self):
-    return self._function_def.name
+    """Returns the name of the function in Eager-compatible format."""
+    return self._function_def.name.encode("utf-8")
 
   def add_to_graph(self, g):
     if self._function_def.name not in g._functions:  # pylint: disable=protected-access
@@ -495,14 +513,13 @@ class GraphModeFunction(object):
 def _get_defun_inputs(args):
   """Maps the inputs args to graph inputs."""
   ret = []
-  for a in args:
+  flat_args = nest.flatten(args)
+  for a in flat_args:
     if isinstance(a, ops.Tensor):
       ret.append(graph_placeholder(a.dtype, a.shape))
-    elif type(a) in (tuple, list):
-      ret.append(_get_defun_inputs(a))
     else:
       ret.append(a)
-  return tuple(ret) if type(args) is tuple else ret
+  return nest.pack_sequence_as(args, ret)
 
 
 def _defun_internal(name, func, args, kwds):
@@ -527,11 +544,12 @@ def _defun_internal(name, func, args, kwds):
       func_inputs = _get_defun_inputs(args)
 
       with capture_tensors(captures):
-        tape.push_new_tape()
+        this_tape = tape.push_new_tape()
         try:
           func_outputs = func(*func_inputs, **kwds)
         finally:
-          variables = tape.pop_tape().watched_variables()
+          tape.pop_tape(this_tape)
+        variables = this_tape.watched_variables()
 
         # Returning a closed-over tensor as an output does not trigger a
         # call to convert_to_tensor, so we manually capture all such tensors.
@@ -582,8 +600,10 @@ def _cache_key(x):
     return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
   if isinstance(x, np.ndarray):
     return ("array", x.shape, tuple(x.reshape(-1)))
-  if type(x) in (list, tuple):
+  if isinstance(x, (list, tuple)):
     return tuple([_cache_key(a) for a in x])
+  if isinstance(x, dict):
+    return tuple(tuple([_cache_key(k), _cache_key(v)]) for k, v in x.items())
   return x
 
 

@@ -206,6 +206,7 @@ cc_library(
         "graph_transformations/resolve_constant_binary.cc",
         "graph_transformations/resolve_constant_concatenation.cc",
         "graph_transformations/resolve_constant_fake_quant.cc",
+        "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_tensorflow_shape.cc",
         "graph_transformations/resolve_constant_unary.cc",
         "graph_transformations/resolve_mean_attributes.cc",
@@ -213,6 +214,7 @@ cc_library(
         "graph_transformations/resolve_reorder_axes.cc",
         "graph_transformations/resolve_reshape_attributes.cc",
         "graph_transformations/resolve_slice_attributes.cc",
+        "graph_transformations/resolve_space_to_batch_nd_attributes.cc",
         "graph_transformations/resolve_strided_slice_attributes.cc",
         "graph_transformations/resolve_tensorflow_concat.cc",
         "graph_transformations/resolve_tensorflow_matmul.cc",
@@ -220,6 +222,7 @@ cc_library(
         "graph_transformations/resolve_tensorflow_squeeze.cc",
         "graph_transformations/resolve_tensorflow_switch.cc",
         "graph_transformations/resolve_tensorflow_tile.cc",
+        "graph_transformations/resolve_transpose_attributes.cc",
         "graph_transformations/unfuse_activation_functions.cc",
     ],
     hdrs = [

@@ -184,7 +184,7 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
-      executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
+      executable_->ExecuteOnStreamWrapper(
           &service_options, options.execution_profile(), arguments));
   return ScopedShapedBuffer::MakeScoped(result.get(),
                                         actual_options.allocator());
@@ -316,6 +316,10 @@ StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
       executor, shape, literal.get()));
   return std::move(literal);
+}
+
+StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return local_service_->ReplicaNumberToDeviceOrdinal(replica_number);
 }
 
 }  // namespace xla

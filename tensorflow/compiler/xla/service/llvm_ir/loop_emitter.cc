@@ -99,8 +99,8 @@ IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock(
   // dimension (of the target shape).
   ForLoopNest loop_nest(loop_name, ir_builder_);
   IrArray::Index array_index(shape_.dimensions_size());
-  for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape_.layout().minor_to_major(i);
+  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest.AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape_.dimensions(dimension),

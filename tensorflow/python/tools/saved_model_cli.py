@@ -152,7 +152,9 @@ def _print_tensor_info(tensor_info):
   Args:
     tensor_info: TensorInfo object to be printed.
   """
-  print('    dtype: ' + types_pb2.DataType.keys()[tensor_info.dtype])
+  print('    dtype: ' +
+        {value: key
+         for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
   # Display shape as tuple.
   if tensor_info.tensor_shape.unknown_rank:
     shape = 'unknown_rank'
@@ -553,7 +555,7 @@ def create_parser():
       'To show all inputs and outputs TensorInfo for a specific'
       ' SignatureDef specified by the SignatureDef key in a'
       ' MetaGraph.\n'
-      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
+      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve '
       '--signature_def serving_default\n\n'
       'To show all available information in the SavedModel\n:'
       '$saved_model_cli show --dir /tmp/saved_model --all')

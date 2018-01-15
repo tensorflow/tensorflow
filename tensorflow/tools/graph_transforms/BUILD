@@ -316,3 +316,14 @@ tf_py_test(
     ],
     main = "python/transform_graph_test.py",
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+)

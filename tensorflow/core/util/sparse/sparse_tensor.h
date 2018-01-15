@@ -616,7 +616,7 @@ SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
   int index = 0;
   for (int i = 0; i < input_tensor.indices().dim_size(0) && index < count;
        i++) {
-    // The logic here is similiar as the above except that the above
+    // The logic here is similar as the above except that the above
     // only count the number of indices while here we actually generate
     // the output.
     bool hit = true;

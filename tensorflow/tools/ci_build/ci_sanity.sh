@@ -111,9 +111,9 @@ do_pylint() {
   fi
 
   if [[ $1 == "PYTHON2" ]]; then
-    PYLINT_BIN="python /usr/local/lib/python2.7/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python -m pylint"
   elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 /usr/local/lib/python3.4/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python3 -m pylint"
   else
     echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
     return 1

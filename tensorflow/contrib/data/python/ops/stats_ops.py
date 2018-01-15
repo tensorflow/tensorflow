@@ -117,7 +117,7 @@ def bytes_produced_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):
@@ -139,7 +139,7 @@ def latency_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):

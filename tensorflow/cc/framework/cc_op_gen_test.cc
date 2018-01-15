@@ -24,10 +24,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO(annarev): Remove this op_gen_overrides.pbtxt reference.
-// It is needed only because WriteCCOps takes it as an argument.
-constexpr char kOverridesFnames[] =
-    "tensorflow/cc/ops/op_gen_overrides.pbtxt";
 constexpr char kBaseOpDef[] = R"(
 op {
   name: "Foo"
@@ -96,7 +92,7 @@ void GenerateCcOpFiles(Env* env, const OpList& ops,
   const auto internal_h_file_path = io::JoinPath(tmpdir, "test_internal.h");
   const auto internal_cc_file_path = io::JoinPath(tmpdir, "test_internal.cc");
 
-  WriteCCOps(ops, api_def_map, h_file_path, cc_file_path, kOverridesFnames);
+  WriteCCOps(ops, api_def_map, h_file_path, cc_file_path);
 
   TF_ASSERT_OK(ReadFileToString(env, h_file_path, h_file_text));
   TF_ASSERT_OK(

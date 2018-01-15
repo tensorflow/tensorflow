@@ -2067,6 +2067,15 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
+  def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
+    with context.graph_mode():
+      # pylint: disable=protected-access
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with ops.init_scope():
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # pylint: enable=protected-access
+
 
 @test_util.with_c_api
 class GraphTest(test_util.TensorFlowTestCase):
@@ -2281,6 +2290,8 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       t4.set_shape([43, 37])
       t5.set_shape([43, None])
 
+      b = constant_op.constant(1.0)  # pylint: disable=unused-variable
+
       gd = g.as_graph_def(add_shapes=True)
       self.assertProtoEqualsVersion("""
       node { name: "FiveFloatOutputs" op: "FiveFloatOutputs"
@@ -2297,6 +2308,26 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
           }
         }
       }
+    node { name: "Const" op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape { }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value { type: DT_FLOAT }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape { }
+         float_val: 1.0  } } } }
       """, gd)
 
 
@@ -2636,7 +2667,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops.unique(x)
+      y, _ = gen_array_ops._unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 

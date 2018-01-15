@@ -1623,15 +1623,12 @@ class Operation(object):
       assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
     elif self._graph._c_graph:  # pylint: disable=protected-access
-      if self._op_def:
-        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
-        # inputs. Refactor so we don't have to do this here.
-        grouped_inputs = self._reconstruct_sequence_inputs(
-            self._op_def, self._inputs, self._node_def.attr)
-      else:
-        # If no OpDef is specified, assume all inputs are scalar.
-        grouped_inputs = self._inputs
-
+      if op_def is None:
+        op_def = self._graph._registered_ops[node_def.op]
+      # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
+      # Refactor so we don't have to do this here.
+      grouped_inputs = self._reconstruct_sequence_inputs(
+          op_def, inputs, node_def.attr)
       self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
                                 self._control_inputs)
     else:
@@ -2950,23 +2947,42 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    with self._lock:
-      graph = graph_pb2.GraphDef()
-      graph.versions.CopyFrom(self._graph_def_versions)
-      bytesize = 0
-      for op_id in sorted(self._nodes_by_id):
-        op = self._nodes_by_id[op_id]
-        if from_version is None or op_id > from_version:
-          graph.node.extend([op.node_def])
-          if op.outputs and add_shapes:
-            assert "_output_shapes" not in graph.node[-1].attr
-            graph.node[-1].attr["_output_shapes"].list.shape.extend(
-                [output.get_shape().as_proto() for output in op.outputs])
-          bytesize += op.node_def.ByteSize()
-          if bytesize >= (1 << 31) or bytesize < 0:
-            raise ValueError("GraphDef cannot be larger than 2GB.")
-      self._copy_functions_to_graph_def(graph, bytesize)
-      return graph, self._version
+    if _USE_C_API:
+      with self._lock:
+        with c_api_util.tf_buffer() as buf:
+          with errors.raise_exception_on_not_ok_status() as status:
+            c_api.TF_GraphToGraphDef(self._c_graph, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+        graph = graph_pb2.GraphDef()
+        graph.ParseFromString(compat.as_bytes(data))
+        # Strip the experimental library field iff it's empty.
+        if not graph.library.function:
+          graph.ClearField("library")
+
+        if add_shapes:
+          for node in graph.node:
+            op = self._nodes_by_name[node.name]
+            if op.outputs:
+              node.attr["_output_shapes"].list.shape.extend(
+                  [output.get_shape().as_proto() for output in op.outputs])
+    else:
+      with self._lock:
+        graph = graph_pb2.GraphDef()
+        graph.versions.CopyFrom(self._graph_def_versions)
+        bytesize = 0
+        for op_id in sorted(self._nodes_by_id):
+          op = self._nodes_by_id[op_id]
+          if from_version is None or op_id > from_version:
+            graph.node.extend([op.node_def])
+            if op.outputs and add_shapes:
+              assert "_output_shapes" not in graph.node[-1].attr
+              graph.node[-1].attr["_output_shapes"].list.shape.extend(
+                  [output.get_shape().as_proto() for output in op.outputs])
+            bytesize += op.node_def.ByteSize()
+            if bytesize >= (1 << 31) or bytesize < 0:
+              raise ValueError("GraphDef cannot be larger than 2GB.")
+        self._copy_functions_to_graph_def(graph, bytesize)
+    return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
     # pylint: disable=line-too-long
@@ -3822,6 +3838,9 @@ class Graph(object):
         above.
     """
     if name:
+      if isinstance(name, compat.bytes_or_text_types):
+        name = compat.as_str(name)
+
       if self._name_stack:
         # Scopes created in a nested scope may have initial characters
         # that are illegal as the initial character of an op name
@@ -4879,16 +4898,16 @@ def init_scope():
         context switch is popped from the stack when the context is exited.
         Entering an `init_scope` is equivalent to crawling up the
         `context_stack`, finding the first context that is not building a graph
-        function, and entering it.
+        function, and entering it. A caveat is that if graph mode is enabled
+        but the default graph stack is empty, then entering an `init_scope`
+        will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
   outer_context = None
-  if not context.context_stack.stack:
-    # This is correct because of an invariant: the stack is
-    # empty if and only if eager execution has not been enabled.
+  if context.in_graph_mode() and not _default_graph_stack.stack:
     outer_context = get_default_graph().as_default
   else:
     for stack_entry in reversed(context.context_stack.stack):

@@ -279,6 +279,7 @@ cc_library(
         ":graph_optimizer",
         ":graph_rewriter",
         ":static_schedule",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",

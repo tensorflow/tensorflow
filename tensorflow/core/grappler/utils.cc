@@ -114,41 +114,6 @@ void NodeMap::UpdateOutput(const string& node_name,
   outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
-OutputMap::OutputMap(GraphDef* graph) : graph_(graph) {
-  for (int i = 0; i < graph_->node_size(); i++) {
-    auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.emplace(node->name(), node);
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second);
-    for (const auto& input : node->input()) {
-      string input_node = NodeName(input);
-      if (outputs_[input_node].count(node) == 0) {
-        outputs_[input_node].insert(std::make_pair(node, 1));
-      } else {
-        outputs_[input_node][node]++;
-      }
-    }
-  }
-}
-
-NodeDef* OutputMap::GetNode(const string& name) const {
-  string node_name = NodeName(name);
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-const std::unordered_map<NodeDef*, int>& OutputMap::GetOutputs(
-    const string& node_name) const {
-  auto it = outputs_.find(node_name);
-  if (it == outputs_.end()) {
-    return empty_map_;
-  }
-  return it->second;
-}
-
 bool IsSameInput(const string& name1, const string& name2) {
   if (name1 == name2) {
     return true;

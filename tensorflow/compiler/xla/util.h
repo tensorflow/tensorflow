@@ -239,11 +239,14 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
 
 // Override of the above that works around compile failures with gcc 7.1.1.
 // For details see https://github.com/tensorflow/tensorflow/issues/10843
+// Hide this workaround from MSVC as it causes ambiguous error.
+#ifndef _MSC_VER
 template <typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        const std::vector<T>& input) {
   return Permute<std::vector, T>(permutation, input);
 }
+#endif
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
@@ -394,6 +397,31 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
+
+// Simple wrapper around std::all_of.
+template <typename Container, typename Predicate>
+bool c_all_of(Container container, Predicate predicate) {
+  return std::all_of(std::begin(container), std::end(container), predicate);
+}
+
+// Simple wrapper around std::transform.
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(InputContainer input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator, unary_op);
+}
+
+// Simple wrapper around std::copy_if.
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(InputContainer input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, predicate);
+}
 
 }  // namespace xla
 

@@ -84,7 +84,8 @@ class GraphConstructor {
           return_tensors(in.return_tensors),
           return_nodes(in.return_nodes),
           importing(true),
-          validate_colocation_constraints(in.validate_colocation_constraints) {}
+          validate_colocation_constraints(in.validate_colocation_constraints),
+          validate_shape(in.validate_shape) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -108,6 +109,7 @@ class GraphConstructor {
     // remove this.
     bool importing;
     bool validate_colocation_constraints;
+    bool validate_shape = true;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -561,7 +563,7 @@ Status GraphConstructor::MakeNode(const NodeDef& node_def, Node** node) {
 }
 
 Status GraphConstructor::ValidateShape(Node* node) {
-  if (!opts_.importing) return Status::OK();
+  if (!opts_.importing || !opts_.validate_shape) return Status::OK();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
   // For nodes with the _output_shapes attribute, override the shape.
   std::vector<TensorShapeProto> shape_attrs;

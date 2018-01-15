@@ -79,6 +79,7 @@ load(
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
+    "if_windows",
     "if_not_windows",
     "tf_copts",
     "tf_cc_test",
@@ -274,7 +275,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
+    ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
 )
@@ -359,6 +360,23 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+    ],
+)
+
+cc_library(
+    name = "abi",
+    srcs = ["platform/abi.cc"],
+    hdrs = ["platform/abi.h"],
+)
+
+cc_library(
+    name = "stacktrace_handler",
+    srcs = ["platform/stacktrace_handler.cc"],
+    hdrs = ["platform/stacktrace_handler.h"],
+    deps = [
+        ":abi",
+        ":lib",
+        ":lib_platform",
     ],
 )
 
@@ -511,14 +529,6 @@ cc_library(
     ],
 )
 
-tf_proto_library_cc(
-    name = "op_gen_overrides_proto",
-    srcs = ["framework/op_gen_overrides.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "op_gen_lib",
     srcs = ["framework/op_gen_lib.cc"],
@@ -527,7 +537,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":op_gen_overrides_proto_cc",
         ":protos_all_cc",
     ],
 )
@@ -562,7 +571,7 @@ cc_library(
         "platform/prefetch.h",
         "platform/thread_annotations.h",
         "platform/types.h",
-    ],
+    ] + if_windows(["platform/windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
         [
@@ -589,6 +598,7 @@ tf_gen_op_libs(
         "image_ops",
         "io_ops",
         "linalg_ops",
+        "list_ops",
         "lookup_ops",
         "logging_ops",
         "manip_ops",
@@ -670,6 +680,7 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
+        ":list_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
@@ -806,6 +817,7 @@ cc_library(
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
+        "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:manip",
@@ -1042,18 +1054,31 @@ cc_library(
     name = "ios_tensorflow_lib",
     srcs = if_ios([
         ":android_op_registrations_and_gradients",
-        "//tensorflow/core:android_srcs",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":ios_tensorflow_lib_lite",
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ios_tensorflow_lib_lite",
+    srcs = if_ios(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_all_cc_impl",
+        "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -2176,6 +2201,8 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_id.h",
+    "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
     "common_runtime/gpu/gpu_stream_util.h",
@@ -2193,6 +2220,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
+        "common_runtime/gpu/gpu_id_utils.cc",
         "common_runtime/gpu/gpu_managed_allocator.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
@@ -2358,6 +2386,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
+        ":stacktrace_handler",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],
@@ -2428,6 +2457,7 @@ tf_cc_tests(
         "platform/net_test.cc",
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
+        "platform/stacktrace_handler_test.cc",
         "platform/subprocess_test.cc",
     ],
     deps = [
@@ -2804,6 +2834,8 @@ tf_cc_tests_gpu(
     size = "small",
     srcs = glob(["user_ops/**/*_test.cc"]) + [
         "common_runtime/gpu/gpu_bfc_allocator_test.cc",
+        "common_runtime/gpu/gpu_device_test.cc",
+        "common_runtime/gpu/gpu_id_utils_test.cc",
         "common_runtime/gpu/gpu_event_mgr_test.cc",
         "common_runtime/gpu/pool_allocator_test.cc",
     ],
@@ -3434,7 +3466,6 @@ tf_cc_test(
     srcs = ["api_def/api_test.cc"],
     data = [
         ":base_api_def",
-        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
     ],
     deps = [
         ":framework",
@@ -3443,10 +3474,10 @@ tf_cc_test(
         ":lib_internal",
         ":lib_test_internal",
         ":op_gen_lib",
-        ":op_gen_overrides_proto_cc",
         ":ops",
         ":protos_all_cc",
         ":test",
+        ":test_main",
     ],
 )
 

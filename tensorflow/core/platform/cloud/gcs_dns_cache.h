@@ -48,7 +48,7 @@ class GcsDnsCache {
   }
 
   // Annotate the given HttpRequest with resolve overrides from the cache.
-  Status AnnotateRequest(HttpRequest* request);
+  void AnnotateRequest(HttpRequest* request);
 
  private:
   static std::vector<string> ResolveName(const string& name);

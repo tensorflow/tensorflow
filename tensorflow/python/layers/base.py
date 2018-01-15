@@ -131,6 +131,9 @@ class Layer(object):
 
     self._init_set_name(name)
 
+    # Holds functions for creating regularizer ops.
+    self._regularizer_factories = []
+
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
@@ -291,6 +294,22 @@ class Layer(object):
       inputs_hash = None
     return self._per_input_updates.get(inputs_hash, [])
 
+  def _get_regularizer_factories(self):
+    try:
+      # Some subclasses of Layer do not use its constructor.
+      return self._regularizer_factories
+    except AttributeError:
+      self._regularizer_factories = []
+      return self._regularizer_factories
+
+  def _maybe_create_variable_regularizers(self):
+    """Creates added but uninstantiated regularizers."""
+    factories = self._get_regularizer_factories()
+    if factories:
+      for factory in factories:
+        factory()
+      factories[:] = []
+
   @property
   def losses(self):
     """Losses which are associated with this `Layer`.
@@ -302,6 +321,7 @@ class Layer(object):
     Returns:
       A list of tensors.
     """
+    self._maybe_create_variable_regularizers()
     if context.in_eager_mode():
       # _losses may only contain variable regularization losses when executing
       # eagerly, and they have been saved as lambdas to be executed when
@@ -385,6 +405,7 @@ class Layer(object):
       inputs_hash = layers_util.object_list_uid(inputs)
     else:
       inputs_hash = None
+    self._maybe_create_variable_regularizers()
     return self._per_input_losses.get(inputs_hash, [])
 
   def build(self, _):
@@ -407,13 +428,8 @@ class Layer(object):
     """Determines op naming for the Layer."""
     return current_variable_scope.original_name_scope
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer given the input shape.
-
-    Assumes that the layer will be built to match that input shape.
-    If this method is not implemented by child classes, the default
-    assumption will be that the layer does not alter the shape of the tensors
-    passing through it.
 
     Args:
       input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
@@ -428,7 +444,7 @@ class Layer(object):
       ValueError: if `input_shape` is incomplete or is incompatible with the
         the layer.
     """
-    return input_shape
+    raise NotImplementedError
 
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
@@ -484,16 +500,20 @@ class Layer(object):
       instance is returned.
 
     Raises:
-      RuntimeError: If called in Eager mode with regularizers.
+      RuntimeError: If called in Eager mode with partioned variable
+        regularization.
     """
-    if context.in_graph_mode():
+
+    in_graph_mode = context.in_graph_mode()
+    if in_graph_mode:
       existing_variables = set(tf_variables.global_variables())
     if dtype is None:
       dtype = self.dtype or dtypes.float32
 
     self._set_scope(None)
+    reuse = self.built or self._reuse
     with vs.variable_scope(
-        self._scope, reuse=(self.built or self._reuse)) as scope:
+        self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         variable = vs.get_variable(name,
                                    shape=shape,
@@ -502,39 +522,56 @@ class Layer(object):
                                    constraint=constraint,
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
-        if context.in_graph_mode():
+
+        if in_graph_mode:
           if (trainable and self.trainable
               and variable not in tf_variables.trainable_variables()):
             # A custom getter / variable scope overrode the trainable flag.
             trainable = False
           if variable in existing_variables:
+            # To match the behavior of tf.get_variable(), we only apply
+            # regularization if the variable is newly created.
             return variable
-          if regularizer:
-            # To match the behavior of tf.get_variable(), we only
-            # apply regularization if the variable is newly created.
-            if isinstance(variable, tf_variables.PartitionedVariable):
-              for v in variable:
-                with ops.colocate_with(v.op):
-                  with ops.name_scope(name + '/Regularizer'):
-                    regularization = regularizer(v)
-                if regularization is not None:
-                  self.add_loss(regularization)
+
+        if regularizer:
+          def regularizer_factory():
+            if context.in_graph_mode():
+              with vs.variable_scope(scope, reuse=reuse,
+                                     auxiliary_name_scope=False):
+                with ops.name_scope(self._name_scope_name(scope)):
+                  if isinstance(variable, tf_variables.PartitionedVariable):
+                    for v in variable:
+                      with ops.colocate_with(v.op):
+                        with ops.name_scope(name + '/Regularizer'):
+                          regularization = regularizer(v)
+                      if regularization is not None:
+                        self.add_loss(regularization)
+                  else:
+                    with ops.colocate_with(variable.op):
+                      with ops.name_scope(name + '/Regularizer'):
+                        regularization = regularizer(variable)
+                    if regularization is not None:
+                      self.add_loss(regularization)
             else:
-              with ops.colocate_with(variable.op):
-                with ops.name_scope(name + '/Regularizer'):
-                  regularization = regularizer(variable)
-              if regularization is not None:
-                self.add_loss(regularization)
-        elif regularizer:
-          if isinstance(variable, tf_variables.PartitionedVariable):
-            raise RuntimeError(
-                'Partitioned variable regularization is not yet supported when '
-                'executing eagerly. File a feature request is this is '
-                'important to you.')
-          # Save a zero-argument lambda which runs the regularizer on the
-          # variable, to be executed when `Layer.losses` is requested. This
-          # makes losses responsive to variable updates when executing eagerly.
-          self._losses.append(lambda: regularizer(variable))
+              if isinstance(variable, tf_variables.PartitionedVariable):
+                raise RuntimeError(
+                    'Partitioned variable regularization is not yet '
+                    'supported when executing eagerly. File a feature request'
+                    'if this is important to you.')
+              # Save a zero-argument lambda which runs the regularizer on the
+              # variable, to be executed when `Layer.losses` is requested.
+              # This makes losses responsive to variable updates when
+              # executing eagerly.
+              self._losses.append(lambda: regularizer(variable))
+
+          if hasattr(self, '_defer_regularizers') and self._defer_regularizers:
+            # _defer_regularizers exists and is set to True if `build` was
+            # invoked in `__call__`: deferring regularizer construction
+            # prevents the regularizer from being created in an `init_scope`.
+            self._get_regularizer_factories().append(regularizer_factory)
+          else:
+            regularizer_factory()
+
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -602,11 +639,11 @@ class Layer(object):
         # variable scope with this setting. We avoid re-creating variable scopes
         # after this point as an optimization.
         self._always_reuse_variable_scope = vs.variable_scope(
-            self._scope, reuse=True)
+            self._scope, reuse=True, auxiliary_name_scope=False)
         scope_context_manager = self._always_reuse_variable_scope
     else:
       scope_context_manager = vs.variable_scope(
-          self._scope, reuse=self._reuse)
+          self._scope, reuse=self._reuse, auxiliary_name_scope=False)
     with scope_context_manager as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         if not self.built:
@@ -633,7 +670,15 @@ class Layer(object):
             except AttributeError:
               pass
           input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
-          self.build(input_shapes)
+
+          # Signal to `add_variable` that regularizer construction should be
+          # deferred.
+          self._defer_regularizers = True
+          with ops.init_scope():
+            self.build(input_shapes)
+          # Create any regularizers added by `build`.
+          self._maybe_create_variable_regularizers()
+          self._defer_regularizers = False
         try:
           # Note: not all sub-classes of Layer call Layer.__init__ (especially
           # the ones under tensorflow/python/keras). Hence we recompute this
@@ -654,9 +699,9 @@ class Layer(object):
             raise ValueError('A layer\'s `call` method should return a Tensor '
                              'or a list of Tensors, not None.')
         else:
-          # Deferred mode behavior: use `_compute_output_shape` to
+          # Deferred mode behavior: use `compute_output_shape` to
           # infer the number of outputs of the layer and their shapes.
-          output_shapes = self._compute_output_shape(input_shapes)
+          output_shapes = self.compute_output_shape(input_shapes)
           output_shapes = nest.flatten(output_shapes)
           outputs = [
               # TODO(fchollet): name the deferred tensors?

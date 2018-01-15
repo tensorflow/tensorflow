@@ -44,15 +44,11 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
         default:
           return Unimplemented("tanh");
       }
-      // Create function type for the function.
-      llvm::FunctionType* function_type = llvm::FunctionType::get(
-          llvm_ir::PrimitiveTypeToIrType(element_type, module_),
-          llvm_ir::PrimitiveTypeToIrType(element_type, module_),
-          /*isVarArg=*/false);
       // Create function declaration for 'tanhf'.
       llvm::Function* function =
           llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-              llvm_ir::AsStringRef(function_name), function_type));
+              llvm_ir::AsStringRef(function_name), operand_value->getType(),
+              operand_value->getType()));
       function->setCallingConv(llvm::CallingConv::C);
       function->setDoesNotThrow();
       function->setDoesNotAccessMemory();
@@ -62,6 +58,31 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
     default:
       return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
   }
+}
+
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
+  string function_name;
+  switch (prim_type) {
+    case F32:
+      function_name = "atan2f";
+      break;
+    case F64:
+      function_name = "atan2";
+      break;
+    default:
+      return Unimplemented("atan2");
+  }
+  // Create function declaration for 'atan2'.
+  llvm::Function* function =
+      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
+          llvm_ir::AsStringRef(function_name), lhs->getType(), lhs->getType(),
+          rhs->getType()));
+  function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+  function->setDoesNotAccessMemory();
+  // Create instruction to call 'atan2'.
+  return ir_builder_->CreateCall(function, {lhs, rhs});
 }
 
 llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(

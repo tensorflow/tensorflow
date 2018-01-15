@@ -582,6 +582,54 @@ ENTRY %BatchNormGrad.v4 (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], varia
 
 )"
 },
+// fft
+{
+"Fft",
+R"(HloModule Fft_module
+
+ENTRY %Fft (input: c64[8,32]) -> c64[8,32] {
+  %input = c64[8,32]{1,0} parameter(0)
+  ROOT %fft = c64[8,32]{1,0} fft(c64[8,32]{1,0} %input), fft_type=FFT, fft_length={32}
+}
+
+)"
+},
+// ifft
+{
+"Ifft2d",
+R"(HloModule Ifft2d_module
+
+ENTRY %Ifft2d (input: c64[5,8,32]) -> c64[5,8,32] {
+  %input = c64[5,8,32]{2,1,0} parameter(0)
+  ROOT %fft = c64[5,8,32]{2,1,0} fft(c64[5,8,32]{2,1,0} %input), fft_type=IFFT, fft_length={8,32}
+}
+
+)"
+},
+// rfft2d
+{
+"Rfft2d",
+R"(HloModule Rfft2d_module
+
+ENTRY %Rfft2d (input: f32[5,64,32]) -> c64[5,64,17] {
+  %input = f32[5,64,32]{2,1,0} parameter(0)
+  ROOT %fft = c64[5,64,17]{2,1,0} fft(f32[5,64,32]{2,1,0} %input), fft_type=RFFT, fft_length={64,32}
+}
+
+)"
+},
+// irfft3d
+{
+"Irfft3d",
+R"(HloModule Irfft3d_module
+
+ENTRY %Irfft3d (input: c64[5,64,128,33]) -> f32[5,64,128,64] {
+  %input = c64[5,64,128,33]{3,2,1,0} parameter(0)
+  ROOT %fft = f32[5,64,128,64]{3,2,1,0} fft(c64[5,64,128,33]{3,2,1,0} %input), fft_type=IRFFT, fft_length={64,128,64}
+}
+
+)"
+},
 // pad
 {
 "Pad",
@@ -640,7 +688,37 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 }
 
 )"
+},
+{
+"Sparse",
+R"(HloModule sparse_f32
+
+ENTRY %sparse () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
 }
+
+)"
+},
+{
+"SparseEmpty",
+R"(HloModule sparse_f32_empty
+
+ENTRY %sparse_f32_empty () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{})
+}
+
+)"
+},
+{
+"SparseR1",
+R"(HloModule sparse_f32_r1
+
+ENTRY %sparse_f32_r1 () -> f32[9] {
+  ROOT %foo = f32[9]sparse{10} constant(f32[9]{1: 2, 3: 4, 5: 6})
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -769,6 +847,18 @@ R"(HloModule add_constants_module
 ENTRY add_constants {
   foo = f32[] constant(3.14)
   ROOT bar = f32[] add(foo, foo)
+}
+
+)"
+},
+{
+"Dot",
+R"(HloModule dot
+
+ENTRY dot {
+  a = f32[2,10]{1,0} parameter(0)
+  b = f32[10,3]{1,0} parameter(1)
+  ROOT dot = f32[2,3]{1,0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 )"
@@ -1105,6 +1195,83 @@ ENTRY %CustomCall () -> f32[1] {
   ExpectHasSubstr(Parse(original).status().error_message(),
                   "Shape of computation CustomCall, f32[1], is not compatible "
                   "with that of its root instruction foo, f32[1,2,3]");
+}
+
+TEST_F(HloParserTest, EntryComputationWithLayout) {
+  const string original = R"(HloModule layout:
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
+  ASSERT_EQ(program_layout.parameter_count(), 1);
+  auto param_layout = program_layout.parameter_layout(0).layout();
+  auto result_layout = program_layout.result_layout().layout();
+  EXPECT_TRUE(
+      LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2}), param_layout))
+      << "actual layout of parameter(0) is "
+      << LayoutUtil::HumanString(param_layout);
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1}), result_layout))
+      << "actual layout of result is "
+      << LayoutUtil::HumanString(result_layout);
+}
+
+TEST_F(HloParserTest, NoEntry) {
+  const string original = R"(HloModule no_entry:
+c1 {
+  const1 = f32[1]{0} constant({12345})
+}
+c2 {
+  const2 = f32[1]{0} constant({67890})
+})";
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  EXPECT_EQ(module.ValueOrDie()->entry_computation()->name(), "c2");
+}
+
+TEST_F(HloParserTest, NoRoot) {
+  const string original = R"(HloModule no_root:
+ENTRY consts {
+  first = f32[1]{0} constant({12345})
+  last = f32[1]{0} constant({67890})
+})";
+  auto module = Parse(original);
+  TF_ASSERT_OK(module.status());
+  EXPECT_EQ(
+      module.ValueOrDie()->entry_computation()->root_instruction()->name(),
+      "last");
+}
+
+TEST_F(HloParserTest, MultipleEntries) {
+  const string original = R"(HloModule multiple_entries:
+ENTRY c1 {
+  const1 = f32[1]{0} constant({12345})
+}
+ENTRY c2 {
+  const2 = f32[1]{0} constant({67890})
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "expects only one ENTRY");
+}
+
+TEST_F(HloParserTest, MultipleRoots) {
+  const string original = R"(HloModule multiple_roots:
+ENTRY consts {
+  ROOT const1 = f32[1]{0} constant({12345})
+  ROOT const2 = f32[1]{0} constant({12345})
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  "one computation should have only one ROOT");
 }
 
 }  // namespace

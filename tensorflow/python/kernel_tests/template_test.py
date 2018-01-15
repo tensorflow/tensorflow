@@ -307,6 +307,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/nested/x:0", v1.name)
     self.assertEqual("s1_1/nested/x:0", v3.name)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_nested_templates(self):
 
     def nested_template():
@@ -314,35 +315,43 @@ class TemplateTest(test.TestCase):
       nested2 = template.make_template("nested", variable_scoped_function)
       v1 = nested1()
       v2 = nested2()
+
+      # nested1 and nested2 should not share variables
       self.assertNotEqual(v1, v2)
-      return v2
+
+      # Variables created by nested1 should be isolated from variables
+      # created by nested2.
+      self.assertEqual(nested1.variables, [v1])
+      self.assertEqual(nested2.variables, [v2])
+      self.assertEqual(nested1.trainable_variables, [v1])
+      self.assertEqual(nested2.trainable_variables, [v2])
+      self.assertEqual(len(nested1.non_trainable_variables), 0)
+      self.assertEqual(len(nested2.non_trainable_variables), 0)
+      return v1, v2
 
     tmpl1 = template.make_template("s1", nested_template)
     tmpl2 = template.make_template("s1", nested_template)
 
-    v1 = tmpl1()
-    v2 = tmpl1()
-    v3 = tmpl2()
-    self.assertTrue(v1, v2)
-    self.assertNotEqual(v1, v3)
-    self.assertEqual("s1/nested_1/dummy:0", v1.name)
-    self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
+    v1, v2 = tmpl1()
+    v3, v4 = tmpl1()
+    v5, v6 = tmpl2()
 
-  def test_nested_eager_templates_raises_error(self):
+    # The second invocation of tmpl1 should reuse the variables
+    # created in the first invocation.
+    self.assertEqual([v1, v2], [v3, v4])
+    self.assertEqual(tmpl1.variables, [v1, v2])
+    self.assertEqual(tmpl1.trainable_variables, [v1, v2])
+    self.assertEqual(len(tmpl1.non_trainable_variables), 0)
 
-    def nested_template():
-      nested1 = template.make_template("nested", variable_scoped_function)
-      nested2 = template.make_template("nested", variable_scoped_function)
-      v1 = nested1()
-      v2 = nested2()
-      self.assertNotEqual(v1, v2)
-      return v2
-
-    with context.eager_mode():
-      tmpl1 = template.make_template("s1", nested_template)
-      with self.assertRaisesRegexp(
-          ValueError, "Nested EagerTemaplates are not currently supported."):
-        tmpl1()
+    # tmpl1 and tmpl2 should not share variables.
+    self.assertNotEqual([v1, v2], [v5, v6])
+    self.assertSequenceEqual(tmpl2.variables, [v5, v6])
+    self.assertSequenceEqual(tmpl2.trainable_variables, [v5, v6])
+    self.assertEqual(len(tmpl2.non_trainable_variables), 0)
+    self.assertEqual("s1/nested/dummy:0", v1.name)
+    self.assertEqual("s1/nested_1/dummy:0", v2.name)
+    self.assertEqual("s1_1/nested/dummy:0", v5.name)
+    self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_immediate_scope_creation(self):

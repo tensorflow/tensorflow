@@ -179,6 +179,10 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
       ConcatenateTensorBuffers<ArrayDataType::kInt64>(
           input_arrays, concatenation_axis, &concatenated_array);
       break;
+    case ArrayDataType::kString:
+      ConcatenateTensorBuffers<ArrayDataType::kString>(
+          input_arrays, concatenation_axis, &concatenated_array);
+      break;
     default:
       LOG(FATAL) << "ArrayDataType not supported";
   }

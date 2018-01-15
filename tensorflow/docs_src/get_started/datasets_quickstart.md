@@ -75,7 +75,7 @@ Let's walk through the `train_input_fn()`.
 
 In the simplest cases, @{tf.data.Dataset.from_tensor_slices} function takes an
 array and returns a @{tf.data.Dataset} representing slices of the array. For
-example, an array containing the @{$mnist/beginners$mnist training data}
+example, an array containing the @{$tutorials/layers$mnist training data}
 has a shape of `(60000, 28, 28)`. Passing this to `from_tensor_slices` returns
 a `Dataset` object containing 60000 slices, each one a 28x28 image.
 
@@ -228,7 +228,7 @@ features_result, labels_result = dataset.make_one_shot_iterator().get_next()
 The result is a structure of @{$programmers_guide/tensors$TensorFlow tensors},
 matching the layout of the items in the `Dataset`.
 For an introduction to what these objects are and how to work with them,
-see @{$get_started/get_started}.
+see @{$programmers_guide/low_level_intro}.
 
 ``` python
 print((features_result, labels_result))
@@ -291,7 +291,7 @@ calls @{tf.decode_csv} to parse a single line into its features
 and the label. Since Estimators require that features be represented as a
 dictionary, we rely on Python's built-in `dict` and `zip` functions to build
 that dictionary.  The feature names are the keys of that dictionary.
-We then then call the dictionary's `pop` method to remove the label field from
+We then call the dictionary's `pop` method to remove the label field from
 the features dictionary:
 
 ``` python
@@ -388,11 +388,15 @@ reading data from a variety of sources. Furthermore, `tf.data` has simple
 powerful methods for applying a wide variety of standard and custom
 transformations.
 
-Now that you have the basic idea of how to efficiently load data for an
-Estimator. The next step is to learn how to build your own custom estimator in:
+Now you have the basic idea of how to efficiently load data into an
+Estimator. Consider the following documents next:
 
-* @{$get_started/custom_estimators}
 
-If you'd like to learn more about additional functionality of `Datasets` see:
+* @{$get_started/custom_estimators}, which demonstrates how to build your own
+  custom `Estimator` model.
+* The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
+  how to experiment directly with `tf.data.Datasets` using TensorFlow's low
+  level APIs.
+* @{$programmers_guide/datasets} which goes into great detail about additional
+  functionality of `Datasets`.
 
-* @{$programmers_guide/datasets}

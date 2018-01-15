@@ -146,7 +146,7 @@ class ConvParameters {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
-    int64 threshold = 1L << 31;
+    int64 threshold = 1LL << 31;
     if (total_size >= threshold) {
       return false;
     } else {

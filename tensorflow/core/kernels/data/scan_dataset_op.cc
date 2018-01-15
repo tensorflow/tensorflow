@@ -64,20 +64,23 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    *output =
-        new Dataset(input, std::move(initial_state), std::move(captured_func),
-                    state_types_, output_types_, output_shapes_);
+    *output = new Dataset(ctx, input, func_, std::move(initial_state),
+                          std::move(captured_func), state_types_, output_types_,
+                          output_shapes_);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input, std::vector<Tensor> initial_state,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& func, std::vector<Tensor> initial_state,
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& state_types,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
+          func_(func),
           initial_state_(std::move(initial_state)),
           captured_func_(std::move(captured_func)),
           state_types_(state_types),
@@ -102,6 +105,45 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "ScanDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      Node* input_node;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_node));
+      std::vector<Node*> initial_state_nodes;
+      initial_state_nodes.reserve(initial_state_.size());
+      for (const Tensor& t : initial_state_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        initial_state_nodes.emplace_back(node);
+      }
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+      AttrValue f;
+      b->BuildAttrValue(func_, &f);
+      AttrValue state_types;
+      b->BuildAttrValue(state_types_, &state_types);
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {{0, input_node}},
+                        {{1, initial_state_nodes}, {2, other_arguments}},
+                        {{"f", f},
+                         {"Tstate", state_types},
+                         {"Targuments", other_arguments_types_attr}},
+                        output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -185,6 +227,38 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         return s;
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        if (!state_.empty()) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("state_size"), state_.size()));
+          for (int idx = 0; idx < state_.size(); idx++) {
+            TF_RETURN_IF_ERROR(writer->WriteTensor(
+                full_name(strings::StrCat("state[", idx, "]")), state_[idx]));
+          }
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        if (reader->Contains(full_name("state_size"))) {
+          int64 size;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("state_size"), &size));
+          state_.resize(size);
+          for (int idx = 0; idx < size; idx++) {
+            TF_RETURN_IF_ERROR(reader->ReadTensor(
+                full_name(strings::StrCat("state[", idx, "]")), &state_[idx]));
+          }
+        }
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
       const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
@@ -192,6 +266,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
+    const NameAttrList func_;
     const std::vector<Tensor> initial_state_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector state_types_;

@@ -42,7 +42,6 @@ broken_cpu_cc_tests="\
     //tensorflow/core/platform/cloud:gcs_file_system_test + \
     //tensorflow/core/kernels/cloud:bigquery_table_accessor_test + \
     //tensorflow/core/kernels/hexagon:graph_transferer_test + \
-    //tensorflow/core/kernels/hexagon:quantized_matmul_op_for_hexagon_test + \
     //tensorflow/core/kernels:remote_fused_graph_execute_utils_test + \
     //tensorflow/core/kernels:requantize_op_test + \
     //tensorflow/core/kernels:requantization_range_op_test + \
@@ -103,9 +102,6 @@ function run_configure_for_cpu_build {
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0
   fi
-  if [ -z "$CC_OPT_FLAGS" ]; then
-    export CC_OPT_FLAGS="-march=native"
-  fi
   if [ -z "$TF_NEED_MKL" ]; then
     export TF_NEED_MKL=0
   fi
@@ -121,16 +117,13 @@ function run_configure_for_gpu_build {
   # yes "" | ./configure doesn't work on Windows, so we set all the
   # environment variables in advance to avoid interact with the script.
   export TF_NEED_CUDA=1
-  export TF_CUDA_VERSION=8.0
-  export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
-  export TF_CUDNN_VERSION=6.0
+  export TF_CUDA_VERSION=9.0
+  export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0"
+  export TF_CUDNN_VERSION=7.0
   export CUDNN_INSTALL_PATH="C:/tools/cuda"
   export TF_CUDA_COMPUTE_CAPABILITIES="3.7"
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0
-  fi
-  if [ -z "$CC_OPT_FLAGS" ]; then
-    export CC_OPT_FLAGS="-march=native"
   fi
   export TF_NEED_VERBS=0
   export TF_NEED_MKL=0

@@ -210,7 +210,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             done);
       }
     } else {
-      // For large matrices, we wompute the inverse of each matrix in the batch
+      // For large matrices, we compute the inverse of each matrix in the batch
       // sequentially. Here we use the cuSolver methods GETRF/GETRS because they
       // are MUCH faster than their batched cuBlas equivalents for large
       // matrices.

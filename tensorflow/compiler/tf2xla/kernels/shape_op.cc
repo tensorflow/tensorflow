@@ -121,7 +121,7 @@ class ExpandDimsOp : public XlaOpKernel {
     xla::Literal literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {1}, &literal));
 
-    int dim = literal.s32s(0);
+    int dim = literal.data<int32>()[0];
 
     OP_REQUIRES(ctx,
                 (dim >= -1 - input_shape.dims() && dim <= input_shape.dims()),
@@ -150,7 +150,7 @@ class ExpandDimsOp : public XlaOpKernel {
     ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
   }
 };
-REGISTER_XLA_OP(Name("ExpandDims"), ExpandDimsOp);
+REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstInput("dim"), ExpandDimsOp);
 
 class SqueezeOp : public XlaOpKernel {
  public:

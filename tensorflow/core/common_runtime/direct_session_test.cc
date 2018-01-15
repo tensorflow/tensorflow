@@ -1265,7 +1265,7 @@ TEST(DirectSessionTest, LocalDeviceManager) {
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());

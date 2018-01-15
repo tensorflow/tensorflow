@@ -44,6 +44,8 @@ class SYCLAllocator : public Allocator {
   }
   bool Ok() { return sycl_device_ && sycl_device_->ok(); }
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
+
   // The SYCL buffers keep track of their size, so we already have tracking.
   bool TracksAllocationSizes() override { return true; }
   // Get the size of the corresponding SYCL buffer.

@@ -559,10 +559,11 @@ class ScopedFilterDescriptor {
 // A helper function to decide whether to enable the TENSOR_OP_MATH math type
 static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
-    bool ret;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                               /*default_val=*/false, &ret));
-    return !ret;
+    bool is_disabled;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
+                                       /*default_val=*/false, &is_disabled));
+    return !is_disabled;
   }();
   return is_enabled;
 }
@@ -2677,7 +2678,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
       // clang-format on
   };
-#if CUDNN_VERSION >= 5110
+#if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2940,7 +2941,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(
@@ -2963,7 +2963,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(
@@ -2987,7 +2986,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 }
 
 bool CudnnSupport::DoFusedConvolve(

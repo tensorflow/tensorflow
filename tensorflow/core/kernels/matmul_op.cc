@@ -535,13 +535,15 @@ struct MatMulFunctor<SYCLDevice, T> {
 
 }  // end namespace functor
 
+#define REGISTER_CPU_EIGEN(T)                                                  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("eigen"), \
+      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 #define REGISTER_CPU(T)                                                        \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),                \
       MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);            \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("eigen"), \
-      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>)
+  REGISTER_CPU_EIGEN(T);
 
 #define REGISTER_GPU(T)                                            \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -556,9 +558,14 @@ struct MatMulFunctor<SYCLDevice, T> {
 #if defined(INTEL_MKL)
 // MKL does not support half and int32 types for matrix-multiplication, so
 // register the kernel to use default Eigen based implementations for these
-// types
+// types. Registration for NO-LABEL version is in mkl_matmul_op.cc
+TF_CALL_float(REGISTER_CPU_EIGEN);
+TF_CALL_double(REGISTER_CPU_EIGEN);
 TF_CALL_half(REGISTER_CPU);
+
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_complex64(REGISTER_CPU_EIGEN);
+TF_CALL_complex128(REGISTER_CPU_EIGEN);
 #else
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);

@@ -1,10 +1,12 @@
-# HloModule string syntax
+# HLO Text Syntax
 
 ```yacc
 hlo_module
   : 'HloModule' name computations
   ;
 
+/* If no computation is marked as ENTRY, the last computation will be the entry
+computation of the module.*/
 computations
   : computation
   | computation computations
@@ -17,6 +19,8 @@ computation
   | name instruction_list
   ;
 
+/* If no instruction is marked as ROOT, the last instruction will be the root of
+its computation. */
 instruction_list
   : '{' instruction_list1 '}'
   ;
@@ -112,7 +116,29 @@ non_tuple
   | rank2345
   ;
 rank2345
-  : shape nested_array
+  : shape sparse_or_nested_array
+  ;
+sparse_or_nested_array
+  : sparse_array
+  | nested_array
+  ;
+sparse_array
+  : '{' sparse_array1 '}'
+  ;
+sparse_array1
+  : sparse_array_item
+  | sparse_array1 ',' sparse_array_item
+  ;
+sparse_array_item
+  : multi_index ':' scalar
+  ;
+multi_index
+  : kInt
+  | '[' multi_index1 ']'
+  ;
+multi_index1
+  : kInt
+  | multi_index1 ',' kInt
   ;
 
 ```

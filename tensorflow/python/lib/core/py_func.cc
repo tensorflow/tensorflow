@@ -432,6 +432,9 @@ class PyFuncOp : public OpKernel {
     py_threadstate = PyGILState_Ensure();
     bool log_on_error;
     Status s = DoCallPyFunc(&call, &log_on_error);
+    // Sometimes py_funcs can be called without a session and leak memory. This
+    // ensures we clear the decref cache so this doesn't happen.
+    ClearDecrefCache();
     PyGILState_Release(py_threadstate);
 
     // Ensures that GIL is released even when !s.ok().
