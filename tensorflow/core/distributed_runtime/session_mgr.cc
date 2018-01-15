@@ -42,8 +42,8 @@ SessionMgr::SessionMgr(
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
-  return strings::StrCat("/job:", server_def.job_name(),
-                         "/replica:0/task:", server_def.task_index());
+  return strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:",
+                         server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const string& session,
