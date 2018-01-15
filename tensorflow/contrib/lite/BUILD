@@ -111,6 +111,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -134,6 +135,7 @@ cc_test(
     srcs = ["simple_memory_arena_test.cc"],
     deps = [
         ":framework",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -152,6 +154,7 @@ cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -163,6 +166,7 @@ cc_test(
     srcs = ["context_test.cc"],
     deps = [
         ":framework",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )

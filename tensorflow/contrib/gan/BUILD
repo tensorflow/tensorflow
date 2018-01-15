@@ -56,6 +56,7 @@ py_test(
     srcs = ["python/train_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":features",
         ":namedtuples",
         ":train",
         "//tensorflow/contrib/framework:framework_py",
@@ -82,6 +83,7 @@ py_library(
     deps = [
         ":classifier_metrics",
         ":eval_utils",
+        ":sliced_wasserstein",
         ":summaries",
         "//tensorflow/python:util",
     ],
@@ -116,7 +118,7 @@ py_library(
     deps = [
         ":clip_weights",
         ":conditioning_utils",
-        ":tensor_pool",
+        ":random_tensor_pool",
         ":virtual_batchnorm",
         "//tensorflow/python:util",
     ],
@@ -221,10 +223,10 @@ py_test(
 )
 
 py_library(
-    name = "tensor_pool",
+    name = "random_tensor_pool",
     srcs = [
-        "python/features/python/tensor_pool.py",
-        "python/features/python/tensor_pool_impl.py",
+        "python/features/python/random_tensor_pool.py",
+        "python/features/python/random_tensor_pool_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -239,11 +241,11 @@ py_library(
 )
 
 py_test(
-    name = "tensor_pool_test",
-    srcs = ["python/features/python/tensor_pool_test.py"],
+    name = "random_tensor_pool_test",
+    srcs = ["python/features/python/random_tensor_pool_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tensor_pool",
+        ":random_tensor_pool",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -499,6 +501,41 @@ py_test(
         "//tensorflow/python/estimator:numpy_io",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "sliced_wasserstein",
+    srcs = [
+        "python/eval/python/sliced_wasserstein.py",
+        "python/eval/python/sliced_wasserstein_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sliced_wasserstein_test",
+    srcs = ["python/eval/python/sliced_wasserstein_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":sliced_wasserstein",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
 )
 

@@ -112,6 +112,7 @@ class DirectSession : public Session {
   // every partition.
   struct PerPartitionExecutorsAndLib {
     Graph* graph = nullptr;                  // not owned.
+    Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
   };

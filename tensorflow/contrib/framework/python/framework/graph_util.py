@@ -150,5 +150,5 @@ def get_placeholders(graph):
   # The return value (a Tensor) of placeholder() is the
   # first output of this operation in fact.
   operations = graph.get_operations()
-  result = [i.outputs[0] for i in operations if i.type == 'Placeholder']
+  result = [i.outputs[0] for i in operations if i.type == "Placeholder"]
   return result

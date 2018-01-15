@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
+from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.util import loader

@@ -188,12 +188,45 @@ class RevBlockTest(test.TestCase):
 
     def f(x):
       x = convolutional.conv1d(x, self.CHANNELS // 2, 3, padding="same")
-      x = core_layers.batch_normalization(x, training=True)
+      x = layers.batch_norm(x, is_training=True)
       x = convolutional.conv1d(x, self.CHANNELS // 2, 3, padding="same")
-      x = core_layers.batch_normalization(x, training=True)
+      x = layers.batch_norm(x, is_training=True)
       return x
 
     self._testRevBlock(x=x, f=f)
+
+  def testReuse(self):
+
+    def f(x):
+      return core_layers.dense(x, self.CHANNELS // 2)
+
+    def g(x):
+      return core_layers.dense(x, self.CHANNELS // 2)
+
+    x = random_ops.random_uniform(
+        [self.BATCH_SIZE, self.CHANNELS], dtype=dtypes.float32)
+    x1, x2 = array_ops.split(x, 2, axis=-1)
+
+    with variable_scope.variable_scope("test"):
+      y1, y2 = rev_block_lib.rev_block(x1, x2, f, g, num_layers=self.NUM_LAYERS)
+
+    num_vars_before = len(variables.global_variables())
+
+    with variable_scope.variable_scope("test", reuse=True):
+      y1, y2 = rev_block_lib.rev_block(x1, x2, f, g, num_layers=self.NUM_LAYERS)
+
+    num_vars_after = len(variables.global_variables())
+    self.assertEqual(num_vars_before, num_vars_after)
+
+    loss = math_ops.reduce_mean(y1 + y2)
+    _ = gradients_impl.gradients(loss,
+                                 [x] + variables.trainable_variables())
+
+    with variable_scope.variable_scope("test", reuse=True):
+      y1, y2 = rev_block_lib.rev_block(x1, x2, f, g, num_layers=self.NUM_LAYERS)
+
+    num_vars_after = len(variables.global_variables())
+    self.assertEqual(num_vars_before, num_vars_after)
 
 
 class RecomputeTest(test.TestCase):

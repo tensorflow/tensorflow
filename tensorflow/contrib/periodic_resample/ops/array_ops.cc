@@ -14,13 +14,12 @@
 // limitations under the License.
 // =============================================================================
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
 
-
-using namespace tensorflow;
+namespace tensorflow {
 
 REGISTER_OP("PeriodicResample")
     .Attr("T: numbertype")
@@ -80,10 +79,12 @@ values: The tensor of rank `R` to periodic_resample
 shape: A 1-D tensor representing the desired shape of the output tensor.
   Exactly one element of this tensor must have the value `None` which represents
   that this dimension of `values` can be adjusted downward in order to
-  accomodate increases in other dimensions. The specified sizes of the
+  accommodate increases in other dimensions. The specified sizes of the
   non-adjustable dimensions must by at least as large as in the `values` tensor.
 output: Periodically resampled tensor that has dimensions specified as in
   `shape` except that the dimension specified as `None` will be minimally
   decreased as necessary.
 
 )doc");
+
+}  // namespace tensorflow

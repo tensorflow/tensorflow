@@ -159,21 +159,17 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
+        # Placeholder for internal file dependency.
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:darwin": [],
-        "//tensorflow:ios": [],
-        "//conditions:default": [],
-        "//tensorflow:dummy_disabled_internal": [],
-    }),
+    ],
 )
 
 cc_library(
     name = "graph_transformations",
     srcs = [
+        "graph_transformations/convert_expanddims_to_reshape.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/create_im2col_arrays.cc",
         "graph_transformations/dequantize.cc",
@@ -206,9 +202,11 @@ cc_library(
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_unused_op.cc",
         "graph_transformations/resolve_batch_normalization.cc",
+        "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",
         "graph_transformations/resolve_constant_concatenation.cc",
         "graph_transformations/resolve_constant_fake_quant.cc",
+        "graph_transformations/resolve_constant_fill.cc",
         "graph_transformations/resolve_constant_tensorflow_shape.cc",
         "graph_transformations/resolve_constant_unary.cc",
         "graph_transformations/resolve_mean_attributes.cc",
@@ -216,6 +214,7 @@ cc_library(
         "graph_transformations/resolve_reorder_axes.cc",
         "graph_transformations/resolve_reshape_attributes.cc",
         "graph_transformations/resolve_slice_attributes.cc",
+        "graph_transformations/resolve_space_to_batch_nd_attributes.cc",
         "graph_transformations/resolve_strided_slice_attributes.cc",
         "graph_transformations/resolve_tensorflow_concat.cc",
         "graph_transformations/resolve_tensorflow_matmul.cc",
@@ -223,6 +222,7 @@ cc_library(
         "graph_transformations/resolve_tensorflow_squeeze.cc",
         "graph_transformations/resolve_tensorflow_switch.cc",
         "graph_transformations/resolve_tensorflow_tile.cc",
+        "graph_transformations/resolve_transpose_attributes.cc",
         "graph_transformations/unfuse_activation_functions.cc",
     ],
     hdrs = [

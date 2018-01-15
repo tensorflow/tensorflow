@@ -158,7 +158,7 @@ class BidirectionalTest(test.TestCase):
 
         # test compute output shape
         ref_shape = model.layers[-1].output.get_shape()
-        shape = model.layers[-1]._compute_output_shape(
+        shape = model.layers[-1].compute_output_shape(
             (None, timesteps, dim))
         self.assertListEqual(shape.as_list(), ref_shape.as_list())
 

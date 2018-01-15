@@ -19,6 +19,7 @@ from __future__ import print_function
 import gc
 
 from tensorflow.contrib.eager.python import network
+from tensorflow.contrib.layers.python.layers import regularizers
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
@@ -43,6 +44,22 @@ class MyNetwork(network.Network):
 
   def call(self, x):
     return self.l1(x)
+
+
+class RegularizedNetwork(network.Network):
+
+  def __init__(self):
+    super(RegularizedNetwork, self).__init__()
+    self.l1 = self.track_layer(core.Dense(
+        1,
+        bias_regularizer=regularizers.l1_regularizer(2.0),
+        kernel_regularizer=regularizers.l1_regularizer(2.0)))
+    self.l2 = self.track_layer(core.Dense(
+        1,
+        bias_regularizer=regularizers.l1_regularizer(2.0)))
+
+  def call(self, values):
+    return self.l2(self.l1(values))
 
 
 class NetworkTest(test.TestCase):
@@ -88,15 +105,13 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
-  # TODO(akshayka): This test should be changed once an API for compiling
-  # `call` into a defun is implemented.
   def testReplacingNetworkCallWithDefun(self):
     net = MyNetwork(name="abcd")
+    net.call = function.defun(net.call)
     x = constant_op.constant([[2.0]])
     net(x)  # Force variables to be created.
     self.evaluate(net.trainable_variables[0].assign([[17.0]]))
 
-    net.call = function.defun(net.call)
     result = net(x)  # Build and execute the TensorFlow function
     self.assertEqual(34.0, self.evaluate(result))
 
@@ -483,6 +498,18 @@ class NetworkTest(test.TestCase):
       MyNetwork()(zero)
       _check_op_prefixes(expected_prefix="my_network_1/dense/",
                          checked_ops=checked_ops)
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testVariableRegularizers(self):
+    net = RegularizedNetwork()
+    net(constant_op.constant([[1.]]))
+    self.evaluate(net.variables[0].assign([[2.]]))
+    self.evaluate(net.variables[1].assign([3.]))
+    self.evaluate(net.variables[2].assign([[-2.]]))
+    self.evaluate(net.variables[3].assign([4.]))
+    self.assertAllEqual([4., 6., 8.], self.evaluate(net.losses))
+    self.evaluate(net.variables[3].assign([5.]))
+    self.assertAllEqual([4., 6., 10.], self.evaluate(net.losses))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDuplicateNameError(self):

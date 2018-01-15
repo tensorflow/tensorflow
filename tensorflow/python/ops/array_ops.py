@@ -70,6 +70,7 @@ See the @{$python/array_ops} guide.
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
+@@guarantee_const
 @@fake_quant_with_min_max_args
 @@fake_quant_with_min_max_args_gradient
 @@fake_quant_with_min_max_vars
@@ -125,11 +126,8 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    try:
-      in_device = input.device
-    except AttributeError:
-      input = ops.convert_to_tensor(input)
-      in_device = input.device
+    input = ops.convert_to_tensor(input)
+    in_device = input.device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
     if context.context().device_name != in_device:
       return input._copy()  # pylint: disable=protected-access
@@ -451,18 +449,21 @@ def _slice_helper(tensor, slice_spec, var=None):
   This operation extracts the specified region from the tensor.
   The notation is similar to NumPy with the restriction that
   currently only support basic indexing. That means that
-  using a tensor as input is not currently allowed
+  using a non-scalar tensor as input is not currently allowed.
 
   Some useful examples:
 
   ```python
   # strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # [3,4]
+  print(foo[2:-2].eval())  # => [3,4]
 
   # skip every row and reverse every column
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+
+  # Use scalar tensors as indices on both dimensions
+  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
@@ -473,9 +474,9 @@ def _slice_helper(tensor, slice_spec, var=None):
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   ```
 
   Notes:
@@ -1092,6 +1093,27 @@ def concat(values, axis, name="concat"):
   tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
   tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
   ```
+  As in Python, the `axis` could also be negative numbers. Negative `axis`
+  are interpreted as counting from the end of the rank, i.e.,
+   `axis + rank(values)`-th dimension.
+
+  For example:
+
+  ```python
+  t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
+  t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
+  tf.concat([t1, t2], -1)
+  ```
+
+  would produce:
+
+  ```python
+  [[[ 1,  2,  7,  4],
+    [ 2,  3,  8,  4]],
+
+   [[ 4,  4,  2, 10],
+    [ 5,  3, 15, 11]]]
+  ```
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
@@ -1109,7 +1131,10 @@ def concat(values, axis, name="concat"):
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
     axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
-      in the range `[-rank(values), rank(values))`.
+      in the range `[-rank(values), rank(values))`. As in Python, indexing
+      for axis is 0-based. Positive axis in the rage of
+      `[0, rank(values))` refers to `axis`-th dimension. And negative axis
+      refers to `axis + rank(values)`-th dimension.
     name: A name for the operation (optional).
 
   Returns:
@@ -1254,6 +1279,16 @@ def sparse_mask(a, mask_indices, name=None):
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
+def unique(x, out_idx=dtypes.int32, name=None):
+  # TODO (yongtang): switch to v2 once API deprecation
+  # period (3 weeks) pass.
+  # TODO (yongtang): The documentation should also
+  # be updated when switch  to v2.
+  return gen_array_ops._unique(x, out_idx, name)
+
+unique.__doc__ = gen_array_ops._unique.__doc__
+
+
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
@@ -1305,7 +1340,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   size_splits = ops.convert_to_tensor(num_or_size_splits)
   if size_splits._rank() == 0 and size_splits.dtype.is_integer:
     return gen_array_ops._split(
-        split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
+        axis=axis, num_split=num_or_size_splits, value=value, name=name)
 
   if num is None:
     num = size_splits._shape_tuple()[0]
@@ -1315,7 +1350,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   return gen_array_ops._split_v(
       value=value,
       size_splits=size_splits,
-      split_dim=axis,
+      axis=axis,
       num_split=num,
       name=name)
 
@@ -1496,20 +1531,17 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
-    # Checking for boolean dtype to prevent attempting to run fill on the GPU
-    # which does not have a boolean kernel registered.
-    if context.in_eager_mode() and dtype != dtypes.bool:
-      return fill(shape, constant(zero, dtype=dtype), name=name)
-    try:
-      if isinstance(shape, ops.Tensor):
-        # TODO(apassos) this is required to reproduce the behavior from before
-        # Tensors were iterable. It's a crutch.
-        raise TypeError
-      shape = tensor_shape.as_shape(shape)
-      output = constant(zero, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(zero, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(zero, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -1627,15 +1659,17 @@ def ones(shape, dtype=dtypes.float32, name=None):
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
     one = True if dtype == dtypes.bool else 1
-    try:
-      if isinstance(shape, ops.Tensor):
-        raise TypeError(
-            "preserving semantics from before tensors were iterable")
-      shape = tensor_shape.as_shape(shape)
-      output = constant(one, shape=shape, dtype=dtype, name=name)
-    except (TypeError, ValueError):
-      shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(one, dtype=dtype), name=name)
+    if not isinstance(shape, ops.Tensor):
+      try:
+        # Go through tensor shapes to get int64-if-needed semantics
+        shape = constant_op._tensor_shape_tensor_conversion_function(
+            tensor_shape.TensorShape(shape))
+      except (TypeError, ValueError):
+        # Happens when shape is a list with tensor elements
+        shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
+    if not shape._shape_tuple():
+      shape = reshape(shape, [-1])  # Ensure it's a vector
+    output = fill(shape, constant(one, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -2537,9 +2571,9 @@ def where(condition, x=None, y=None, name=None):
     with ops.name_scope(name, "Where", [condition]) as name:
       condition = ops.convert_to_tensor(
           condition, preferred_dtype=dtypes.bool, name="condition")
-      return gen_array_ops.where(input=condition, name=name)
+      return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
-    return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
+    return gen_math_ops._select(condition=condition, x=x, y=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 

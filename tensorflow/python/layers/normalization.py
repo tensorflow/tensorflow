@@ -241,7 +241,7 @@ class BatchNormalization(base.Layer):
                          'axis == [1] or axis == [3]')
 
     # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == dtypes.float16:
+    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
       param_dtype = dtypes.float32
     else:
       param_dtype = self.dtype or dtypes.float32
@@ -624,6 +624,9 @@ class BatchNormalization(base.Layer):
       return undo_virtual_batching(outputs)
 
     return outputs
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
 
 def batch_normalization(inputs,

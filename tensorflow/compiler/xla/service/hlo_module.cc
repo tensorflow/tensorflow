@@ -35,14 +35,15 @@ namespace xla {
 HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle) {}
 
-HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name)
+    : name_(NameUniquer::GetSanitizedName(name)) {}
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
-    : name_(name), config_(config) {}
+    : name_(NameUniquer::GetSanitizedName(name)), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -170,17 +171,14 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString(bool include_large_constants) const {
+string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name() << ":\n\n";
+  s << "HloModule " << name() << "\n\n";
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
-    s << computation->ToString(
-             /*nested_level=*/0,
-             /*include_large_constants=*/include_large_constants)
-      << "\n\n";
+    s << computation->ToString(options) << "\n\n";
   }
   return s.str();
 }
@@ -232,8 +230,8 @@ StatusOr<ProgramShape> ProgramShapeFromProto(const HloModuleProto& module) {
           << "Entry computation has more than one parameter instruction "
              "with parameter number "
           << instruction.parameter_number();
-      parameters[instruction.parameter_number()] = {
-          instruction.parameter_name(), &instruction.shape()};
+      parameters[instruction.parameter_number()] = {instruction.name(),
+                                                    &instruction.shape()};
     }
   }
   TF_RET_CHECK(root != nullptr)

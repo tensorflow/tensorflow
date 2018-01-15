@@ -19,23 +19,6 @@ for instructions on how to install a pre-built TensorFlow package on Windows.
 ### Current known limitations
 * It is not possible to load a custom Op library.
 * GCS file system is not supported.
-* The following Ops are not currently implemented:
- - Dequantize
- - QuantizeAndDequantize
- - QuantizedAvgPool
- - QuantizedBatchNomWithGlobalNormalization
- - QuantizedBiasAdd
- - QuantizedConcat
- - QuantizedConv2D
- - QuantizedMatmul
- - QuantizedMaxPoo
- - QuantizeDownAndShrinkRange
- - QuantizedRelu
- - QuantizedRelu6
- - QuantizedReshape
- - QuantizeV2
- - RequantizationRange
- - Requantize
 
 ## Building with CMake
 

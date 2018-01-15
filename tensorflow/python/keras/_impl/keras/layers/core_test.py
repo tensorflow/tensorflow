@@ -47,6 +47,11 @@ class CoreLayersTest(test.TestCase):
                   'noise_shape': [3, 1]},
           input_shape=(3, 2))
 
+    # https://github.com/tensorflow/tensorflow/issues/14819
+    with self.test_session():
+      dropout = keras.layers.Dropout(0.5)
+      self.assertEqual(True, dropout.supports_masking)
+
     with self.test_session():
       testing_utils.layer_test(
           keras.layers.SpatialDropout1D,
@@ -220,6 +225,34 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(1, len(layer.losses))
       _ = layer.get_config()
 
+  def test_lambda_output_shape(self):
+    with self.test_session():
+      l = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+      l(keras.backend.variable(np.ones((1, 1))))
+      self.assertEqual((1, 1), l.get_config()['output_shape'])
+
+  def test_lambda_output_shape_function(self):
+    def get_output_shape(input_shape):
+      return 1 * input_shape
+
+    with self.test_session():
+      l = keras.layers.Lambda(lambda x: x + 1, output_shape=get_output_shape)
+      l(keras.backend.variable(np.ones((1, 1))))
+      self.assertEqual('lambda', l.get_config()['output_shape_type'])
+
+  def test_lambda_config_serialization(self):
+    with self.test_session():
+      # test serialization with output_shape and output_shape_type
+      layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+      layer(keras.backend.variable(np.ones((1, 1))))
+      config = layer.get_config()
+      layer = keras.layers.deserialize({
+          'class_name': 'Lambda',
+          'config': config
+      })
+
+      layer = keras.layers.Lambda.from_config(config)
 
 if __name__ == '__main__':
   test.main()
+

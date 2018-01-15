@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
@@ -668,10 +669,10 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
     ready = (pending_count[x.op._id] == 0)
     if loop_state and not ready:
       ready = (pending_count[x.op._id] > 0 and
-               control_flow_ops.IsLoopSwitch(x.op))
+               control_flow_util.IsLoopSwitch(x.op))
     # pylint: enable=protected-access
     if ready:
-      if control_flow_ops.IsLoopExit(x.op):
+      if control_flow_util.IsLoopExit(x.op):
         # if x is an exit without real gradient, defer processing them.
         grad_state = loop_state.GetGradState(x.op, before=False)
         grad_state.deferred_exits.append(x)
@@ -711,7 +712,7 @@ def _SetGrad(grads, t, grad):
   if isinstance(t_grads, list):
     t_grads.append(grad)
   else:
-    assert control_flow_ops.IsLoopSwitch(op)
+    assert control_flow_util.IsLoopSwitch(op)
     op_grads[t.value_index] = grad
 
 
@@ -851,7 +852,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
   for i, out_grad in enumerate(out_grads):
     if loop_state:
       if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
-        assert control_flow_ops.IsLoopSwitch(op)
+        assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections.Sequence) and not all([
@@ -976,9 +977,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
 
   `hessians()` adds ops to the graph to output the Hessian matrix of `ys`
   with respect to `xs`.  It returns a list of `Tensor` of length `len(xs)`
-  where each tensor is the Hessian of `sum(ys)`. This function currently
-  only supports evaluating the Hessian with respect to (a list of) one-
-  dimensional tensors.
+  where each tensor is the Hessian of `sum(ys)`.
 
   The Hessian is a matrix of second-order partial derivatives of a scalar
   tensor (see https://en.wikipedia.org/wiki/Hessian_matrix for more details).
@@ -1004,31 +1003,32 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
       'colocate_gradients_with_ops': colocate_gradients_with_ops,
       'gate_gradients': gate_gradients,
       'aggregation_method': aggregation_method
-    }
+  }
   # Compute first-order derivatives and iterate for each x in xs.
   hessians = []
   _gradients = gradients(ys, xs, **kwargs)
-  for i, _gradient, x in zip(range(len(xs)), _gradients, xs):
-    # Ensure that x is a vector.
-    check_rank = check_ops.assert_rank(
-      x, 1, message='Cannot compute Hessian because element %d of `xs` does '
-      'not have rank one.' % i
-    )
-    with ops.control_dependencies([check_rank]):
-      # Declare an iterator and tensor array loop variables for the gradients.
-      n = array_ops.size(x)
-      loop_vars = [
+  for gradient, x in zip(_gradients, xs):
+    # change shape to one-dimension without graph branching
+    gradient = array_ops.reshape(gradient, [-1])
+
+    # Declare an iterator and tensor array loop variables for the gradients.
+    n = array_ops.size(x)
+    loop_vars = [
         array_ops.constant(0, dtypes.int32),
         tensor_array_ops.TensorArray(x.dtype, n)
-      ]
-      # Iterate over all elements of the gradient and compute second order
-      # derivatives.
-      _, hessian = control_flow_ops.while_loop(
-          lambda j, _: j < n,
-          lambda j, result: (j + 1,
-                             result.write(j, gradients(_gradient[j], x)[0])),
-          loop_vars
-      )
+    ]
+    # Iterate over all elements of the gradient and compute second order
+    # derivatives.
+    _, hessian = control_flow_ops.while_loop(
+        lambda j, _: j < n,
+        lambda j, result: (j + 1,
+                           result.write(j, gradients(gradient[j], x)[0])),
+        loop_vars
+    )
 
-      hessians.append(hessian.stack())
+    _shape = array_ops.shape(x)
+    _reshaped_hessian = array_ops.reshape(
+        hessian.stack(), array_ops.concat((_shape, _shape), 0)
+    )
+    hessians.append(_reshaped_hessian)
   return hessians

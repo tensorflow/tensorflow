@@ -68,28 +68,68 @@ class DecodeBmpOpTest(test.TestCase):
   def testGrayscale(self):
     img_bytes = [[[255], [0]], [[255], [0]]]
     encoded_bytes = [
-        0x42, 0x40,
-        0x3d, 0, 0, 0,
-        0, 0,
-        0, 0,
-        0x36, 0, 0, 0,
-        0x28, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x1, 0,
-        0x8, 0,
-        0, 0, 0, 0,
-        0x10, 0, 0, 0,
-        0x13, 0xb, 0, 0,
-        0x13, 0xb, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
+        0x42,
+        0x40,
+        0x3d,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0x36,
+        0,
+        0,
+        0,
+        0x28,
+        0,
+        0,
+        0,
+        0x2,
+        0,
+        0,
+        0,
+        0x2,
+        0,
+        0,
+        0,
+        0x1,
+        0,
+        0x8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0x10,
+        0,
+        0,
+        0,
+        0x13,
+        0xb,
+        0,
+        0,
+        0x13,
+        0xb,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         0xff,
         0,
-        0, 0,
+        0,
+        0,
         0xff,
         0,
-        0, 0,
+        0,
+        0,
     ]
 
     byte_string = bytes(bytearray(encoded_bytes))
@@ -100,54 +140,6 @@ class DecodeBmpOpTest(test.TestCase):
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
 
-  def testIncompleteHeader(self):
-    # Encoded BMP bytes from Wikipedia
-    encoded_bytes = [
-        0x42, 0x40,
-        0x46, 0, 0, 0,
-    ]
-
-    byte_string = bytes(bytearray(encoded_bytes))
-    img_in = constant_op.constant(byte_string, dtype=dtypes.string)
-    decode = array_ops.squeeze(image_ops.decode_bmp(img_in))
-
-    with self.test_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-          "requires at least 32 bytes to find the header"):
-        decoded = decode.eval()
-
-  def testIncompleteBody(self):
-    # Encoded BMP bytes from Wikipedia
-    encoded_bytes = [
-        0x42, 0x40,
-        0x46, 0, 0, 0,
-        0, 0,
-        0, 0,
-        0x36, 0, 0, 0,
-        0x28, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x2, 0, 0, 0,
-        0x1, 0,
-        0x18, 0,
-        0, 0, 0, 0,
-        0x10, 0, 0, 0,
-        0x13, 0xb, 0, 0,
-        0x13, 0xb, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0xff,
-        0xff, 0xff, 0xff,
-        0, 0,
-    ]
-
-    byte_string = bytes(bytearray(encoded_bytes))
-    img_in = constant_op.constant(byte_string, dtype=dtypes.string)
-    decode = array_ops.squeeze(image_ops.decode_bmp(img_in))
-
-    with self.test_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-          "requires at least 68 bytes, got 62 bytes"):
-        decoded = decode.eval()
 
 if __name__ == "__main__":
   test.main()

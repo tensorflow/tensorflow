@@ -40,6 +40,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -57,6 +58,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
@@ -418,6 +420,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, model_fn_call_count[0])
 
   def test_callable_input_fn(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -430,8 +433,9 @@ class EstimatorTrainTest(test.TestCase):
 
     class InputFn(object):
 
-      def __call__(self, params, config):
+      def __call__(self, mode, params, config):
         input_fn_call_count[0] += 1
+        test_self.assertEqual(expected_mode, mode)
         test_self.assertEqual(expected_params, params)
         test_self.assertEqual(4321, config.tf_random_seed)
         return dummy_input_fn()
@@ -444,6 +448,7 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, input_fn_call_count[0])
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.TRAIN
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -452,8 +457,9 @@ class EstimatorTrainTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -913,9 +919,84 @@ class EstimatorGetVariablesTest(test.TestCase):
     self.assertEqual(3., est.get_variable_value('three'))
 
 
+class EstimatorDatasetIntegrationTest(test.TestCase):
+  """Tests dataset integration."""
+
+  def test_returned_by_input_fn(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors(([1.], [2.]))
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features + labels,  # 1 + 2
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(3., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_none_labels(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([7.])
+
+    def _model_fn(features, labels, mode):
+      self.assertIsNone(labels)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=features,  # 7
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    scores = est.evaluate(_input_fn, steps=1)
+    self.assertEqual(7., scores[model_fn_lib.LOSS_METRIC_KEY])
+
+  def test_with_predict(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensors([10.])
+
+    def _model_fn(features, labels, mode):
+      _ = labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,  # 10
+          loss=features,  # 10
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn, steps=1)
+    self.assertEqual([10.], next(est.predict(input_fn=_input_fn)))
+
+  def test_batching(self):
+
+    def _input_fn():
+      return dataset_ops.Dataset.from_tensor_slices(([[1.], [2.]],
+                                                     [[10.], [20.]])).batch(1)
+
+    def _model_fn(features, labels, mode):
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=features,
+          loss=features + (0 if labels is None else labels),  # 11, 22
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(_input_fn)
+    scores = est.evaluate(_input_fn)
+    # (11 + 22)/2 = 16.5
+    self.assertEqual(16.5, scores[model_fn_lib.LOSS_METRIC_KEY])
+    self.assertEqual([1., 2.], list(est.predict(_input_fn)))
+
+
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.EVAL
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -924,8 +1005,9 @@ class EstimatorEvaluateTest(test.TestCase):
       del params, config
       return model_fn_global_step_incrementer(features, labels, mode)
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -1189,6 +1271,7 @@ class EstimatorEvaluateTest(test.TestCase):
 class EstimatorPredictTest(test.TestCase):
 
   def test_input_fn_args(self):
+    expected_mode = model_fn_lib.ModeKeys.PREDICT
     expected_params = {'batch_size': 10}
     expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
     input_fn_call_count = [0]
@@ -1201,8 +1284,9 @@ class EstimatorPredictTest(test.TestCase):
           train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
-    def _input_fn(params, config):
+    def _input_fn(mode, params, config):
       input_fn_call_count[0] += 1
+      self.assertEqual(expected_mode, mode)
       self.assertEqual(expected_params, params)
       self.assertEqual(4321, config.tf_random_seed)
       return dummy_input_fn()
@@ -1974,6 +2058,65 @@ class EstimatorExportTest(test.TestCase):
         compat.as_bytes(export_dir),
         compat.as_bytes('variables/variables.data-00000-of-00001'))))
 
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_proto_strip_default_attrs(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_for_export_tests)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    feature_spec = {'x': parsing_ops.VarLenFeature(dtype=dtypes.int64),
+                    'y': parsing_ops.VarLenFeature(dtype=dtypes.int64)}
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir_stripped = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn, strip_default_attrs=True)
+    export_dir_not_stripped = est.export_savedmodel(
+        export_dir_base, serving_input_receiver_fn, strip_default_attrs=False)
+
+    # Load the SavedModel from disk as-is to verify default attrs
+    # are stripped. Reimporting the SavedModel via the loader causes the
+    # default attrs to be populated in the NodeDefs.
+
+    # pylint: disable=protected-access
+    saved_model_stripped_pb = loader_impl._parse_saved_model(
+        export_dir_stripped)
+    saved_model_not_stripped_pb = loader_impl._parse_saved_model(
+        export_dir_not_stripped)
+    self.assertIsNotNone(saved_model_stripped_pb)
+    self.assertIsNotNone(saved_model_not_stripped_pb)
+    # pylint: enable=protected-access
+
+    meta_graph_def_stripped = [
+        x for x in saved_model_stripped_pb.meta_graphs
+        if x.meta_info_def.tags == [tag_constants.SERVING]][0]
+    meta_graph_def_not_stripped = [
+        x for x in saved_model_not_stripped_pb.meta_graphs
+        if x.meta_info_def.tags == [tag_constants.SERVING]][0]
+
+    # "weight" node in graph is a "Variable" Op with 2 default valued attrs.
+    #   o "container"    : "".
+    #   o "shared_name"  : "".
+
+    # saved_model_stripped_pb was exported with strip_default_attrs set to True.
+    # "weight" node shouldn't have attributes "container" and "shared_name".
+    node_def = test_util.get_node_def_from_graph(
+        'weight', meta_graph_def_stripped.graph_def)
+    self.assertNotIn('container', node_def.attr)
+    self.assertNotIn('shared_name', node_def.attr)
+
+    # saved_model_not_stripped_pb was exported with strip_default_attrs
+    # disabled. "weight" node should have attributes "container" and
+    # "shared_name".
+    node_def = test_util.get_node_def_from_graph(
+        'weight', meta_graph_def_not_stripped.graph_def)
+    self.assertIn('container', node_def.attr)
+    self.assertIn('shared_name', node_def.attr)
+
+    # Clean up.
     gfile.DeleteRecursively(tmpdir)
 
 

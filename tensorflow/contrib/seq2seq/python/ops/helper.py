@@ -540,8 +540,7 @@ class GreedyEmbeddingHelper(Helper):
     if not isinstance(outputs, ops.Tensor):
       raise TypeError("Expected outputs to be a single Tensor, got: %s" %
                       type(outputs))
-    sample_ids = math_ops.cast(
-        math_ops.argmax(outputs, axis=-1), dtypes.int32)
+    sample_ids = math_ops.argmax(outputs, axis=-1, output_type=dtypes.int32)
     return sample_ids
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):

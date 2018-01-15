@@ -336,32 +336,7 @@ void QueueBase::FlushUnlocked() {
 
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
                                      int64 index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (parent.dtype() == DT) {                                             \
-    TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
-    return Status::OK();                                                  \
-  }
-  HANDLE_TYPE(DT_FLOAT);
-  HANDLE_TYPE(DT_HALF);
-  HANDLE_TYPE(DT_DOUBLE);
-  HANDLE_TYPE(DT_INT32);
-  HANDLE_TYPE(DT_UINT8);
-  HANDLE_TYPE(DT_INT16);
-  HANDLE_TYPE(DT_INT8);
-  HANDLE_TYPE(DT_STRING);
-  HANDLE_TYPE(DT_COMPLEX64);
-  HANDLE_TYPE(DT_COMPLEX128);
-  HANDLE_TYPE(DT_INT64);
-  HANDLE_TYPE(DT_BOOL);
-  HANDLE_TYPE(DT_QINT8);
-  HANDLE_TYPE(DT_QUINT8);
-  HANDLE_TYPE(DT_QINT32);
-  HANDLE_TYPE(DT_QINT16);
-  HANDLE_TYPE(DT_QUINT16);
-  HANDLE_TYPE(DT_UINT16);
-#undef HANDLE_TYPE
-  return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
-                               parent.dtype());
+  return batch_util::CopySliceToElement(parent, element, index);
 }
 
 /* static */

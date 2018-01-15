@@ -21,6 +21,9 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#if defined(PLATFORM_GOOGLE)
+#include "strings/split.h"
+#endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -203,6 +206,8 @@ struct ParsedModelFlags {
   Arg<string> graphviz_last_array;
   Arg<string> dump_graphviz;
   Arg<bool> dump_graphviz_video = Arg<bool>(false);
+  Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
+  Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
 };
 
 // Flags that describe the operation you would like to do (what conversion

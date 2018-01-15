@@ -251,8 +251,17 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
     const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (ShapeUtil::ElementIsFloating(expected.shape()) ||
       ShapeUtil::ElementIsComplex(expected.shape())) {
@@ -267,12 +276,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
-  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+  if (use_bfloat16_) {
     converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
-      layout_shape.set_element_type(BF16);
+      ShapeUtil::ForEachMutableSubshape(
+          &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
+            if (subshape->element_type() == F32) {
+              subshape->set_element_type(BF16);
+            }
+          });
       shape_with_layout = &layout_shape;
     }
   }
@@ -295,8 +309,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
-    const Shape* shape_with_layout) {
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments_passed_in,
+    ErrorSpec error, const Shape* shape_with_layout) {
+  std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
+                                     arguments_passed_in.end());
+  if (!arguments_.empty()) {
+    CHECK(arguments.empty());
+    for (const auto& argument : arguments_) {
+      arguments.push_back(argument.get());
+    }
+  }
+
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
                ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
@@ -305,13 +328,17 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
-  if (expected.shape().element_type() == F32 && use_bfloat16_) {
+  if (use_bfloat16_) {
     converted_expected = LiteralTestUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
-    layout_shape.set_element_type(BF16);
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
-      layout_shape.set_element_type(BF16);
+      ShapeUtil::ForEachMutableSubshape(
+          &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
+            if (subshape->element_type() == F32) {
+              subshape->set_element_type(BF16);
+            }
+          });
       shape_with_layout = &layout_shape;
     }
   }
@@ -348,7 +375,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   VLOG(1) << "expected: " << expected_literal->ToString();
   VLOG(1) << "actual:   " << actual->ToString();
 
-  EXPECT_EQ(expected, actual->u8s_string());
+  EXPECT_EQ(expected, actual->GetR1U8AsString());
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
@@ -501,7 +528,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
   const Literal* param_literal = &literal;
   std::unique_ptr<Literal> converted_literal;
-  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+  if (use_bfloat16_) {
     converted_literal = LiteralTestUtil::ConvertF32ToBF16(literal);
     param_literal = converted_literal.get();
   }
@@ -510,6 +537,20 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
   *data_handle =
       builder->Parameter(parameter_number, param_literal->shape(), name);
   return data;
+}
+
+ComputationDataHandle ClientLibraryTestBase::AddParam(
+    const Literal& argument, ComputationBuilder* builder) {
+  ComputationDataHandle data_handle;
+  arguments_.push_back(CreateParameterAndTransferLiteral(
+      arguments_.size(), argument, "", builder, &data_handle));
+  return data_handle;
+}
+
+ComputationDataHandle ClientLibraryTestBase::CreateConstantFromLiteral(
+    const Literal& literal, ComputationBuilder* builder) {
+  return builder->ConstantLiteral(
+      use_bfloat16_ ? *LiteralTestUtil::ConvertF32ToBF16(literal) : literal);
 }
 
 }  // namespace xla

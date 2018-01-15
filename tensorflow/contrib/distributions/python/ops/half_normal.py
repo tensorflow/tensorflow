@@ -84,6 +84,7 @@ class HalfNormal(distribution.Distribution):
   ```
 
   """
+
   def __init__(self,
                scale,
                validate_args=False,
@@ -120,7 +121,7 @@ class HalfNormal(distribution.Distribution):
 
   @staticmethod
   def _param_shapes(sample_shape):
-    return {'scale': ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
+    return {"scale": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def scale(self):

@@ -352,15 +352,13 @@ XLA_TEST_F(ReduceTest, ReduceR2_111x50_01_To_R1) {
 XLA_TEST_F(ReduceTest, ReduceR2_1024x1024_To_R1) { RunR2ToR1Test(1024, 1024); }
 XLA_TEST_F(ReduceTest, ReduceR2_1000x1500_To_R1) { RunR2ToR1Test(1000, 1500); }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceAllOnesR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, AndReduceAllOnesR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count, 1);
   RunR1ToR0PredTest(/*and_reduce=*/true, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, AndReduceOnesAndZerosR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count);
   for (int i = 0; i < element_count; ++i) {
@@ -369,15 +367,13 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
   RunR1ToR0PredTest(/*and_reduce=*/true, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceAllOnesR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, OrReduceAllOnesR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count, 1);
   RunR1ToR0PredTest(/*and_reduce=*/false, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceOnesAndZerosR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, OrReduceOnesAndZerosR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count);
   for (int i = 0; i < element_count; ++i) {

@@ -166,6 +166,15 @@ class BufferAssignmentTest : public HloTestBase {
     return builder.Build();
   }
 
+  std::unique_ptr<HloComputation> BuildR0F32UnaryOpComputation(
+      HloOpcode opcode, const string& name) {
+    auto builder = HloComputation::Builder(name);
+    auto param =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+    builder.AddInstruction(HloInstruction::CreateUnary(r0f32_, opcode, param));
+    return builder.Build();
+  }
+
   // Verifies that the given instruction hlo has a valid input buffer assigned,
   // i.e., the parameter number matches the op's.
   const BufferAllocation& GetAssignedInputAllocation(
@@ -738,6 +747,56 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   LOG(INFO) << "LogicalBuffer count " << buffers->Allocations().size()
             << " for " << level0.size() + levelc.size() + levelb.size()
             << " instructions; total buffer size " << size0 + sizec + sizeb;
+}
+
+TEST_F(BufferAssignmentTest, ExampleConditional) {
+  auto module = CreateNewModule();
+  auto true_computation = module->AddEmbeddedComputation(
+      BuildR0F32UnaryOpComputation(HloOpcode::kCeil, "Ceil"));
+  auto false_computation = module->AddEmbeddedComputation(
+      BuildR0F32UnaryOpComputation(HloOpcode::kFloor, "Floor"));
+
+  auto builder = HloComputation::Builder(TestName());
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  auto const1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.4f)));
+  auto const2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.4f)));
+  auto conditional = builder.AddInstruction(HloInstruction::CreateConditional(
+      r0f32_, pred, const1, true_computation, const2, false_computation));
+  module->AddEntryComputation(builder.Build());
+
+  const std::vector<const HloInstruction*> conditional_instrs =
+      GetInstructions(conditional);
+  const std::vector<const HloInstruction*> true_instrs =
+      GetInstructions(true_computation->root_instruction());
+  const std::vector<const HloInstruction*> false_instrs =
+      GetInstructions(false_computation->root_instruction());
+  EXPECT_EQ(4, conditional_instrs.size());
+  EXPECT_EQ(2, true_instrs.size());
+  EXPECT_EQ(2, false_instrs.size());
+
+  auto buffers = RunBufferAssignment(module.get());
+  ValidateBuffers(conditional_instrs, *buffers);
+  ValidateBuffers(true_instrs, *buffers);
+  ValidateBuffers(false_instrs, *buffers);
+
+  EXPECT_FALSE(BuffersDistinct(conditional_instrs, true_instrs, *buffers))
+      << "Should be reuse between conditional and true computation.";
+  EXPECT_FALSE(BuffersDistinct(conditional_instrs, false_instrs, *buffers))
+      << "Should be reuse between conditional and false computation.";
+  EXPECT_FALSE(BuffersDistinct(true_instrs, false_instrs, *buffers))
+      << "Should be reuse between true and false computations.";
+
+  const BufferAllocation& conditional_buffer =
+      GetTopLevelAllocation(*buffers, conditional);
+  const BufferAllocation& true_buffer =
+      GetTopLevelAllocation(*buffers, true_computation->root_instruction());
+  const BufferAllocation& false_buffer =
+      GetTopLevelAllocation(*buffers, false_computation->root_instruction());
+  EXPECT_EQ(conditional_buffer.size(), true_buffer.size());
+  EXPECT_EQ(conditional_buffer.size(), false_buffer.size());
 }
 
 TEST_F(BufferAssignmentTest, UnaryOpReuseChain) {
@@ -1360,10 +1419,13 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
       HloInstruction::CreateParameter(1, shape_3x4, "param_b"));
   auto param_c = builder.AddInstruction(
       HloInstruction::CreateParameter(2, shape_4x4, "param_c"));
-  auto dot_ab = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_2x4, HloOpcode::kDot, param_a, param_b));
-  auto dot_bc = builder.AddInstruction(HloInstruction::CreateBinary(
-      shape_3x4, HloOpcode::kDot, param_b, param_c));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot_ab = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_2x4, param_a, param_b, dot_dnums));
+  auto dot_bc = builder.AddInstruction(
+      HloInstruction::CreateDot(shape_3x4, param_b, param_c, dot_dnums));
   builder.AddInstruction(
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 1));
 
@@ -1708,9 +1770,8 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
-          ByteSizeOf,
-          [](LogicalBuffer::Color) { return 1; })
-      .ConsumeValueOrDie();
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
+          .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }

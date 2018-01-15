@@ -73,9 +73,10 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
   CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
                           << " offset out of range";
   CHECK_LE(offset + size, size_)
-      << "LogicalBuffer " << buffer << " size out of range";
+      << "LogicalBuffer " << buffer
+      << " size out of range at offset: " << offset << " with size: " << size;
   CHECK_EQ(buffer.color(), color())
-      << "Buffer color " << buffer.color()
+      << "Buffer color " << buffer.color() << " for buffer " << buffer
       << " does not match allocation color " << color() << ".";
   OffsetSize offset_size;
   offset_size.offset = offset;
@@ -581,6 +582,7 @@ Status GatherComputationsByAllocationType(
            instruction->called_computations()) {
         switch (instruction->opcode()) {
           case HloOpcode::kCall:
+          case HloOpcode::kConditional:
           case HloOpcode::kWhile:
             // Call and while must be called from a computation with global
             // allocations as they may return references to buffers inside the
@@ -976,8 +978,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   const HloOrdering& hlo_ordering = assignment->liveness().hlo_ordering();
   if (run_whole_module_heap_simulation) {
     // Run the heap simulation over the whole module. This reduces memory usage,
-    // since buffers for kCall and kWhile sub-computations are only live for the
-    // duration of their calling instructions.
+    // since buffers for kCall, kWhile, and kConditional sub-computations are
+    // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
     SequentialHloOrdering::HloModuleSequence module_sequence;
     FlatSet<const LogicalBuffer*> all_buffers_to_assign;
@@ -1272,7 +1274,8 @@ const LogicalBuffer* AddBufferToColocatedSet(
 }  // namespace
 
 // Builds sets of buffers in 'colocated_buffer_sets' which should be colocated
-// in the same allocation (currently just supports kWhile and kCall).
+// in the same allocation (currently just supports kWhile, kCall, and
+// kConditional).
 void BufferAssigner::BuildColocatedBufferSets(
     const HloModule* module, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
@@ -1336,6 +1339,26 @@ void BufferAssigner::BuildColocatedBufferSets(
                                       &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
+      } else if (opcode == HloOpcode::kConditional) {
+        const HloInstruction* conditional_hlo = instruction;
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> colocated_set;
+              // Add conditional.result.
+              AddBufferToColocatedSet(conditional_hlo, index,
+                                      points_to_analysis, &colocated_set);
+              // Add conditional.true_computation.root.
+              AddBufferToColocatedSet(
+                  conditional_hlo->true_computation()->root_instruction(),
+                  index, points_to_analysis, &colocated_set);
+              // Add conditional.false_computation.root.
+              AddBufferToColocatedSet(
+                  conditional_hlo->false_computation()->root_instruction(),
+                  index, points_to_analysis, &colocated_set);
+              AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
+            });
       }
     }
   }
@@ -1363,14 +1386,15 @@ void BufferAssigner::AssignColocatedBufferSets(
     }
 
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
+      const int64 buffer_size = assignment->buffer_size_(*buffer);
       if (allocation == nullptr) {
         // TODO(b/32491382) Avoid current trivial solution of using new
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(
-            *buffer, assignment->buffer_size_(*buffer),
-            /*is_thread_local=*/false, /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(*buffer, buffer_size,
+                                               /*is_thread_local=*/false,
+                                               /*is_reusable=*/true);
         if (entry_parameter_number >= 0) {
           // This colocated buffer set contains an entry parameter and other
           // logical buffers which use the parameter as read-only in a while
@@ -1381,8 +1405,11 @@ void BufferAssigner::AssignColocatedBufferSets(
         }
         colocated_allocations->insert(allocation->index());
       } else {
+        CHECK_EQ(buffer_size, allocation->size())
+            << "Buffer: " << *buffer << " size mismatch in colocated buffer "
+            << "allocation: " << *allocation;
         assignment->AddAssignment(allocation, *buffer, /*offset=*/0,
-                                  assignment->buffer_size_(*buffer));
+                                  buffer_size);
       }
       colocated_buffers->insert(buffer);
     }

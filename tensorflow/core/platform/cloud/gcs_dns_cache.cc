@@ -14,60 +14,86 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
-
+#ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <Windows.h>
+#endif
 #include <sys/types.h>
 
 namespace tensorflow {
 
 namespace {
 
-constexpr char kStorageHost[] = "storage.googleapis.com";
-constexpr char kWwwHost[] = "www.googleapis.com";
+const std::vector<string>& kCachedDomainNames =
+    *new std::vector<string>{"www.googleapis.com", "storage.googleapis.com"};
 
+inline void print_getaddrinfo_error(const string& name, int error_code) {
+#ifndef _WIN32
+  if (error_code == EAI_SYSTEM) {
+    LOG(ERROR) << "Error resolving " << name
+               << " (EAI_SYSTEM): " << strerror(errno);
+  } else {
+    LOG(ERROR) << "Error resolving " << name << ": "
+               << gai_strerror(error_code);
+  }
+#else
+  // TODO:WSAGetLastError is better than gai_strerror
+  LOG(ERROR) << "Error resolving " << name << ": " << gai_strerror(error_code);
+#endif
+}
+
+// Selects one item at random from a vector of items, using a uniform
+// distribution.
+template <typename T>
+const T& SelectRandomItemUniform(std::default_random_engine* random,
+                                 const std::vector<T>& items) {
+  CHECK_GT(items.size(), 0);
+  std::uniform_int_distribution<size_t> distribution(0u, items.size() - 1u);
+  size_t choice_index = distribution(*random);
+  return items[choice_index];
+}
 }  // namespace
 
 GcsDnsCache::GcsDnsCache(Env* env, int64 refresh_rate_secs)
     : env_(env), refresh_rate_secs_(refresh_rate_secs) {}
 
-Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
+void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   // TODO(saeta): Blacklist failing IP addresses.
   mutex_lock l(mu_);
   if (!started_) {
+    VLOG(1) << "Starting GCS DNS cache.";
     DCHECK(!worker_) << "Worker thread already exists!";
     // Perform DNS resolutions to warm the cache.
-    std::vector<string> www_addresses = ResolveName(kWwwHost);
-    std::vector<string> storage_addresses = ResolveName(kStorageHost);
-    www_addresses.swap(www_addresses_);
-    storage_addresses.swap(storage_addresses_);
+    addresses_ = ResolveNames(kCachedDomainNames);
 
     // Note: we opt to use a thread instead of a delayed closure.
     worker_.reset(env_->StartThread(
         {}, "gcs_dns_worker", std::bind(&GcsDnsCache::WorkerThread, this)));
     started_ = true;
   }
-  if (!storage_addresses_.empty()) {
-    std::uniform_int_distribution<> storage_dist(0,
-                                                 storage_addresses_.size() - 1);
-    size_t index = storage_dist(random_);
-    TF_RETURN_IF_ERROR(request->AddResolveOverride(kStorageHost, 443,
-                                                   storage_addresses_[index]));
-  } else {
-    LOG(WARNING) << "No IP addresses available for " << kStorageHost;
+
+  CHECK_EQ(kCachedDomainNames.size(), addresses_.size());
+  for (size_t i = 0; i < kCachedDomainNames.size(); ++i) {
+    const string& name = kCachedDomainNames[i];
+    const std::vector<string>& addresses = addresses_[i];
+    if (!addresses.empty()) {
+      const string& chosen_address =
+          SelectRandomItemUniform(&random_, addresses);
+      request->AddResolveOverride(name, 443, chosen_address);
+      VLOG(1) << "Annotated DNS mapping: " << name << " --> " << chosen_address;
+    } else {
+      LOG(WARNING) << "No IP addresses available for " << name;
+    }
   }
-  if (!www_addresses_.empty()) {
-    std::uniform_int_distribution<> www_dist(0, www_addresses_.size() - 1);
-    size_t index = www_dist(random_);
-    TF_RETURN_IF_ERROR(
-        request->AddResolveOverride(kWwwHost, 443, www_addresses_[index]));
-  } else {
-    LOG(WARNING) << "No IP addresses available for " << kWwwHost;
-  }
-  return Status::OK();
 }
 
 /* static */ std::vector<string> GcsDnsCache::ResolveName(const string& name) {
+  VLOG(1) << "Resolving DNS name: " << name;
+
   addrinfo hints;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;  // Only use IPv4 for now.
@@ -77,7 +103,7 @@ Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
 
   std::vector<string> output;
   if (return_code == 0) {
-    for (addrinfo* i = result; i != nullptr; i = i->ai_next) {
+    for (const addrinfo* i = result; i != nullptr; i = i->ai_next) {
       if (i->ai_family != AF_INET || i->ai_addr->sa_family != AF_INET) {
         LOG(WARNING) << "Non-IPv4 address returned. ai_family: " << i->ai_family
                      << ". sa_family: " << i->ai_addr->sa_family << ".";
@@ -93,21 +119,35 @@ Status GcsDnsCache::AnnotateRequest(HttpRequest* request) {
                    << ": " << strerror(errno);
       } else {
         output.emplace_back(buf);
+        VLOG(1) << "... address: " << buf;
       }
     }
   } else {
-    if (return_code == EAI_SYSTEM) {
-      LOG(ERROR) << "Error resolving " << name
-                 << " (EAI_SYSTEM): " << strerror(errno);
-    } else {
-      LOG(ERROR) << "Error resolving " << name << ": "
-                 << gai_strerror(return_code);
-    }
+    print_getaddrinfo_error(name, return_code);
   }
   if (result != nullptr) {
     freeaddrinfo(result);
   }
   return output;
+}
+
+// Performs DNS resolution for a set of DNS names. The return vector contains
+// one element for each element in 'names', and each element is itself a
+// vector of IP addresses (in textual form).
+//
+// If DNS resolution fails for any name, then that slot in the return vector
+// will still be present, but will be an empty vector.
+//
+// Ensures: names.size() == return_value.size()
+
+std::vector<std::vector<string>> GcsDnsCache::ResolveNames(
+    const std::vector<string>& names) {
+  std::vector<std::vector<string>> all_addresses;
+  all_addresses.reserve(names.size());
+  for (const string& name : names) {
+    all_addresses.push_back(ResolveName(name));
+  }
+  return all_addresses;
 }
 
 void GcsDnsCache::WorkerThread() {
@@ -119,15 +159,14 @@ void GcsDnsCache::WorkerThread() {
       cond_var_.wait_for(l, std::chrono::seconds(refresh_rate_secs_));
       if (cancelled_) return;
     }
+
     // Resolve DNS values
-    std::vector<string> www_addresses = ResolveName(kWwwHost);
-    std::vector<string> storage_addresses = ResolveName(kStorageHost);
+    auto new_addresses = ResolveNames(kCachedDomainNames);
 
     {
       mutex_lock l(mu_);
       // Update instance variables.
-      www_addresses.swap(www_addresses_);
-      storage_addresses.swap(storage_addresses_);
+      addresses_.swap(new_addresses);
     }
   }
 }

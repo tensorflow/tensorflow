@@ -159,6 +159,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-r <range>` | Highlight elements falling into specified numerical range. Multiple ranges can be used in conjunction. | `pt hidden/Relu:0 -a -r [[-inf,-1],[1,inf]]` |
 | | `-n <number>` | Print dump corresponding to specified 0-based dump number. Required for tensors with multiple dumps. | `pt -n 0 hidden/Relu:0` |
 | | `-s` | Include a summary of the numeric values of the tensor (applicable only to non-empty tensors with Boolean and numeric types such as `int*` and `float*`.) | `pt -s hidden/Relu:0[0:50,:]` |
+| | `-w` | Write the value of the tensor (possibly sliced) to a Numpy file using [`numpy.save()`](https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.save.html) | `pt -s hidden/Relu:0 -w /tmp/relu.npy` |
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
@@ -167,6 +168,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **eval** | | **Evaluate arbitrary Python and numpy expression.** | |
 | | `eval <expression>` | Evaluate a Python / numpy expression, with numpy available as `np` and debug tensor names enclosed in backticks. | ``eval "np.matmul((`output/Identity:0` / `Softmax:0`).T, `Softmax:0`)"`` |
 | | `-a` | Print a large-sized evaluation result in its entirety, i.e., without using ellipses. | ``eval -a 'np.sum(`Softmax:0`, axis=1)'`` |
+| | `-w` | Write the result of the evaluation to a Numpy file using [`numpy.save()`](https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.save.html) | ``eval -a 'np.sum(`Softmax:0`, axis=1)' -w /tmp/softmax_sum.npy`` |
 | **`ni`** | | **Display node information.** | |
 | | `-a` | Include node attributes in the output. | `ni -a hidden/Relu` |
 | | `-d` | List the debug dumps available from the node. | `ni -d hidden/Relu` |
@@ -338,11 +340,11 @@ tfdbg> ni cross_entropy/Log
 ![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
-and that its input is the node `softmax/Softmax`. Run the following command to
+and that its input is the node `Softmax`. Run the following command to
 take a closer look at the input tensor:
 
 ```none
-tfdbg> pt softmax/Softmax:0
+tfdbg> pt Softmax:0
 ```
 
 Examine the values in the input tensor, searching for zeros:
@@ -392,7 +394,7 @@ diff = -(y_ * tf.log(y))
 to the built-in, numerically-stable implementation of softmax cross-entropy:
 
 ```python
-diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
+diff = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=logits)
 ```
 
 Rerun with the `--debug` flag as follows:

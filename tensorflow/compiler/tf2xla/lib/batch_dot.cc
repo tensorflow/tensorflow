@@ -27,7 +27,6 @@ namespace tensorflow {
 
 // The current implementation simply unrolls the computation along the batch
 // dimension.
-// TODO(andydavis): add batching support to XLA's Dot operator.
 xla::StatusOr<xla::ComputationDataHandle> BatchDot(
     xla::ComputationBuilder* builder, xla::ComputationDataHandle x,
     xla::ComputationDataHandle y, bool transpose_x, bool transpose_y) {
@@ -52,26 +51,20 @@ xla::StatusOr<xla::ComputationDataHandle> BatchDot(
 
   // The batch dimensions must be equal and the matrix dimensions must be
   // valid.
-  std::vector<int64> dimensions;
-  int64 batch_count = 1;
+  std::vector<int64> batch_dimension_numbers;
   for (int i = 0; i < ndims - 2; ++i) {
-    int64 x_size = x_shape->dimensions(i);
-    int64 y_size = y_shape->dimensions(i);
-    if (x_size != y_size) {
+    if (x_shape->dimensions(i) != y_shape->dimensions(i)) {
       return errors::InvalidArgument(
           "Dimension ", i, " of inputs to BatchedDot must be equal: ",
           xla::ShapeUtil::HumanString(*x_shape), " vs ",
           xla::ShapeUtil::HumanString(*y_shape));
     }
-    dimensions.push_back(x_size);
-    batch_count *= x_size;
+    batch_dimension_numbers.push_back(i);
   }
 
   int x_inner_dim = transpose_x ? (ndims - 2) : (ndims - 1);
   int y_inner_dim = transpose_y ? (ndims - 1) : (ndims - 2);
-  int64 x_inner_dim_size = x_shape->dimensions(x_inner_dim);
-  int64 y_inner_dim_size = y_shape->dimensions(y_inner_dim);
-  if (x_inner_dim_size != y_inner_dim_size) {
+  if (x_shape->dimensions(x_inner_dim) != y_shape->dimensions(y_inner_dim)) {
     return errors::InvalidArgument(
         "Dimensions ", x_inner_dim, " and ", y_inner_dim,
         " of arguments to BatchedDot must be equal: ",
@@ -80,18 +73,21 @@ xla::StatusOr<xla::ComputationDataHandle> BatchDot(
         " transpose: ", transpose_y);
   }
 
-  // If there are no batch dimensions, use a regular Dot. This case exists
-  // to improve the readability of the emitted graphs.
-  if (dimensions.empty()) {
-    auto lhs = transpose_x ? builder->Transpose(x, {1, 0}) : x;
-    auto rhs = transpose_y ? builder->Transpose(y, {1, 0}) : y;
-    return builder->Dot(lhs, rhs);
+  // Check for zero lhs/rhs dim size.
+  if (xla::ShapeUtil::HasZeroElements(*x_shape) ||
+      xla::ShapeUtil::HasZeroElements(*y_shape)) {
+    std::vector<int64> dimensions(batch_dimension_numbers.size());
+    for (int i = 0; i < batch_dimension_numbers.size(); ++i) {
+      dimensions[i] = x_shape->dimensions(batch_dimension_numbers[i]);
+    }
+    int x_outer_dim = transpose_x ? (ndims - 1) : (ndims - 2);
+    int y_outer_dim = transpose_y ? (ndims - 2) : (ndims - 1);
+    dimensions.push_back(x_shape->dimensions(x_outer_dim));
+    dimensions.push_back(y_shape->dimensions(y_outer_dim));
+    return builder->Broadcast(
+        builder->ConstantLiteral(xla::Literal::Zero(x_shape->element_type())),
+        dimensions);
   }
-
-  int x_outer_dim = transpose_x ? (ndims - 1) : (ndims - 2);
-  int y_outer_dim = transpose_y ? (ndims - 2) : (ndims - 1);
-  dimensions.push_back(x_shape->dimensions(x_outer_dim));
-  dimensions.push_back(y_shape->dimensions(y_outer_dim));
 
   if (x_shape->element_type() == xla::C64 && transpose_x) {
     x = builder->Conj(x);
@@ -100,55 +96,23 @@ xla::StatusOr<xla::ComputationDataHandle> BatchDot(
     y = builder->Conj(y);
   }
 
-  // Reshape input tensors into 3D tensors by flattening the batch
-  // dimensions. This makes it easier to unroll the batch dimension.
-  auto x_flat =
-      builder->Reshape(x, {batch_count, x_shape->dimensions(ndims - 2),
-                           x_shape->dimensions(ndims - 1)});
-  auto y_flat =
-      builder->Reshape(y, {batch_count, y_shape->dimensions(ndims - 2),
-                           y_shape->dimensions(ndims - 1)});
-
-  // Slice batches into individual matrices and multiply them.
-  std::vector<xla::ComputationDataHandle> out_slices;
-  for (int64 i = 0; i < batch_count; ++i) {
-    // Slice off individual matrices and reshape to 2D tensors.
-    auto x_slice = builder->Slice(
-        x_flat, {i, 0, 0},
-        {i + 1, x_shape->dimensions(ndims - 2), x_shape->dimensions(ndims - 1)},
-        {1, 1, 1});
-    x_slice = builder->Reshape(x_slice, {x_shape->dimensions(ndims - 2),
-                                         x_shape->dimensions(ndims - 1)});
-    auto y_slice = builder->Slice(
-        y_flat, {i, 0, 0},
-        {i + 1, y_shape->dimensions(ndims - 2), y_shape->dimensions(ndims - 1)},
-        {1, 1, 1});
-    y_slice = builder->Reshape(y_slice, {y_shape->dimensions(ndims - 2),
-                                         y_shape->dimensions(ndims - 1)});
-
-    // Transpose if needed.
-    auto lhs = transpose_x ? builder->Transpose(x_slice, {1, 0}) : x_slice;
-    auto rhs = transpose_y ? builder->Transpose(y_slice, {1, 0}) : y_slice;
-
-    // Multiply matrices and add an outer singleton dimension to the output
-    // so we can concatenate along the flattened batch dimension later.
-    auto out = builder->Dot(lhs, rhs);
-    out = builder->Reshape(out,
-                           {1, dimensions[ndims - 2], dimensions[ndims - 1]});
-    out_slices.push_back(out);
+  // If there are no batch dimensions, use a regular Dot.
+  // TODO(b/69062148) Remove this code when Dot emitters can be passed
+  // dimensions to transpose directly (i.e. without requiring a Transpose HLO).
+  if (batch_dimension_numbers.empty()) {
+    auto lhs = transpose_x ? builder->Transpose(x, {1, 0}) : x;
+    auto rhs = transpose_y ? builder->Transpose(y, {1, 0}) : y;
+    return builder->Dot(lhs, rhs);
   }
 
-  // Concatenate output slices and reshape to original number of dimensions.
-  xla::ComputationDataHandle data;
-  if (out_slices.empty()) {
-    // It is illegal to pass an empty list to ConcatInDim.
-    // The batch count is empty, so both inputs must have zero elements.
-    // Arbitrarily use the left input as the argument to Reshape().
-    data = x;
-  } else {
-    data = builder->ConcatInDim(out_slices, 0);
+  xla::DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(x_inner_dim);
+  dot_dnums.add_rhs_contracting_dimensions(y_inner_dim);
+  for (auto batch_dimension_number : batch_dimension_numbers) {
+    dot_dnums.add_lhs_batch_dimensions(batch_dimension_number);
+    dot_dnums.add_rhs_batch_dimensions(batch_dimension_number);
   }
-  return builder->Reshape(data, dimensions);
+  return builder->DotGeneral(x, y, dot_dnums);
 }
 
 }  // namespace tensorflow

@@ -23,8 +23,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 4> kMatmulTypes = {
-    {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64}};
+constexpr std::array<DataType, 5> kMatmulTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64}};
 
 class MatMulOp : public XlaOpKernel {
  public:
@@ -85,10 +85,7 @@ class SparseMatMulOp : public MatMulOp {
   ~SparseMatMulOp() override = default;
 };
 
-REGISTER_XLA_OP(Name("SparseMatMul")
-                    .TypeConstraint("Ta", kFloatTypes)
-                    .TypeConstraint("Tb", kFloatTypes),
-                SparseMatMulOp);
+REGISTER_XLA_OP(Name("SparseMatMul"), SparseMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

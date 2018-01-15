@@ -19,7 +19,7 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void entry_point(
     void* result, const xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps);
+    const void** args, void** temps, tensorflow::int64* profile_counters);
 
 namespace foo {
 namespace bar {
@@ -48,7 +48,7 @@ namespace bar {
 //   is guaranteed that no thread may call a non-const method.
 //
 // The logical function signature is:
-//   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): opaque[]) -> (u32[5,6])
+//   ((unknown): f32[1,2], (unknown): s64[3,4]) -> (u32[5,6])
 //
 // Memory stats:
 //   arg bytes total:    104
@@ -58,11 +58,11 @@ namespace bar {
 class MyClass : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
-  static constexpr size_t kNumArgs = 3;
+  static constexpr size_t kNumArgs = 2;
 
   // Byte size of each argument buffer. There are kNumArgs entries.
   static const intptr_t* ArgSizes() {
-    static constexpr intptr_t kArgSizes[kNumArgs] = {8, 96, -1};
+    static constexpr intptr_t kArgSizes[kNumArgs] = {8, 96};
     return kArgSizes;
   }
 
@@ -77,7 +77,6 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
       data->temp_sizes = TempSizes();
       data->num_temps = kNumTemps;
       data->result_index = kResultIndex;
-      data->requires_runtime_context = true;
       data->arg_names = StaticArgNames();
       data->result_names = StaticResultNames();
       data->program_shape = StaticProgramShape();
@@ -86,7 +85,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
     return *kStaticData;
   }
 
-  MyClass(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_AND_TEMPS)
+  MyClass(AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS)
       : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
 
   MyClass(const MyClass&) = delete;
@@ -99,8 +98,8 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   // void set_argN_data(void* data)
   //   Sets the buffer of type T for positional argument N. May be called in
   //   any AllocMode. Must be called before Run to have an affect. Must be
-  //   called in AllocMode::RESULTS_AND_TEMPS_ONLY for each positional argument,
-  //   to set the argument buffers.
+  //   called in AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY for each positional
+  //   argument, to set the argument buffers.
   //
   // T* argN_data()
   //   Returns the buffer of type T for positional argument N.
@@ -236,8 +235,8 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   // Shape of the args and results.
   static const xla::ProgramShape* StaticProgramShape() {
     static const xla::ProgramShape* kShape = []() {
-      static const char kProto[] = {10,12,16,11,26,2,1,2,42,4,10,2,1,0,10,12,16,5,26,2,3,4,42,4,10,2,1,0,10,2,16,14,18,16,16,13,34,12,16,8,26,2,5,6,42,4,10,2,1,0};
-      static constexpr int kProtoSize = 50;
+      static const char kProto[] = {10,14,16,11,26,2,1,2,42,6,10,2,1,0,32,1,10,14,16,5,26,2,3,4,42,6,10,2,1,0,32,1,18,18,16,13,34,14,16,8,26,2,5,6,42,6,10,2,1,0,32,1};
+      static constexpr int kProtoSize = 52;
       xla::ProgramShape* shape = new xla::ProgramShape;
       shape->ParseFromArray(kProto, kProtoSize);
       return shape;

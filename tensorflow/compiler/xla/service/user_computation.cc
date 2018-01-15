@@ -88,8 +88,6 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kAtan2;
     case BINOP_COMPLEX:
       return HloOpcode::kComplex;
-    case BINOP_DOT:
-      return HloOpcode::kDot;
     case BINOP_MUL:
       return HloOpcode::kMultiply;
     case BINOP_ADD:
@@ -371,14 +369,6 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
 
   // Check the number of parameters per RNG distribution.
   switch (rng_request.distribution()) {
-    case RandomDistribution::RNG_BERNOULLI:
-      if (rng_request.parameter_size() != 1) {
-        return InvalidArgument(
-            "RNG distribution (%s) expects 1 parameters, but got %d",
-            RandomDistribution_Name(rng_request.distribution()).c_str(),
-            rng_request.parameter_size());
-      }
-      break;
     case RandomDistribution::RNG_NORMAL:
     case RandomDistribution::RNG_UNIFORM:
       if (rng_request.parameter_size() != 2) {
@@ -765,6 +755,54 @@ StatusOr<ComputationDataHandle> UserComputation::AddWhileInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddConditionalInstruction(
+    const ConditionalRequest& conditional_request,
+    const UserComputation& true_computation,
+    const UserComputation& false_computation) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* pred,
+                      LookUpRequest(conditional_request.predicate()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* true_operand,
+                      LookUpRequest(conditional_request.true_operand()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* false_operand,
+                      LookUpRequest(conditional_request.false_operand()));
+
+  VersionedComputationHandle::Version true_computation_version =
+      true_computation.version();
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const ProgramShape> true_computation_shape,
+      true_computation.ComputeProgramShape(true_computation_version));
+
+  VersionedComputationHandle::Version false_computation_version =
+      false_computation.version();
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const ProgramShape> false_computation_shape,
+      false_computation.ComputeProgramShape(false_computation_version));
+
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferConditionalShape(
+                          pred->output_shape(), true_operand->output_shape(),
+                          false_operand->output_shape(),
+                          *true_computation_shape, *false_computation_shape));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = inferred_shape;
+  request.add_embedded_computation_versions(true_computation_version);
+  request.add_embedded_computation_versions(false_computation_version);
+  *request.mutable_request()->mutable_conditional_request() =
+      conditional_request;
+
+  VLOG(1) << "AddConditionalInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << conditional_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddBroadcastInstruction(
     const BroadcastRequest& broadcast_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1075,6 +1113,31 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddFftInstruction(
+    const FftRequest& fft_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(fft_request.operand()));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferFftShape(
+                          operand->output_shape(), fft_request.fft_type(),
+                          AsInt64Slice(fft_request.fft_length())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_fft_request() = fft_request;
+
+  VLOG(1) << "AddFftInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << fft_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
     const CrossReplicaSumRequest& cross_replica_sum_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1082,7 +1145,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
                       LookUpRequest(cross_replica_sum_request.operand()));
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCrossReplicaSumShape(
-                                       operand->output_shape()));
+                                       {&operand->output_shape()}));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
@@ -1192,6 +1255,14 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
     TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
   }
 
+  if (tensorflow::StringPiece(custom_call_request.call_target_name())
+          .starts_with("$")) {
+    return InvalidArgument(
+        "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+        "are reserved for internal use.",
+        custom_call_request.call_target_name().c_str());
+  }
+
   const ComputationDataHandle handle = CreateComputationDataHandle();
 
   OperationRequest& request =
@@ -1204,6 +1275,33 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   VLOG(1) << "AddCustomCallInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << custom_call_request.ShortDebugString();
+  return handle;
+}
+
+StatusOr<ComputationDataHandle> UserComputation::AddDotInstruction(
+    const DotRequest& dot_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* lhs,
+                      LookUpRequest(dot_request.lhs()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* rhs,
+                      LookUpRequest(dot_request.rhs()));
+
+  TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferDotOpShape(
+                                       lhs->output_shape(), rhs->output_shape(),
+                                       dot_request.dimension_numbers()));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_dot_request() = dot_request;
+
+  VLOG(1) << "AddDotInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << dot_request.ShortDebugString();
   return handle;
 }
 
@@ -1433,7 +1531,7 @@ StatusOr<const OperationRequest*> LookUpRequest(
   return &session_computation.requests().at(handle_value);
 }
 
-// Returns the OperationRequestion corresponding to the root (result) of the
+// Returns the OperationRequest corresponding to the root (result) of the
 // session computation.
 StatusOr<const OperationRequest*> GetRoot(
     VersionedComputationHandle::Version version,
@@ -1479,8 +1577,8 @@ UserComputation::ComputeProgramShape(
             request.request().parameter_request();
         int64 param_no = parameter_request.parameter();
         // Parameters may be out of order so expand ProgramShape parameters
-        // until
-        // it is at least large enough to hold the current parameter number.
+        // until it is at least large enough to hold the current parameter
+        // number.
         while (program_shape->parameters_size() <= param_no) {
           program_shape->add_parameters();
           program_shape->add_parameter_names();
@@ -1594,6 +1692,13 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      PureFunctionalVisitor(session_computation, fft_request.operand(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::kCrossReplicaSumRequest: {
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
       *is_functional = false;
@@ -1626,6 +1731,15 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
 
     case OpRequest::kCustomCallRequest: {
       *is_functional = false;
+      break;
+    }
+
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      PureFunctionalVisitor(session_computation, dot_request.lhs(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation, dot_request.rhs(),
+                            num_parameters, visited, is_functional);
       break;
     }
 
@@ -1754,6 +1868,23 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
       *is_functional = false;
+      break;
+    }
+
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.predicate(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.true_operand(), num_parameters,
+                            visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            conditional_request.false_operand(), num_parameters,
+                            visited, is_functional);
+      // TODO(b/32495713): We aren't checking the true and false computations
+      // themselves.
       break;
     }
 
@@ -1985,6 +2116,21 @@ UserComputation::GetEmbeddedComputations(
           break;
         }
 
+        case OpRequest::kConditionalRequest: {
+          CHECK_EQ(2, request.embedded_computation_versions_size());
+          const ConditionalRequest& conditional_request =
+              request.request().conditional_request();
+          const VersionedComputationHandle true_computation_versioned_handle = {
+              conditional_request.true_computation(),
+              request.embedded_computation_versions(0)};
+          computations.push_back(true_computation_versioned_handle);
+          const VersionedComputationHandle false_computation_versioned_handle =
+              {conditional_request.false_computation(),
+               request.embedded_computation_versions(1)};
+          computations.push_back(false_computation_versioned_handle);
+          break;
+        }
+
         default:
           // No embedded computation.
           break;
@@ -1998,6 +2144,13 @@ UserComputation::GetEmbeddedComputations(
                    out->append(h.ToString());
                  });
   return computations;
+}
+
+StatusOr<const OperationRequest*>
+UserComputation::LookUpRequestForErrorReporting(
+    const ComputationDataHandle& handle) const {
+  tensorflow::mutex_lock lock(mutex_);
+  return LookUpRequest(handle);
 }
 
 Status UserComputation::RemapEmbeddedComputations(
@@ -2069,6 +2222,16 @@ Status UserComputation::RemapEmbeddedComputations(
             request.mutable_request()->mutable_while_request();
         TF_RETURN_IF_ERROR(update(while_request->mutable_condition()));
         TF_RETURN_IF_ERROR(update(while_request->mutable_body()));
+        break;
+      }
+      case OpRequest::kConditionalRequest: {
+        TF_RET_CHECK(2 == request.embedded_computation_versions_size());
+        ConditionalRequest* conditional_request =
+            request.mutable_request()->mutable_conditional_request();
+        TF_RETURN_IF_ERROR(
+            update(conditional_request->mutable_true_computation()));
+        TF_RETURN_IF_ERROR(
+            update(conditional_request->mutable_false_computation()));
         break;
       }
       default:
@@ -2274,6 +2437,12 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      apply(fft_request.operand());
+      break;
+    }
+
     case OpRequest::kBatchNormTrainingRequest: {
       const BatchNormTrainingRequest& batch_norm_training_request =
           request.request().batch_norm_training_request();
@@ -2417,6 +2586,15 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      apply(conditional_request.predicate());
+      apply(conditional_request.true_operand());
+      apply(conditional_request.false_operand());
+      break;
+    }
+
     case OpRequest::kTernaryOpRequest: {
       const TernaryOpRequest& ternary_op_request =
           request.request().ternary_op_request();
@@ -2450,6 +2628,13 @@ static void ForEachOperand(
       for (const ComputationDataHandle& operand : cc_request.operands()) {
         apply(operand);
       }
+      break;
+    }
+
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      apply(dot_request.rhs());
+      apply(dot_request.lhs());
       break;
     }
 
@@ -2653,7 +2838,8 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          Literal(constant_request.literal()).CloneToUnique()));
+          Literal::CreateFromProto(constant_request.literal())
+              .ConsumeValueOrDie()));
       break;
     }
 
@@ -2732,13 +2918,31 @@ void ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      HloInstruction* operand = lookup_instruction(fft_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateFft(
+          request.output_shape(), operand, fft_request.fft_type(),
+          AsInt64Slice(fft_request.fft_length())));
+      break;
+    }
+
+    case OpRequest::kDotRequest: {
+      const DotRequest& dot_request = request.request().dot_request();
+      HloInstruction* lhs = lookup_instruction(dot_request.lhs());
+      HloInstruction* rhs = lookup_instruction(dot_request.rhs());
+      hlo_instruction = add_instruction(HloInstruction::CreateDot(
+          request.output_shape(), lhs, rhs, dot_request.dimension_numbers()));
+      break;
+    }
+
     case OpRequest::kCrossReplicaSumRequest: {
       const CrossReplicaSumRequest& cross_replica_sum_request =
           request.request().cross_replica_sum_request();
       HloInstruction* operand =
           lookup_instruction(cross_replica_sum_request.operand());
       hlo_instruction = add_instruction(HloInstruction::CreateCrossReplicaSum(
-          request.output_shape(), operand));
+          request.output_shape(), {operand}));
       break;
     }
 
@@ -3021,6 +3225,30 @@ void ComputationLowerer::Visit(
       break;
     }
 
+    case OpRequest::kConditionalRequest: {
+      const ConditionalRequest& conditional_request =
+          request.request().conditional_request();
+      CHECK_EQ(2, request.embedded_computation_versions_size());
+      VersionedComputationHandle::Version true_computation_version =
+          request.embedded_computation_versions(0);
+      HloComputation* true_computation = ResolveComputation(
+          conditional_request.true_computation(), true_computation_version);
+      VersionedComputationHandle::Version false_computation_version =
+          request.embedded_computation_versions(1);
+      HloComputation* false_computation = ResolveComputation(
+          conditional_request.false_computation(), false_computation_version);
+      HloInstruction* predicate =
+          lookup_instruction(conditional_request.predicate());
+      HloInstruction* true_operand =
+          lookup_instruction(conditional_request.true_operand());
+      HloInstruction* false_operand =
+          lookup_instruction(conditional_request.false_operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateConditional(
+          request.output_shape(), predicate, true_operand, true_computation,
+          false_operand, false_computation));
+      break;
+    }
+
     case OpRequest::kTernaryOpRequest: {
       const TernaryOpRequest& ternary_op_request =
           request.request().ternary_op_request();
@@ -3151,8 +3379,7 @@ void ComputationLowerer::Visit(
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      if (debug_options_.xla_eliminate_hlo_implicit_broadcast() &&
-          binary_op_request.binop() != BINOP_DOT) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
         if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =

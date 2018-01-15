@@ -140,6 +140,7 @@ class PackOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
 TF_CALL_bfloat16(REGISTER_PACK);
+TF_CALL_variant(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.
@@ -157,6 +158,7 @@ REGISTER_PACK(string);
       PackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bool);
 #undef REGISTER_GPU

@@ -218,7 +218,8 @@ void AllocateTransientArrays(Model* model,
   // just guard this assumption with a CHECK:
   bool batchless_input_shapes = true;
   for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.shape().empty() || input_array.shape(0) != 1) {
+    if (!input_array.has_shape() || input_array.shape().dims().empty() ||
+        input_array.shape().dims(0) != 1) {
       batchless_input_shapes = false;
       break;
     }

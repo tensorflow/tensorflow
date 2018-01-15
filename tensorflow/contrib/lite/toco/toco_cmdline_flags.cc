@@ -65,10 +65,12 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "is used."),
       Flag("input_type", parsed_flags.input_type.bind(),
            parsed_flags.input_type.default_value(),
-           "Deprecated old name of inference_input_type."),
+           "Deprecated ambiguous flag that set both --input_data_types and "
+           "--inference_input_type."),
       Flag("input_types", parsed_flags.input_types.bind(),
            parsed_flags.input_types.default_value(),
-           "Deprecated old name of inference_input_type. Was meant to be a "
+           "Deprecated ambiguous flag that set both --input_data_types and "
+           "--inference_input_type. Was meant to be a "
            "comma-separated list, but this was deprecated before "
            "multiple-input-types was ever properly supported."),
 
@@ -140,7 +142,6 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
           << #name;                                                          \
     }                                                                        \
   } while (false)
-
 #define READ_TOCO_FLAG(name, requirement)                     \
   ENFORCE_FLAG_REQUIREMENT(name, requirement);                \
   do {                                                        \
@@ -174,14 +175,26 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
 
   // Deprecated flag handling.
   if (parsed_toco_flags.input_type.specified()) {
-    LOG(WARNING) << "--input_type is deprecated. Use --inference_input_type.";
+    LOG(WARNING)
+        << "--input_type is deprecated. It was an ambiguous flag that set both "
+           "--input_data_types and --inference_input_type. If you are trying "
+           "to complement the input file with information about the type of "
+           "input arrays, use --input_data_type. If you are trying to control "
+           "the quantization/dequantization of real-numbers input arrays in "
+           "the output file, use --inference_input_type.";
     toco::IODataType input_type;
     QCHECK(toco::IODataType_Parse(parsed_toco_flags.input_type.value(),
                                   &input_type));
     toco_flags->set_inference_input_type(input_type);
   }
   if (parsed_toco_flags.input_types.specified()) {
-    LOG(WARNING) << "--input_types is deprecated. Use --inference_input_type.";
+    LOG(WARNING)
+        << "--input_types is deprecated. It was an ambiguous flag that set "
+           "both --input_data_types and --inference_input_type. If you are "
+           "trying to complement the input file with information about the "
+           "type of input arrays, use --input_data_type. If you are trying to "
+           "control the quantization/dequantization of real-numbers input "
+           "arrays in the output file, use --inference_input_type.";
     std::vector<string> input_types =
         absl::StrSplit(parsed_toco_flags.input_types.value(), ',');
     QCHECK(!input_types.empty());

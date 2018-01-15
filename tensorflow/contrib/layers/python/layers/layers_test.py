@@ -1747,6 +1747,12 @@ class BatchNormTest(test.TestCase):
     expected_var *= correction_factor
     return expected_var, correction_factor
 
+  def testBatchNormCenterFalse(self):
+    a = array_ops.placeholder(dtype=dtypes.float32, shape=(10, 10, 10, 10))
+    # Test that center=False builds a valid graph.
+    _layers.batch_norm(a, center=False, data_format='NCHW',
+                       zero_debias_moving_mean=True)
+
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
@@ -3231,7 +3237,11 @@ class SeparableConv2dTest(test.TestCase):
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
       regularizer = regularizers.l2_regularizer(0.01)
       layers_lib.separable_conv2d(
-          images, 32, [3, 3], 2, weights_regularizer=regularizer)
+          images,
+          32, [3, 3],
+          2,
+          weights_regularizer=regularizer,
+          weights_initializer=init_ops.ones_initializer())
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
       weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
@@ -3239,12 +3249,31 @@ class SeparableConv2dTest(test.TestCase):
           weight_decay.op.name,
           'SeparableConv2d/depthwise_kernel/Regularizer/l2_regularizer')
       sess.run(variables_lib.global_variables_initializer())
-      self.assertLessEqual(sess.run(weight_decay), 0.05)
+      depth_weight_one = sess.run(weight_decay)
       weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[1]
       self.assertEqual(
           weight_decay.op.name,
           'SeparableConv2d/pointwise_kernel/Regularizer/l2_regularizer')
-      self.assertLessEqual(sess.run(weight_decay), 0.05)
+      pointwise_weight_one = sess.run(weight_decay)
+
+      regularizer = regularizers.l2_regularizer(1.0)
+      layers_lib.separable_conv2d(
+          images,
+          32, [3, 3],
+          2,
+          weights_regularizer=regularizer,
+          weights_initializer=init_ops.ones_initializer())
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 4)
+      weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[2]
+      sess.run(variables_lib.global_variables_initializer())
+      depth_weight_two = sess.run(weight_decay)
+      weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[3]
+      pointwise_weight_two = sess.run(weight_decay)
+
+      self.assertAllClose(
+          [100.0 * depth_weight_one, 100.0 * pointwise_weight_one],
+          [depth_weight_two, pointwise_weight_two])
 
   def testReuseConvWithWeightDecay(self):
     height, width = 3, 3
@@ -3332,11 +3361,18 @@ class SeparableConv2dTest(test.TestCase):
         batch, height, width = 4, 10, 12
         kernel_dim, stride = 3, 2
         images = random_ops.random_uniform((batch, 3, height, width), seed=1)
-        output = layers_lib.separable_conv2d(images, num_outputs=num_filters, kernel_size=[kernel_dim, kernel_dim],
-                                             depth_multiplier=2, stride=stride, padding='VALID', data_format='NCHW')
-        self.assertListEqual(
-            output.get_shape().as_list(), [batch, correct_output_filters,
-                                           (height - kernel_dim + 1) // stride, (width - kernel_dim + 1) // stride])
+        output = layers_lib.separable_conv2d(
+            images,
+            num_outputs=num_filters,
+            kernel_size=[kernel_dim, kernel_dim],
+            depth_multiplier=2,
+            stride=stride,
+            padding='VALID',
+            data_format='NCHW')
+        self.assertListEqual(output.get_shape().as_list(), [
+            batch, correct_output_filters, (height - kernel_dim + 1) // stride,
+            (width - kernel_dim + 1) // stride
+        ])
 
 
 class ScaleGradientTests(test.TestCase):

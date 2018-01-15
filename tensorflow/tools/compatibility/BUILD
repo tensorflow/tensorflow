@@ -10,10 +10,7 @@ load(
 
 py_binary(
     name = "tf_upgrade",
-    srcs = [
-        "ast_edits.py",
-        "tf_upgrade.py",
-    ],
+    srcs = ["tf_upgrade.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -22,7 +19,7 @@ py_test(
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "tf_upgrade",
+        ":tf_upgrade",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -48,11 +45,11 @@ genrule(
         "test_file_v1_0.py",
         "report.txt",
     ],
-    cmd = ("$(location tf_upgrade)" +
+    cmd = ("$(location :tf_upgrade)" +
            " --infile $(location testdata/test_file_v0_11.py)" +
            " --outfile $(location test_file_v1_0.py)" +
            " --reportfile $(location report.txt)"),
-    tools = ["tf_upgrade"],
+    tools = [":tf_upgrade"],
 )
 
 py_test(

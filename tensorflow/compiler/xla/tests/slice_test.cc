@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -211,6 +212,13 @@ class SliceR1Test : public ClientLibraryTestBase,
   }
 };
 
+string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
+  const R1Spec& spec = data.param;
+  return ::tensorflow::strings::Printf("%lld_%lld_%lld_%lld", spec.input_dim0,
+                                       spec.slice_start, spec.slice_limit,
+                                       spec.slice_stride);
+}
+
 XLA_TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
@@ -223,30 +231,66 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
-INSTANTIATE_TEST_CASE_P(                          //
-    SliceR1TestInstantiation,                     //
-    SliceR1Test,                                  //
-    ::testing::Values(                            //
-        R1Spec{10, 0, 0, 1},                      //
-        R1Spec{10, 7, 7, 1},                      //
-        R1Spec{10, 2, 4, 1},                      //
-        R1Spec{10, 2, 4, 2},                      //
-        R1Spec{10, 0, 10, 1},                     //
-        R1Spec{1024, 1024 - 4, 1024, 1},          //
-        R1Spec{4096, 7, 7 + 1024, 1},             //
-        R1Spec{10, 0, 10, 2},                     //
-        R1Spec{10, 0, 10, 3},                     //
-        R1Spec{10, 0, 10, 4},                     //
-        R1Spec{10, 0, 10, 5},                     //
-        R1Spec{10, 0, 10, 10},                    //
-        R1Spec{500, 200, 400, 7},                 //
-        R1Spec{4096, 1, 4095, 3},                 //
-        R1Spec{2047, 1024 - 24, 1024 + 160, 31},  //
-        R1Spec{2047, 1, 2046, 3 * 128},           //
-        R1Spec{4096, 1024 + 3, 4095, 500},        //
-        R1Spec{8192, 0, 8192, 1024 * 3 + 400}     //
-        )                                         //
+// Tests for R1 slice ops.
+// The format for each testcase is {input size, start, limit, stride}.
+// clang-format off
+INSTANTIATE_TEST_CASE_P(
+    SliceR1TestInstantiation,
+    SliceR1Test,
+    ::testing::Values(
+        R1Spec{10, 0, 0, 1},
+        R1Spec{10, 7, 7, 1},
+        R1Spec{10, 0, 5, 1},
+        R1Spec{10, 3, 5, 1},
+        R1Spec{10, 0, 10, 1},
+        R1Spec{1024, 0, 5, 1},
+        R1Spec{1024, 3, 5, 1},
+        R1Spec{1024 + 17, 0, 5, 1},
+        R1Spec{1024 + 17, 3, 5, 1},
+        R1Spec{1024 + 17, 1024, 1024 + 6, 1},
+        R1Spec{1024 + 17, 1024 + 1, 1024 + 6, 1},
+        R1Spec{1024, 1024 - 4, 1024, 1},
+        R1Spec{4 * 1024, 7, 7 + 1024, 1},
+        R1Spec{4 * 1024, 0, 4 * 1024, 1},
+        R1Spec{4 * 1024, 1, 4 * 1024 - 1, 1},
+        R1Spec{4 * 1024, 1024, 3 * 1024, 1},
+        R1Spec{4 * 1024, 1024 + 1, 3 * 1024 - 1, 1},
+        R1Spec{16 * 1024, 0, 5, 1},
+        R1Spec{16 * 1024, 3, 5, 1},
+        R1Spec{16 * 1024 + 17, 0, 5, 1},
+        R1Spec{16 * 1024 + 17, 3, 5, 1},
+        R1Spec{16 * 1024 + 17, 16 * 1024, 16 * 1024 + 6, 1},
+        R1Spec{16 * 1024 + 17, 16 * 1024 + 1, 16 * 1024 + 6, 1},
+        R1Spec{16 * 1024, 4 * 1024 - 17, 8 * 1024 - 18, 1},
+        R1Spec{64 * 1024, 0, 64 * 1024, 1},
+        R1Spec{64 * 1024, 1, 64 * 1024 - 1, 1},
+        R1Spec{64 * 1024, 1024, 63 * 1024, 1},
+        R1Spec{64 * 1024, 1024 + 1, 63 * 1024 - 1, 1},
+        R1Spec{64 * 1024, 32 * 1024, 33 * 1024, 1},
+        R1Spec{64 * 1024, 32 * 1024 + 1, 33 * 1024 - 1, 1},
+        R1Spec{64 * 1024, 32 * 1024 - 17, 36 * 1024 - 18, 1},
+// TODO(b/69425338): This uses too much memory on GPU.
+#ifndef XLA_TEST_BACKEND_GPU
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024, 12 * 1024 * 1024, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 + 1, 12 * 1024 * 1024 - 1, 1},
+        R1Spec{16 * 1024 * 1024, 4 * 1024 * 1024 - 1, 12 * 1024 * 1024 + 1, 1},
+#endif
+        R1Spec{10, 2, 4, 2},
+        R1Spec{10, 0, 10, 2},
+        R1Spec{10, 0, 10, 3},
+        R1Spec{10, 0, 10, 4},
+        R1Spec{10, 0, 10, 5},
+        R1Spec{10, 0, 10, 10},
+        R1Spec{500, 200, 400, 7},
+        R1Spec{4096, 1, 4095, 3},
+        R1Spec{2047, 1024 - 24, 1024 + 160, 31},
+        R1Spec{2047, 1, 2046, 3 * 128},
+        R1Spec{4096, 1024 + 3, 4095, 500},
+        R1Spec{8192, 0, 8192, 1024 * 3 + 400}
+        ),
+    SliceR1TestDataToString
 );
+// clang-format on
 
 struct R2Spec {
   int64 input_dim0;

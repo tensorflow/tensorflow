@@ -226,6 +226,8 @@ TensorFlow provides several operations that help you perform classification.
 *   @{tf.nn.softmax}
 *   @{tf.nn.log_softmax}
 *   @{tf.nn.softmax_cross_entropy_with_logits}
+*   @{tf.nn.softmax_cross_entropy_with_logits_v2} - identical to the base
+    version, except it allows gradient propagation into the labels.
 *   @{tf.nn.sparse_softmax_cross_entropy_with_logits}
 *   @{tf.nn.weighted_cross_entropy_with_logits}
 

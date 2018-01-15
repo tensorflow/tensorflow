@@ -35,18 +35,27 @@ from tensorflow.python.platform import test
 
 class MaybeColocateTest(test.TestCase):
 
+  def setUp(self):
+    self._colocate_cov_ops_with_inputs = ff.COLOCATE_COV_OPS_WITH_INPUTS
+
+  def tearDown(self):
+    ff.set_global_constants(
+        colocate_cov_ops_with_inputs=self._colocate_cov_ops_with_inputs)
+
   def testFalse(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=False)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, False):
+      with ff._maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@b'], b.op.colocation_groups())
 
   def testTrue(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=True)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, True):
+      with ff._maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@a'], b.op.colocation_groups())
@@ -67,11 +76,18 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def _num_sources(self):
     return 1
 
+  @property
+  def _dtype(self):
+    return dtypes.float32
+
   def _compute_new_cov(self):
     raise NotImplementedError
 
   def instantiate_covariance(self):
     pass
+
+  def make_inverse_update_ops(self):
+    return []
 
 
 class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
@@ -93,6 +109,10 @@ class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
   @property
   def _num_sources(self):
     return 1
+
+  @property
+  def _dtype(self):
+    return dtypes.float32
 
   def _compute_new_cov(self):
     raise NotImplementedError
@@ -121,7 +141,7 @@ class NumericalUtilsTest(test.TestCase):
 
       normalizer = 10.
       x = npr.randn(100, 3)
-      cov = ff._compute_cov(array_ops.constant(x), normalizer)
+      cov = ff._compute_cov(array_ops.constant(x), normalizer=normalizer)
       np_cov = np.dot(x.T, x) / normalizer
 
       self.assertAllClose(sess.run(cov), np_cov)
@@ -267,13 +287,13 @@ class InverseProvidingFactorTest(test.TestCase):
       for i in range(1, ff.EIGENVALUE_DECOMPOSITION_THRESHOLD + 1):
         factor.register_damped_inverse(1. / i)
       ops = factor.make_inverse_update_ops()
-      self.assertEqual(ff.EIGENVALUE_DECOMPOSITION_THRESHOLD, len(ops))
+      self.assertEqual(1, len(ops))
 
       sess.run(tf_variables.global_variables_initializer())
       new_invs = []
+      sess.run(ops)
       for i in range(1, ff.EIGENVALUE_DECOMPOSITION_THRESHOLD + 1):
         # The inverse op will assign the damped inverse of cov to the inv var.
-        sess.run(ops[i - 1])
         new_invs.append(sess.run(factor._inverses_by_damping[1. / i]))
       # We want to see that the new invs are all different from each other.
       for i in range(len(new_invs)):
@@ -331,6 +351,16 @@ class FullFactorTest(test.TestCase):
       factor = ff.FullFactor((tensor,), 32)
       self.assertEqual([6, 6], factor.get_cov().get_shape().as_list())
 
+  def testFullFactorInitFloat64(self):
+    with tf_ops.Graph().as_default():
+      dtype = dtypes.float64_ref
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
+      factor = ff.FullFactor((tensor,), 32)
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual([6, 6], cov.get_shape().as_list())
+
   def testMakeCovarianceUpdateOp(self):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
@@ -351,6 +381,16 @@ class NaiveDiagonalFactorTest(test.TestCase):
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
       self.assertEqual([6, 1], factor.get_cov().get_shape().as_list())
 
+  def testNaiveDiagonalFactorInitFloat64(self):
+    with tf_ops.Graph().as_default():
+      dtype = dtypes.float64_ref
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
+      factor = ff.NaiveDiagonalFactor((tensor,), 32)
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual([6, 1], cov.get_shape().as_list())
+
   def testMakeCovarianceUpdateOp(self):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
@@ -364,18 +404,25 @@ class NaiveDiagonalFactorTest(test.TestCase):
 
 class FullyConnectedKroneckerFactorTest(test.TestCase):
 
-  def _testFullyConnectedKroneckerFactorInit(self, has_bias, final_shape):
+  def _testFullyConnectedKroneckerFactorInit(self,
+                                             has_bias,
+                                             final_shape,
+                                             dtype=dtypes.float32_ref):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
-      tensor = array_ops.ones((2, 3), name='a/b/c')
+      tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
       factor = ff.FullyConnectedKroneckerFactor((tensor,), has_bias=has_bias)
-      self.assertEqual(final_shape, factor.get_cov().get_shape().as_list())
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual(final_shape, cov.get_shape().as_list())
 
   def testFullyConnectedKroneckerFactorInitNoBias(self):
-    self._testFullyConnectedKroneckerFactorInit(False, [3, 3])
+    for dtype in (dtypes.float32_ref, dtypes.float64_ref):
+      self._testFullyConnectedKroneckerFactorInit(False, [3, 3], dtype=dtype)
 
   def testFullyConnectedKroneckerFactorInitWithBias(self):
-    self._testFullyConnectedKroneckerFactorInit(True, [4, 4])
+    for dtype in (dtypes.float32_ref, dtypes.float64_ref):
+      self._testFullyConnectedKroneckerFactorInit(True, [4, 4], dtype=dtype)
 
   def testMakeCovarianceUpdateOpWithBias(self):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
@@ -418,6 +465,18 @@ class ConvInputKroneckerFactorTest(test.TestCase):
       self.assertEqual([1 * 2 * 3 + 1, 1 * 2 * 3 + 1],
                        factor.get_cov().get_shape().as_list())
 
+  def testConvInputKroneckerFactorInitFloat64(self):
+    with tf_ops.Graph().as_default():
+      dtype = dtypes.float64_ref
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
+      factor = ff.ConvInputKroneckerFactor(
+          tensor, (1, 2, 3, 4), 3, 2, has_bias=True)
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual([1 * 2 * 3 + 1, 1 * 2 * 3 + 1],
+                       cov.get_shape().as_list())
+
   def testMakeCovarianceUpdateOpWithBias(self):
     with tf_ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
@@ -453,6 +512,16 @@ class ConvOutputKroneckerFactorTest(test.TestCase):
       factor = ff.ConvOutputKroneckerFactor((tensor,))
       self.assertEqual([5, 5], factor.get_cov().get_shape().as_list())
 
+  def testConvOutputKroneckerFactorInitFloat64(self):
+    with tf_ops.Graph().as_default():
+      dtype = dtypes.float64_ref
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3, 4, 5), dtype=dtype, name='a/b/c')
+      factor = ff.ConvOutputKroneckerFactor((tensor,))
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual([5, 5], cov.get_shape().as_list())
+
   def testConvOutputKroneckerFactorInitNotEnoughDims(self):
     with tf_ops.Graph().as_default():
       random_seed.set_random_seed(200)
@@ -469,6 +538,50 @@ class ConvOutputKroneckerFactorTest(test.TestCase):
       sess.run(tf_variables.global_variables_initializer())
       new_cov = sess.run(factor.make_covariance_update_op(.5))
       self.assertAllClose([[43, 46.5], [46.5, 51.5]], new_cov)
+
+
+class FullyConnectedMultiKFTest(test.TestCase):
+
+  def testFullyConnectedMultiKFInit(self):
+    with tf_ops.Graph().as_default():
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3), name='a/b/c')
+      tensor_list = [tensor]
+      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=False)
+      self.assertEqual([3, 3], factor.get_cov().get_shape().as_list())
+
+  def testFullyConnectedMultiKFInitFloat64(self):
+    with tf_ops.Graph().as_default():
+      dtype = dtypes.float64_ref
+      random_seed.set_random_seed(200)
+      tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
+      tensor_list = [tensor]
+      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=False)
+      cov = factor.get_cov()
+      self.assertEqual(cov.dtype, dtype)
+      self.assertEqual([3, 3], cov.get_shape().as_list())
+
+  def testMakeCovarianceUpdateOpWithBias(self):
+    with tf_ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+      tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
+      tensor_list = [tensor]
+      factor = ff.FullyConnectedMultiKF((tensor_list,), has_bias=True)
+
+      sess.run(tf_variables.global_variables_initializer())
+      new_cov = sess.run(factor.make_covariance_update_op(.5))
+      self.assertAllClose([[3, 3.5, 1], [3.5, 5.5, 1.5], [1, 1.5, 1]], new_cov)
+
+  def testMakeCovarianceUpdateOpNoBias(self):
+    with tf_ops.Graph().as_default(), self.test_session() as sess:
+      random_seed.set_random_seed(200)
+      tensor = array_ops.constant([[1., 2.], [3., 4.]], name='a/b/c')
+      tensor_list = [tensor]
+      factor = ff.FullyConnectedMultiKF((tensor_list,))
+
+      sess.run(tf_variables.global_variables_initializer())
+      new_cov = sess.run(factor.make_covariance_update_op(.5))
+      self.assertAllClose([[3, 3.5], [3.5, 5.5]], new_cov)
 
 
 if __name__ == '__main__':

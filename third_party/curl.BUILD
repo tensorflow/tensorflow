@@ -6,10 +6,11 @@ licenses(["notice"])  # MIT/X derivative license
 exports_files(["COPYING"])
 
 CURL_WIN_COPTS = [
-    "/I%prefix%/curl/lib",
+    "/Iexternal/curl/lib",
     "/DHAVE_CONFIG_H",
     "/DCURL_DISABLE_FTP",
     "/DCURL_DISABLE_NTLM",
+    "/DCURL_DISABLE_PROXY",
     "/DHAVE_LIBZ",
     "/DHAVE_ZLIB_H",
     # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
@@ -23,6 +24,8 @@ CURL_WIN_SRCS = [
     "lib/asyn-thread.c",
     "lib/inet_ntop.c",
     "lib/system_win32.c",
+    "lib/vtls/schannel.c",
+    "lib/idn_win32.c",
 ]
 
 cc_library(
@@ -251,7 +254,7 @@ cc_library(
         "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
         "@org_tensorflow//tensorflow:windows_msvc": CURL_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -276,6 +279,7 @@ cc_library(
             "-DCURL_MAX_WRITE_SIZE=65536",
         ],
     }),
+    defines = ["CURL_STATICLIB"],
     includes = ["include"],
     linkopts = select({
         "@org_tensorflow//tensorflow:android": [
@@ -289,10 +293,16 @@ cc_library(
         ],
         "@org_tensorflow//tensorflow:ios": [],
         "@org_tensorflow//tensorflow:windows": [
-            "-Wl,ws2_32.lib",
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
         ],
         "@org_tensorflow//tensorflow:windows_msvc": [
-            "-Wl,ws2_32.lib",
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
         ],
         "//conditions:default": [
             "-lrt",
@@ -312,7 +322,7 @@ cc_library(
 )
 
 CURL_BIN_WIN_COPTS = [
-    "/I%prefix%/curl/lib",
+    "/Iexternal/curl/lib",
     "/DHAVE_CONFIG_H",
     "/DCURL_DISABLE_LIBCURL_OPTION",
 ]
@@ -409,7 +419,7 @@ cc_binary(
         "@org_tensorflow//tensorflow:windows": CURL_BIN_WIN_COPTS,
         "@org_tensorflow//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",
@@ -438,12 +448,22 @@ genrule(
         "#  include \"lib/config-win32.h\"",
         "#  define BUILDING_LIBCURL 1",
         "#  define CURL_DISABLE_CRYPTO_AUTH 1",
+        "#  define CURL_DISABLE_DICT 1",
+        "#  define CURL_DISABLE_FILE 1",
+        "#  define CURL_DISABLE_GOPHER 1",
         "#  define CURL_DISABLE_IMAP 1",
         "#  define CURL_DISABLE_LDAP 1",
         "#  define CURL_DISABLE_LDAPS 1",
         "#  define CURL_DISABLE_POP3 1",
         "#  define CURL_PULL_WS2TCPIP_H 1",
-        "#  define HTTP_ONLY 1",
+        "#  define CURL_DISABLE_SMTP 1",
+        "#  define CURL_DISABLE_TELNET 1",
+        "#  define CURL_DISABLE_TFTP 1",
+        "#  define CURL_PULL_WS2TCPIP_H 1",
+        "#  define USE_WINDOWS_SSPI 1",
+        "#  define USE_WIN32_IDN 1",
+        "#  define USE_SCHANNEL 1",
+        "#  define WANT_IDN_PROTOTYPES 1",
         "#elif defined(__APPLE__)",
         "#  define HAVE_FSETXATTR_6 1",
         "#  define HAVE_SETMODE 1",

@@ -47,8 +47,8 @@ table QuantizationParameters {
 
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
-  // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // builtin ops use: [batch size, height, width, number of channels] (That's
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
@@ -104,6 +104,13 @@ enum BuiltinOperator : byte {
   CALL = 31,
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
+  PAD = 34,
+  UNIDIRECTIONAL_SEQUENCE_RNN = 35,
+  GATHER = 36,
+  BATCH_TO_SPACE_ND = 37,
+  SPACE_TO_BATCH_ND = 38,
+  TRANSPOSE = 39,
+  MEAN = 40,
 }
 
 // Options for the builtin operators.
@@ -129,6 +136,12 @@ union BuiltinOptions {
   SpaceToDepthOptions,
   EmbeddingLookupSparseOptions,
   MulOptions,
+  PadOptions,
+  GatherOptions,
+  BatchToSpaceNDOptions,
+  SpaceToBatchNDOptions,
+  TransposeOptions,
+  MeanOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -244,8 +257,25 @@ table CallOptions {
   subgraph:uint;
 }
 
+table PadOptions {
+  before_padding:[int];
+  after_padding:[int];
+}
+
 table ReshapeOptions {
   new_shape:[int];
+}
+
+table SpaceToBatchNDOptions {
+  block_shape:[int];
+  before_paddings:[int];
+  after_paddings:[int];
+}
+
+table BatchToSpaceNDOptions {
+  block_shape:[int];
+  before_crops:[int];
+  after_crops:[int];
 }
 
 table SkipGramOptions {
@@ -266,6 +296,19 @@ enum CombinerType : byte {
 
 table EmbeddingLookupSparseOptions {
   combiner:CombinerType;
+}
+
+table GatherOptions {
+  axis: int;
+}
+
+table TransposeOptions {
+  perm:[int];
+}
+
+table MeanOptions {
+  axis:[int];
+  keep_dims: bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -343,4 +386,3 @@ table Model {
 }
 
 root_type Model;
-

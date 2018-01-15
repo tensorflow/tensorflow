@@ -445,5 +445,61 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
   ComputeAndCompareR1<float>(&builder, expected, arguments, ErrorSpec(1e-5));
 }
 
+XLA_TEST_F(TupleTest, ComplexTuples) {
+  ComputationBuilder builder(client_, TestName());
+  {
+    Shape c64r0 = ShapeUtil::MakeShape(C64, {});
+    Shape c64r1 = ShapeUtil::MakeShape(C64, {2});
+    Shape c64r2 = ShapeUtil::MakeShape(C64, {3, 2});
+    Shape arg0_shape = ShapeUtil::MakeTupleShape(
+        {c64r0, ShapeUtil::MakeTupleShape({c64r1, c64r2})});
+    auto input0 = builder.Parameter(0, arg0_shape, "input0");
+    auto t0 = builder.GetTupleElement(input0, 0);
+    auto t1 = builder.GetTupleElement(input0, 1);
+    auto t10 = builder.GetTupleElement(t1, 0);
+    auto t11 = builder.GetTupleElement(t1, 1);
+    auto sum = builder.Add(builder.Add(t10, t11, {1}), t0);
+    auto input1 = builder.Parameter(1, c64r1, "input1");
+    auto prod = builder.Mul(input1, sum, {1});
+    builder.Tuple({builder.Tuple({prod, sum}),
+                   builder.ConstantR0<complex64>({123, 456})});
+  }
+
+  std::unique_ptr<GlobalData> arg0 =
+      client_
+          ->TransferToServer(*Literal::MakeTuple(
+              {Literal::CreateR0<complex64>({1, 2}).get(),
+               Literal::MakeTuple(
+                   {Literal::CreateR1<complex64>({{10, 20}, {30, 40}}).get(),
+                    Literal::CreateR2<complex64>(
+                        {{{100, 200}, {300, 400}},
+                         {{1000, 2000}, {3000, 4000}},
+                         {{10000, 20000}, {30000, 40000}}})
+                        .get()})
+                   .get()}))
+          .ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> arg1 =
+      client_
+          ->TransferToServer(*Literal::CreateR1<complex64>({{1, 2}, {1, -2}}))
+          .ConsumeValueOrDie();
+  auto sum = Literal::CreateR2<complex64>({{{111, 222}, {331, 442}},
+                                           {{1011, 2022}, {3031, 4042}},
+                                           {{10011, 20022}, {30031, 40042}}});
+  auto prod = Literal::CreateFromShape(sum->shape());
+  ASSERT_TRUE(prod->Populate<complex64>(
+                      [&sum](tensorflow::gtl::ArraySlice<int64> indexes) {
+                        return sum->Get<complex64>(indexes) *
+                               (indexes[indexes.size() - 1] == 0
+                                    ? complex64(1, 2)
+                                    : complex64(1, -2));
+                      })
+                  .ok());
+  auto expected =
+      Literal::MakeTuple({Literal::MakeTuple({prod.get(), sum.get()}).get(),
+                          Literal::CreateR0<complex64>({123, 456}).get()});
+  ComputeAndCompareTuple(&builder, *expected, {arg0.get(), arg1.get()},
+                         error_spec_);
+}
+
 }  // namespace
 }  // namespace xla

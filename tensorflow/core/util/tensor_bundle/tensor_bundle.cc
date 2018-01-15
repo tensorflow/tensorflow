@@ -51,6 +51,9 @@ const int kTensorBundleMinProducer = 0;
 const int kTensorBundleMinConsumer = 0;
 const int kTensorBundleVersion = 1;
 
+// Size of our input buffer for streaming reads
+static const int kBufferSize = 1024 * 1024;
+
 // Key to the special BundleHeaderProto entry.  Do not change this, as clients
 // can make the assumption that the header is always the first entry in the
 // bundle.
@@ -299,43 +302,6 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
   return Status::OK();
 }
 
-// Reads file[offset:offset+size) into destination[0:size).  Each Read() copies
-// at most "buffer_size" bytes.
-//
-// REQUIRES: "file" contains at least "offset + size" bytes.
-// REQUIRES: "destination" contains at least "size" bytes.
-// On error, "destination" may contain garbage.
-Status ReadInputByChunk(const RandomAccessFile* file, size_t offset,
-                        size_t size, size_t buffer_size, char* destination) {
-  if (size == 0) return Status::OK();
-  CHECK_GT(size, 0);
-  CHECK_GT(buffer_size, 0);
-  size_t bytes_read = 0;
-  StringPiece result;
-
-  while (bytes_read < size) {
-    const size_t desired_bytes = std::min(buffer_size, size - bytes_read);
-    Status status = file->Read(offset + bytes_read, desired_bytes, &result,
-                               destination + bytes_read);
-
-    if (!status.ok()) {
-      return status;
-    } else if (result.size() != desired_bytes) {
-      return errors::DataLoss("Requested ", desired_bytes, " bytes but read ",
-                              result.size(), " bytes.");
-    } else if (result.data() == destination + bytes_read) {
-      // Data is already in the correct location.
-    } else {
-      // memmove is guaranteed to handle overlaps safely (although the src and
-      // dst buffers should not overlap for this function).
-      memmove(destination + bytes_read, result.data(), result.size());
-    }
-    bytes_read += result.size();
-  }
-  CHECK_EQ(bytes_read, size);
-  return Status::OK();
-}
-
 // Returns whether "slice_spec" is a full slice, with respect to the full shape.
 //
 // This can happen say, when "slice_spec" is
@@ -379,10 +345,27 @@ table::Options TableBuilderOptions() {
   return o;
 }
 
+// Writes zeros to output buffer to align the next write to the requested
+// alignment. "size" is the current size of the buffer and is updated to the
+// new size.
+Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
+  int bytes_over = *size % alignment;
+  if (bytes_over == 0) {
+    return Status::OK();
+  }
+  int bytes_to_write = alignment - bytes_over;
+  Status status = out->Append(string(bytes_to_write, '\0'));
+  if (status.ok()) {
+    *size += bytes_to_write;
+  }
+  return status;
+}
+
 }  // namespace
 
-BundleWriter::BundleWriter(Env* env, StringPiece prefix)
+BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
+      options_(options),
       prefix_(prefix.ToString()),
       tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
                                          random::New64())),
@@ -436,6 +419,7 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
     entry->set_size(data_bytes_written);
     entry->set_crc32c(crc32c::Mask(crc32c));
     size_ += data_bytes_written;
+    status_ = PadAlignment(out_.get(), options_.data_alignment, &size_);
   }
   return status_;
 }
@@ -847,8 +831,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file =
-        new io::InputBuffer(file.release(), 256 << 10 /* 256KB buffer */);
+    buffered_file = new io::InputBuffer(file.release(), kBufferSize);
     // The InputBuffer and RandomAccessFile objects are both released in dtor.
     data_[entry.shard_id()] = buffered_file;
   }
@@ -856,14 +839,21 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 
   TF_RETURN_IF_ERROR(buffered_file->Seek(entry.offset()));
   uint32 actual_crc32c = 0;
+
   if (DataTypeCanUseMemcpy(entry.dtype())) {
-    // Important: ReadInputByChunk() bounds the readahead as min(buffer, actual
-    // bytes needed).  This is critical when reading small tensors, so we don't
-    // rely on io::InputBuffer's blind buffering here.
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
-    TF_RETURN_IF_ERROR(ReadInputByChunk(buffered_file->file(), entry.offset(),
-                                        entry.size(), 8 << 20 /* 8MB buffer */,
-                                        backing_buffer));
+    size_t unused_bytes_read;
+    if (entry.size() > kBufferSize) {
+      StringPiece sp;
+      TF_RETURN_IF_ERROR(buffered_file->file()->Read(
+          entry.offset(), entry.size(), &sp, backing_buffer));
+      if (sp.data() != backing_buffer) {
+        memmove(backing_buffer, sp.data(), entry.size());
+      }
+    } else {
+      TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
+                                                   &unused_bytes_read));
+    }
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
   } else if (entry.dtype() == DT_VARIANT) {
     // Relies on io::InputBuffer's buffering, because we issue many neighboring

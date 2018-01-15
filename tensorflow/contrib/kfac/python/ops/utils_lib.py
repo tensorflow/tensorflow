@@ -30,7 +30,6 @@ _allowed_symbols = [
     "kronecker_product",
     "layer_params_to_mat2d",
     "mat2d_to_layer_params",
-    "compute_pi",
     "posdef_inv",
     "posdef_inv_matrix_inverse",
     "posdef_inv_cholesky",
@@ -38,6 +37,8 @@ _allowed_symbols = [
     "SubGraph",
     "generate_random_signs",
     "fwd_gradients",
+    "ensure_sequence",
+    "batch_execute",
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

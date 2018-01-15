@@ -55,19 +55,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   //               v       v
   //              Convolution
   //                 conv
-  //                   |
-  //                   v
-  //               Transpose (optional if identity transposition)
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
-  // If the forward convolution is followed by a transpose, we can fuse the
-  // transpose into the backward convolution as well.
-  HloInstruction* transpose = nullptr;
-  if (conv->user_count() == 1) {
-    HloInstruction* single_user = *conv->users().begin();
-    if (single_user->opcode() == HloOpcode::kTranspose) {
-      transpose = single_user;
-    }
-  }
 
   // Step 2: match paddings and dimension numbers of the forward convolution.
   const ConvolutionDimensionNumbers& conv_dnums =
@@ -75,6 +63,9 @@ MatchBackwardFilter(HloInstruction* conv) {
   auto input_batch_dim = conv_dnums.input_batch_dimension();
   auto input_feature_dim = conv_dnums.input_feature_dimension();
   auto input_spatial_dims = conv_dnums.input_spatial_dimensions();
+  auto kernel_input_feature_dim = conv_dnums.kernel_input_feature_dimension();
+  auto kernel_output_feature_dim = conv_dnums.kernel_output_feature_dimension();
+  auto kernel_spatial_dims = conv_dnums.kernel_spatial_dimensions();
   auto output_batch_dim = conv_dnums.output_batch_dimension();
   auto output_feature_dim = conv_dnums.output_feature_dimension();
   auto output_spatial_dims = conv_dnums.output_spatial_dimensions();
@@ -96,9 +87,14 @@ MatchBackwardFilter(HloInstruction* conv) {
       VLOG(1) << "Padding low should be non-negative.";
       return no_match_result;
     }
+    if (window_dim.window_reversal()) {
+      VLOG(1) << "Window reversal field not supported";
+      return no_match_result;
+    }
     // Padding high will be checked in Step 3.
   }
-  if (transpose == nullptr && !window_util::HasWindowDilation(conv->window())) {
+  if (input_batch_dim == output_batch_dim &&
+      !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "
                "to fold it to a backward filter convolution.";
@@ -169,53 +165,32 @@ MatchBackwardFilter(HloInstruction* conv) {
     }
   }
 
-  // To make future HLO passes easier, we canonicalize the fused expression by
-  // adding an identity transposition if it's omitted in the pattern.
-  if (transpose == nullptr) {
-    // Create an identity transposition with the same rank as the forward
-    // convolution.
-    HloComputation* parent_computation = conv->parent();
-    std::vector<int64> transpose_dimensions(ShapeUtil::Rank(conv->shape()));
-    std::iota(transpose_dimensions.begin(), transpose_dimensions.end(), 0);
-    transpose =
-        parent_computation->AddInstruction(HloInstruction::CreateTranspose(
-            conv->shape(), conv, transpose_dimensions));
-    TF_CHECK_OK(conv->ReplaceAllUsesWith(transpose));
-  }
-
   // Restore the dimension numbers of the backward convolution from the forward
   // convolution. The two activation dimensions are reversed (batch and
   // feature).
   ConvolutionDimensionNumbers backward_conv_dnums;
   backward_conv_dnums.set_input_batch_dimension(input_feature_dim);
   backward_conv_dnums.set_input_feature_dimension(input_batch_dim);
-  backward_conv_dnums.set_output_batch_dimension(output_feature_dim);
-  backward_conv_dnums.set_output_feature_dimension(output_batch_dim);
   for (int i = 0; i < input_spatial_dims.size(); ++i) {
     backward_conv_dnums.add_input_spatial_dimensions(input_spatial_dims[i]);
   }
-  for (int i = 0; i < output_spatial_dims.size(); ++i) {
-    backward_conv_dnums.add_output_spatial_dimensions(output_spatial_dims[i]);
+  backward_conv_dnums.set_output_batch_dimension(kernel_input_feature_dim);
+  backward_conv_dnums.set_output_feature_dimension(kernel_output_feature_dim);
+  for (int i = 0; i < kernel_spatial_dims.size(); ++i) {
+    backward_conv_dnums.add_output_spatial_dimensions(kernel_spatial_dims[i]);
   }
   // The dimension numbering of the output of the forward convolution (before
   // transposition) is the same as that of the activations (according to the
   // semantics of kConvolution). The batch dimension of the activations should
   // be treated as the input feature dimension, and the feature dimension should
   // be treated as the output feature.
-  //
-  // The output of the forward convolution needs to be transposed to fit into
-  // the dimension numbering of the weight gradients. This transposition maps
-  // dimension i to PositionInContainer(transpose->dimensions(), i).
-  backward_conv_dnums.set_kernel_input_feature_dimension(
-      PositionInContainer(transpose->dimensions(), output_batch_dim));
-  backward_conv_dnums.set_kernel_output_feature_dimension(
-      PositionInContainer(transpose->dimensions(), output_feature_dim));
+  backward_conv_dnums.set_kernel_input_feature_dimension(output_batch_dim);
+  backward_conv_dnums.set_kernel_output_feature_dimension(output_feature_dim);
   for (int i = 0; i < output_spatial_dims.size(); ++i) {
-    backward_conv_dnums.add_kernel_spatial_dimensions(
-        PositionInContainer(transpose->dimensions(), output_spatial_dims[i]));
+    backward_conv_dnums.add_kernel_spatial_dimensions(output_spatial_dims[i]);
   }
 
-  return std::make_tuple(true, std::vector<HloInstruction*>({transpose, conv}),
+  return std::make_tuple(true, std::vector<HloInstruction*>({conv}),
                          backward_conv_window, backward_conv_dnums);
 }
 
@@ -273,6 +248,10 @@ MatchBackwardInput(HloInstruction* conv) {
       VLOG(1) << "Forward convolution's window "
               << conv->window().ShortDebugString()
               << " should have no window dilation.";
+      return no_match_result;
+    }
+    if (window_dim.window_reversal()) {
+      VLOG(1) << "Window reversal field not supported";
       return no_match_result;
     }
   }

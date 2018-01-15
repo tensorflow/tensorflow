@@ -179,12 +179,11 @@ def _ProcessInputMapParam(input_map):
 
 def _ProcessReturnElementsParam(return_elements):
   """Type-checks and possibly canonicalizes `return_elements`."""
-  if return_elements is not None:
-    return_elements = tuple(return_elements)
-    if not all(isinstance(x, compat.bytes_or_text_types)
-               for x in return_elements):
-      raise TypeError('return_elements must be a list of strings.')
-  return return_elements
+  if return_elements is None: return None
+  if not all(isinstance(x, compat.bytes_or_text_types)
+             for x in return_elements):
+    raise TypeError('return_elements must be a list of strings.')
+  return tuple(compat.as_str(x) for x in return_elements)
 
 
 def _FindAttrInOpDef(attr_name, op_def):
@@ -194,24 +193,151 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
-def _PopulateTFImportGraphDefOptions(options, prefix, return_elements):
+def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
+  """Removes unknown default attrs according to `producer_op_list`.
+
+  Removes any unknown attrs in `graph_def` (i.e. attrs that do not appear in
+  the OpDefs in `op_dict`) that have a default value in `producer_op_list`.
+
+  Args:
+    op_dict: dict mapping operation name to OpDef.
+    producer_op_list: OpList proto.
+    graph_def: GraphDef proto
+  """
+  producer_op_dict = {op.name: op for op in producer_op_list.op}
+  for node in graph_def.node:
+    # Remove any default attr values that aren't in op_def.
+    if node.op in producer_op_dict:
+      op_def = op_dict[node.op]
+      producer_op_def = producer_op_dict[node.op]
+      # We make a copy of node.attr to iterate through since we may modify
+      # node.attr inside the loop.
+      for key in list(node.attr):
+        if _FindAttrInOpDef(key, op_def) is None:
+          # No attr_def in consumer, look in producer.
+          attr_def = _FindAttrInOpDef(key, producer_op_def)
+          if (attr_def and attr_def.HasField('default_value') and
+              node.attr[key] == attr_def.default_value):
+            # Unknown attr had default value in producer, delete it so it can be
+            # understood by consumer.
+            del node.attr[key]
+
+
+def _ConvertInputMapValues(name, input_map):
+  """Ensures all input map values are tensors.
+
+  This should be called from inside the import name scope.
+
+  Args:
+    name: the `name` argument passed to import_graph_def
+    input_map: the `input_map` argument passed to import_graph_def.
+
+  Returns:
+    An possibly-updated version of `input_map`.
+
+  Raises:
+    ValueError: if input map values cannot be converted due to empty name scope.
+  """
+  if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
+    if name == '':  # pylint: disable=g-explicit-bool-comparison
+      raise ValueError(
+          'tf.import_graph_def() requires a non-empty `name` if `input_map` '
+          'contains non-Tensor values. Try calling tf.convert_to_tensor() on '
+          '`input_map` values before calling tf.import_graph_def().')
+    with ops.name_scope('_inputs'):
+      input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+  return input_map
+
+
+def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
+                                     return_elements):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
+  c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
+  c_api.TF_ImportGraphDefOptionsSetUniquifyPrefix(options, True)
 
+  for input_src, input_dst in input_map.items():
+    input_src = compat.as_str(input_src)
+    if input_src.startswith('^'):
+      src_name = compat.as_bytes(input_src[1:])
+      dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
+      c_api.TF_ImportGraphDefOptionsRemapControlDependency(options, src_name,
+                                                           dst_op)
+    else:
+      src_name, src_idx = _ParseTensorName(input_src)
+      src_name = compat.as_str(src_name)
+      dst_output = input_dst._as_tf_output()  # pylint: disable=protected-access
+      c_api.TF_ImportGraphDefOptionsAddInputMapping(options, src_name,
+                                                    src_idx, dst_output)
   for name in return_elements or []:
     if ':' in name:
       op_name, index = _ParseTensorName(name)
+      op_name = compat.as_str(op_name)
       c_api.TF_ImportGraphDefOptionsAddReturnOutput(options, op_name, index)
     else:
-      c_api.TF_ImportGraphDefOptionsAddReturnOperation(options, name)
+      c_api.TF_ImportGraphDefOptionsAddReturnOperation(options,
+                                                       compat.as_str(name))
 
 
 def _ProcessNewOps(graph):
   """Processes the newly-added TF_Operations in `graph`."""
-  for c_op in c_api_util.new_tf_operations(graph):
-    graph._create_op_from_tf_operation(c_op)  # pylint: disable=protected-access
+  # Maps from a node to the names of the ops it's colocated with, if colocation
+  # is specified in the attributes.
+  colocation_pairs = {}
 
-  # TODO(skyewm): colocation logic
+  for new_op in graph._add_new_tf_operations(compute_devices=False):  # pylint: disable=protected-access
+    colocation_names = _GetColocationNames(new_op)
+    if colocation_names:
+      colocation_pairs[new_op] = colocation_names
+      # Don't apply this op's device function, since colocation constraints
+      # override device functions. Note that this op's device may still be set
+      # by the loop below.
+    else:
+      with _MaybeDevice(new_op.device):
+        graph._apply_device_functions(new_op)  # pylint: disable=protected-access
+
+  # The following loop populates the device field of ops that are colocated
+  # with another op.  This is implied by the colocation attribute, but we
+  # propagate the device field for completeness.
+  for op, coloc_op_list in colocation_pairs.items():
+    coloc_device = None
+    # Find any device in the list of colocated ops that have a device, if it
+    # exists.  We assume that if multiple ops have devices, they refer to the
+    # same device.  Otherwise, a runtime error will occur since the colocation
+    # property cannot be guaranteed.
+    #
+    # One possible improvement is to try to check for compatibility of all
+    # devices in this list at import time here, which would require
+    # implementing a compatibility function for device specs in python.
+    for coloc_op_name in coloc_op_list:
+      try:
+        coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
+      except KeyError:
+        raise ValueError('Specified colocation to an op that '
+                         'does not exist during import: %s in %s' % (
+                             coloc_op_name, op.name))
+      if coloc_op.device:
+        coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
+        break
+    if coloc_device:
+      op._set_device(coloc_device)  # pylint: disable=protected-access
+
+
+def _GetColocationNames(op):
+  """Returns names of the ops that `op` should be colocated with."""
+  colocation_names = []
+  try:
+    class_values = op.get_attr('_class')
+  except ValueError:
+    # No _class attr
+    return
+  for val in class_values:
+    val = compat.as_str(val)
+    if val.startswith('loc:@'):
+      colocation_node_name = val[len('loc:@'):]
+      if colocation_node_name != op.name:
+        colocation_names.append(colocation_node_name)
+  return colocation_names
 
 
 def _GatherReturnElements(requested_return_elements, graph, results):
@@ -296,10 +422,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   op_dict = op_def_registry.get_registered_ops()
 
-  if producer_op_list is None:
-    producer_op_dict = None
-  else:
-    producer_op_dict = {op.name: op for op in producer_op_list.op}
+  if producer_op_list is not None:
+    # TODO(skyewm): make a copy of graph_def so we're not mutating the argument?
+    _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def)
 
   graph = ops.get_default_graph()
 
@@ -312,16 +437,52 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       else:
         prefix = ''
 
+      # Generate any input map tensors inside name scope
+      input_map = _ConvertInputMapValues(name, input_map)
+
     scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
     options = scoped_options.options
-    _PopulateTFImportGraphDefOptions(options, prefix, return_elements)
+    _PopulateTFImportGraphDefOptions(options, prefix, input_map,
+                                     return_elements)
 
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      with errors.raise_exception_on_not_ok_status() as status:
-        results = c_api.TF_GraphImportGraphDefWithResults(
-            graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              graph._c_graph, serialized, options, status)  # pylint: disable=protected-access
+      except errors.InvalidArgumentError as e:
+        # Convert to ValueError for backwards compatibility.
+        raise ValueError(str(e))
 
     _ProcessNewOps(graph)
+
+    # Create _DefinedFunctions for any imported functions.
+    #
+    # We do this by creating _DefinedFunctions directly from `graph_def`, and
+    # adding them to `graph`. Adding an existing function to a TF_Graph is a
+    # no-op, so this only has the effect of updating the Python state (usually
+    # _DefinedFunction.add_to_graph also adds the function to the TF_Graph).
+    #
+    # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
+    # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
+    if graph_def.library and graph_def.library.function:
+      # pylint: disable=protected-access
+      functions = function._from_library(graph_def.library)
+      for f in functions:
+        f.add_to_graph(graph)
+      # pylint: enable=protected-access
+
+    # Treat input mappings that don't appear in the graph as an error, because
+    # they are likely to be due to a typo.
+    missing_unused_input_keys = (
+        c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+            results))
+    if missing_unused_input_keys:
+      missing_unused_input_keys = [compat.as_str(s)
+                                   for s in missing_unused_input_keys]
+      raise ValueError(
+          'Attempted to map inputs that were not found in graph_def: [%s]'
+          % ', '.join(missing_unused_input_keys))
 
     if return_elements is None:
       return None
@@ -359,16 +520,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       # more nuanced.
       g.graph_def_versions.CopyFrom(graph_def.versions)
 
-      if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
-        if not scope:
-          # The caller must have passed `name=''`.
-          raise ValueError(
-              'tf.import_graph_def() requires a non-empty `name` if `input_map`'
-              ' contains non-Tensor values. Try calling tf.convert_to_tensor() '
-              'on `input_map` values before calling tf.import_graph_def().')
-        with ops.name_scope('_inputs'):
-          input_map = {k: ops.convert_to_tensor(v)
-                       for k, v in input_map.items()}
+      input_map = _ConvertInputMapValues(name, input_map)
 
       # NOTE(mrry): We do this in two passes, because there may be a cycle in
       # `graph_def`.
@@ -388,21 +540,6 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             value = node.attr[key]
             if value is None or value.WhichOneof('value') is None:
               node.attr[key].CopyFrom(attr_def.default_value)
-        if producer_op_dict:
-          # Remove any default attr values that aren't in op_def.
-          if node.op in producer_op_dict:
-            producer_op_def = producer_op_dict[node.op]
-            # We make a copy of node.attr to iterate through since we
-            # may modify node.attr inside the loop.
-            for key in list(node.attr):
-              if _FindAttrInOpDef(key, op_def) is None:
-                # No attr_def in consumer, look in producer.
-                attr_def = _FindAttrInOpDef(key, producer_op_def)
-                if (attr_def and attr_def.HasField('default_value') and
-                    node.attr[key] == attr_def.default_value):
-                  # Unknown attr had default value in producer, delete it
-                  # so it can be understood by consumer.
-                  del node.attr[key]
 
         output_types = _OutputTypes(node, op_dict)
         name_to_op[node.name] = g.create_op(

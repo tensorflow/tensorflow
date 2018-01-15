@@ -3381,10 +3381,11 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
     for (int out_h = 0; out_h < output_height; ++out_h) {
       for (int out_w = 0; out_w < output_width; ++out_w) {
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_b);
-        if (out_h * block_shape_height < padding_top ||
-            out_h * block_shape_height >= padding_top + input_height ||
-            out_w * block_shape_width < padding_left ||
-            out_w * block_shape_width >= padding_left + input_width) {
+        if (out_h * block_shape_height + shift_h < padding_top ||
+            out_h * block_shape_height + shift_h >=
+                padding_top + input_height ||
+            out_w * block_shape_width + shift_w < padding_left ||
+            out_w * block_shape_width + shift_w >= padding_left + input_width) {
           memset(out, 0, depth * sizeof(T));
         } else {
           const T* in =
@@ -3704,6 +3705,43 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
   auto max_value = input2_data[0];
   output_map.array() = input1_map.array().max(max_value);
 }
+
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+            T2* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("ArgMax");
+
+  // The current ArgMax implemention can only determine the index of the maximum
+  // value in the last dimension. So the axis argument is ignored.
+  TFLITE_DCHECK_EQ(axis[0], 3);
+
+  // For ArgMax, the number of output dimensions = (number of input dimensions -
+  // 1). For the sake of simplicity, the output dimensions are equal to the
+  // input dimensions here. We enforce the constraint that the last dimension
+  // must always be 1.
+  TFLITE_DCHECK_EQ(ArraySize(output_dims, 0), 1);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = ArraySize(input_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        auto max_value = input_data[Offset(input_dims, 0, x, y, b)];
+        int max_index = 0;
+        for (int d = 1; d < depth; ++d) {
+          const auto& curr_value = input_data[Offset(input_dims, d, x, y, b)];
+          if (curr_value > max_value) {
+            max_value = curr_value;
+            max_index = d;
+          }
+        }
+        output_data[Offset(output_dims, 0, x, y, b)] = max_index;
+      }
+    }
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

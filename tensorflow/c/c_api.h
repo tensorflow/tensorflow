@@ -889,6 +889,20 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
 
+// Set whether to uniquify imported operation names. If true, imported operation
+// names will be modified if their name already exists in the graph. If false,
+// conflicting names will be treated as an error. Note that this option has no
+// effect if a prefix is set, since the prefix will guarantee all names are
+// unique. Defaults to false.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetUniquifyNames(
+    TF_ImportGraphDefOptions* opts, unsigned char uniquify_names);
+
+// If true, the specified prefix will be modified if it already exists as an
+// operation name or prefix in the graph. If false, a conflicting prefix will be
+// treated as an error. This option has no effect if no prefix is specified.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetUniquifyPrefix(
+    TF_ImportGraphDefOptions* opts, unsigned char uniquify_prefix);
+
 // Set any imported nodes with input `src_name:src_index` to have that input
 // replaced with `dst`. `src_name` refers to a node in the graph to be imported,
 // `dst` references a node already existing in the graph being imported into.
@@ -948,16 +962,16 @@ TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsReturnOperations(
     TF_ImportGraphDefResults* results, int* num_opers, TF_Operation*** opers);
 
 // Fetches any input mappings requested via
-// TF_ImportGraphDefOptionsAddInputMapping() that weren't used as input to any
-// node in the imported graph def. The number of fetched mappings is returned in
-// `num_unused_input_mappings`. The array of each mapping's source node name is
-// returned in `src_names`, and the array of each mapping's source index is
-// returned in `src_indexes`.
+// TF_ImportGraphDefOptionsAddInputMapping() that didn't appear in the GraphDef
+// and weren't used as input to any node in the imported graph def. The number
+// of fetched mappings is returned in `num_missing_unused_input_mappings`. The
+// array of each mapping's source node name is returned in `src_names`, and the
+// array of each mapping's source index is returned in `src_indexes`.
 //
 // `*src_names`, `*src_indexes`, and the memory backing each string in
 // `src_names` are owned by and have the lifetime of `results`.
-TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsUnusedInputMappings(
-    TF_ImportGraphDefResults* results, int* num_unused_input_mappings,
+TF_CAPI_EXPORT extern void TF_ImportGraphDefResultsMissingUnusedInputMappings(
+    TF_ImportGraphDefResults* results, int* num_missing_unused_input_mappings,
     const char*** src_names, int** src_indexes);
 
 // Deletes a results object returned by TF_GraphImportGraphDefWithResults().
@@ -1503,6 +1517,49 @@ TF_CAPI_EXPORT extern void TF_DeleteLibraryHandle(TF_Library* lib_handle);
 // The data in the buffer will be the serialized OpList proto for ops registered
 // in this address space.
 TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllOpList();
+
+// TF_ApiDefMap encapsulates a collection of API definitions for an operation.
+//
+// This object maps the name of a TensorFlow operation to a description of the
+// API to generate for it, as defined by the ApiDef protocol buffer (
+// https://www.tensorflow.org/code/tensorflow/core/framework/api_def.proto)
+//
+// The ApiDef messages are typically used to generate convenience wrapper
+// functions for TensorFlow operations in various language bindings.
+typedef struct TF_ApiDefMap TF_ApiDefMap;
+
+// Creates a new TF_ApiDefMap instance.
+//
+// Params:
+//  op_list_buffer - TF_Buffer instance containing serialized OpList
+//    protocol buffer. (See
+//    https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto
+//    for the OpList proto definition).
+//  status - Set to OK on success and an appropriate error on failure.
+TF_CAPI_EXPORT extern TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer,
+                                                    TF_Status* status);
+
+// Deallocates a TF_ApiDefMap.
+TF_CAPI_EXPORT extern void TF_DeleteApiDefMap(TF_ApiDefMap* apimap);
+
+// Add ApiDefs to the map.
+//
+// `text` corresponds to a text representation of an ApiDefs protocol message.
+// (https://www.tensorflow.org/code/tensorflow/core/framework/api_def.proto).
+//
+// The provided ApiDefs will be merged with existing ones in the map, with
+// precedence given to the newly added version in case of conflicts with
+// previous calls to TF_ApiDefMapPut.
+TF_CAPI_EXPORT extern void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map,
+                                           const char* text, size_t text_len,
+                                           TF_Status* status);
+
+// Returns a serialized ApiDef protocol buffer for the TensorFlow operation
+// named `name`.
+TF_CAPI_EXPORT extern TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map,
+                                                 const char* name,
+                                                 size_t name_len,
+                                                 TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -373,8 +373,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // If in_depth==1, this operation is just a standard convolution, so
     // invoke that op.
     if (std::is_same<T, float>::value && in_depth == 1) {
+      // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+      // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                stride_, stride_, padding_, output, data_format_);
+                /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                padding_, output, data_format_);
       return;
     }
 

@@ -165,11 +165,9 @@ FunctionDef WXPlusB(){return FDH::Define(
        {"w", "x"},
        {
            {"T", "$T"}, {"transpose_a", false}, {"transpose_b", false},
-#ifdef INTEL_MKL
-       }},
-#else
-         {"_kernel", "eigen"}}},
-#endif
+           {"_kernel", "eigen"}
+       }
+      },
       {
         {"y"}, "Add", {"mm", "b"}, {
           { "T", "$T" }
@@ -191,6 +189,23 @@ FunctionDef Swap() {
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
+}
+
+FunctionDef InvalidControlFlow() {
+  return FDH::Create(
+      // Name
+      "InvalidControlFlow",
+      // Args
+      {"i: int32"},
+      // Return values
+      {"o: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"enter"}, "Enter", {"i"}, {{"T", DT_INT32}, {"frame_name", "while"}}},
+       {{"add"}, "Add", {"enter:output", "i"}, {{"T", DT_INT32}}}},
+      // Output mapping
+      {{"o", "add:z"}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

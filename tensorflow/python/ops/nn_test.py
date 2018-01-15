@@ -90,6 +90,18 @@ class SoftmaxTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_last_dim_np, y_np, eps)
 
+  def testSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.softmax(arr, axis=0)
+    z_gt_axis = nn_ops.softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
@@ -163,6 +175,18 @@ class LogSoftmaxTest(test_lib.TestCase):
     y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
+
+  def testLogSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.log_softmax(arr, axis=0)
+    z_gt_axis = nn_ops.log_softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   def testGradient(self):
     x_shape = [5, 10]
@@ -951,6 +975,65 @@ class MomentsTest(test_lib.TestCase):
 
   def testOutput4DInput123(self):
     self.doOutputTest((10, 10, 10, 30), (1, 2, 3))
+
+
+class DataFormatDimMapTest(test_lib.TestCase):
+
+  def _test(self, x_val, y_val_expected):
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_dim_map(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, y_val_expected)
+
+  def test(self):
+    self._test(0, 0)
+    self._test(1, 2)
+    self._test(2, 3)
+    self._test(3, 1)
+    self._test(-1, 1)
+    self._test(-2, 3)
+    self._test(-3, 2)
+    self._test(-4, 0)
+    self._test([1, 3], [2, 1])
+    self._test([1, 3, -2], [2, 1, 3])
+    self._test([1, -3, -2], [2, 2, 3])
+    self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
+
+
+class DataFormatVectorPermuteTest(test_lib.TestCase):
+
+  def testNHWCToNCHW(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 3, 4, 9])
+
+  def testNCHWToNHWC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNHWCToNCHW2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
+
+  def testNCHWToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
 
 if __name__ == "__main__":

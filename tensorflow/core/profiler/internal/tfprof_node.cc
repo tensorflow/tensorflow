@@ -80,10 +80,15 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
 
 void ExecStep::AddMemoryStats(const string& dev,
                               const NodeExecStats& step_stat) {
-  if (exec_.memory_intialized()) {
+  ExecMemory exec_mem;
+  if (step_stat.all_start_micros() > 0) {
+    exec_mem.set_memory_micros(step_stat.all_start_micros() +
+                               step_stat.op_end_rel_micros());
+  } else {
+    fprintf(stderr, "%s has no start time, skipping\n",
+            step_stat.node_name().c_str());
     return;
   }
-  exec_.set_memory_intialized(true);
 
   int accelerator_allocator_cnt = 0;
   for (const auto& mem : step_stat.memory()) {
@@ -93,14 +98,12 @@ void ExecStep::AddMemoryStats(const string& dev,
       continue;
     }
     ++accelerator_allocator_cnt;
-    exec_.set_allocator_bytes_in_use(
-        std::max(static_cast<int64>(exec_.allocator_bytes_in_use()),
+    exec_mem.set_allocator_bytes_in_use(
+        std::max(static_cast<int64>(exec_mem.allocator_bytes_in_use()),
                  static_cast<int64>(mem.allocator_bytes_in_use())));
-    Allocation allocation;
     for (const auto& alloc : mem.allocation_records()) {
-      allocation.add_allocation_records()->MergeFrom(alloc);
+      allocations_.push_back(alloc);
     }
-    allocations_.push_back(allocation);
   }
   if (accelerator_allocator_cnt > 1) {
     fprintf(stderr, "found %d gpu allocator for 1 node\n",
@@ -121,24 +124,47 @@ void ExecStep::AddMemoryStats(const string& dev,
       uint64 output_ptr =
           output.tensor_description().allocation_description().ptr();
       total_output_bytes += output_bytes;
-      output_memory_[output.slot()] = std::make_pair(output_bytes, output_ptr);
+
+      auto& mem = (*exec_mem.mutable_output_memory())[output.slot()];
+      mem.set_ptr(output_ptr);
+      mem.set_bytes(output_bytes);
     }
   }
-  exec_.set_output_bytes(total_output_bytes);
+  exec_mem.set_output_bytes(total_output_bytes);
 
   if (step_stat.has_memory_stats()) {
-    exec_.set_host_temp_bytes(exec_.host_temp_bytes() +
-                              step_stat.memory_stats().host_temp_memory_size());
-    exec_.set_host_persistent_bytes(
-        exec_.host_persistent_bytes() +
+    exec_mem.set_host_temp_bytes(
+        exec_mem.host_temp_bytes() +
+        step_stat.memory_stats().host_temp_memory_size());
+    exec_mem.set_host_persistent_bytes(
+        exec_mem.host_persistent_bytes() +
         step_stat.memory_stats().host_persistent_memory_size());
-    exec_.set_accelerator_temp_bytes(
-        exec_.accelerator_temp_bytes() +
+    exec_mem.set_accelerator_temp_bytes(
+        exec_mem.accelerator_temp_bytes() +
         step_stat.memory_stats().device_temp_memory_size());
-    exec_.set_accelerator_persistent_bytes(
-        exec_.accelerator_persistent_bytes() +
+    exec_mem.set_accelerator_persistent_bytes(
+        exec_mem.accelerator_persistent_bytes() +
         step_stat.memory_stats().device_persistent_memory_size());
   }
+
+  // TODO(xpan): Make this more accurate:
+  // High level: Memory tracking is suspicous and requires large scale
+  // clean up.
+  // Investigte the memory usage difference between CPU/GPU with OpViewTest.
+  //
+  // 1. OpKernelConstruction::allocate_xxx is not traced. Below, we only
+  //    discuss OpKernelContext-related allocations.
+  // 2. allocate_output calls allocate_tensor, which is properly tracked in
+  //    'NodeExecStats.memory'.
+  // 3. allocate_temp is only tracked through record_xxx_temp. It appears
+  //    in 'NodeExecStats.memory_stats'.
+  // 4. allocate_persistent calls allocate_tensor, which is properly tracked
+  //    in 'NodeExecStats.memory'. However, there is no way to count it as
+  //    persistent now.
+  // 5. record_xxx_persistent is called when allocate_persistent
+  //    is not used and hence tracks some complementary bytes. It appears in
+  //    'NodeExecStats.memory_stats'. It's suspicious. But we should
+  //    use it now since it covers constant op.
   int64 residual_bytes = 0;
   int64 requested_bytes = 0;
   int64 peak_bytes = 0;
@@ -147,9 +173,20 @@ void ExecStep::AddMemoryStats(const string& dev,
     requested_bytes += mem.total_bytes();
     peak_bytes += mem.peak_bytes();
   }
-  exec_.set_requested_bytes(requested_bytes);
-  exec_.set_residual_bytes(residual_bytes);
-  exec_.set_peak_bytes(peak_bytes);
+  residual_bytes += exec_mem.host_persistent_bytes() +
+                    exec_mem.accelerator_persistent_bytes();
+  requested_bytes += exec_mem.host_persistent_bytes() +
+                     exec_mem.accelerator_persistent_bytes() +
+                     exec_mem.host_temp_bytes() +
+                     exec_mem.accelerator_temp_bytes();
+  peak_bytes += exec_mem.host_persistent_bytes() +
+                exec_mem.accelerator_persistent_bytes() +
+                exec_mem.host_temp_bytes() + exec_mem.accelerator_temp_bytes();
+
+  exec_mem.set_requested_bytes(requested_bytes);
+  exec_mem.set_residual_bytes(residual_bytes);
+  exec_mem.set_peak_bytes(peak_bytes);
+  memory_execs_.emplace_back(exec_mem);
 }
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
@@ -250,6 +287,9 @@ TensorShapeProto VecToShapeProto(const std::vector<int64>& shape_vec) {
 bool IsPlacedOnAccelerator(const string& device) {
   return device.find("gpu") != device.npos ||
          device.find("sycl") != device.npos;
+}
+bool IsPlacedOnCPU(const string& device) {
+  return device.find("cpu") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

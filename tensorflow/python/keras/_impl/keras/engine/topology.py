@@ -27,7 +27,6 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -109,7 +108,7 @@ class Layer(tf_base_layers.Layer):
       set_weights(weights)
       get_config()
       count_params()
-      _compute_output_shape(input_shape)
+      compute_output_shape(input_shape)
       compute_mask(x, mask)
       get_input_at(node_index)
       get_output_at(node_index)
@@ -274,7 +273,7 @@ class Layer(tf_base_layers.Layer):
       del self._initial_weights
     return output
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer.
 
     Assumes that the layer will be built
@@ -289,10 +288,13 @@ class Layer(tf_base_layers.Layer):
     Returns:
         An input shape tuple.
     """
-    if isinstance(input_shape, list):
-      return [tensor_shape.TensorShape(shape) for shape in input_shape]
-    else:
-      return tensor_shape.TensorShape(input_shape)
+    logging.warning(
+        'All custom layers should implement the '
+        '`compute_output_shape` method. This layer (' + self.name + ') '
+        'is relying on the base `Layer.compute_output_shape` implementation, '
+        'which will start raising a `NotImplementedError` '
+        'as of July 1st, 2018.')
+    return input_shape
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
@@ -1426,10 +1428,11 @@ def preprocess_weights_for_loading(layer,
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
   # convert the weights of CuDNNLSTM so that they could be loaded into LSTM
-  if layer.__class__.__name__ == 'LSTM':
+  if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
     # determine if we're loading a CuDNNLSTM layer from the number of bias
     # weights:
     # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
+    # if there's no bias weight in the file, skip this conversion
     units = weights[1].shape[0]
     bias = weights[2]
     if len(bias) == units * 8:

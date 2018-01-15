@@ -138,8 +138,11 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0,
-                  bool include_large_constants = false) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
@@ -313,11 +316,17 @@ class HloComputation {
           replacements,
       HloModule* module = nullptr, const string& suffix = "clone");
 
-  // Returns true if the given instruction can be removed from the
-  // computation. Instructions such as parameters and send/receive instructions
-  // cannot be removed without violating invariants of the HLO computation or
-  // module with the exception of fusion computation.  A parameter instruction
-  // is removable for a fusion computation.
+  // Returns true if the given instruction can be removed from the computation.
+  // Parameter instructions cannot be removed without violating invariants of
+  // the HLO computation with the exception of fusion computation. A parameter
+  // instruction is removable for a fusion computation.
+  //
+  // Note that IsRemovable() is a necessariy condition to remove an instruction
+  // rather than a sufficient condition. For example, instructions with
+  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
+  // transformation must guarantee the invariants relevant to the instructions
+  // still hold (e.g., Send and Recv must be removed together to make each
+  // channel complete).
   bool IsRemovable(const HloInstruction* instruction);
 
   // Returns true if this computation has a side effect. A computation has a

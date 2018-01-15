@@ -171,7 +171,7 @@ Status RandomShuffleQueue::GetElementComponentFromBatch(
   TF_RETURN_IF_ERROR(ctx->allocate_persistent(
       tuple[component].dtype(), element_shape, out_tensor, &element_access));
   TF_RETURN_IF_ERROR(
-      CopySliceToElement(tuple[component], element_access, index));
+      batch_util::CopySliceToElement(tuple[component], element_access, index));
   return Status::OK();
 }
 

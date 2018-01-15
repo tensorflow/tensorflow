@@ -375,6 +375,20 @@ __device__ __host__ inline Eigen::half ldg(const Eigen::half* address) {
 }
 
 template <>
+__device__ __host__ inline tensorflow::bfloat16 ldg(
+    const tensorflow::bfloat16* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  tensorflow::bfloat16 return_value;
+  asm volatile("ld.global.nc.u16 %0, [%1];"
+               : "=h"(return_value.value)
+               : "l"(address));
+  return return_value;
+#else
+  return *address;
+#endif
+}
+
+template <>
 __device__ __host__ inline bool ldg(const bool* address) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
   return *reinterpret_cast<const bool*>(

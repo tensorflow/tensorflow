@@ -86,7 +86,7 @@ Status EstimateEarliestExecutionTimes(
   name_map.clear();
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
   VirtualPlacer placer(cluster);
 
@@ -154,7 +154,7 @@ Status EstimateRequiredTimes(
     }
   }
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
   VirtualPlacer placer(cluster);
 

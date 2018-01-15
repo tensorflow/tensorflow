@@ -553,7 +553,7 @@ py_test(
 
 py_test(
     name = "data_utils_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [

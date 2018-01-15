@@ -3120,8 +3120,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
   logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
   res = nn.sparse_softmax_cross_entropy_with_logits(
       labels=targets, logits=logits)
-  if len(output_shape) == 3:
-    # if our output includes timesteps we need to reshape
+  if len(output_shape) >= 3:
+    # If our output includes timesteps or spatial dimensions we need to reshape
     return array_ops.reshape(res, array_ops.shape(output)[:-1])
   else:
     return res

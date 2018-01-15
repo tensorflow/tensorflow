@@ -234,14 +234,16 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 // same.
 uint64 FunctionDefHash(const FunctionDef& fdef);
 
-// Returns a canonicalized string for the instantiation of the
-// function of the given "name" and attributes "attrs".
-//
-// The returned string is guaranteed to be stable within one address
-// space. But it may be change as the implementation
-// evolves. Therefore, it should not be persisted or compared across
-// address spaces.
-string Canonicalize(const string& funcname, AttrSlice attrs);
+class CallFrameInterface {
+ public:
+  virtual ~CallFrameInterface() {}
+
+  virtual size_t num_args() const = 0;
+  virtual size_t num_retvals() const = 0;
+
+  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status SetRetval(int index, const Tensor& val) = 0;
+};
 
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
@@ -249,7 +251,7 @@ string Canonicalize(const string& funcname, AttrSlice attrs);
 // Runtime must arrange accesses to one FunctionCallFrame s.t.
 //   1. SetArgs() happens before any GetArg();
 //   2. GetRetvals happens after all SetRetval();
-class FunctionCallFrame {
+class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
   ~FunctionCallFrame();
@@ -259,9 +261,12 @@ class FunctionCallFrame {
   Status GetRetvals(std::vector<Tensor>* rets) const;
   Status ConsumeRetvals(std::vector<Tensor>* rets);
 
+  size_t num_args() const override { return arg_types_.size(); }
+  size_t num_retvals() const override { return ret_types_.size(); }
+
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const;
-  Status SetRetval(int index, const Tensor& val);
+  Status GetArg(int index, Tensor* val) const override;
+  Status SetRetval(int index, const Tensor& val) override;
 
  private:
   DataTypeVector arg_types_;
@@ -404,9 +409,37 @@ class FunctionLibraryRuntime {
   //
   // Returns OK and fills in "handle" if the instantiation succeeds.
   // Otherwise returns an error and "handle" is undefined.
+  struct InstantiateOptions {
+    // The canonical device name of the device on which the function
+    // should be instantiated. If empty, the function will be
+    // instantiated on the local device.
+    string target;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-null, the runtime will use `overlay_lib` to resolve
+    // function(s) named in `function_name` and `attrs`. Otherwise,
+    // the runtime will use its internal library.
+    // NOTE(mrry): If provided, all functions defined in `overlay_lib`
+    // must be self-contained, and cannot refer to functions defined
+    // in other libraries.
+    // TODO(mrry): Provide a mechanism for sharing core functions
+    // between a set of libraries (e.g. by allowing a
+    // `FunctionLibraryDefinition` to store an `outer_scope` pointer
+    // and implementing name resolution across libraries).
+    const FunctionLibraryDefinition* overlay_lib = nullptr;
+  };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
+                             const InstantiateOptions& options,
                              Handle* handle) = 0;
+  Status Instantiate(const string& function_name, AttrSlice attrs,
+                     Handle* handle) {
+    return Instantiate(function_name, attrs, {}, handle);
+  }
+
+  // Releases state associated with the handle.
+  virtual Status ReleaseHandle(Handle handle) = 0;
 
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
@@ -453,6 +486,8 @@ class FunctionLibraryRuntime {
   virtual void Run(const Options& opts, Handle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
+  virtual void Run(const Options& opts, Handle handle,
+                   CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   // Creates a "kernel" for the given node def "ndef".
   //
@@ -460,13 +495,19 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Returns true iff 'function' is stateful.
+  // Returns true iff the function named `function_name` is stateful.
+  // NOTE(mrry): This method assumes that the runtime is associated with a
+  // default function library, and looks up `function_name` in that library.
+  // It does not support overlay libraries.
   virtual bool IsStateful(const string& function_name) = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
   // Returns the function library definition that backs this runtime.
+  // NOTE(mrry): The returned library definition is the default function library
+  // for this runtime. The runtime may instantiate functions from separate
+  // overlay libraries, which are not returned by this function.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 
@@ -483,6 +524,19 @@ class FunctionLibraryRuntime {
   typedef uint64 LocalHandle;
 };
 
+// Returns a canonicalized string for the instantiation of the
+// function of the given "name", attributes "attrs", and "options".
+//
+// The returned string is guaranteed to be stable within one address
+// space. But it may be change as the implementation
+// evolves. Therefore, it should not be persisted or compared across
+// address spaces.
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options);
+inline string Canonicalize(const string& funcname, AttrSlice attrs) {
+  return Canonicalize(funcname, attrs, {});
+}
+
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
@@ -495,10 +549,11 @@ class DistributedFunctionLibraryRuntime {
   virtual ~DistributedFunctionLibraryRuntime() {}
 
   // The _target attr in attrs determines where the function is instantiated.
-  virtual Status Instantiate(const string& function_name,
-                             const FunctionLibraryDefinition& lib_def,
-                             AttrSlice attrs,
-                             FunctionLibraryRuntime::LocalHandle* handle) = 0;
+  virtual Status Instantiate(
+      const string& function_name, const FunctionLibraryDefinition& lib_def,
+      AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::LocalHandle* handle) = 0;
 
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,

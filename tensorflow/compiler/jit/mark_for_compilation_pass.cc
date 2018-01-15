@@ -41,6 +41,7 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
+const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 
 namespace {
 
@@ -172,10 +173,15 @@ bool HasResourceInputOrOutput(const Node& node) {
                    DT_RESOURCE) != node.output_types().end();
 }
 
+struct NodeCompare {
+  bool operator()(const Node* a, const Node* b) { return a->id() < b->id(); }
+};
+using OrderedNodeSet = std::set<Node*, NodeCompare>;
+
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
-    std::unordered_set<Node*>* candidates) {
+    OrderedNodeSet* candidates) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
@@ -208,6 +214,13 @@ Status FindCompilationCandidates(
     }
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
+      continue;
+    }
+    // _Retval nodes in a top-level function represent fetches.
+    // Do not compile them.
+    if (node->type_string() == "_Retval") {
+      VLOG(2) << "Compilation rejected node: return value " << node->name()
+              << ": " << node->type_string();
       continue;
     }
     candidates->insert(node);
@@ -347,7 +360,7 @@ Status MarkForCompilationPass::RunImpl(
 
   Graph* graph = options.graph->get();
 
-  std::unordered_set<Node*> compilation_candidates;
+  OrderedNodeSet compilation_candidates;
   TF_RETURN_IF_ERROR(FindCompilationCandidates(
       *graph, options.flib_def,
       (options.session_options != nullptr) ? options.session_options->env

@@ -16,7 +16,11 @@ import "tensorflow/contrib/lite/toco/types.proto";
 
 package toco;
 
-// Next ID to USE: 6.
+message InputArrayShape {
+  repeated int32 dims = 2;
+}
+
+// Next ID to USE: 7.
 message InputArray {
   // Name of the input arrays, i.e. the arrays from which input activations
   // will be read.
@@ -28,7 +32,7 @@ message InputArray {
   //
   // The last dimension is typically called 'depth' or 'channels'. For example,
   // for an image model taking RGB images as input, this would have the value 3.
-  repeated int32 shape = 2;
+  optional InputArrayShape shape = 6;
 
   // mean_value and std_value parameters control the interpretation of raw input
   // activation values (elements of the input array) as real numbers. The
@@ -73,6 +77,25 @@ message InputArray {
   optional IODataType data_type = 5;
 }
 
+message RnnState {
+  optional string state_array = 1;
+  optional string back_edge_source_array = 2;
+  optional bool discardable = 5;
+  // TODO(benoitjacob): drop the 'size' field. Should be redundant with
+  // --input_shapes and shapes propagation.
+  optional int32 size = 3;
+  // TODO(benoitjacob): manually_create is a temporary hack:
+  // due to discrepancies between the current toco dims tracking and
+  // TensorFlow shapes, for some models we need to manually create RNN state
+  // arrays with a specified shape.
+  // Maybe we should actually implement back-edges as operators of their own,
+  // which would remove the need for much special-casing, including here,
+  // we could probably consistently let PropagateFixedSizes handle state
+  // arrays.
+  // TODO(benoitjacob): should really drop manually_create now.
+  optional bool manually_create = 4;
+}
+
 // ModelFlags encodes properties of a model that, depending on the file
 // format, may or may not be recorded in the model file. The purpose of
 // representing these properties in ModelFlags is to allow passing them
@@ -94,7 +117,7 @@ message InputArray {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 16.
+// Next ID to USE: 18.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -108,20 +131,6 @@ message ModelFlags {
   // the 'batch' field: at most one of these two fields can be set.
   optional bool variable_batch = 10;
 
-  message RnnState {
-    optional string state_array = 1;
-    optional string back_edge_source_array = 2;
-    optional int32 size = 3;
-    // TODO(benoitjacob): manually_create is a temporary hack:
-    // due to discrepancies between the current toco dims tracking and
-    // TensorFlow shapes, for some models we need to manually create RNN state
-    // arrays with a specified shape.
-    // Maybe we should actually implement back-edges as operators of their own,
-    // which would remove the need for much special-casing, including here,
-    // we could probably consistently let PropagateFixedSizes handle state
-    // arrays.
-    optional bool manually_create = 4;
-  }
   repeated RnnState rnn_states = 12;
 
   // Checks applied to the model, typically after toco's comprehensive
@@ -138,4 +147,17 @@ message ModelFlags {
     optional int32 count_max = 3 [default = -1];
   }
   repeated ModelCheck model_checks = 14;
+
+  // If true, will allow passing inexistent arrays in --input_arrays
+  // and --output_arrays. This makes little sense, is only useful to
+  // more easily get graph visualizations.
+  optional bool allow_nonexistent_arrays = 16;
+
+  // If true, will allow passing non-ascii-printable characters in
+  // --input_arrays and --output_arrays. By default (if false), only
+  // ascii printable characters are allowed, i.e. character codes
+  // ranging from 32 to 127. This is disallowed by default so as to
+  // catch common copy-and-paste issues where invisible unicode
+  // characters are unwittingly added to these strings.
+  optional bool allow_nonascii_arrays = 17;
 }

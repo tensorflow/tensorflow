@@ -109,7 +109,7 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
   // Prepare a hypothetical TOCO model with one Concatenation operator in it
   // together with 4 arrays as its inputs.
   // It receives the dimension of concatenation as input.
-  void PrepareModel(Model* model, int concat_dim) {
+  void PrepareModel(Model* model, int axis) {
     std::vector<string> concat_input_names = {"array0", "array1", "array2",
                                               "array3"};
 
@@ -142,7 +142,7 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
       cnt++;
     }
     auto* concatenation_op = new ConcatenationOperator;
-    concatenation_op->concat_dim = concat_dim;
+    concatenation_op->axis = axis;
     concatenation_op->inputs = concat_input_names;
     concatenation_op->outputs = {"concat_op_outputs"};
     Array& out_array = model->GetOrCreateArray(concatenation_op->outputs[0]);
@@ -151,7 +151,7 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
     std::vector<int>* out_array_shape_dim = out_array_shape->mutable_dims();
     out_array_shape_dim->resize(kDim);
     for (int i = 0; i < kDim; i++) {
-      if (i == concat_dim) {
+      if (i == axis) {
         (*out_array_shape_dim)[i] = kNumArrays * kElementPerDim;
       } else {
         (*out_array_shape_dim)[i] = kElementPerDim;
@@ -163,8 +163,8 @@ class ResolveConstantConcatenationTest : public ::testing::Test {
 
 TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis0) {
   Model model;
-  const int concat_dim = 0;
-  PrepareModel(&model, concat_dim);
+  const int axis = 0;
+  PrepareModel(&model, axis);
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);
@@ -182,8 +182,8 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis0) {
 
 TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis1) {
   Model model;
-  const int concat_dim = 1;
-  PrepareModel(&model, concat_dim);
+  const int axis = 1;
+  PrepareModel(&model, axis);
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);
@@ -201,8 +201,8 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis1) {
 
 TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis2) {
   Model model;
-  const int concat_dim = 2;
-  PrepareModel(&model, concat_dim);
+  const int axis = 2;
+  PrepareModel(&model, axis);
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);

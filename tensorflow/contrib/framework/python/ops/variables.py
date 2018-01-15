@@ -441,7 +441,7 @@ def get_unique_variable(var_op_name):
   """
   candidates = get_variables(scope=var_op_name)
   if not candidates:
-    raise ValueError('Couldnt find variable %s' % var_op_name)
+    raise ValueError('Couldn\'t find variable %s' % var_op_name)
 
   for candidate in candidates:
     if candidate.op.name == var_op_name:

@@ -38,6 +38,7 @@ from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -73,6 +74,7 @@ from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
+@test_util.with_c_api
 class SaverTest(test.TestCase):
 
   def basicSaveRestore(self, variable_op):
@@ -541,6 +543,23 @@ class SaverTest(test.TestCase):
       save = saver_module.Saver({"v0": v0_2})
       variables.global_variables_initializer().run()
 
+  def testSharedServerOnGPU(self):
+    if not test.is_gpu_available():
+      return
+    save_path = os.path.join(self.get_temp_dir(), "gpu")
+    with session.Session("", graph=ops_lib.Graph()) as sess:
+      with sess.graph.device(test.gpu_device_name()):
+        v0_1 = variables.Variable(123.45)
+      save = saver_module.Saver({"v0": v0_1}, sharded=True, allow_empty=True)
+      variables.global_variables_initializer().run()
+      save.save(sess, save_path)
+
+    with session.Session("", graph=ops_lib.Graph()) as sess:
+      with sess.graph.device(test.gpu_device_name()):
+        v0_2 = variables.Variable(543.21)
+      save = saver_module.Saver({"v0": v0_2}, sharded=True, allow_empty=True)
+      variables.global_variables_initializer().run()
+
   def testVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "variables")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -724,6 +743,7 @@ class SaverTest(test.TestCase):
       save.save(sess, save_path)
 
 
+@test_util.with_c_api
 class SaveRestoreShardedTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -774,9 +794,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v0 = variables.Variable(111, name="v0")
           t0 = saver_test_utils.CheckpointedOp(name="t0")
-        save = saver_module.Saver({"v0": v0, "t0": t0.saveable},
-                                  write_version=self._WRITE_VERSION,
-                                  sharded=True)
+        save = saver_module.Saver(
+            {
+                "v0": v0,
+                "t0": t0.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t0.insert("k11", 33.0).run()
         self.assertEqual(111, v0.eval())
@@ -794,9 +818,13 @@ class SaveRestoreShardedTest(test.TestCase):
         with sess.graph.device("/cpu:0"):
           v1 = variables.Variable(222)
           t1 = saver_test_utils.CheckpointedOp(name="t1")
-        save = saver_module.Saver({"v1": v1, "t1": t1.saveable},
-                                  write_version=self._WRITE_VERSION,
-                                  sharded=True)
+        save = saver_module.Saver(
+            {
+                "v1": v1,
+                "t1": t1.saveable
+            },
+            write_version=self._WRITE_VERSION,
+            sharded=True)
         variables.global_variables_initializer().run()
         t1.insert("k22", 44.0).run()
         self.assertEqual(222, v1.eval())
@@ -990,10 +1018,12 @@ class SaveRestoreShardedTest(test.TestCase):
     self._testPartitionedVariables(use_resource=True)
 
 
+@test_util.with_c_api
 class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
+@test_util.with_c_api
 class MaxToKeepTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1263,6 +1293,7 @@ class MaxToKeepTest(test.TestCase):
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
 
 
+@test_util.with_c_api
 class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1321,6 +1352,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       self.assertTrue(saver_module.checkpoint_exists(s4))
 
 
+@test_util.with_c_api
 class SaveRestoreWithVariableNameMap(test.TestCase):
 
   def _testNonReshape(self, variable_op):
@@ -1397,6 +1429,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
     self._testNonReshape(variables.Variable)
 
 
+@test_util.with_c_api
 class LatestCheckpointWithRelativePaths(test.TestCase):
 
   @staticmethod
@@ -1498,6 +1531,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertEqual(v0.eval(), 2.0)
 
 
+@test_util.with_c_api
 class CheckpointStateTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1612,6 +1646,7 @@ class CheckpointStateTest(test.TestCase):
                      os.path.join(save_dir, "./model.ckpt-687529"))
 
 
+@test_util.with_c_api
 class MetaGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1881,7 +1916,8 @@ class MetaGraphTest(test.TestCase):
       # Generates a new MetaGraphDef.
       new_meta_graph_def = new_saver.export_meta_graph()
       # It should be the same as the original.
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+      test_util.assert_meta_graph_protos_equal(self, meta_graph_def,
+                                               new_meta_graph_def)
 
   def _testGraphExtensionSave(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
@@ -2039,6 +2075,42 @@ class MetaGraphTest(test.TestCase):
         self.assertEqual(o.summary, "")
         self.assertEqual(o.description, "")
 
+  def testStripDefaultValuedAttrs(self):
+    """Verifies that default valued attrs are stripped, unless disabled."""
+
+    # With strip_default_attrs enabled, attributes "T" (float32) and "Tout"
+    # (complex64) in the "Complex" op must be removed.
+    with self.test_session():
+      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+
+      save = saver_module.Saver({"real_num": real_num, "imag_num": imag_num})
+      variables.global_variables_initializer()
+
+      meta_graph_def = save.export_meta_graph(strip_default_attrs=True)
+      node_def = test_util.get_node_def_from_graph("complex",
+                                                   meta_graph_def.graph_def)
+      self.assertNotIn("T", node_def.attr)
+      self.assertNotIn("Tout", node_def.attr)
+
+    # With strip_default_attrs disabled, attributes "T" (float32) and "Tout"
+    # (complex64) in the "Complex" op must *not* be removed, even if they map
+    # to their defaults.
+    with self.test_session(graph=ops_lib.Graph()):
+      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+
+      save = saver_module.Saver({"real_num": real_num, "imag_num": imag_num})
+      variables.global_variables_initializer()
+
+      meta_graph_def = save.export_meta_graph(strip_default_attrs=False)
+      node_def = test_util.get_node_def_from_graph("complex",
+                                                   meta_graph_def.graph_def)
+      self.assertIn("T", node_def.attr)
+      self.assertIn("Tout", node_def.attr)
+
   def testImportIntoNamescope(self):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
@@ -2129,7 +2201,33 @@ class MetaGraphTest(test.TestCase):
               10, size=[1, 10])
       })
 
+  def testPreserveDatasetAndFunctions(self):
+    with ops_lib.Graph().as_default() as g:
+      dataset = dataset_ops.Dataset.range(10).map(lambda x: x * x)
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
+      _ = array_ops.identity(next_element, name="output")
 
+      # Generate three MetaGraphDef protos using different code paths.
+      meta_graph_def_simple = saver_module.export_meta_graph()
+      meta_graph_def_devices_cleared = saver_module.export_meta_graph(
+          clear_devices=True)
+      meta_graph_def_from_graph_def = saver_module.export_meta_graph(
+          clear_devices=True, graph_def=g.as_graph_def())
+
+    for meta_graph_def in [meta_graph_def_simple,
+                           meta_graph_def_devices_cleared,
+                           meta_graph_def_from_graph_def]:
+      with session.Session(graph=ops_lib.Graph()) as sess:
+        saver_module.import_meta_graph(meta_graph_def, import_scope="new_model")
+        sess.run(variables.global_variables_initializer())
+        for i in range(10):
+          self.assertEqual(i * i, sess.run("new_model/output:0"))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run("new_model/output:0")
+
+
+@test_util.with_c_api
 class CheckpointReaderTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -2182,10 +2280,12 @@ class CheckpointReaderTest(test.TestCase):
       pywrap_tensorflow.NewCheckpointReader("non-existent")
 
 
+@test_util.with_c_api
 class CheckpointReaderForV2Test(CheckpointReaderTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
+@test_util.with_c_api
 class WriteGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2213,6 +2313,7 @@ class WriteGraphTest(test.TestCase):
     self.assertTrue(os.path.exists(path))
 
 
+@test_util.with_c_api
 class SaverUtilsTest(test.TestCase):
 
   def setUp(self):
@@ -2255,6 +2356,7 @@ class SaverUtilsTest(test.TestCase):
     self.assertTrue(mtimes[1] >= mtimes[0])
 
 
+@test_util.with_c_api
 class ScopedGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2559,6 +2661,7 @@ class ScopedGraphTest(test.TestCase):
 
 
 # TODO(b/64763924): Remove after Jan 1st 2018.
+@test_util.with_c_api
 class LenientNamesTest(test.TestCase):
 
   def setUp(self):

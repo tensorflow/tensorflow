@@ -539,10 +539,8 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
           sess, image_lists, label_name, image_index, image_dir, category,
           bottleneck_dir, jpeg_data_tensor, decoded_image_tensor,
           resized_input_tensor, bottleneck_tensor, architecture)
-      ground_truth = np.zeros(class_count, dtype=np.float32)
-      ground_truth[label_index] = 1.0
       bottlenecks.append(bottleneck)
-      ground_truths.append(ground_truth)
+      ground_truths.append(label_index)
       filenames.append(image_name)
   else:
     # Retrieve all bottlenecks.
@@ -555,10 +553,8 @@ def get_random_cached_bottlenecks(sess, image_lists, how_many, category,
             sess, image_lists, label_name, image_index, image_dir, category,
             bottleneck_dir, jpeg_data_tensor, decoded_image_tensor,
             resized_input_tensor, bottleneck_tensor, architecture)
-        ground_truth = np.zeros(class_count, dtype=np.float32)
-        ground_truth[label_index] = 1.0
         bottlenecks.append(bottleneck)
-        ground_truths.append(ground_truth)
+        ground_truths.append(label_index)
         filenames.append(image_name)
   return bottlenecks, ground_truths, filenames
 
@@ -610,10 +606,8 @@ def get_random_distorted_bottlenecks(
     bottleneck_values = sess.run(bottleneck_tensor,
                                  {resized_input_tensor: distorted_image_data})
     bottleneck_values = np.squeeze(bottleneck_values)
-    ground_truth = np.zeros(class_count, dtype=np.float32)
-    ground_truth[label_index] = 1.0
     bottlenecks.append(bottleneck_values)
-    ground_truths.append(ground_truth)
+    ground_truths.append(label_index)
   return bottlenecks, ground_truths
 
 
@@ -774,9 +768,8 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
         shape=[None, bottleneck_tensor_size],
         name='BottleneckInputPlaceholder')
 
-    ground_truth_input = tf.placeholder(tf.float32,
-                                        [None, class_count],
-                                        name='GroundTruthInput')
+    ground_truth_input = tf.placeholder(
+        tf.int64, [None], name='GroundTruthInput')
 
   # Organizing the following ops as `final_training_ops` so they're easier
   # to see in TensorBoard
@@ -823,10 +816,8 @@ def add_final_training_ops(class_count, final_tensor_name, bottleneck_tensor,
   tf.summary.histogram('activations', final_tensor)
 
   with tf.name_scope('cross_entropy'):
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
+    cross_entropy_mean = tf.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
-    with tf.name_scope('total'):
-      cross_entropy_mean = tf.reduce_mean(cross_entropy)
 
   tf.summary.scalar('cross_entropy', cross_entropy_mean)
 
@@ -852,8 +843,7 @@ def add_evaluation_step(result_tensor, ground_truth_tensor):
   with tf.name_scope('accuracy'):
     with tf.name_scope('correct_prediction'):
       prediction = tf.argmax(result_tensor, 1)
-      correct_prediction = tf.equal(
-          prediction, tf.argmax(ground_truth_tensor, 1))
+      correct_prediction = tf.equal(prediction, ground_truth_tensor)
     with tf.name_scope('accuracy'):
       evaluation_step = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   tf.summary.scalar('accuracy', evaluation_step)
@@ -1178,7 +1168,7 @@ def main(_):
     if FLAGS.print_misclassified_test_images:
       tf.logging.info('=== MISCLASSIFIED TEST IMAGES ===')
       for i, test_filename in enumerate(test_filenames):
-        if predictions[i] != test_ground_truth[i].argmax():
+        if predictions[i] != test_ground_truth[i]:
           tf.logging.info('%70s  %s' %
                           (test_filename,
                            list(image_lists.keys())[predictions[i]]))

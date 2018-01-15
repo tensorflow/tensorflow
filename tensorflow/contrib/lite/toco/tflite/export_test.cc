@@ -16,11 +16,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace toco {
-
 namespace tflite {
 namespace {
+
+using ::testing::ElementsAre;
 
 class ExportTest : public ::testing::Test {
  protected:
@@ -31,11 +33,20 @@ class ExportTest : public ::testing::Test {
   void BuildTestModel() {
     input_model_.GetOrCreateArray("tensor_one");
     input_model_.GetOrCreateArray("tensor_two");
-    input_model_.operators.emplace_back(new ConvOperator);
+    {
+      auto* op = new ConvOperator;
+      op->padding.type = PaddingType::kSame;
+      input_model_.operators.emplace_back(op);
+    }
     input_model_.operators.emplace_back(new AddOperator);
-    auto unsupported_operator = new TensorFlowUnsupportedOperator;
-    unsupported_operator->tensorflow_op = "MyCrazyOp";
-    input_model_.operators.emplace_back(unsupported_operator);
+    {
+      auto* op = new TensorFlowUnsupportedOperator;
+      op->tensorflow_op = "MyCrazyOp";
+      input_model_.operators.emplace_back(op);
+    }
+    // Note that Sub is not know to TF Lite, so it gets exported as a custom
+    // op (and no options).
+    input_model_.operators.emplace_back(new SubOperator);
   }
 
   Model input_model_;
@@ -57,13 +68,44 @@ TEST_F(ExportTest, LoadOperatorsMap) {
   details::LoadOperatorsMap(input_model_, &operators);
   EXPECT_EQ(0, operators[details::OperatorKey(OperatorType::kAdd, "")]);
   EXPECT_EQ(1, operators[details::OperatorKey(OperatorType::kConv, "")]);
-  EXPECT_EQ(2, operators[details::OperatorKey(
+  EXPECT_EQ(2, operators[details::OperatorKey(OperatorType::kSub, "")]);
+  EXPECT_EQ(3, operators[details::OperatorKey(
                    OperatorType::kTensorFlowUnsupported, "MyCrazyOp")]);
+}
+
+TEST_F(ExportTest, Export) {
+  BuildTestModel();
+
+  string result;
+  Export(input_model_, true, &result);
+
+  auto* model = ::tflite::GetModel(result.data());
+
+  std::vector<string> names;
+  for (const ::tflite::OperatorCode* opcode : *model->operator_codes()) {
+    if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
+      names.push_back(string("builtin:") + ::tflite::EnumNameBuiltinOperator(
+                                               opcode->builtin_code()));
+    } else {
+      names.push_back(string("custom:") + opcode->custom_code()->c_str());
+    }
+  }
+
+  EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:Sub",
+                                 "custom:MyCrazyOp"));
+
+  std::vector<uint32_t> indices;
+  auto operators = (*model->subgraphs())[0]->operators();
+  EXPECT_EQ(operators->Length(), 4);
+  for (const auto* op : *operators) {
+    indices.push_back(op->opcode_index());
+  }
+
+  EXPECT_THAT(indices, ElementsAre(1, 0, 3, 2));
 }
 
 // TODO(ahentz): tests for tensors, inputs, outpus, opcodes and operators.
 
 }  // namespace
 }  // namespace tflite
-
 }  // namespace toco

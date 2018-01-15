@@ -28,6 +28,7 @@ limitations under the License.
 #if defined(INTEL_MKL)
 #include <vector>
 #include "mkl_cblas.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -72,10 +73,10 @@ class BatchMatMulMkl : public OpKernel {
     TensorShape out_shape;
     for (int i = 0; i < ndims - 2; ++i) {
       OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
-                  errors::InvalidArgument("lhs.dim(", i, ") and rhs.dim(", i,
-                                          ") must be the same: ",
-                                          lhs.shape().DebugString(), " vs ",
-                                          rhs.shape().DebugString()));
+                  errors::InvalidArgument(
+                      "lhs.dim(", i, ") and rhs.dim(", i,
+                      ") must be the same: ", lhs.shape().DebugString(), " vs ",
+                      rhs.shape().DebugString()));
       out_shape.AddDim(lhs.dim_size(i));
     }
     auto batch_size = (ndims == 2) ? 1 : out_shape.num_elements();
@@ -109,7 +110,7 @@ class BatchMatMulMkl : public OpKernel {
     const uint64 M = lhs_reshaped.dimension(adj_x_ ? 2 : 1);
     const uint64 K = lhs_reshaped.dimension(adj_x_ ? 1 : 2);
     const uint64 N = rhs_reshaped.dimension(adj_y_ ? 1 : 2);
-    
+
     std::vector<MKL_INT> m_array(batch_size, M);
     std::vector<MKL_INT> n_array(batch_size, N);
     std::vector<MKL_INT> k_array(batch_size, K);
@@ -128,7 +129,7 @@ class BatchMatMulMkl : public OpKernel {
       b_array.push_back(&rhs_reshaped(i, 0, 0));
       c_array.push_back(&out_reshaped(i, 0, 0));
     }
-    
+
     MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, &m_array[0], &n_array[0],
                       &k_array[0], &a_array[0], &lda_array[0], &b_array[0],
                       &ldb_array[0], &c_array[0], &ldc_array[0], 1,

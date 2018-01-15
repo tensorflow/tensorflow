@@ -415,18 +415,10 @@ struct ProtoHelper<qint32> {
 
 template <>
 struct ProtoHelper<bfloat16> {
-  typedef Helper<float>::RepeatedFieldType FieldType;
-  static const bfloat16* Begin(const TensorProto& proto) {
-    // TODO: Isn't this wrong, given that int_val is 32 bits long?
-    return reinterpret_cast<const bfloat16*>(proto.int_val().data());
-  }
-  static size_t NumElements(const TensorProto& proto) {
-    return proto.int_val().size();
-  }
   static void Fill(const bfloat16* data, size_t n, TensorProto* proto) {
-    proto->mutable_int_val()->Reserve(n);
+    proto->mutable_half_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
-      proto->mutable_int_val()->AddAlreadyReserved(data[i].value);
+      proto->mutable_half_val()->AddAlreadyReserved(data[i].value);
     }
   }
 };
@@ -529,14 +521,38 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   return buf;
 }
 
-// fp16 is opaque to the protobuf, so we deserialize these identical to uint16
-// but with data stored in half_val instead of int_val (ie., we don't use
-// ProtoHelper<uint16>).
+// fp16 and bfloat16 are opaque to the protobuf, so we deserialize these
+// identical to uint16 but with data stored in half_val instead of int_val (ie.,
+// we don't use ProtoHelper<uint16>).
 template <>
 TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                                           int64 n) {
   CHECK_GT(n, 0);
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
+  uint16* data = buf->template base<uint16>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64 in_n = in.half_val().size();
+  auto begin = in.half_val().begin();
+  if (n <= in_n) {
+    std::copy_n(begin, n, data);
+  } else if (in_n > 0) {
+    std::copy_n(begin, in_n, data);
+    const uint16 last = *(data + in_n - 1);
+    std::fill_n(data + in_n, n - in_n, last);
+  } else {
+    std::fill_n(data, n, 0);
+  }
+  return buf;
+}
+
+template <>
+TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
+                                       int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
   uint16* data = buf->template base<uint16>();
   if (data == nullptr) {
     buf->Unref();

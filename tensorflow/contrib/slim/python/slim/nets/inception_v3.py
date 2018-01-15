@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import arg_scope
+from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import layers as layers_lib
 from tensorflow.contrib.layers.python.layers import regularizers
 from tensorflow.python.framework import ops
@@ -547,7 +548,10 @@ def inception_v3(inputs,
       parameters or computation cost of the model.
     prediction_fn: a function to get predictions out of logits.
     spatial_squeeze: if True, logits is of shape is [B, C], if false logits is
-        of shape [B, 1, 1, C], where B is batch_size and C is number of classes.
+      of shape [B, 1, 1, C], where B is batch_size and C is number of classes.
+      To use this parameter, the input images must be smaller
+      than 300x300 pixels, in which case the output logit layer
+      does not contain spatial information and can be removed.
     reuse: whether or not the network and its variables should be reused. To be
       able to reuse 'scope' must be given.
     scope: Optional variable_scope.
@@ -675,14 +679,12 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
 
 
 def inception_v3_arg_scope(weight_decay=0.00004,
-                           stddev=0.1,
                            batch_norm_var_collection='moving_vars',
                            use_fused_batchnorm=True):
   """Defines the default InceptionV3 arg scope.
 
   Args:
     weight_decay: The weight decay to use for regularizing the model.
-    stddev: The standard deviation of the trunctated normal weight initializer.
     batch_norm_var_collection: The name of the collection for the batch norm
       variables.
     use_fused_batchnorm: Enable fused batchnorm.
@@ -714,8 +716,7 @@ def inception_v3_arg_scope(weight_decay=0.00004,
       weights_regularizer=regularizers.l2_regularizer(weight_decay)):
     with arg_scope(
         [layers.conv2d],
-        weights_initializer=init_ops.truncated_normal_initializer(
-            stddev=stddev),
+        weights_initializer=initializers.variance_scaling_initializer(),
         activation_fn=nn_ops.relu,
         normalizer_fn=layers_lib.batch_norm,
         normalizer_params=batch_norm_params) as sc:

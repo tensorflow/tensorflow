@@ -152,5 +152,27 @@ TEST(ExpiringLRUCacheTest, LookupOrCompute) {
   EXPECT_EQ(num_compute_calls, 6);
 }
 
+TEST(ExpiringLRUCacheTest, Clear) {
+  ExpiringLRUCache<int> cache(1, 4);
+  cache.Insert("a", 1);
+  cache.Insert("b", 2);
+  cache.Insert("c", 3);
+  cache.Insert("d", 4);
+  int value = 0;
+  EXPECT_TRUE(cache.Lookup("a", &value));
+  EXPECT_EQ(value, 1);
+  EXPECT_TRUE(cache.Lookup("b", &value));
+  EXPECT_EQ(value, 2);
+  EXPECT_TRUE(cache.Lookup("c", &value));
+  EXPECT_EQ(value, 3);
+  EXPECT_TRUE(cache.Lookup("d", &value));
+  EXPECT_EQ(value, 4);
+  cache.Clear();
+  EXPECT_FALSE(cache.Lookup("a", &value));
+  EXPECT_FALSE(cache.Lookup("b", &value));
+  EXPECT_FALSE(cache.Lookup("c", &value));
+  EXPECT_FALSE(cache.Lookup("d", &value));
+}
+
 }  // namespace
 }  // namespace tensorflow

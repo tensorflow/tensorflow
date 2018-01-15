@@ -265,7 +265,7 @@ else
   DOCKERFILE="${TMP_DIR}/Dockerfile"
 
   # Modify the devel Dockerfile to specify the git branch
-  sed -r "s/([\s]*git checkout )(.*)/\1${TF_DOCKER_BUILD_DEVEL_BRANCH}/g" \
+  sed "s/^RUN git clone --branch=.* --depth=1/RUN git clone --branch=${TF_DOCKER_BUILD_DEVEL_BRANCH} --depth=1/" \
       "${ORIG_DOCKERFILE}" > "${DOCKERFILE}"
 
   # Modify python/pip version if necessary.
@@ -408,9 +408,8 @@ fi
 # Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
 
-  docker login --username "${TF_DOCKER_USERNAME}" \
-  --email "${TF_DOCKER_EMAIL}" \
-  --password "${TF_DOCKER_PASSWORD}"
+  docker login -u "${TF_DOCKER_USERNAME}" \
+  -p "${TF_DOCKER_PASSWORD}"
 
   if [[ $? != "0" ]]; then
     die "FAIL: Unable to login. Invalid credentials."

@@ -35,6 +35,10 @@ void Cluster::SetNumWarmupSteps(int num_steps) {
       num_steps);
 }
 
+int Cluster::NumWarmupSteps() const {
+  return options_.config.graph_options().build_cost_model_after();
+}
+
 void Cluster::DisableDetailedStats(bool disable) {
   if (disable) {
     options_.config.mutable_graph_options()->set_build_cost_model(0);

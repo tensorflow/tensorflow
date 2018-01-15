@@ -126,9 +126,6 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
-  // Populate default attrs to the NodeDefs in the GraphDef.
-  TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&graph_def, *graphptr->op_registry(), 0));
 
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
@@ -138,7 +135,10 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
-  return Status::OK();
+  // The default values of attributes might have been stripped by the optimizer.
+  // Add them back.
+  return AddDefaultAttrsToGraphDef(output_graph_def, *graphptr->op_registry(),
+                                   0);
 }
 
 // Applies the same graph pruning logic to the graph as Session.Run in TF.
@@ -173,7 +173,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                  << ", skipping this input.";
       return nullptr;
     }
-    LOG(INFO) << "Will use feed node " << feed_name;
+    VLOG(1) << "Will use feed node " << feed_name;
     new_item->feed.emplace_back(feed_name, Tensor());
   }
 
@@ -188,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }
@@ -449,6 +449,18 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     new_item->save_restore_loc_tensor = saver.filename_tensor_name();
   }
 
+  // Instantiate all the missing attributes with their default values.
+  Status attr_status = AddDefaultAttrsToGraphDef(
+      &new_item->graph,
+      FunctionLibraryDefinition(OpRegistry::Global(),
+                                new_item->graph.library()),
+      0);
+  if (!attr_status.ok()) {
+    LOG(ERROR) << "Failed to instantiate default attribute values: "
+               << attr_status.error_message();
+    return nullptr;
+  }
+
   // Optimize the graph (function inlining, l1 optimizations, etc).
   VLOG(1) << "Number of nodes in graph before OptimizeGraph: "
           << new_item->graph.node_size();
@@ -495,6 +507,104 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       return nullptr;
     }
   }
+  return new_item;
+}
+
+std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
+    const string& id, const FunctionDef& func,
+    const std::unordered_map<string, AttrValue>& func_attr) {
+  if (id.empty()) {
+    LOG(ERROR) << "id must be non-empty.";
+    return nullptr;
+  }
+  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
+  new_item->id = id;
+
+  std::unordered_map<string, string> port_map;
+
+  // Add the function inputs as placeholder
+  for (const auto& inp : func.signature().input_arg()) {
+    NodeDef* ph = new_item->graph.add_node();
+    ph->set_name(inp.name());
+    ph->set_op("Placeholder");
+    if (inp.type() != DT_INVALID) {
+      (*ph->mutable_attr())["T"].set_type(inp.type());
+    } else {
+      auto it = func_attr.find(inp.type_attr());
+      if (it == func_attr.end()) {
+        LOG(ERROR) << "Unknown type attribute " << inp.type_attr()
+                   << " for function input " << inp.name();
+        return nullptr;
+      } else {
+        (*ph->mutable_attr())["T"] = it->second;
+      }
+    }
+    port_map[inp.name()] = inp.name();
+  }
+
+  // Add the function body to the graph.
+  for (const NodeDef& node : func.node_def()) {
+    NodeDef* new_node = new_item->graph.add_node();
+    *new_node = node;
+    // Replace the placeholder attribute values with the specified value.
+    for (auto& attr : *new_node->mutable_attr()) {
+      const string& ph_name = attr.second.placeholder();
+      auto it = func_attr.find(ph_name);
+      if (it != func_attr.end()) {
+        attr.second = it->second;
+      }
+    }
+
+    // Functions use a custom format to encode connectivity. Map these custom
+    // strings to regular ones.
+    const OpDef* op_def = nullptr;
+    Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+    if (!status.ok()) {
+      LOG(ERROR) << "Op " << node.op() << " not registered: " << status;
+      return nullptr;
+    }
+    tensorflow::NameRangeMap inputs;
+    tensorflow::NameRangeMap outputs;
+    status = tensorflow::NameRangesForNode(node, *op_def, &inputs, &outputs);
+    if (!status.ok()) {
+      LOG(ERROR) << "Op " << node.op() << " invalid: " << status;
+      return nullptr;
+    }
+    for (const auto& name_range : outputs) {
+      string port_prefix =
+          strings::StrCat(node.name(), ":", name_range.first, ":");
+      int index_start = name_range.second.first;
+      int index_end = name_range.second.second;
+      for (int i = index_start; i < index_end; ++i) {
+        string port_id = strings::StrCat(port_prefix, i - index_start);
+        string port_name = strings::StrCat(node.name(), ":", i);
+        port_map[port_id] = port_name;
+      }
+    }
+  }
+
+  for (auto& node : *new_item->graph.mutable_node()) {
+    // Rewrite the inputs to use the normal naming convention.
+    for (int i = 0; i < node.input_size(); ++i) {
+      const string& input = node.input(i);
+      auto it = port_map.find(input);
+      if (it == port_map.end()) {
+        LOG(ERROR) << "Unknown input: " << input;
+        return nullptr;
+      }
+      node.set_input(i, it->second);
+    }
+  }
+
+  // Add the function outputs to the list of fetch nodes.
+  for (const auto& out : func.signature().output_arg()) {
+    new_item->fetch.emplace_back(out.name());
+  }
+  // Add the function inputs to the list of feeds.
+  for (const auto& inp : func.signature().input_arg()) {
+    new_item->feed.emplace_back(inp.name(), Tensor());
+  }
+
   return new_item;
 }
 

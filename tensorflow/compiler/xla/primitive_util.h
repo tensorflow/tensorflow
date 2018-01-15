@@ -26,6 +26,13 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
+// The number of exponent bits in a BF16 value.
+const int kBFloat16ExponentBits = 8;
+
+// The number of mantissa bits in a BF16 value. There is an implicit leading
+// 1, so there is an implicit additional bit of precision.
+const int kBFloat16MantissaBits = 7;
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>

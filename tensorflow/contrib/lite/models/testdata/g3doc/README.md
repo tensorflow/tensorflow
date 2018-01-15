@@ -75,6 +75,20 @@ The corresponding parameters as shown in the figure.
 
 ![asr_lm_model](asr_lm.svg "ASR LM model")
 
+### Endpointer Model
+
+The endpointer model is the neural network model for predicting end of speech
+in an utterance. More precisely, it generates posterior probabilities of various
+events that allow detection of speech start and end events.
+It has an input size of 40 (float) which are speech frontend features
+(log-mel filterbanks), and an output size of four corresponding to:
+speech, intermediate non-speech, initial non-speech, and final non-speech.
+The model consists of a convolutional layer, followed by a fully-connected
+layer, two LSTM layers, and two additional fully-connected layers.
+The corresponding parameters as shown in the figure.
+![endpointer_model](endpointer.svg "Endpointer model")
+
+
 ## Speech models test input/output generation
 
 As mentioned above the input to models are generated from a pre-processing
@@ -86,25 +100,37 @@ same input.
 
 ### Models:
 
-[Speech hotword model (Svdf rank=1)](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_hotword_model_rank1_2017_11_14.tflite)
+[Speech hotword model (Svdf
+rank=1)](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_hotword_model_rank1_2017_11_14.tflite)
 
-[Speech hotword model (Svdf rank=2)](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_hotword_model_rank2_2017_11_14.tflite)
+[Speech hotword model (Svdf
+rank=2)](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_hotword_model_rank2_2017_11_14.tflite)
 
-[Speaker-id model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_speakerid_model_2017_11_14.tflite)
+[Speaker-id
+model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_speakerid_model_2017_11_14.tflite)
 
-[TTS model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_tts_model_2017_11_14.tflite)
+[TTS
+model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_tts_model_2017_11_14.tflite)
 
-[ASR AM model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_terse_am_model_2017_11_14.tflite)
+[ASR AM
+model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/speech_terse_am_model_2017_11_14.tflite)
 
 ### Test benches
 
-[Speech hotword model test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_hotword_model_test.cc)
+[Speech hotword model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_hotword_model_test.cc)
 
-[Speaker-id model test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_speakerid_model_test.cc)
+[Speaker-id model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_speakerid_model_test.cc)
 
-[TTS model test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_tts_model_test.cc)
+[TTS model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_tts_model_test.cc)
 
-[ASR AM model test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_terse_am_model_test.cc)
+[ASR AM model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_terse_am_model_test.cc)
+
+[Endpointer model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_endpointer_model_test.cc)
 
 ## Android Support
 The models have been tested on Android phones, using the following tests:

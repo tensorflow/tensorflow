@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -105,6 +106,34 @@ Color GetColorForArray(const Model& model, const string& array_name) {
   return Color(0xF5, 0xF5, 0xF5);
 }
 
+void AppendArrayVal(string* string, Array const& array, int index) {
+  if (array.buffer->type == ArrayDataType::kFloat) {
+    const auto& data = array.GetBuffer<ArrayDataType::kFloat>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%.3f", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kUint8) {
+    const auto& data = array.GetBuffer<ArrayDataType::kUint8>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt32) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt32>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt64) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt64>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
+  }
+}
+
 NodeProperties GetPropertiesForArray(const Model& model,
                                      const string& array_name) {
   NodeProperties node_properties;
@@ -129,10 +158,44 @@ NodeProperties GetPropertiesForArray(const Model& model,
       if (id == 0) {
         AppendF(&node_properties.label, "%d", array_shape.dims(id));
       } else {
-        AppendF(&node_properties.label, "x%d", array_shape.dims(id));
+        // 0x00D7 is the unicode multiplication symbol
+        AppendF(&node_properties.label, "\u00D7%d", array_shape.dims(id));
       }
     }
     node_properties.label += "]";
+
+    if (array.buffer) {
+      const auto& array = model.GetArray(array_name);
+      int buffer_size = RequiredBufferSizeForShape(array.shape());
+      if (buffer_size <= 4) {
+        AppendF(&node_properties.label, " = ");
+        if (array.shape().dimensions_count() > 0) {
+          AppendF(&node_properties.label, "{");
+        }
+        for (int i = 0; i < buffer_size; i++) {
+          AppendArrayVal(&node_properties.label, array, i);
+          if (i + 1 < buffer_size) {
+            AppendF(&node_properties.label, ", ");
+          }
+        }
+      } else {
+        AppendF(&node_properties.label, "\\n = ");
+        if (array.shape().dimensions_count() > 0) {
+          AppendF(&node_properties.label, "{");
+        }
+        AppendArrayVal(&node_properties.label, array, 0);
+        AppendF(&node_properties.label, ", ");
+        AppendArrayVal(&node_properties.label, array, 1);
+        // 0x2026 is the unicode ellipsis symbol
+        AppendF(&node_properties.label, " \u2026 ");
+        AppendArrayVal(&node_properties.label, array, buffer_size - 2);
+        AppendF(&node_properties.label, ", ");
+        AppendArrayVal(&node_properties.label, array, buffer_size - 1);
+      }
+      if (array.shape().dimensions_count() > 0) {
+        AppendF(&node_properties.label, "}");
+      }
+    }
   }
 
   if (array.minmax) {
@@ -160,7 +223,21 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
     node_properties.label =
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op;
   } else {
-    node_properties.label = OperatorTypeName(op.type);
+    node_properties.label =
+        string(absl::StripPrefix(OperatorTypeName(op.type), "TensorFlow"));
+  }
+  switch (op.fused_activation_function) {
+    case FusedActivationFunctionType::kRelu:
+      AppendF(&node_properties.label, "\\nReLU");
+      break;
+    case FusedActivationFunctionType::kRelu6:
+      AppendF(&node_properties.label, "\\nReLU6");
+      break;
+    case FusedActivationFunctionType::kRelu1:
+      AppendF(&node_properties.label, "\\nReLU1");
+      break;
+    default:
+      break;
   }
   // Additional information for some of the operators.
   switch (op.type) {
@@ -259,6 +336,10 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
             op_properties.color.TextColorString().c_str());
     // Add nodes and edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
+      if (model.arrays.count(input) == 0) {
+        // Arrays should _always_ exist. Except, perhaps, during development.
+        continue;
+      }
       auto array_properties = GetPropertiesForArray(model, input);
       if (!already_added_arrays.count(input)) {
         AppendF(output_file_contents, kNodeFormat, input,
@@ -271,6 +352,10 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     }
     // Add nodes and edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
+      if (model.arrays.count(output) == 0) {
+        // Arrays should _always_ exist. Except, perhaps, during development.
+        continue;
+      }
       auto array_properties = GetPropertiesForArray(model, output);
       if (!already_added_arrays.count(output)) {
         AppendF(output_file_contents, kNodeFormat, output,

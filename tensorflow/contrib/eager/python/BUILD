@@ -19,6 +19,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
@@ -100,37 +101,6 @@ cuda_py_test(
         "//tensorflow/python/eager:graph_callable",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:variables",
-    ],
-)
-
-py_library(
-    name = "summary_writer",
-    srcs = ["summary_writer.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/summary:gen_summary_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary_op_util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
-cuda_py_test(
-    name = "summary_writer_test",
-    srcs = ["summary_writer_test.py"],
-    additional_deps = [
-        ":summary_writer",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -232,6 +202,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":network",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
@@ -243,6 +214,39 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "checkpointable",
+    srcs = ["checkpointable.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/contrib/eager/proto:checkpointable_object_graph_proto_py",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "checkpointable_test",
+    srcs = ["checkpointable_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":checkpointable",
+        ":network",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "@six_archive//:six",
     ],
 )
 

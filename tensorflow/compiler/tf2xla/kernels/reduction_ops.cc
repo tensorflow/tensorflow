@@ -35,7 +35,7 @@ class SumOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Sum"), SumOp);
+REGISTER_XLA_OP(Name("Sum").CompileTimeConstInput("reduction_indices"), SumOp);
 
 class ProdOp : public XlaReductionOp {
  public:
@@ -53,7 +53,8 @@ class ProdOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Prod"), ProdOp);
+REGISTER_XLA_OP(Name("Prod").CompileTimeConstInput("reduction_indices"),
+                ProdOp);
 
 class MinOp : public XlaReductionOp {
  public:
@@ -73,7 +74,7 @@ class MinOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Min"), MinOp);
+REGISTER_XLA_OP(Name("Min").CompileTimeConstInput("reduction_indices"), MinOp);
 
 class MaxOp : public XlaReductionOp {
  public:
@@ -93,7 +94,7 @@ class MaxOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Max"), MaxOp);
+REGISTER_XLA_OP(Name("Max").CompileTimeConstInput("reduction_indices"), MaxOp);
 
 class MeanOp : public XlaReductionOp {
  public:
@@ -115,7 +116,8 @@ class MeanOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Mean"), MeanOp);
+REGISTER_XLA_OP(Name("Mean").CompileTimeConstInput("reduction_indices"),
+                MeanOp);
 
 class AllOp : public XlaReductionOp {
  public:
@@ -133,7 +135,7 @@ class AllOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("All"), AllOp);
+REGISTER_XLA_OP(Name("All").CompileTimeConstInput("reduction_indices"), AllOp);
 
 class AnyOp : public XlaReductionOp {
  public:
@@ -151,7 +153,7 @@ class AnyOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Any"), AnyOp);
+REGISTER_XLA_OP(Name("Any").CompileTimeConstInput("reduction_indices"), AnyOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -114,13 +114,8 @@ def run(main=None, argv=None):
   # Define help flags.
   _define_help_flags()
 
-  # Parse flags.
-  try:
-    argv = flags.FLAGS(_sys.argv if argv is None else argv)
-  except flags.Error as error:
-    _sys.stderr.write('FATAL Flags parsing error: %s\n' % error)
-    _sys.stderr.write('Pass --helpshort or --helpfull to see help on flags.\n')
-    _sys.exit(1)
+  # Parse known flags.
+  argv = flags.FLAGS(_sys.argv if argv is None else argv, known_only=True)
 
   main = main or _sys.modules['__main__'].main
 

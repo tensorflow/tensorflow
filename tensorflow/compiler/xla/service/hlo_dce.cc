@@ -55,7 +55,8 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
           live_instructions.count(instruction) == 0 &&
-          computation->IsRemovable(instruction)) {
+          computation->IsRemovable(instruction) &&
+          !instruction->HasSideEffect()) {
         dead_roots.push_back(instruction);
       }
     }

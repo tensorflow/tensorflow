@@ -126,6 +126,12 @@ _REGISTERED_EXPANSIONS = [
      lambda feed: [feed])]
 # pylint: enable=g-long-lambda
 
+
+def _convert_to_numpy_obj(numpy_dtype, obj):
+  """Explicitly convert obj based on numpy type except for string type."""
+  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+
+
 def register_session_run_conversion_functions(tensor_type, fetch_function,
     feed_function=None, feed_function_for_partial_run=None):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
@@ -1072,12 +1078,14 @@ class BaseSession(SessionInterface):
                             'strings, lists, numpy ndarrays, or TensorHandles.')
 
           subfeed_dtype = subfeed_t.dtype.as_numpy_dtype
-          if isinstance(subfeed_val,
-                        int) and subfeed_dtype(subfeed_val) != subfeed_val:
+          if isinstance(subfeed_val, int) and _convert_to_numpy_obj(
+              subfeed_dtype, subfeed_val) != subfeed_val:
             raise TypeError(
-                'Type of feed value ' + str(subfeed_val) + ' is not'
-                ' compatible with Tensor type ' + str(subfeed_dtype) + '.'
-                ' Try explicitly setting the type of the feed tensor'
+                'Type of feed value ' + str(subfeed_val) + ' with type ' +
+                str(type(subfeed_val)) +
+                ' is not compatible with Tensor type ' +
+                str(subfeed_dtype) +
+                '. Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
           is_tensor_handle_feed = isinstance(subfeed_val,
@@ -1160,9 +1168,6 @@ class BaseSession(SessionInterface):
       TypeError: If `fetches` or `feed_list` cannot be interpreted
         as arguments to @{tf.Session.run}.
     """
-    assert not self._created_with_new_api, ('session.make_callable() doesn\'t '
-                                            'work with C API')
-
     if feed_list is not None:
       if not isinstance(feed_list, (list, tuple)):
         raise TypeError('`feed_list` must be a list or tuple.')
@@ -1184,12 +1189,18 @@ class BaseSession(SessionInterface):
 
     # Create a fetch handler to take care of the structure of fetches.
     fetch_handler = _FetchHandler(self._graph, fetches, {})
-    fetch_list_as_strings = _name_list(fetch_handler.fetches())
-    target_list_as_strings = _name_list(fetch_handler.targets())
+    if self._created_with_new_api:
+      # pylint: disable=protected-access
+      fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
+      target_list = [op._c_op for op in fetch_handler.targets()]
+      # pylint: enable=protected-access
+    else:
+      fetch_list = _name_list(fetch_handler.fetches())
+      target_list = _name_list(fetch_handler.targets())
 
     def _callable_template_with_options_and_metadata(
-        fetch_list_as_strings,
-        target_list_as_strings,
+        fetch_list,
+        target_list,
         fetch_handler,
         options=None,
         run_metadata=None):
@@ -1199,9 +1210,14 @@ class BaseSession(SessionInterface):
       run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
       try:
         with errors.raise_exception_on_not_ok_status() as status:
-          results = tf_session.TF_Run(
-              self._session, options_ptr, {}, fetch_list_as_strings,
-              target_list_as_strings, status, run_metadata_ptr)
+          if self._created_with_new_api:
+            results = tf_session.TF_SessionRun_wrapper(
+                self._session, options_ptr, {}, fetch_list, target_list,
+                run_metadata_ptr, status)
+          else:
+            results = tf_session.TF_Run(
+                self._session, options_ptr, {}, fetch_list, target_list, status,
+                run_metadata_ptr)
           if fetch_handler:
             results = fetch_handler.build_results(self, results)
           else:
@@ -1218,27 +1234,35 @@ class BaseSession(SessionInterface):
 
     if accept_options:
       return functools.partial(
-          _callable_template_with_options_and_metadata, fetch_list_as_strings,
-          target_list_as_strings, fetch_handler)
+          _callable_template_with_options_and_metadata, fetch_list,
+          target_list, fetch_handler)
     elif isinstance(fetches, ops.Operation):
       # Special case for fetching a single operation, because the
       # function will have no return value.
-      assert not fetch_list_as_strings
-      assert len(target_list_as_strings) == 1
+      assert not fetch_list
+      assert len(target_list) == 1
       def _single_operation_run():
         with errors.raise_exception_on_not_ok_status() as status:
-          tf_session.TF_Run(self._session, None, {}, [],
-                            target_list_as_strings, status, None)
+          if self._created_with_new_api:
+            tf_session.TF_SessionRun_wrapper(
+                self._session, None, {}, [], target_list, None, status)
+          else:
+            tf_session.TF_Run(
+                self._session, None, {}, [], target_list, status, None)
       return _single_operation_run
     elif isinstance(fetches, ops.Tensor):
       # Special case for fetching a single tensor, because the
       # function can return the result of `TF_Run()` directly.
-      assert len(fetch_list_as_strings) == 1
-      assert not target_list_as_strings
+      assert len(fetch_list) == 1
+      assert not target_list
       def _single_tensor_run():
         with errors.raise_exception_on_not_ok_status() as status:
-          results = tf_session.TF_Run(self._session, None, {},
-                                      fetch_list_as_strings, [], status, None)
+          if self._created_with_new_api:
+            results = tf_session.TF_SessionRun_wrapper(
+                self._session, None, {}, fetch_list, [], None, status)
+          else:
+            results = tf_session.TF_Run(
+                self._session, None, {}, fetch_list, [], status, None)
         return results[0]
       return _single_tensor_run
     else:
@@ -1246,9 +1270,12 @@ class BaseSession(SessionInterface):
       # results for us.
       def _fetch_handler_run():
         with errors.raise_exception_on_not_ok_status() as status:
-          results = tf_session.TF_Run(self._session, None, {},
-                                      fetch_list_as_strings,
-                                      target_list_as_strings, status, None)
+          if self._created_with_new_api:
+            results = tf_session.TF_SessionRun_wrapper(
+                self._session, None, {}, fetch_list, target_list, None, status)
+          else:
+            results = tf_session.TF_Run(
+                self._session, None, {}, fetch_list, target_list, status, None)
         return fetch_handler.build_results(self, results)
       return _fetch_handler_run
 

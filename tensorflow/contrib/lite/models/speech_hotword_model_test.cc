@@ -73,8 +73,8 @@ void RunTest(int model_input_tensor, int svdf_layer_state_tensor,
   float* output_ptr = interpreter->tensor(model_output_tensor)->data.f;
 
   // The first layer (SVDF) input size is 40 (speech_input_size). Each speech
-  // input frames for this model is 1280 floats, which can be fed to input in a
-  // sequence of size 32 (input_sequence_size).
+  // input frames for this model is 1600 floats, which can be fed to input in a
+  // sequence of size 40 (input_sequence_size).
   for (int i = 0; i < TestInputSize(input_frames); i++) {
     int frame_ptr = 0;
     for (int s = 0; s < input_sequence_size; s++) {

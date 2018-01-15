@@ -79,6 +79,7 @@ class InfoGANModel(
     collections.namedtuple('InfoGANModel', GANModel._fields + (
         'structured_generator_inputs',
         'predicted_distributions',
+        'discriminator_and_aux_fn',
     ))):
   """An InfoGANModel contains all the pieces needed for InfoGAN training.
 
@@ -91,6 +92,8 @@ class InfoGANModel(
     predicted_distributions: A list of tf.Distributions. Predicted by the
       recognizer, and used to evaluate the likelihood of the structured noise.
       List length should match `structured_generator_inputs`.
+    discriminator_and_aux_fn: The original discriminator function that returns
+      a tuple of (logits, `predicted_distributions`).
   """
 
 

@@ -108,7 +108,7 @@ enum {
  * The type of operations that can be added to a model.
  */
 enum {
-  /** Adds two tensors, elment-wise.
+  /** Adds two tensors, element-wise.
    *
    * Takes two input tensors of identical type and compatible dimensions. The
    * output is the sum of both input tensors, optionally modified by an
@@ -743,7 +743,7 @@ enum {
    */
   ANEURALNETWORKS_MAX_POOL_2D = 17,
 
-  /** Multiplies two tensors, elment-wise.
+  /** Multiplies two tensors, element-wise.
    *
    * Takes two input tensors of identical type and compatible dimensions. The
    * output is the product of both input tensors, optionally modified by an
@@ -1454,9 +1454,9 @@ inline int ANeuralNetworksModel_finish(ANeuralNetworksModel* model) {
  * {@link ANeuralNetworksExecution_setOutputFromMemory} and
  * {@link ANeuralNetworksExecution_setOperandValue}.
  *
- * To build a model that can accommodate inputs of various sizes, as you may want
- * to do for a CNN, set the size of the dimensions that will vary at run time to
- * 0. If you do so, provide the full dimensions when calling
+ * To build a model that can accommodate inputs of various sizes, as you may
+ * want to do for a CNN, set the size of the dimensions that will vary at run
+ * time to 0. If you do so, provide the full dimensions when calling
  * {@link ANeuralNetworksExecution_setInput} or {@link
  * ANeuralNetworksExecution_setInputFromMemory}.
  *
@@ -1774,7 +1774,7 @@ inline int ANeuralNetworksExecution_setInput(
  *             model. If the type is the same as specified when the model
  *             was built, NULL can be passed.
  * @param memory The memory containing the data.
- * @param offset This specifies the location of the data whithin the memory.
+ * @param offset This specifies the location of the data within the memory.
  *               The offset is in bytes from the start of memory.
  * @param length The size in bytes of the data value.
  *
@@ -1841,7 +1841,7 @@ inline int ANeuralNetworksExecution_setOutput(
  *             model. If the type is the same as specified when the model
  *             was built, NULL can be passed.
  * @param memory The memory where the data is to be stored.
- * @param offset This specifies the location of the data whithin the memory.
+ * @param offset This specifies the location of the data within the memory.
  *               The offset is in bytes from the start of memory.
  * @param length The length in bytes of the data value.
  *

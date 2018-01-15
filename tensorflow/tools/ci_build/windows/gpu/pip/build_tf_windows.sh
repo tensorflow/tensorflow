@@ -44,9 +44,7 @@ source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
 
 run_configure_for_gpu_build
 
-clean_output_base
-
-bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build -c opt tensorflow/tools/pip_package:build_pip_package || exit $?
 
 # Create a python test directory to avoid package name conflict
 PY_TEST_DIR="py_test_dir"
@@ -61,11 +59,8 @@ reinstall_tensorflow_pip ${PIP_NAME}
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-# TODO(pcloudy): Remove TF_SAVER_LENIENT_NAMES after
-# https://github.com/tensorflow/tensorflow/issues/12844 is fixed.
-bazel test -c opt $BUILD_OPTS -k --test_output=errors \
+bazel test -c opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,no_oss \
-  --test_env=TF_SAVER_LENIENT_NAMES=True \
   --local_test_jobs=1 --build_tests_only //${PY_TEST_DIR}/tensorflow/python/...

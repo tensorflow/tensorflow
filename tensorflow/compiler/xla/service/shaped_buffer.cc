@@ -34,58 +34,32 @@ namespace xla {
 
 using ::tensorflow::strings::Appendf;
 
-/* static */ StatusOr<std::unique_ptr<ShapedBuffer>>
-ShapedBuffer::MakeArrayShapedBuffer(const Shape& shape,
-                                    const se::Platform* platform,
-                                    int device_ordinal,
-                                    const se::DeviceMemoryBase& buffer) {
-  if (ShapeUtil::IsTuple(shape)) {
-    return InvalidArgument("Shape must be an array: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  auto shaped_buffer =
-      MakeUnique<ShapedBuffer>(shape, platform, device_ordinal);
-  *shaped_buffer->mutable_shape_index_to_buffer_entry()->mutable_element({}) =
-      0;
-  *shaped_buffer->mutable_buffers() = {buffer};
-  return std::move(shaped_buffer);
-}
-
-ShapedBuffer::ShapedBuffer(const Shape& shape, const se::Platform* platform,
-                           int device_ordinal)
-    : shape_(shape),
+ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
+                           const Shape& on_device_shape,
+                           const se::Platform* platform, int device_ordinal)
+    : on_host_shape_(on_host_shape),
+      on_device_shape_(on_device_shape),
       platform_(platform),
       device_ordinal_(device_ordinal),
-      shape_index_to_buffer_entry_(shape) {}
+      buffers_(on_device_shape) {}
 
 void ShapedBuffer::clear() {
-  for (se::DeviceMemoryBase& memory_base : buffers_) {
+  for (auto& pair : buffers_) {
     // A default constructed DeviceMemoryBase is a null pointer.
-    memory_base = se::DeviceMemoryBase();
+    pair.second = se::DeviceMemoryBase();
   }
-}
-
-void ShapedBuffer::AddBufferAtIndex(
-    const perftools::gputools::DeviceMemoryBase& buffer,
-    const ShapeIndex& shape_index) {
-  *mutable_shape_index_to_buffer_entry()->mutable_element(shape_index) =
-      buffers().size();
-  mutable_buffers()->push_back(buffer);
-}
-
-const se::DeviceMemoryBase& ShapedBuffer::buffer(
-    const ShapeIndex& index) const {
-  return buffers_[shape_index_to_buffer_entry_.element(index)];
-}
-
-se::DeviceMemoryBase* ShapedBuffer::mutable_buffer(const ShapeIndex& index) {
-  return &buffers_[shape_index_to_buffer_entry_.element(index)];
 }
 
 string ShapedBuffer::ToString() const {
-  string s = "ShapedBuffer(" + platform_->Name() + "):\n";
+  string s = tensorflow::strings::StrCat(
+      "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
+      "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
+      ", on-device shape=" +
+          ShapeUtil::HumanStringWithLayout(on_device_shape()),
+      ":\n");
   ShapeUtil::ForEachSubshape(
-      shape(), [this, &s](const Shape& subshape, const ShapeIndex& index) {
+      on_device_shape(),
+      [this, &s](const Shape& subshape, const ShapeIndex& index) {
         string shape_str;
         if (ShapeUtil::IsTuple(subshape)) {
           shape_str = "tuple";
@@ -105,53 +79,24 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
   return out;
 }
 
-/* static */ StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-ScopedShapedBuffer::Allocate(
-    const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
-    const std::function<int64(const Shape&)>& shape_size_fn) {
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("Shape must have a layout: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  auto shaped_buffer =
-      WrapUnique(new ScopedShapedBuffer(shape, allocator, device_ordinal));
-
-  // Allocate an appropriate sized buffer for each element in the shape
-  // including the tuple pointer arrays.
-  for (auto& pair : shaped_buffer->shape_index_to_buffer_entry_) {
-    const ShapeIndex& index = pair.first;
-    size_t& buffer_entry = pair.second;
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase memory_base,
-                        shaped_buffer->allocator_->Allocate(
-                            shaped_buffer->device_ordinal(),
-                            shape_size_fn(ShapeUtil::GetSubshape(
-                                shaped_buffer->shape(), index))));
-    shaped_buffer->buffers_.push_back(memory_base);
-    buffer_entry = shaped_buffer->buffers_.size() - 1;
-  }
-
-  return std::move(shaped_buffer);
-}
-
 /* static */
 StatusOr<std::unique_ptr<ScopedShapedBuffer>> ScopedShapedBuffer::MakeScoped(
     ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator) {
   auto scoped_buffer = WrapUnique(new ScopedShapedBuffer(
-      shaped_buffer->shape(), allocator, shaped_buffer->device_ordinal()));
+      shaped_buffer->on_host_shape(), shaped_buffer->on_device_shape(),
+      allocator, shaped_buffer->device_ordinal()));
   scoped_buffer->buffers_ = shaped_buffer->buffers();
-  scoped_buffer->shape_index_to_buffer_entry_ =
-      shaped_buffer->shape_index_to_buffer_entry();
-
   shaped_buffer->clear();
 
   return std::move(scoped_buffer);
 }
 
-ScopedShapedBuffer::ScopedShapedBuffer(const Shape& shape,
+ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
+                                       const Shape& on_device_shape,
                                        DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
-    : ShapedBuffer(shape, allocator->platform(), device_ordinal),
+    : ShapedBuffer(on_host_shape, on_device_shape, allocator->platform(),
+                   device_ordinal),
       allocator_(allocator) {}
 
 ScopedShapedBuffer::~ScopedShapedBuffer() {
@@ -159,7 +104,8 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
   std::set<void*> deallocated_opaques;
-  for (se::DeviceMemoryBase& memory_base : buffers_) {
+  for (auto& pair : buffers_) {
+    se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
         deallocated_opaques.count(memory_base.opaque()) == 0) {
       deallocated_opaques.insert(memory_base.opaque());
@@ -170,13 +116,10 @@ ScopedShapedBuffer::~ScopedShapedBuffer() {
 }
 
 std::unique_ptr<ShapedBuffer> ScopedShapedBuffer::release() {
-  auto shaped_buffer =
-      MakeUnique<ShapedBuffer>(shape(), platform(), device_ordinal());
+  auto shaped_buffer = MakeUnique<ShapedBuffer>(
+      on_host_shape(), on_device_shape(), platform(), device_ordinal());
 
-  *shaped_buffer->mutable_buffers() = buffers();
-  *shaped_buffer->mutable_shape_index_to_buffer_entry() =
-      shape_index_to_buffer_entry();
-
+  shaped_buffer->buffers() = buffers();
   clear();
 
   return shaped_buffer;

@@ -380,9 +380,9 @@ bool CUDAExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
                                 thread_dims.z, args.number_of_shared_bytes(),
                                 custream, kernel_params,
                                 nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel with args: "
+    LOG(ERROR) << "failed to launch CUDA kernel " << kernel.name() << " with "
                << args.number_of_arguments()
-               << "; thread dim: " << thread_dims.ToString()
+               << " args; thread dim: " << thread_dims.ToString()
                << "; block dim: " << block_dims.ToString();
     return false;
   }
@@ -664,7 +664,7 @@ bool CUDAExecutor::StopTimer(Stream *stream, Timer *timer) {
   return AsCUDATimer(timer)->Stop(AsCUDAStream(stream));
 }
 
-bool CUDAExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status CUDAExecutor::BlockHostUntilDone(Stream *stream) {
   return CUDADriver::SynchronizeStream(context_, AsCUDAStreamValue(stream));
 }
 
@@ -861,6 +861,9 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
 #elif defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
   return 0;
+#elif defined(__aarch64__)
+  LOG(INFO) << "ARM64 does not support NUMA - returning NUMA node zero";
+  return 0;
 #else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
@@ -925,16 +928,129 @@ struct UnqueryableDeviceParams {
   uint64 shared_memory_alloc_granularity;
 };
 
+// http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
+// https://developer.download.nvidia.com/compute/cuda/CUDA_Occupancy_calculator.xls
 static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
-  {
-    3, 5,       // compute capability (3.5)
-    16,         // blocks_per_core_limit
-    64 * 1024,  // registers_per_core_limit
-    255,        // registers_per_thread_limit
-    4,          // warp_alloc_granularity
-    256,        // register_alloc_granularity
-    256         // shared_memory_alloc_granularity
-  }
+    {
+        2, 0,       // compute capability (2.0)
+        8,          // blocks_per_core_limit
+        32 * 1024,  // registers_per_core_limit
+        63,         // registers_per_thread_limit
+        2,          // warp_alloc_granularity
+        64,         // register_alloc_granularity
+        128,        // shared_memory_alloc_granularity
+    },
+    {
+        2, 1,       // compute capability (2.1)
+        8,          // blocks_per_core_limit
+        32 * 1024,  // registers_per_core_limit
+        63,         // registers_per_thread_limit
+        2,          // warp_alloc_granularity
+        64,         // register_alloc_granularity
+        128,        // shared_memory_alloc_granularity
+    },
+    {
+        3, 0,       // compute capability (3.0)
+        16,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        63,         // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        3, 2,       // compute capability (3.2)
+        16,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        3, 5,       // compute capability (3.5)
+        16,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        3, 7,        // compute capability (3.7)
+        16,          // blocks_per_core_limit
+        128 * 1024,  // registers_per_core_limit
+        255,         // registers_per_thread_limit
+        4,           // warp_alloc_granularity
+        256,         // register_alloc_granularity
+        256,         // shared_memory_alloc_granularity
+    },
+    {
+        5, 0,       // compute capability (5.0)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        5, 2,       // compute capability (5.2)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        5, 3,       // compute capability (5.3)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        6, 0,       // compute capability (6.0)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        2,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        6, 1,       // compute capability (6.1)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    {
+        6, 2,       // compute capability (6.2)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        4,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
+    // TODO(jlebar): Confirm the alloc granularity values for sm_70.  These are
+    // not published in the spreadsheet linked above.  Currently we guess that
+    // they're the same as sm_60.
+    {
+        7, 0,       // compute capability (7.0)
+        32,         // blocks_per_core_limit
+        64 * 1024,  // registers_per_core_limit
+        255,        // registers_per_thread_limit
+        2,          // warp_alloc_granularity
+        256,        // register_alloc_granularity
+        256,        // shared_memory_alloc_granularity
+    },
 };
 
 DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {

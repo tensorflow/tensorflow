@@ -68,6 +68,8 @@ tensorflow/core/kernels/scatter_nd_op_cpu_impl_2.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_3.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_4.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_5.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_6.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_7.cc
 tensorflow/core/kernels/scatter_nd_op.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
@@ -132,6 +134,8 @@ tensorflow/core/kernels/gather_nd_op_cpu_impl_2.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_3.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_4.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_5.cc
+tensorflow/core/kernels/gather_nd_op_cpu_impl_6.cc
+tensorflow/core/kernels/gather_nd_op_cpu_impl_7.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fill_functor.cc
@@ -144,6 +148,7 @@ tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/decode_bmp_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc

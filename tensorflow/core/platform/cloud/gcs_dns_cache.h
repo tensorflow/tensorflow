@@ -48,10 +48,12 @@ class GcsDnsCache {
   }
 
   // Annotate the given HttpRequest with resolve overrides from the cache.
-  Status AnnotateRequest(HttpRequest* request);
+  void AnnotateRequest(HttpRequest* request);
 
  private:
   static std::vector<string> ResolveName(const string& name);
+  static std::vector<std::vector<string>> ResolveNames(
+      const std::vector<string>& names);
   void WorkerThread();
 
   // Define a friend class for testing.
@@ -63,10 +65,11 @@ class GcsDnsCache {
   std::default_random_engine random_ GUARDED_BY(mu_);
   bool started_ GUARDED_BY(mu_) = false;
   bool cancelled_ GUARDED_BY(mu_) = false;
-  std::vector<string> www_addresses_ GUARDED_BY(mu_);
-  std::vector<string> storage_addresses_ GUARDED_BY(mu_);
   std::unique_ptr<Thread> worker_ GUARDED_BY(mu_);  // After mutable vars.
   const int64 refresh_rate_secs_;
+
+  // Entries in this vector correspond to entries in kCachedDomainNames.
+  std::vector<std::vector<string>> addresses_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

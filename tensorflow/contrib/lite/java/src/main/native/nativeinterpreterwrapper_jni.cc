@@ -307,12 +307,21 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
-    JNIEnv* env, jclass clazz, jlong model_handle) {
+    JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle) {
   tflite::FlatBufferModel* model = convertLongToModel(env, model_handle);
   if (model == nullptr) return 0;
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) return 0;
   auto resolver = ::tflite::CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::InterpreterBuilder(*model, *(resolver.get()))(&interpreter);
+  TfLiteStatus status =
+      tflite::InterpreterBuilder(*model, *(resolver.get()))(&interpreter);
+  if (status != kTfLiteOk) {
+    throwException(env, kIllegalArgumentException,
+                   "Cannot create interpreter: %s",
+                   error_reporter->CachedErrorMessage());
+  }
   return reinterpret_cast<jlong>(interpreter.release());
 }
 

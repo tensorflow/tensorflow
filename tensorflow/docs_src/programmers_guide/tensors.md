@@ -112,8 +112,8 @@ For example, the following method programmatically determines the rank
 of the `tf.Tensor` defined in the previous section:
 
 ```python
-r = tf.rank(my3d)
-# After the graph runs, r will hold the value 3.
+r = tf.rank(my_image)
+# After the graph runs, r will hold the value 4.
 ```
 
 ### Referring to `tf.Tensor` slices

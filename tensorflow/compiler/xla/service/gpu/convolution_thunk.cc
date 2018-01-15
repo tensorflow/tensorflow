@@ -314,7 +314,9 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  if (best_algorithm_.algorithm().is_default()) {
+  if (!best_algorithm_.has_value()) {
+    best_algorithm_.emplace();
+
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "
@@ -363,35 +365,35 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     }
 
     if (best_result.is_valid()) {
-      best_algorithm_.set_algorithm(best_result.algorithm());
+      best_algorithm_->set_algorithm(best_result.algorithm());
     } else {
       LOG(ERROR) << "No convolution algorithm works with profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm(AlgorithmDesc());
+      best_algorithm_->set_algorithm(AlgorithmDesc());
     }
 
     if (best_result_without_scratch.is_valid()) {
-      best_algorithm_.set_algorithm_no_scratch(
+      best_algorithm_->set_algorithm_no_scratch(
           best_result_without_scratch.algorithm());
     } else {
       LOG(ERROR) << "No convolution algorithm without scratch works with "
                     "profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm_no_scratch(AlgorithmDesc());
+      best_algorithm_->set_algorithm_no_scratch(AlgorithmDesc());
     }
   }
 
   {
     VLOG(2) << "Using convolution algorithm ("
-            << AlgorithmToString(best_algorithm_.algorithm()) << ", "
-            << AlgorithmToString(best_algorithm_.algorithm_no_scratch())
+            << AlgorithmToString(best_algorithm_->algorithm()) << ", "
+            << AlgorithmToString(best_algorithm_->algorithm_no_scratch())
             << ") for ConvolutionThunk: " << this;
     ConvolveScratchAllocator scratch_allocator(
         buffer_allocations.device_ordinal(),
         buffer_allocations.memory_allocator());
     return Convolve(input_descriptor, input_data, filter_descriptor,
                     filter_data, output_descriptor, output_data,
-                    convolution_descriptor, best_algorithm_, stream,
+                    convolution_descriptor, *best_algorithm_, stream,
                     &scratch_allocator, nullptr);
   }
 }

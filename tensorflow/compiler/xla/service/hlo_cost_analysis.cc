@@ -201,10 +201,11 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
-
+  int64 reduction_width =
+      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
   // First divide by reduction width before multiplying by rhs elements to avoid
   // overflow.
   int64 fma_count;
@@ -391,13 +392,35 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  current_properties_[kFlopsKey] = ShapeUtil::ElementsIn(crs->shape());
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(
+      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsArray(subshape)) {
+          flops += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  current_properties_[kFlopsKey] = flops;
   return Status::OK();
 }
 

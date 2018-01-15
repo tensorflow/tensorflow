@@ -54,6 +54,23 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
   $1 = &temp;
 }
 
+%typemap(in) const tensorflow::NamedDevice& (tensorflow::NamedDevice temp) {
+  char* c_string;
+  Py_ssize_t py_size;
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+
+  if (!temp.ParseFromString(string(c_string, py_size))) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "The NamedDevice could not be parsed as a valid protocol buffer");
+    SWIG_fail;
+  }
+  $1 = &temp;
+}
+
 %typemap(in) const tensorflow::RunMetadata& (tensorflow::RunMetadata temp) {
   char* c_string;
   Py_ssize_t py_size;
@@ -83,6 +100,7 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
 #include <memory>
 #include <vector>
 #include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
@@ -90,6 +108,8 @@ bool _PyObjAs(PyObject *input, tensorflow::NamedDevice *out) {
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/memory_types.h"
 
 // Provide the implementation of the GCluster struct here.
 struct GCluster {
@@ -134,13 +154,17 @@ static GCluster TF_NewVirtualCluster(
   }
   tensorflow::grappler::Cluster*cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
+  PyGILState_STATE gstate = PyGILState_Ensure();
   tensorflow::Status status = cluster_->Provision();
+  PyGILState_Release(gstate);
   tensorflow::Set_TF_Status_from_Status(out_status, status);
   return GCluster(cluster_);
 }
 
 static void TF_ShutdownCluster(GCluster cluster) {
+  PyGILState_STATE gstate = PyGILState_Ensure();
   cluster->Shutdown();
+  PyGILState_Release(gstate);
 }
 
 tensorflow::Status _GetOpPerformanceDataAndRunTime(
@@ -179,6 +203,106 @@ static PyObject* TF_ListDevices(GCluster cluster) {
   }
   PyGILState_Release(gstate);
   return result;
+}
+
+static std::vector<string> TF_ListAvailableOps() {
+  tensorflow::OpRegistry* registry = tensorflow::OpRegistry::Global();
+  std::vector<tensorflow::OpDef> ops;
+  registry->GetRegisteredOps(&ops);
+  std::vector<string> op_names;
+  for (const tensorflow::OpDef& op : ops) {
+    op_names.push_back(op.name());
+  }
+  std::sort(op_names.begin(), op_names.end());
+  return op_names;
+}
+
+static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item) {
+  if (cluster.is_none() || item.is_none()) {
+    Py_RETURN_NONE;
+  }
+  const std::unordered_map<string, tensorflow::DeviceProperties>& devices = cluster->GetDevices();
+  std::unordered_map<string, std::vector<string>> device_types;
+  for (const auto& dev : devices) {
+    device_types[dev.second.type()].push_back(dev.first);
+  }
+
+  std::unordered_map<string, std::set<string>> supported_device_types;
+  std::unordered_map<string, std::set<string>> device_restrictions;
+
+  for (const auto& node : item->graph.node()) {
+    for (const auto& dev : device_types) {
+      const string& type = dev.first;
+      if (cluster->type() != "single_machine") {
+        // The actual kernel may not be linked in this binary.
+        supported_device_types[node.name()].insert(type);
+      } else {
+        // Check the kernel capabilities
+        const tensorflow::DeviceType dev_type(type);
+        tensorflow::Status s = tensorflow::FindKernelDef(dev_type, node, nullptr, nullptr);
+        if (s.ok()) {
+          supported_device_types[node.name()].insert(type);
+
+          // Check which inputs are restricted to reside on the host.
+          // TODO: extends this to support outputs as well
+          tensorflow::MemoryTypeVector inp_mtypes;
+          tensorflow::MemoryTypeVector out_mtypes;
+          s = tensorflow::MemoryTypesForNode(tensorflow::OpRegistry::Global(), dev_type, node,
+                                             &inp_mtypes, &out_mtypes);
+          if (s.ok()) {
+            for (int i = 0; i < inp_mtypes.size(); ++i) {
+              if (inp_mtypes[i] == tensorflow::HOST_MEMORY) {
+                device_restrictions[tensorflow::grappler::NodeName(node.input(i))].insert("CPU");
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* result = PyDict_New();
+
+  for (const auto& supported_dev : supported_device_types) {
+    const string& node = supported_dev.first;
+    std::set<string> feasible;
+    const auto it = device_restrictions.find(node);
+    if (it != device_restrictions.end()) {
+      const std::set<string>& candidates = supported_dev.second;
+      const std::set<string>& valid = it->second;
+      std::set_intersection(candidates.begin(), candidates.end(), valid.begin(), valid.end(),
+                            std::inserter(feasible, feasible.begin()));
+    } else {
+      feasible = supported_dev.second;
+    }
+
+    std::vector<string> device_names;
+    for (const string& type : feasible) {
+      auto it = device_types.find(type);
+      CHECK(it != device_types.end());
+      for (const string& name : it->second) {
+        device_names.push_back(name);
+      }
+    }
+
+    PyObject* dev = PyList_New(device_names.size());
+    for (int i = 0; i < device_names.size(); ++i) {
+      PyList_SetItem(dev, i, PyString_FromString(device_names[i].c_str()));
+    }
+    CHECK_EQ(0, PyDict_SetItem(result, PyString_FromString(node.c_str()), dev));
+  }
+  PyGILState_Release(gstate);
+  return result;
+}
+
+
+static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
+  tensorflow::grappler::OpLevelCostEstimator estimator;
+  tensorflow::grappler::OpLevelCostEstimator::DeviceInfo info =
+      estimator.GetDeviceInfo(device.properties());
+  return info.gigaops;
 }
 
 static PyObject* TF_MeasureCosts(
@@ -307,10 +431,12 @@ static GCluster TF_NewVirtualCluster(
     TF_Status* out_status);
 static void TF_ShutdownCluster(GCluster cluster);
 static PyObject* TF_ListDevices(GCluster cluster);
+static std::vector<string> TF_ListAvailableOps();
+static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item);
+static float TF_EstimatePerformance(const tensorflow::NamedDevice& device);
 static PyObject* TF_MeasureCosts(
     GItem item, GCluster cluster,
     bool generate_timeline, TF_Status* out_status);
 static PyObject* TF_DeterminePeakMemoryUsage(
     GItem item, GCluster cluster,
     TF_Status* out_status);
-

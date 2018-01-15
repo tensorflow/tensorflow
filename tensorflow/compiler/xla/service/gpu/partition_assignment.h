@@ -30,14 +30,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-enum class PartitionStrategy {
-  // Optimized for latency by allowing maximum number of registers per thread.
-  kLatency,
-  // Optimized for throughput. This may limit registers per thread and cause
-  // longer latency.
-  kThroughput
-};
-
 // Encapsulates the launch dimensions of a kernel, e.g., the block count and the
 // number of threads per block.
 class LaunchDimensions {
@@ -66,8 +58,7 @@ std::ostream& operator<<(std::ostream& out,
 
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape,
-    const perftools::gputools::DeviceDescription& device_desc,
-    PartitionStrategy partition_strategy = PartitionStrategy::kLatency);
+    const perftools::gputools::DeviceDescription& device_desc);
 
 }  // namespace gpu
 }  // namespace xla

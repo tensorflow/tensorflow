@@ -57,7 +57,10 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "oss_serial",
+    ],
 )
 
 cuda_py_test(

@@ -49,8 +49,20 @@ def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
   tensor_proto.half_val.extend([
       ExtractBitsFromFloat16(x) for x in proto_values])
 
+
+def ExtractBitsFromBFloat16(x):
+  return np.asscalar(
+      np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+
+
+def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
+  tensor_proto.half_val.extend([
+      ExtractBitsFromBFloat16(x) for x in proto_values])
+
+
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
+      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
       # TODO(sesse): We should have a
       # fast_tensor_util.AppendFloat16ArrayToTensorProto,
       # but it seems np.float16_t doesn't exist?
@@ -121,6 +133,7 @@ else:
     tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
 
   _NP_TO_APPEND_FN = {
+      dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
       np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: SlowAppendFloat32ArrayToTensorProto,
       np.float64: SlowAppendFloat64ArrayToTensorProto,

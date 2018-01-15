@@ -399,7 +399,7 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
-      np.random.seed(1337)
+      np.random.seed(43)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,
@@ -836,6 +836,11 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            validation_data=custom_generator(),
+                            validation_steps=1,
+                            workers=0)
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -845,6 +850,10 @@ class TestGeneratorMethods(test.TestCase):
                                 steps=5,
                                 max_queue_size=10,
                                 use_multiprocessing=False)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=0)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
                                  max_queue_size=10,
@@ -854,6 +863,11 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  use_multiprocessing=False)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False,
+                                 workers=0)
 
         # Test legacy API
         model.fit_generator(custom_generator(),
@@ -1439,4 +1453,13 @@ class TestTrainingWithDataTensors(test.TestCase):
 
 
 if __name__ == '__main__':
+  # Bazel sets these environment variables to very long paths.
+  # Tempfile uses them to create long paths, and in turn multiprocessing
+  # library tries to create sockets named after paths. Delete whatever bazel
+  # writes to these to avoid tests failing due to socket addresses being too
+  # long.
+  for var in ('TMPDIR', 'TMP', 'TEMP'):
+    if var in os.environ:
+      del os.environ[var]
+
   test.main()

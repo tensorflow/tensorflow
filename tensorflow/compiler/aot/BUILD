@@ -24,7 +24,6 @@ tf_cc_test(
     srcs = ["runtime_test.cc"],
     deps = [
         ":runtime",
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -111,6 +110,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],

@@ -31,61 +31,68 @@ limitations under the License.
 namespace xla {
 
 // Class which encapsulates a buffer or set of buffers containing data of a
-// particular XLA shape. Used for zero-copy execution interface for a
-// XLA client running in the same process as the service (LocalClient),
+// particular XLA shape.
 class ShapedBuffer {
  public:
-  // Convenience method which creates a ShapedBuffer of array shape (not a
-  // tuple). Its single buffer pointer is set to the given value "buffer". The
-  // given buffer must be large enough to store the given shape as given by
-  // ShapeUtil::ByteSizeOf.
-  static StatusOr<std::unique_ptr<ShapedBuffer>> MakeArrayShapedBuffer(
-      const Shape& shape, const perftools::gputools::Platform* platform,
-      int device_ordinal, const perftools::gputools::DeviceMemoryBase& buffer);
-
-  ShapedBuffer(const Shape& shape,
+  // Construct a ShapedBuffer with null DeviceMemoryBases at each index. The
+  // shape of the data on the host and the device may differ because the device
+  // may have a different representation for different data types. Therefore,
+  // both the on-host and on-device shape are required. The on-device shape
+  // determines the number of device allocations (DeviceMemoryBase) held by the
+  // ShapedBuffer.
+  ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
                const perftools::gputools::Platform* platform,
                int device_ordinal);
 
-  const Shape& shape() const { return shape_; }
+  // Returns the shape of the on-host representation of the data held by this
+  // ShapedBuffer.
+  const Shape& on_host_shape() const { return on_host_shape_; }
+
+  // Returns the shape of the on-device representation of the data held by this
+  // ShapedBuffer.
+  const Shape& on_device_shape() const { return on_device_shape_; }
+
   const perftools::gputools::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
+
+  // Return the root buffer of the shape (shape index {}).
+  const perftools::gputools::DeviceMemoryBase& root_buffer() const {
+    return buffer(/*index=*/{});
+  }
 
   // Returns the buffer at the given shape index where index is defined as in
   // ShapeUtil::GetSubshape.
   const perftools::gputools::DeviceMemoryBase& buffer(
-      const ShapeIndex& index) const;
-  perftools::gputools::DeviceMemoryBase* mutable_buffer(
-      const ShapeIndex& index);
+      const ShapeIndex& index) const {
+    return buffers_.element(index);
+  }
 
-  // Returns the underlying structure which stores the buffer pointers.
-  const std::vector<perftools::gputools::DeviceMemoryBase>& buffers() const {
+  // Sets the device memory buffer at the given index.
+  void set_buffer(const perftools::gputools::DeviceMemoryBase& buffer,
+                  const ShapeIndex& index) {
+    *buffers_.mutable_element(index) = buffer;
+  }
+
+  // Returns the underlying ShapeTree containing all the device addresses in the
+  // ShapedBuffer.
+  const ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() const {
     return buffers_;
   }
-  std::vector<perftools::gputools::DeviceMemoryBase>* mutable_buffers() {
-    return &buffers_;
-  }
-
-  // Returns the tree of indices which map to buffer pointers.
-  const ShapeTree<size_t>& shape_index_to_buffer_entry() const {
-    return shape_index_to_buffer_entry_;
-  }
-  ShapeTree<size_t>* mutable_shape_index_to_buffer_entry() {
-    return &shape_index_to_buffer_entry_;
+  ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() {
+    return buffers_;
   }
 
   // Set all device memory pointers in the object to null.
   void clear();
 
-  // Adds a new buffer at the given shape index.
-  void AddBufferAtIndex(const perftools::gputools::DeviceMemoryBase& buffer,
-                        const ShapeIndex& shape_index);
-
   string ToString() const;
 
  protected:
-  // The shape of the device buffer with layout.
-  const Shape shape_;
+  // The shape of the data when represented on the host.
+  const Shape on_host_shape_;
+
+  // The shape of the data on the device.
+  const Shape on_device_shape_;
 
   // The platform the memory is allocated on.
   const perftools::gputools::Platform* platform_;
@@ -93,14 +100,8 @@ class ShapedBuffer {
   // The device the memory is allocated on.
   const int device_ordinal_;
 
-  // The list of DeviceMemoryBase pointers representing this shape.
-  // Note that there can be a many to one relationship between tuple elements
-  // and buffers.  To account for this, shape_index_to_buffer_entry_ allows us
-  // to make from a position in a shape to an index into this list.
-  std::vector<perftools::gputools::DeviceMemoryBase> buffers_;
-
-  // The tree of indices into buffers_.
-  ShapeTree<size_t> shape_index_to_buffer_entry_;
+  // The tree of device buffers. Its shape is on_device_shape().
+  ShapeTree<perftools::gputools::DeviceMemoryBase> buffers_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
@@ -110,19 +111,15 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 // destructed.
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
-  // Return a newly allocated ScopedShapedBuffer of an arbitrary shape. Array
-  // buffers (leaves in the shape) are allocated and uninitialized. Tuple
-  // buffers (if any) are allocated and initialized to the backend-specific
-  // representation of an array of pointers to the tuple elements.
-  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> Allocate(
-      const Shape& shape, DeviceMemoryAllocator* allocator, int device_ordinal,
-      const std::function<int64(const Shape&)>& shape_size_fn);
-
   // Takes a ShapedBuffer and returns a ScopedShapedBuffer which manages the
   // deallocation of the device memory held in the shaped buffer. All device
   // memory pointers in the given ShapedBuffer are set to null.
   static StatusOr<std::unique_ptr<ScopedShapedBuffer>> MakeScoped(
       ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator);
+
+  // Create a ScopedShapedBuffer with null DeviceMemoryBases at each index.
+  ScopedShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
+                     DeviceMemoryAllocator* allocator, int device_ordinal);
 
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
@@ -138,8 +135,6 @@ class ScopedShapedBuffer : public ShapedBuffer {
   virtual ~ScopedShapedBuffer();
 
  protected:
-  ScopedShapedBuffer(const Shape& shape, DeviceMemoryAllocator* allocator,
-                     int device_ordinal);
   ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
   void operator=(const ScopedShapedBuffer&) = delete;
 
