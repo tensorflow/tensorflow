@@ -443,11 +443,11 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
     auto session_mgr = (SessionMgr*)env->session_mgr;
     if (session_mgr) {
       session_mgr->SetLogging(request->rpc_logging());
-      if (request->clear()) {
-        session_mgr->ClearLogs();
-      }
       for (const auto& step_id : request->fetch_step_id()) {
         session_mgr->RetrieveLogs(step_id, response);
+      }
+      if (request->clear()) {
+        session_mgr->ClearLogs();
       }
     }
   }

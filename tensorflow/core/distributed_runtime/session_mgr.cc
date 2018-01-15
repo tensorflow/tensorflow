@@ -63,7 +63,7 @@ Status SessionMgr::CreateSession(const string& session,
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
   }
 
-  if (worker_cache) {
+  if (worker_cache != nullptr & default_worker_cache_.get() != nullptr) {
     worker_cache->SetLogging(this->is_logging_active_);
   }
 
