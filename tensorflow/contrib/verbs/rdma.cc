@@ -20,6 +20,7 @@ limitations under the License.
 #include <fcntl.h>
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
@@ -466,7 +467,7 @@ void RdmaAdapter::Process_CQ() {
 
         if (imm_data < RDMA_IMM_DATA_ACK) {
           // receive a tensor RDMA write
-          worker_env_->compute_pool->Schedule([imm_data, rc]() {
+          SchedClosure([imm_data, rc]() {
             uint32_t request_index = imm_data;
             RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
             request->RecvTensorContent();
@@ -483,7 +484,7 @@ void RdmaAdapter::Process_CQ() {
                     << "#" << rm.request_index_ << ": " << rm.name_;
 
         if (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) {
-          worker_env_->compute_pool->Schedule([rc, rm]() {
+          SchedClosure([rc, rm]() {
             RdmaTensorResponse* response = rc->AddTensorResponse(rm);
             response->Start();
           });
@@ -509,7 +510,7 @@ void RdmaAdapter::Process_CQ() {
             RdmaMessageBuffer* rb =
                 reinterpret_cast<RdmaMessageBuffer*>(wr_id->write_context);
             rb->SetBufferStatus(local, idle);
-            worker_env_->compute_pool->Schedule([rb]() { rb->SendNextItem(); });
+            SchedClosure([rb]() { rb->SendNextItem(); });
             break;
           }
           case RDMA_WRITE_ID_TENSOR_WRITE: {
