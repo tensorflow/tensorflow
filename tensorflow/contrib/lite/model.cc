@@ -46,11 +46,17 @@ inline const tflite::Model* VerifyAndGetModel(const void* buf, size_t len) {
 
 const char* kEmptyTensorName = "";
 
+#ifdef _WIN32
+static const bool use_nnapi = false;
+#else
+static const bool use_nnapi = true;
+#endif
+
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter,
-                                  /*use_nnapi=*/true));
+  model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter, /*use_nnapi=*/use_nnapi ));
   if (!model->initialized()) model.reset();
   return model;
 }
