@@ -142,9 +142,9 @@ struct RdmaMessage {
 
 // Immediate types for RDMA write
 enum RdmaImmDataType {
-  RDMA_IMM_DATA_ACK = 0x80000000,
-  RDMA_IMM_DATA_MESSAGE = 0x80000001
-  // Otherwise: Tensor write (request_index)
+  RDMA_IMM_MAX_REQUEST_ID = 0xFFFFFFFD,
+  RDMA_IMM_DATA_ACK = 0xFFFFFFFE,
+  RDMA_IMM_DATA_MESSAGE = 0xFFFFFFFF
 };
 
 // Write types for RDMA write-complete events

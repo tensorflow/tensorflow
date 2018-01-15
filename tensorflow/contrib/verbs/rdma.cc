@@ -465,7 +465,7 @@ void RdmaAdapter::Process_CQ() {
           continue;
         }
 
-        if (imm_data < RDMA_IMM_DATA_ACK) {
+        if (imm_data <= RDMA_IMM_MAX_REQUEST_ID) {
           // receive a tensor RDMA write
           SchedClosure([imm_data, rc]() {
             uint32_t request_index = imm_data;
@@ -675,7 +675,10 @@ RdmaTensorRequest* RdmaChannel::InsertTensorRequest(
     const Rendezvous::Args recv_args,
     const RdmaTensorRequest::RecvDoneCallback& done) {
   mutex_lock lock{ct_mu_};
-  uint32_t request_index = request_serial_++ & 0x7FFFFFFF;
+  uint32_t request_index = request_serial_++;
+  if (request_serial_ > RDMA_IMM_MAX_REQUEST_ID) {
+    request_serial_ = 0;
+  }
   RdmaTensorRequest request(request_index, key, step_id, this, dst_dev,
                             recv_args, done);
   auto it = request_table_.emplace(request_index, request);
