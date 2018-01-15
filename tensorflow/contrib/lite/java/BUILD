@@ -15,6 +15,7 @@ android_library(
             "src/main/java/org/tensorflow/lite/*.java",
         ],
     ),
+    manifest = "AndroidManifest.xml",
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_runtime",

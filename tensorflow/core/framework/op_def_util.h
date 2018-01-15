@@ -63,6 +63,10 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
 
+// Returns an error if the default value for any attr is added/removed/modified
+// in new_op compared to old_op.
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
+
 // Remove all docs from *op_def / *op_list.
 void RemoveDescriptionsFromOpDef(OpDef* op_def);
 void RemoveDescriptionsFromOpList(OpList* op_list);

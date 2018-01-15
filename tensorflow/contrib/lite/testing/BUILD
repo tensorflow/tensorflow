@@ -32,6 +32,7 @@ gen_zipped_test_files(
         "l2norm.zip",
         "local_response_norm.zip",
         "max_pool.zip",
+        "mean.zip",
         "mul.zip",
         "pad.zip",
         "relu.zip",

@@ -26,9 +26,11 @@ import re
 import numpy as np
 
 from tensorflow.core.profiler import profile_pb2
+from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -761,6 +763,31 @@ class PrintModelAnalysisTest(test.TestCase):
       ret_pb = model_analyzer.profile(
           sess.graph, run_meta=run_metadata, cmd='scope', options=options)
       self.assertGreater(ret_pb.total_requested_bytes, 1000000)
+
+  def testEager(self):
+    ops.reset_default_graph()
+    with context.eager_mode():
+      outfile = os.path.join(test.get_temp_dir(), 'dump')
+      opts = builder(
+          builder.time_and_memory()).with_file_output(outfile).build()
+      context.enable_run_metadata()
+      lib.BuildSmallModel()
+
+      profiler = model_analyzer.Profiler()
+      profiler.add_step(0, context.export_run_metadata())
+      context.disable_run_metadata()
+      profiler.profile_operations(opts)
+      with gfile.Open(outfile, 'r') as f:
+        out_str = f.read()
+        self.assertTrue('Conv2D' in out_str)
+        self.assertTrue('VarHandleOp' in out_str)
+
+      with gfile.Open('/tmp/eager_profile', 'wb') as f:
+        profile_pb = tfprof_log_pb2.ProfileProto()
+        profile_pb.ParseFromString(profiler.serialize_to_string())
+        profile_pb_str = '%s' % profile_pb
+        self.assertTrue('Conv2D' in profile_pb_str)
+        self.assertTrue('VarHandleOp' in profile_pb_str)
 
 
 if __name__ == '__main__':

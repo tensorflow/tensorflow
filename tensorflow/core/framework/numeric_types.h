@@ -199,6 +199,24 @@ inline bfloat16& operator-=(bfloat16& a, bfloat16 b) {
   a = a - b;
   return a;
 }
+inline bfloat16 operator++(bfloat16& a) {
+  a += bfloat16(1);
+  return a;
+}
+inline bfloat16 operator--(bfloat16& a) {
+  a -= bfloat16(1);
+  return a;
+}
+inline bfloat16 operator++(bfloat16& a, int) {
+  bfloat16 original_value = a;
+  ++a;
+  return original_value;
+}
+inline bfloat16 operator--(bfloat16& a, int) {
+  bfloat16 original_value = a;
+  --a;
+  return original_value;
+}
 inline bfloat16& operator*=(bfloat16& a, bfloat16 b) {
   a = a * b;
   return a;

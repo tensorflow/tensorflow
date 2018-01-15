@@ -1354,7 +1354,7 @@ class _CudnnRNN(object):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c. This is only relevant for LSTM.
     """
@@ -1472,7 +1472,7 @@ class CudnnLSTM(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c.
     """

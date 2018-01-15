@@ -53,6 +53,7 @@ message RewriterConfig {
     // selected automatically.
     SWAPPING_HEURISTICS = 4;
     RECOMPUTATION_HEURISTICS = 5;
+    SCHEDULING_HEURISTICS = 6;
     // Use any combination of swapping and recomputation heuristics.
     HEURISTICS = 3;
   }
