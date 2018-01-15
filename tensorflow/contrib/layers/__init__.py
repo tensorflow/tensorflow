@@ -27,6 +27,7 @@ See the @{$python/contrib.layers} guide.
 @@convolution2d_transpose
 @@conv3d_transpose
 @@convolution3d_transpose
+@@ctc_loss_dense_labels
 @@dropout
 @@elu
 @@embedding_lookup_unique
