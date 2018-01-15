@@ -74,6 +74,7 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
+        ":list_ops",
         ":manip_ops",
         ":math_ops",
         ":metrics",
