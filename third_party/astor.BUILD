@@ -19,5 +19,6 @@ py_library(
         "astor/string_repr.py",
         "astor/tree_walk.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )
