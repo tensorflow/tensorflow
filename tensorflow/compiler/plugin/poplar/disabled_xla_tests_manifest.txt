@@ -14,6 +14,19 @@ PrngTest.HundredValuesB10p5F64 POPLAR // F64
 PrngTest.HundredValuesB10p1F64 POPLAR // F64
 
 Bfloat16Test POPLAR // No bfloat16
+DynamicSliceTest.Int32R1BF16 POPLAR // No bfloat16
+DynamicSliceTest.Int32R2BF16 POPLAR // No bfloat16
+DynamicSliceTest.Int32R3BF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.Int32R1BF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.Int32R2BF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.Int32R3BF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.Int32WrapBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousSingleElementBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousMultipleElementsBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousMultipleWrappingBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousTooLargeBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousUnalignedBF16 POPLAR // No bfloat16
+DynamicUpdateSliceTest.R3ContiguousLargerBF16 POPLAR // No bfloat16
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
