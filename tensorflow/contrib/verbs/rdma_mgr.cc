@@ -120,7 +120,7 @@ void RdmaMgr::SetupChannels() {
         if (++attempts == max_num_attempts) {
           break;
         }
-        usleep(2000000);
+        worker_env_->env->SleepForMicroseconds(2000000);
       }
     } while (!s.ok());
     delete client;
