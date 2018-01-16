@@ -144,7 +144,11 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
         buffered_file->ReadNBytes(string_length, &buffer[0], &bytes_read));
     *actual_crc32c = crc32c::Extend(*actual_crc32c, buffer.data(), bytes_read);
     VariantTensorDataProto proto;
-    proto.ParseFromString(buffer);
+    if (!proto.ParseFromString(buffer)) {
+      return errors::DataLoss("Unable to parse VariantTensorDataProto from ",
+                              "buffer of size ", string_length, ". ",
+                              "Bundle entry offset: ", offset, " size: ", size);
+    }
     Variant v = proto;
     if (!DecodeUnaryVariant(&v)) {
       return errors::Internal("Could not decode variant with type_name: \"",
