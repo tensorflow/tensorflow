@@ -41,6 +41,7 @@ void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
   template struct SetZeroFunctor<Eigen::ThreadPoolDevice, T>;
 DEFINE_SETZERO_CPU(bool);
 DEFINE_SETZERO_CPU(Eigen::half);
+DEFINE_SETZERO_CPU(bfloat16);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(uint8);
@@ -85,6 +86,7 @@ void SetOneFunctor<Eigen::ThreadPoolDevice, T>::operator()(
   template struct SetOneFunctor<Eigen::ThreadPoolDevice, T>;
 DEFINE_SETONE_CPU(bool);
 DEFINE_SETONE_CPU(Eigen::half);
+DEFINE_SETONE_CPU(bfloat16);
 DEFINE_SETONE_CPU(float);
 DEFINE_SETONE_CPU(double);
 DEFINE_SETONE_CPU(uint8);

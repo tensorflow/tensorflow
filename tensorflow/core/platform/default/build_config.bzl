@@ -509,6 +509,7 @@ def tf_additional_cloud_kernel_deps():
 def tf_lib_proto_parsing_deps():
   return [
       ":protos_all_cc",
+      "//third_party/eigen3",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
 
