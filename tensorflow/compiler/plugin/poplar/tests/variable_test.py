@@ -188,7 +188,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
         sess.run(tf.global_variables_initializer())
         o = sess.run(z)
-        self.assertAllClose(o, 0.0, 1.0, 1.0)
+        self.assertAllClose(o, 0.0, 1.0, 3.0)
 
   def testTruncatedNormalInitalizer(self):
     with tf.device("/device:XLA_IPU:0"):
