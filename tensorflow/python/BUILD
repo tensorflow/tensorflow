@@ -2380,6 +2380,8 @@ py_library(
         ":platform",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

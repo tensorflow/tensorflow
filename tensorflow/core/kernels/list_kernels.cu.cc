@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/list_kernels.h"
 
@@ -77,3 +76,4 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          TensorListZerosLike<GPUDevice>);
 
 }  // namespace tensorflow
+#endif  // GOOGLE_CUDA

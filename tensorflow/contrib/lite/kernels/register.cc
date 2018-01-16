@@ -20,7 +20,7 @@ namespace ops {
 namespace builtin {
 
 TfLiteRegistration* Register_RELU();
-TfLiteRegistration* Register_RELU1();
+TfLiteRegistration* Register_RELU_N1_TO_1();
 TfLiteRegistration* Register_RELU6();
 TfLiteRegistration* Register_TANH();
 TfLiteRegistration* Register_LOGISTIC();
@@ -57,7 +57,7 @@ TfLiteRegistration* Register_MEAN();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
-  AddBuiltin(BuiltinOperator_RELU1, Register_RELU1());
+  AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
   AddBuiltin(BuiltinOperator_TANH, Register_TANH());
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC());

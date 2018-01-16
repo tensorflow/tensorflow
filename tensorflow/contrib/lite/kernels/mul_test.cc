@@ -78,9 +78,10 @@ TEST(FloatMulOpTest, NoActivation) {
               ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
 }
 
-TEST(FloatMulOpTest, ActivationRELU1) {
+TEST(FloatMulOpTest, ActivationRELU_N1_TO_1) {
   FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU1);
+                    {TensorType_FLOAT32, {}},
+                    ActivationFunctionType_RELU_N1_TO_1);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 5});
   m.Invoke();
