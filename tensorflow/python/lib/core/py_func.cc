@@ -301,13 +301,22 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
         if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
 #if PY_MAJOR_VERSION >= 3
           el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
-          if (!el) {
-#endif
-            return errors::Unimplemented("Unsupported object type ",
-                                         input_data[i]->ob_type->tp_name);
-#if PY_MAJOR_VERSION >= 3
+#else
+          el = NULL;
+          if (PyUnicode_Check(input_data[i])) {
+            PyObject *unicode = PyUnicode_AsUTF8String(input_data[i]);
+            if (unicode) {
+              if (PyString_AsStringAndSize(unicode, &el, &el_size) == -1) {
+                Py_DECREF(unicode);
+                el = NULL;
+              }
+            }
           }
 #endif
+          if (!el) {
+            return errors::Unimplemented("Unsupported object type ",
+                                         input_data[i]->ob_type->tp_name);
+          }
         }
         tflat(i) = string(el, el_size);
       }
