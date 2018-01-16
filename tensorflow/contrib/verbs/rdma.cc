@@ -16,6 +16,7 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_VERBS
 
 #include "tensorflow/contrib/verbs/rdma.h"
+#include "tensorflow/contrib/verbs/verbs_service.pb.h"
 #include <cstdlib>
 #include <fcntl.h>
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #endif
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -498,6 +500,9 @@ void RdmaAdapter::Process_CQ() {
         } else if (rm.type_ == RDMA_MESSAGE_TENSOR_RE_REQUEST) {
           RdmaTensorResponse* response = rc->UpdateTensorResponse(rm);
           response->Resume();
+        } else if (rm.type_ == RDMA_MESSAGE_ERROR_STATUS) {
+          RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
+          request->RecvErrorStatus(rm.status_);
         }
       } else if (wc_[i].opcode == IBV_WC_RDMA_WRITE) {
         RdmaWriteID* wr_id = reinterpret_cast<RdmaWriteID*>(wc_[i].wr_id);
@@ -977,7 +982,12 @@ void RdmaChannel::RemoveTensorResponse(uint32_t request_index) {
 
 void RdmaTensorResponse::Start() {
   Rendezvous::ParsedKey parsed;
-  Rendezvous::ParseKey(rm_.name_, &parsed);
+  Status s = Rendezvous::ParseKey(rm_.name_, &parsed);
+  if (!s.ok()) {
+    SendErrorStatus(s);
+    return;
+  }
+
   channel_->adapter_->worker_env_->rendezvous_mgr->RecvLocalAsync(
       rm_.step_id_, parsed,
       [this, parsed](const Status& status, const Rendezvous::Args& send_args,
@@ -991,22 +1001,37 @@ void RdmaTensorResponse::Start() {
 
 void RdmaTensorResponse::Resume() { SendContent(*tensor_, *proto_, is_dead_); }
 
+// Helper for RecvTensor. Validates "key" and returns the source
+// device in "*src_dev".
+Status RdmaTensorResponse::PrepareRecvTensor(
+    const Rendezvous::ParsedKey& parsed, Device** src_dev) {
+  // Figures out which device the tensor is hosted on.
+  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  TF_RETURN_IF_ERROR(channel_->adapter_->worker_env_->device_mgr->LookupDevice(
+      local_name, src_dev));
+
+  // Does the device have the right incarnation number we expect?
+  if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {
+    return errors::Aborted(
+        "RecvTensor expects a different device incarnation: ",
+        parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
+        ". Your worker job was probably restarted. Check your "
+        "worker job for the reason why it was restarted.");
+  }
+
+  return Status::OK();
+}
+
 void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
                                      const Rendezvous::Args& send_args,
                                      const Rendezvous::Args& recv_args,
                                      const Tensor& in, bool is_dead) {
-  // Figures out which device the tensor is hosted on.
   Device* src_dev = nullptr;
-  Status s = channel_->adapter_->worker_env_->device_mgr->LookupDevice(
-      parsed.src_device, &src_dev);
-  CHECK(s.ok()) << "src device not found";
-  // Does the device have the right incarnation number we expect?
-  CHECK(src_dev->attributes().incarnation() == parsed.src_incarnation)
-      << "RecvTensor expects a different device incarnation: "
-      << parsed.src_incarnation << " vs. "
-      << src_dev->attributes().incarnation()
-      << ". Your worker job was probably restarted. Check your "
-      << "worker job for the reason why it was restarted.";
+  Status s = PrepareRecvTensor(parsed, &src_dev);
+  if (!s.ok()) {
+    SendErrorStatus(s);
+    return;
+  }
 
 #ifdef RDMA_DATA_VALIDATION
   checksum_ = Checksum(src_dev, send_args.device_context, in);
@@ -1015,12 +1040,13 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
   // string tensor needs to be serialized
   Tensor copy;
   TensorProto proto;
-  if (src_dev->tensorflow_gpu_device_info() &&
-      (!send_args.alloc_attrs.on_host())) {
+  const bool on_host = send_args.alloc_attrs.on_host();
+  if (src_dev->tensorflow_gpu_device_info() && !on_host) {
 #if GOOGLE_CUDA
-    CHECK(send_args.device_context) << "send dev name: " << src_dev->name()
-                                    << " gpu_info: "
-                                    << src_dev->tensorflow_gpu_device_info();
+    DeviceContext* send_dev_context = send_args.device_context;
+    CHECK(send_dev_context)
+        << "send dev name: " << src_dev->name()
+        << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
 
     if (can_memcpy) {
       Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
@@ -1030,31 +1056,35 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
 
       GPUUtil::CopyGPUTensorToCPU(
-          src_dev, send_args.device_context, &in, &copy,
+          src_dev, send_dev_context, &in, &copy,
           [this, copy, proto, is_dead](const Status& s) {
-            CHECK(s.ok()) << "copy tensor from gpu sync";
-            Send(copy, proto, is_dead);
+            Send(copy, proto, is_dead, s);
           });
     } else {
       GPUUtil::SetProtoFromGPU(
           in, src_dev, send_args.device_context, &proto, is_dead,
           [this, in, proto, is_dead](const Status& s) mutable {
-            CHECK(s.ok()) << "copy proto from gpu sync";
-            Send(in, proto, is_dead);
+            Send(in, proto, is_dead, s);
           });
     }
+#else
+    SendErrorStatus(errors::Internal("No GPU device in process"));
 #endif  // GOOGLE_CUDA
   } else {
     // tensor is in CPU memory.
     if (!can_memcpy) {
       in.AsProtoTensorContent(&proto);
     }
-    Send(in, proto, is_dead);
+    Send(in, proto, is_dead, Status::OK());
   }
 }
 
 void RdmaTensorResponse::Send(const Tensor& in, const TensorProto& proto,
-                              bool is_dead) {
+                              bool is_dead, const Status& status) {
+  if (!status.ok()) {
+    SendErrorStatus(status);
+    return;
+  }
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
   size_t tensor_bytes = (can_memcpy) ? in.TotalBytes() : proto.ByteSize();
   bool meta_data_changed = TensorMetaDataChanged(in, is_dead, tensor_bytes);
@@ -1169,6 +1199,27 @@ void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
                            rm_.rkey_, RDMA_WRITE_ID_TENSOR_WRITE, this);
 }
 
+void RdmaTensorResponse::SendErrorStatus(const Status& status) {
+  RdmaMessage rm;
+  rm.type_ = RDMA_MESSAGE_ERROR_STATUS;
+  rm.name_size_ = rm_.name_.size();
+  rm.name_ = rm_.name_;
+  rm.step_id_ = rm_.step_id_;
+  rm.request_index_ = rm_.request_index_;
+  rm.status_ = status;
+  LOG(ERROR) << "Step 0x" << std::hex << rm.step_id_ << std::dec
+             << ": Sending RDMA_MESSAGE_ERROR_STATUS #"
+             << rm.request_index_ << ": " << rm.name_
+             << ". Status: " << status.ToString();
+
+  string message = RdmaMessage::CreateMessage(rm);
+  channel_->tx_message_buffer_->EnqueueItem(message);
+  channel_->tx_message_buffer_->SendNextItem();
+
+  // Destroy the response.
+  Destroy();
+}
+
 void RdmaTensorResponse::Destroy() {
   bool res = false;
   if (src_buffer_ != nullptr) {
@@ -1195,8 +1246,8 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   // Rdma Message format
   // type|name_size|name|step_id|request_index|remote_addr|rkey|is_dead|...
   //   1B|    2B   | 512|  8B   |     8B      |       8B  | 4B |    1B |...
-  // ...|data_type|tensor_shape|tensor_bytes|
-  // ...|   XB    |    XB      |    8B      |
+  // ...|data_type|tensor_shape|tensor_bytes|error_status          |
+  // ...|   XB    |    XB      |    8B      |size - 4B, proto - XB |
   //
   // ACK:             Imm-type: ACK
   // TENSOR_REQUEST:  Imm-type: MESSAGE
@@ -1208,8 +1259,11 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
   // TENSOR_RE_REQUST: Imm-type: MESSAGE
   //                  Fields: type, request_index, name, step_id, remote_addr,
   //                      rkey, is_dead, data_type, tensor_shape, tensor_bytes
+  // ERROR_STATUS:    Imm-type: MESSAGE
+  //                  Fields: type, request_index, name, step_id, error_status
   // Tensor content:  Imm-type: request_index
-  char message[kMessageTotalBytes];
+  size_t message_size = kMessageTotalBytes;
+  char message[kMessageTotalBytes + kErrorStatusMaxSize];
   // type
   message[kTypeStartIndex] = static_cast<char>(rm.type_) & 0xff;
   // request index
@@ -1239,10 +1293,30 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
     memcpy(&message[kTensorBytesStartIndex], &rm.tensor_bytes_,
            sizeof(rm.tensor_bytes_));
   }
+  // checksum
 #ifdef RDMA_DATA_VALIDATION
   memcpy(&message[kChecksumStartIndex], &rm.checksum_, sizeof(rm.checksum_));
 #endif
-  return string(message, kMessageTotalBytes);
+  // error status
+  if (rm.type_ == RDMA_MESSAGE_ERROR_STATUS) {
+    ::grpc::Status gs = ToGrpcStatus(rm.status_);
+    ErrorStatusProto gsProto;
+    gsProto.set_error_code(gs.error_code());
+    gsProto.set_error_message(gs.error_message());
+    gsProto.set_error_details(gs.error_details());
+    uint32_t gsProtoSize = gsProto.ByteSize();
+    if (gsProtoSize + 4 > kErrorStatusMaxSize) {
+      LOG(ERROR) << "Error status (" << gsProtoSize + 4 << " bytes) "
+                 << "is too big to fit in RDMA message ("
+                 << kErrorStatusMaxSize << " bytes). Truncated.";
+      gsProtoSize = kErrorStatusMaxSize - 4;
+    }
+    *(uint32_t*)&message[kErrorStatusStartIndex] = gsProtoSize;
+    gsProto.SerializeToArray(&message[kErrorStatusStartIndex + 4],
+                             gsProtoSize);
+    message_size += gsProtoSize + 4;
+  }
+  return string(message, message_size);
 }
 
 // Parse a RdmaMessage according to the pre-defined format
@@ -1281,9 +1355,21 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
     memcpy(&rm.tensor_bytes_, &message[kTensorBytesStartIndex],
            sizeof(rm.tensor_bytes_));
   }
+  // checksum
 #ifdef RDMA_DATA_VALIDATION
   memcpy(&rm.checksum_, &message[kChecksumStartIndex], sizeof(rm.checksum_));
 #endif
+  // error status
+  if (rm.type_ == RDMA_MESSAGE_ERROR_STATUS) {
+    ErrorStatusProto gsProto;
+    uint32_t gsProtoSize = *(uint32_t*)&message[kErrorStatusStartIndex];
+    CHECK(ParseProtoUnlimited(
+        &gsProto, &message[kErrorStatusStartIndex + 4], gsProtoSize))
+        << "Failed to parse error status proto from message. Aborting.";
+    ::grpc::Status gs((::grpc::StatusCode)gsProto.error_code(),
+                      gsProto.error_message(), gsProto.error_details());
+    rm.status_ = FromGrpcStatus(gs);
+  }
 }
 
 //*****************************************************************************
@@ -1391,7 +1477,7 @@ void RdmaTensorRequest::Done(const Status& s) {
 #endif
 
   Rendezvous::Args recv_args = std::move(recv_args_);
-  bool is_dead = meta_data_->is_dead_;
+  bool is_dead = (meta_data_ == nullptr) ? false : meta_data_->is_dead_;
   RecvDoneCallback done = done_;
   DeallocateTensors();
   channel_->RemoveTensorRequest(index_);
@@ -1528,6 +1614,14 @@ void RdmaTensorRequest::RecvTensorContent() {
                                              result_tensor_);
     Done(s);
   }
+}
+
+void RdmaTensorRequest::RecvErrorStatus(const Status& status) {
+  if (result_tensor_ == nullptr) {
+    result_tensor_ = new Tensor();
+  }
+  LOG(ERROR) << "Received RDMA_MESSAGE_ERROR_STATUS: " << status.ToString();
+  Done(status);
 }
 
 void RdmaTensorRequest::Start() {

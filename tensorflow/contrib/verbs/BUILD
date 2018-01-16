@@ -141,6 +141,8 @@ tf_cuda_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":grpc_verbs_client",
+        ":verbs_service_proto_cc",
         ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

@@ -97,7 +97,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
    In code it is done by calling **RecvLocalAsync()**, which receives the tensor's key, step-id, and the callback.
 2. When the callback is invoked, the relevant tensor is removed from the tag matching table. In the case where we need to send the tensor's meta-data, the **RdmaTensorResponse** will store a copy of the tensor until the re-request arrives.
 3. The sending of protocol messages (**RDMA_MESSAGE_TENSOR_REQUEST**, **RDMA_MESSAGE_META_DATA_RESPONSE** and **RDMA_MESSAGE_TENSOR_RE_REQUEST**) is done by the class **RdmaMessageBuffer**. All messages are sent using RDMA writes from/to fixed messages buffers. This implies that we cannot send on a specific channel more than one message at a time. In order to synchronize the messages, the **RdmaMessageBuffer** holds the a local and remote buffer statuses which can be either busy or idle. When a write is issued, both statuses will be changed to busy. When the write-complete event is received, the local status is changed to idle. When the write is received on the remote side, the remote side will parse the message, and return an ACK back to the sending side on which the sending side will update the remote status to idle. When both the local and remote statuses are idle, the next message can be sent.
-5. ACK writes are empty writes (hence they require no buffer) with immediate value 0x80000000. Message writes have the immediate value 0x80000001. All other writes are tensor-content writes whose immediate value is the request-index.
+5. ACK writes are empty writes (hence they require no buffer) with immediate value 0xFFFFFFFE. Message writes have the immediate value 0xFFFFFFFF. All other writes are tensor-content writes whose immediate value is the request-index.
 
 ### RDMA components
 
@@ -137,9 +137,9 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 
 ### Message structure:
 
-| type | name_size | name | step_id | request_index | remote_addr/checksum | rkey | is_dead | data_type | tensor_shape | tensor_bytes |
-|------|---------- |------|---------|---------------|----------------------|------|---------|-----------|--------------|--------------|
-|  1B  |    2B     | 512  |  8B     |      8B       |           8B         |   4B |      1B |     XB    |    XB        |    8B        |
+| type | name_size | name | step_id | request_index | remote_addr/checksum | rkey | is_dead | data_type | tensor_shape | tensor_bytes | error_status          |
+|------|---------- |------|---------|---------------|----------------------|------|---------|-----------|--------------|--------------|-----------------------|
+|  1B  |    2B     | 512  |  8B     |      8B       |           8B         |   4B |      1B |     XB    |    XB        |    8B        | Size - 4B, proto - XB |
 
 * **RDMA_MESSAGE_TENSOR_REQUEST**  - (receiver ==> sender) The original tensor request. 
 	* type - The message type.
@@ -159,3 +159,9 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 	* step_id - Step ID.
 	* request_index - Request index.
 	* remote_addr/rkey - Address/rkey of the reallocated result/proxy tensor.
+* **RDMA_MESSAGE_ERROR_STATUS** - (sender ==> receiver) Notify the receiver that an error had occured on the sender side, so it can propagate it to the upper levels.
+	* type - The message type.
+	* name (name_size) - Name of the requested tensor.
+	* step_id - Step ID.
+	* request_index - Request index.
+	* error_status - The error status (code, message, details).

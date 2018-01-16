@@ -87,6 +87,7 @@ enum RdmaMessageType {
   RDMA_MESSAGE_META_DATA_UPDATE,
   RDMA_MESSAGE_TENSOR_RE_REQUEST,
   RDMA_MESSAGE_TENSOR_REQUEST,
+  RDMA_MESSAGE_ERROR_STATUS,
 };
 
 struct RdmaMessage {
@@ -107,11 +108,13 @@ struct RdmaMessage {
   TensorShape tensor_shape_;
   size_t tensor_bytes_;
 
+  // For error status:
+  Status status_;
+
   // type|name_size|name|step_id|request_index|remote_addr/checksum|rkey|...
   //   1B|    2B   | 512|  8B   |     8B      |       8B           | 4B |...
-  // ...|is_dead|data_type|tensor_shape|tensor_bytes|
-  // ...|    1B |   XB    |    XB      |    8B      |
-  //
+  // ...|is_dead|data_type|tensor_shape|tensor_bytes|error_status          |
+  // ...|    1B |   XB    |    XB      |    8B      |size - 4B, proto - XB |
   static const size_t kNameCapacity = 512;
   static const size_t kTypeStartIndex = 0;
   static const size_t kNameSizeStartIndex = kTypeStartIndex + sizeof(type_);
@@ -132,10 +135,13 @@ struct RdmaMessage {
       kDataTypeStartIndex + sizeof(data_type_);
   static const size_t kTensorBytesStartIndex =
       kTensorShapeStartIndex + sizeof(TensorShape);
-  static const size_t kTensorBufferStartIndex =
+  static const size_t kErrorStatusStartIndex =
       kTensorBytesStartIndex + sizeof(tensor_bytes_);
-  static const size_t kMessageTotalBytes = kTensorBufferStartIndex;
-  static const size_t kRdmaMessageBufferSize = kMessageTotalBytes;
+  static const size_t kErrorStatusMaxSize = 4096;
+
+  static const size_t kMessageTotalBytes = kErrorStatusStartIndex;
+  static const size_t kRdmaMessageBufferSize =
+      kMessageTotalBytes + kErrorStatusMaxSize;
   static string CreateMessage(const RdmaMessage& rm);
   static void ParseMessage(RdmaMessage& rm, void* buffer);
 };
@@ -267,6 +273,10 @@ class RdmaTensorRequest {
   // invoke Done().
   void RecvTensorContent();
 
+  // Receive error status (in case of a remote error).
+  // Invoke Done() with the status code.
+  void RecvErrorStatus(const Status& status);
+
 #ifdef RDMA_DATA_VALIDATION
   // Receive tensor checksum
   //
@@ -336,11 +346,15 @@ class RdmaTensorResponse {
                    const Rendezvous::Args& recv_args, const Tensor& in,
                    bool is_dead);
   void Clone(const Tensor& in, const TensorProto& proto, bool is_dead);
-  void Send(const Tensor& in, const TensorProto& proto, bool is_dead);
+  void Send(const Tensor& in, const TensorProto& proto, bool is_dead,
+            const Status& status);
   bool TensorMetaDataChanged(const Tensor& in, bool is_dead,
                              size_t tensor_bytes);
+  Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
+                           Device** src_dev);
   void SendMetaData(const Tensor& in, const TensorProto& proto, bool is_dead);
   void SendContent(const Tensor& in, const TensorProto& proto, bool is_dead);
+  void SendErrorStatus(const Status& status);
 
   RdmaChannel* channel_;
   RdmaMessage rm_;  // The request message
