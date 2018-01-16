@@ -337,6 +337,19 @@ ComputationDataHandle LocalComputationBuilder::ConcatInDim(
   return builder_.ConcatInDim(operands, dimension);
 }
 
+ComputationDataHandle
+LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
+    const ComputationDataHandle& operand, const LocalComputation& select,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const ComputationDataHandle& source,
+    const ComputationDataHandle& init_value, const LocalComputation& scatter) {
+  return builder_.SelectAndScatterWithGeneralPadding(
+      operand, select.computation(), window_dimensions, window_strides, padding,
+      source, init_value, scatter.computation());
+}
+
 ComputationDataHandle LocalComputationBuilder::Select(
     const ComputationDataHandle& pred, const ComputationDataHandle& on_true,
     const ComputationDataHandle& on_false) {
@@ -409,6 +422,18 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
   return builder_.Reduce(operand, init_value, local_computation.computation(),
                          dimensions_to_reduce);
+}
+
+ComputationDataHandle LocalComputationBuilder::ReduceWindowWithGeneralPadding(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& init_value,
+    const LocalComputation& local_computation,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return builder_.ReduceWindowWithGeneralPadding(
+      operand, init_value, local_computation.computation(), window_dimensions,
+      window_strides, padding);
 }
 
 ComputationDataHandle LocalComputationBuilder::RngNormal(
