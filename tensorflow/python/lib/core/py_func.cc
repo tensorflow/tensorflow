@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
+
 #include <Python.h>
 
 namespace tensorflow {
@@ -141,7 +142,8 @@ bool IsSingleNone(PyObject* obj) {
     return false;
   }
   std::array<npy_intp, 0> indices;
-  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
+  char* item_ptr =
+      static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
   PyObject* item = PyArray_GETITEM(array_obj, item_ptr);
   CHECK(item);
   return item == Py_None;
@@ -304,7 +306,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
 #else
           el = NULL;
           if (PyUnicode_Check(input_data[i])) {
-            PyObject *unicode = PyUnicode_AsUTF8String(input_data[i]);
+            PyObject* unicode = PyUnicode_AsUTF8String(input_data[i]);
             if (unicode) {
               if (PyString_AsStringAndSize(unicode, &el, &el_size) == -1) {
                 Py_DECREF(unicode);
