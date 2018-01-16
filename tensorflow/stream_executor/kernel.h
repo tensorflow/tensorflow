@@ -136,7 +136,7 @@ class KernelMetadata {
 // Thread-compatible.
 class KernelBase {
  public:
-  KernelBase(KernelBase &&) = default;
+  KernelBase(KernelBase &&from);
 
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
