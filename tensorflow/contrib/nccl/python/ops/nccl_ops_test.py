@@ -172,8 +172,7 @@ class BroadcastTest(NcclTestCase):
                  (['/device:GPU:0', '/device:CPU:0'],))
     except errors.NotFoundError as e:
       self.assertRegexpMatches(
-          e.value,
-          "No registered '_NcclBroadcastRecv' OpKernel for CPU devices")
+          str(e), "No registered '_NcclBroadcastRecv' OpKernel for CPU devices")
     else:
       # Session isn't executed when no GPU is available.
       if test.is_gpu_available():
