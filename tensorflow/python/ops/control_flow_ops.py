@@ -2468,7 +2468,6 @@ class WhileContext(ControlFlowContext):
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
         if self.outer_context: self.outer_context.Exit()
-      acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()
     self.AddName(acc.name)
