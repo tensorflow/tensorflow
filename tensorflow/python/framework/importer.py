@@ -642,13 +642,13 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                   node, 'Input tensor %r %s' % (input_name, te)))
 
         # pylint: disable=protected-access
-        if op._input_dtypes != input_types:
+        if op._input_types != input_types:
           raise ValueError(
               _InvalidNodeMessage(
                   node,
                   'Input types mismatch (expected %r but got %r)'
                   % (', '.join(dtypes.as_dtype(x).name for x in input_types),
-                     ', '.join(x.name for x in op._input_dtypes))))
+                     ', '.join(x.name for x in op._input_types))))
         # pylint: enable=protected-access
 
         if not g._is_function(op.type):  # pylint: disable=protected-access

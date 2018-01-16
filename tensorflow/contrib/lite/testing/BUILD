@@ -186,9 +186,7 @@ cc_binary(
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        ":tflite_driver",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
     ],
 )
@@ -202,6 +200,8 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":parse_testdata_lib",
+        ":tflite_driver",
+        ":util",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",

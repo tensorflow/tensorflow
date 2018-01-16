@@ -172,7 +172,7 @@ TEST(ActivationFunction, All) {
                   {FusedActivationFunctionType::kRelu6,
                    ::tflite::ActivationFunctionType_RELU6},
                   {FusedActivationFunctionType::kRelu1,
-                   ::tflite::ActivationFunctionType_RELU1}};
+                   ::tflite::ActivationFunctionType_RELU_N1_TO_1}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, ActivationFunction::Serialize(x.first));
     EXPECT_EQ(x.first, ActivationFunction::Deserialize(x.second));

@@ -89,7 +89,7 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
-  RELU1 = 20,
+  RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
   RESIZE_BILINEAR = 23,
@@ -149,7 +149,7 @@ enum Padding : byte { SAME, VALID }
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
-  RELU1 = 2,
+  RELU_N1_TO_1 = 2,
   RELU6 = 3,
   TANH = 4,
   SIGN_BIT = 5,

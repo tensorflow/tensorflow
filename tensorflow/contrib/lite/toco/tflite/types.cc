@@ -146,7 +146,7 @@ PaddingType Padding::Deserialize(int padding) {
     case FusedActivationFunctionType::kRelu6:
       return ::tflite::ActivationFunctionType_RELU6;
     case FusedActivationFunctionType::kRelu1:
-      return ::tflite::ActivationFunctionType_RELU1;
+      return ::tflite::ActivationFunctionType_RELU_N1_TO_1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";
   }
@@ -161,7 +161,7 @@ FusedActivationFunctionType ActivationFunction::Deserialize(
       return FusedActivationFunctionType::kRelu;
     case ::tflite::ActivationFunctionType_RELU6:
       return FusedActivationFunctionType::kRelu6;
-    case ::tflite::ActivationFunctionType_RELU1:
+    case ::tflite::ActivationFunctionType_RELU_N1_TO_1:
       return FusedActivationFunctionType::kRelu1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";
