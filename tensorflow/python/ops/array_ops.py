@@ -1654,32 +1654,32 @@ def alphas_like(tensor, alpha_value, name=None, optimize=True):
   A `Tensor` with all elements set to `alpha_value`.
   """
   with ops.name_scope(name, "alphas_like", [tensor]) as name:
-  tensor = ops.convert_to_tensor(tensor, name="tensor")
+    tensor = ops.convert_to_tensor(tensor, name="tensor")
 
-  if context.in_eager_mode():
-    ret = alphas(
-      shape_internal(tensor, optimize=optimize),
-      alpha_value=alpha_value,
-      name=name
-    )
-
-  else: # if context.in_graph_mode():
-
-    if (optimize and tensor.shape.is_fully_defined()):
-      # We can produce a tensor independent of the value of 'tensor',
-      # since the shape is known statically.
-      ret = alphas(tensor.shape, alpha_value=alpha_value, name=name)
-
-    else:
+    if context.in_eager_mode():
       ret = alphas(
         shape_internal(tensor, optimize=optimize),
         alpha_value=alpha_value,
         name=name
       )
 
-    ret.set_shape(tensor.get_shape())
+    else: # if context.in_graph_mode():
 
-  return ret
+      if (optimize and tensor.shape.is_fully_defined()):
+        # We can produce a tensor independent of the value of 'tensor',
+        # since the shape is known statically.
+        ret = alphas(tensor.shape, alpha_value=alpha_value, name=name)
+
+      else:
+        ret = alphas(
+          shape_internal(tensor, optimize=optimize),
+          alpha_value=alpha_value,
+          name=name
+        )
+
+      ret.set_shape(tensor.get_shape())
+
+    return ret
 
 
 def alphas(shape, alpha_value, name=None):
