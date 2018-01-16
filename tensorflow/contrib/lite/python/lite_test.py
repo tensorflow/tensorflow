@@ -40,6 +40,16 @@ class LiteTest(test_util.TensorFlowTestCase):
     # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
     #   result = lite.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
 
+  def testQuantization(self):
+    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
+                                      dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(in_tensor + in_tensor,
+                                                        min=0., max=1.)
+    sess = session.Session()
+    result = lite.toco_convert(sess.graph_def, [in_tensor], [out_tensor],
+                               inference_type=lite.QUANTIZED_UINT8,
+                               quantized_input_stats=[(0., 1.)])
+    self.assertTrue(result)
 
 if __name__ == "__main__":
   test.main()
