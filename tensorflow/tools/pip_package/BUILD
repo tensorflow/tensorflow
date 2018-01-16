@@ -10,6 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -34,7 +35,9 @@ transitive_hdrs(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 py_binary(
@@ -154,6 +157,7 @@ sh_binary(
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+            "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
             "//tensorflow/contrib/data/python/ops:prefetching_py",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/eager/python:checkpointable",
@@ -168,6 +172,10 @@ sh_binary(
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/py2tf:py2tf_internal",
+            "//tensorflow/contrib/py2tf/convert:convert",
+            "//tensorflow/contrib/py2tf/pyct:pyct",
+            "//tensorflow/contrib/py2tf/pyct/static_analysis:static_analysis",
             "//tensorflow/contrib/receptive_field:receptive_field_pip",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
             "//tensorflow/contrib/signal:signal_py",

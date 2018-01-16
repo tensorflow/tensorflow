@@ -30,6 +30,7 @@ from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -1226,21 +1227,23 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
         screen_info={"cols": 80})
 
-    self.assertEqual([
-        "Tensor \"from eval of expression "
-        "'np.matmul(`simple_mul_add/matmul:0`, "
-        "`simple_mul_add/matmul:0`.T)'\":",
-        "  dtype: float64",
-        "  shape: (2, 2)",
-        "",
-        "Numeric summary:",
-        "| - + | total |",
-        "| 2 2 |     4 |",
-        "|           min           max          mean           std |",
-        "|         -14.0          49.0          6.25 25.7524270701 |",
-        "",
-        "array([[ 49., -14.],",
-        "       [-14.,   4.]])"], out.lines)
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"from eval of expression "
+         "'np.matmul(`simple_mul_add/matmul:0`, "
+         "`simple_mul_add/matmul:0`.T)'\":",
+         "  dtype: float64",
+         "  shape: (2, 2)",
+         "",
+         "Numeric summary:",
+         "| - + | total |",
+         "| 2 2 |     4 |",
+         "|           min           max          mean           std |"],
+        out.lines[:8])
+    cli_test_utils.assert_array_lines_close(
+        self, [-14.0, 49.0, 6.25, 25.7524270701], out.lines[8:9])
+    cli_test_utils.assert_array_lines_close(
+        self, [[49.0, -14.0], [-14.0, 4.0]], out.lines[10:])
 
   def testEvalExpressionAndWriteToNpyFile(self):
     node_name = "simple_mul_add/matmul"

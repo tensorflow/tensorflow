@@ -101,7 +101,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   instruction->metadata_ = proto.metadata();
   if (proto.has_literal()) {
-    instruction->literal_ = MakeUnique<Literal>(proto.literal());
+    TF_ASSIGN_OR_RETURN(instruction->literal_,
+                        Literal::CreateFromProto(proto.literal()));
   }
   instruction->parameter_number_ = proto.parameter_number();
 
@@ -144,6 +145,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
   instruction->outfeed_shape_ = proto.outfeed_shape();
+  instruction->fft_type_ = proto.fft_type();
+  for (int64 fft_len : proto.fft_length()) {
+    instruction->fft_length_.push_back(fft_len);
+  }
 
   return std::move(instruction);
 }
@@ -162,8 +167,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
-  instruction->literal_.reset(new Literal);
-  instruction->literal_->append_u8s(tag);
+  instruction->literal_ = Literal::CreateR1U8(tag);
   return instruction;
 }
 
@@ -331,6 +335,16 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   instruction->window_ = MakeUnique<Window>(window);
   instruction->convolution_dimension_numbers_ =
       MakeUnique<ConvolutionDimensionNumbers>(dimension_numbers);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
+    const Shape& shape, HloInstruction* operand, FftType fft_type,
+    tensorflow::gtl::ArraySlice<int64> fft_length) {
+  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFft, shape));
+  instruction->AppendOperand(operand);
+  instruction->fft_type_ = fft_type;
+  instruction->fft_length_.assign(fft_length.begin(), fft_length.end());
   return instruction;
 }
 
@@ -694,10 +708,26 @@ HloInstruction::CreateSelectAndScatter(
   return instruction;
 }
 
+// We put the fusion kind into the instruction's name for transpose-dot and
+// backward-conv fusions, since those fusions are really just describing a type
+// of dot/conv rather than generating a novel computation.
+static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
+  switch (fusion_kind) {
+    case HloInstruction::FusionKind::kTransposeDot:
+      return "dot_fusion";
+    case HloInstruction::FusionKind::kConvBackwardInput:
+    case HloInstruction::FusionKind::kConvBackwardFilter:
+      return "conv_fusion";
+    default:
+      return "fusion";
+  }
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
+  instruction->name_ = FusionNodeName(fusion_kind);
   instruction->set_parent(fused_root->parent());
   instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
@@ -713,6 +743,7 @@ HloInstruction::CreateSelectAndScatter(
     instruction->AppendOperand(operand);
   }
   instruction->fusion_kind_ = fusion_kind;
+  instruction->name_ = FusionNodeName(fusion_kind);
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
@@ -1167,6 +1198,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateDot(shape, new_operands[0], new_operands[1],
                         *dot_dimension_numbers_);
       break;
+    case HloOpcode::kFft:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateFft(shape, new_operands[0], fft_type_, fft_length_);
     case HloOpcode::kCrossReplicaSum:
       clone = CreateCrossReplicaSum(shape, new_operands);
       break;
@@ -1537,7 +1571,7 @@ bool HloInstruction::HasConstantOperand() const {
 
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
-    std::function<bool(const HloComputation*, const HloComputation*)>
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   // Perform opcode specific checks.
   switch (opcode()) {
@@ -1630,6 +1664,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
       return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
                                            other.dot_dimension_numbers());
+
+    // FFT has various types & lengths.
+    case HloOpcode::kFft:
+      return fft_type() == other.fft_type() &&
+             fft_length() == other.fft_length();
 
     // Reduction results are determined by the reduction dimension and the
     // reduction computation.
@@ -2055,6 +2094,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
   }
+  if (opcode() == HloOpcode::kFft) {
+    extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
+    extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
+  }
 
   if (options.print_subcomputation_references()) {
     if (opcode() == HloOpcode::kWhile) {
@@ -2206,6 +2249,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
   *proto.mutable_outfeed_shape() = outfeed_shape_;
+  proto.set_fft_type(fft_type_);
+  for (int64 fft_len : fft_length_) {
+    proto.add_fft_length(fft_len);
+  }
 
   return proto;
 }
@@ -2216,7 +2263,7 @@ string HloInstruction::ToCategory() const {
     return "data formatting";
   }
 
-  if (opcode() == HloOpcode::kConvolution) {
+  auto conv_category = [&] {
     string category = "convolution";
     if (window_util::HasBaseDilation(window())) {
       category += " base-dilated";
@@ -2225,44 +2272,36 @@ string HloInstruction::ToCategory() const {
       category += " window-dilated";
     }
     return category;
+  };
+
+  if (opcode() == HloOpcode::kConvolution) {
+    return conv_category();
   }
 
+  // Give transpose-dot and backwards-conv fusions the categories "dot" and
+  // "convolution" so they match the categories of proper kDot and kConvolution
+  // ops.  These fusion categories are really just a way of expressing a
+  // particular kind of dot or conv, so they should have the same category as a
+  // vanilla dot/conv.
   if (opcode() == HloOpcode::kFusion) {
-    if (operands().size() == 2) {
-      bool saw_rank_1 = false;
-      bool saw_higher_rank = false;
-      for (const auto* operand : operands()) {
-        if (!ShapeUtil::IsTuple(operand->shape())) {
-          saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
-          saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
-        }
-      }
-      if (saw_rank_1 && saw_higher_rank) {
-        return "rank-1-broadcast binary fusion";
-      }
-    }
     switch (fusion_kind()) {
       case FusionKind::kLoop:
-        if (IsElementwise()) {
-          return "elementwise fusion";
-        } else {
-          return "non-elementwise fusion";
-        }
+        return "loop fusion";
       case FusionKind::kInput:
         return "input fusion";
       case FusionKind::kOutput:
         return "output fusion";
       case FusionKind::kTransposeDot:
-        return "dot fusion";
+        return "dot";
       case FusionKind::kConvBackwardFilter:
       case FusionKind::kConvBackwardInput:
-        return "convolution fusion";
+        return conv_category();
       case FusionKind::kCustom:
         return "custom fusion";
     }
   }
 
-  if (IsElementwise() && opcode() != HloOpcode::kFusion) {
+  if (IsElementwise()) {
     return "non-fusion elementwise";
   }
 
@@ -2278,7 +2317,7 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
 string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s_string();
+  return literal_->GetR1U8AsString();
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
@@ -2421,6 +2460,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSelect(this);
     case HloOpcode::kConvolution:
       return visitor->HandleConvolution(this);
+    case HloOpcode::kFft:
+      return visitor->HandleFft(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
     case HloOpcode::kTuple:

@@ -56,7 +56,7 @@ class ItemTest(test.TestCase):
       mg = meta_graph.create_meta_graph_def(graph=g)
       grappler_item = item.Item(mg)
       op_list = grappler_item.IdentifyImportantOps()
-      self.assertEqual([b'Const', b'Const_1', b'add'], op_list)
+      self.assertItemsEqual([b'Const', b'Const_1', b'add'], op_list)
 
   def testOpProperties(self):
     with ops.Graph().as_default() as g:
@@ -119,9 +119,8 @@ class ItemTest(test.TestCase):
       grappler_item = item.Item(mg)
       groups = grappler_item.GetColocationGroups()
       self.assertEqual(len(groups), 1)
-      self.assertEqual(
-          sorted(groups[0]),
-          ['Assign', 'RefIdentity', 'Variable', 'Variable/Assign'])
+      self.assertItemsEqual(
+          groups[0], ['Assign', 'RefIdentity', 'Variable', 'Variable/Assign'])
 
 
 if __name__ == '__main__':

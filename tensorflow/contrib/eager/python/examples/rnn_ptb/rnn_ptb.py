@@ -214,7 +214,7 @@ class Datasets(object):
     """Load the Penn Treebank dataset.
 
     Args:
-      path: Path to the data/ directory of the dataset from from Tomas Mikolov's
+      path: Path to the data/ directory of the dataset from Tomas Mikolov's
         webpage - http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
     """
 

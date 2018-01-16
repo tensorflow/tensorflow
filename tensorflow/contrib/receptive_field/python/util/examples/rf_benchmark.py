@@ -28,19 +28,19 @@ import argparse
 import csv
 import sys
 
+from tensorflow.contrib import framework
+from tensorflow.contrib import slim
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import app
 from nets import alexnet
 from nets import inception
 from nets import mobilenet_v1
 from nets import resnet_v1
 from nets import resnet_v2
 from nets import vgg
-from tensorflow.contrib import framework
-from tensorflow.contrib import receptive_field
-from tensorflow.contrib import slim
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import app
 
 cmd_args = None
 

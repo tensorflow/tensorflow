@@ -24,6 +24,7 @@ import math
 
 import numpy as np
 
+from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -989,6 +990,10 @@ class AttentionWrapperState(
   def clone(self, **kwargs):
     """Clone this object, overriding components provided by kwargs.
 
+    The new state fields' shape must match original state fields' shape. This
+    will be validated, and original fields' shape will be propagated to new
+    fields.
+
     Example:
 
     ```python
@@ -1004,7 +1009,16 @@ class AttentionWrapperState(
       A new `AttentionWrapperState` whose properties are the same as
       this one, except any overridden properties as provided in `kwargs`.
     """
-    return super(AttentionWrapperState, self)._replace(**kwargs)
+    def with_same_shape(old, new):
+      """Check and set new tensor's shape."""
+      if isinstance(old, ops.Tensor) and isinstance(new, ops.Tensor):
+        return tensor_util.with_same_shape(old, new)
+      return new
+
+    return nest.map_structure(
+        with_same_shape,
+        self,
+        super(AttentionWrapperState, self)._replace(**kwargs))
 
 
 def hardmax(logits, name=None):

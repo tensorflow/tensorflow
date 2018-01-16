@@ -23,9 +23,30 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Abs;
+using ops::Add;
+using ops::AddN;
+using ops::BatchMatMul;
+using ops::Const;
+using ops::Div;
+using ops::Greater;
+using ops::MatMul;
+using ops::Max;
+using ops::Maximum;
+using ops::Mean;
+using ops::Min;
+using ops::Minimum;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Pow;
+using ops::Prod;
+using ops::RealDiv;
+using ops::SquaredDifference;
+using ops::Sub;
+using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -83,6 +104,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
 
     Output y;
     switch (op_type) {
+      using namespace ops;  // NOLINT(build/namespaces)
       case ABS:
         y = Abs(scope_, x);
         break;

@@ -32,6 +32,7 @@ gen_zipped_test_files(
         "l2norm.zip",
         "local_response_norm.zip",
         "max_pool.zip",
+        "mean.zip",
         "mul.zip",
         "pad.zip",
         "relu.zip",
@@ -41,7 +42,9 @@ gen_zipped_test_files(
         "resize_bilinear.zip",
         "sigmoid.zip",
         "softmax.zip",
+        "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "transpose.zip",
     ],
 )
 

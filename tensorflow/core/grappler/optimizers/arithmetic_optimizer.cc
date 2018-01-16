@@ -245,11 +245,7 @@ void SetSourceDataType(DataType dtype, NodeDef* node) {
   SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
 }
 
-bool IsNumberType(DataType dtype) {
-  DataTypeVector number_types = NumberTypes();
-  return std::find(number_types.begin(), number_types.end(), dtype) !=
-         number_types.end();
-}
+bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
 
 const char kOutputShapesAttr[] = "_output_shapes";
 
@@ -632,12 +628,11 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
 
     // If the reshape is a no-op, forward its input to its consumers. This is
-    // considered aggressive and turned off by default, because users may state
-    // that the placeholder outputs tensors of shape [M, N] while feeding it
-    // with tensors of shape [M*N] (or worse). The reshape nodes are then
-    // necessary to update the tensor metadata to the required shape.
-    if (opt_level_ == RewriterConfig::AGGRESSIVE &&
-        ReshapeIsIdentity(*reshape, *input, output_pos)) {
+    // considered aggressive, because users may state that the placeholder
+    // outputs tensors of shape [M, N] while feeding it with tensors of shape
+    // [M*N] (or worse). The reshape nodes are then necessary to update the
+    // tensor metadata to the required shape.
+    if (ReshapeIsIdentity(*reshape, *input, output_pos)) {
       return reshape->input(0);
     }
   }
@@ -896,8 +891,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
   //   AddN(Mul(x, y1), Mul(y2, x), Mul(x, y3), ... Mul(x, yn))
   // to the following:
   //   Mul(x, AddN(y1, y2, y3, ... yn))
-  if (opt_level_ == RewriterConfig::AGGRESSIVE && IsAggregate(*node) &&
-      NumNonControlInputs(*node) > 1 &&
+  if (IsAggregate(*node) && NumNonControlInputs(*node) > 1 &&
       !OptimizedNodeExists(StrCat(node->name(), "_hoist_add"))) {
     // Determine the set of common factors if the input nodes are all Mul nodes.
     std::set<string> common_factors;
@@ -1110,12 +1104,9 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
                                                &frame_map_, &num_frames));
   // Shapes are only needed in aggressive mode.
-  if (opt_level_ == RewriterConfig::AGGRESSIVE) {
-    graph_properties_.reset(new GraphProperties(item));
-    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
-    TF_RETURN_IF_ERROR(
-        graph_properties_->AnnotateOutputShapes(optimized_graph_));
-  }
+  graph_properties_.reset(new GraphProperties(item));
+  TF_RETURN_IF_ERROR(graph_properties_->InferStatically(false));
+  TF_RETURN_IF_ERROR(graph_properties_->AnnotateOutputShapes(optimized_graph_));
 
   // Perform the optimizations.
   DedupComputations();

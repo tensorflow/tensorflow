@@ -260,8 +260,6 @@ def random_flip_left_right(image, seed=None):
                                    lambda: array_ops.reverse(image, [1]),
                                    lambda: image,
                                    name=scope)
-    print('scope: ' + scope)
-    print('result name: ' + result.name)
     return fix_image_flip_shape(image, result)
 
 
@@ -999,8 +997,8 @@ def adjust_gamma(image, gamma=1, gain=1):
 
   Args:
     image : A Tensor.
-    gamma : A scalar. Non negative real number.
-    gain  : A scalar. The constant multiplier.
+    gamma : A scalar or tensor. Non negative real number.
+    gain  : A scalar or tensor. The constant multiplier.
 
   Returns:
     A Tensor. Gamma corrected output image.
@@ -1019,17 +1017,20 @@ def adjust_gamma(image, gamma=1, gain=1):
   """
 
   with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
-    # Convert pixel value to DT_FLOAT for computing adjusted image
+    # Convert pixel value to DT_FLOAT for computing adjusted image.
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
-    # Keep image dtype for computing the scale of corresponding dtype
+    # Keep image dtype for computing the scale of corresponding dtype.
     image = ops.convert_to_tensor(image, name='image')
 
-    if gamma < 0:
-      raise ValueError('Gamma should be a non-negative real number')
-    # scale = max(dtype) - min(dtype)
+    assert_op = _assert(gamma >= 0, ValueError,
+                        'Gamma should be a non-negative real number.')
+    if assert_op:
+      gamma = control_flow_ops.with_dependencies(assert_op, gamma)
+   
+    # scale = max(dtype) - min(dtype).
     scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0],
                                  dtype=dtypes.float32)
-    # According to the definition of gamma correction
+    # According to the definition of gamma correction.
     adjusted_img = (img / scale) ** gamma * scale * gain
 
     return adjusted_img
@@ -1137,10 +1138,8 @@ def rgb_to_grayscale(images, name=None):
     # Reference for converting between RGB and grayscale.
     # https://en.wikipedia.org/wiki/Luma_%28video%29
     rgb_weights = [0.2989, 0.5870, 0.1140]
-    rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
-    gray_float = math_ops.reduce_sum(
-        flt_image * rgb_weights, rank_1, keepdims=True)
-    gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
+    gray_float = math_ops.tensordot(flt_image, rgb_weights, [-1, -1])
+    gray_float = array_ops.expand_dims(gray_float, -1)
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
 

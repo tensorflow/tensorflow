@@ -262,6 +262,14 @@ to register ops and kernels.
 
 #### Optimization
 
+The `build_all_ios.sh` script can take optional command-line arguments to
+selectively register only for the operators used in your graph.
+
+```bash
+tensorflow/contrib/makefile/build_all_ios.sh -a arm64 -g $HOME/graphs/inception/tensorflow_inception_graph.pb
+```
+Please note this is an aggresive optimization of the operators and the resulting library may not work with other graphs but will reduce the size of the final library.
+
 The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
 The first argument will be passed as a C++ optimization flag and defaults to
 debug mode. If you are concerned about performance or are working on a release

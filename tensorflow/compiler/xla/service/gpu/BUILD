@@ -24,6 +24,15 @@ filegroup(
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
+    name = "gpu_constants",
+    srcs = ["gpu_constants.cc"],
+    hdrs = ["gpu_constants.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
     name = "partition_assignment",
     srcs = [
         "partition_assignment.cc",
@@ -123,6 +132,7 @@ cc_library(
     ],
     deps = [
         ":elemental_ir_emitter",
+        ":gpu_constants",
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
@@ -203,6 +213,7 @@ cc_library(
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
     deps = [
+        ":gpu_constants",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -220,6 +231,7 @@ cc_library(
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "cudnn_batchnorm_thunk.cc",
+        "fft_thunk.cc",
         "for_thunk.cc",
         "gemm_thunk.cc",
         "gpu_executable.cc",
@@ -234,6 +246,7 @@ cc_library(
         "convolution_thunk.h",
         "copy_thunk.h",
         "cudnn_batchnorm_thunk.h",
+        "fft_thunk.h",
         "for_thunk.h",
         "gemm_thunk.h",
         "gpu_executable.h",
@@ -272,6 +285,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+        "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
     ],
 )
@@ -432,8 +446,10 @@ cc_library(
     deps = [
         ":convolution_folding",
         ":fusion_merger",
+        ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",
+        ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":hlo_schedule",
         ":instruction_fusion",
@@ -478,6 +494,7 @@ cc_library(
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
         "@llvm//:support",
@@ -602,6 +619,32 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "gpu_hlo_support_checker",
+    srcs = ["gpu_hlo_support_checker.cc"],
+    hdrs = ["gpu_hlo_support_checker.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_hlo_support_checker_test",
+    srcs = ["gpu_hlo_support_checker_test.cc"],
+    deps = [
+        ":gpu_hlo_support_checker",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
     ],
 )

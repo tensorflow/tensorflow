@@ -215,13 +215,62 @@ class LayoutConstraints {
   HloComputation* computation_;
 };
 
+// Contains constraints on the layout of channels; sends and recvs.
+class ChannelLayoutConstraints {
+ public:
+  // Construct an empty constraint set.
+  ChannelLayoutConstraints() {}
+
+  // Returns true if channel_id has a layout constraint.
+  bool IsChannelConstrained(int64 channel_id) const {
+    return constraints_.count(channel_id) > 0;
+  }
+
+  // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
+  // be constrained.
+  Shape LayoutShapeForChannel(Shape shape, int64 channel_id) const {
+    CHECK(IsChannelConstrained(channel_id));
+    *shape.mutable_layout() = constraints_.at(channel_id);
+    return shape;
+  }
+
+  // Returns the layout constraint for `channel_id`, which must already be
+  // constrained.
+  Layout LayoutForChannel(int64 channel_id) const {
+    CHECK(IsChannelConstrained(channel_id));
+    return constraints_.at(channel_id);
+  }
+
+  // Adds a new layout constraint for `channel_id`. If a constraint for
+  // `channel_id` already exists, this operation requires that the new layout is
+  // the same as the previously constrained layout.
+  void ConstrainChannel(int64 channel_id, const Layout& layout) {
+    CHECK(!IsChannelConstrained(channel_id) ||
+          LayoutUtil::Equal(layout, constraints_[channel_id]));
+    constraints_[channel_id] = layout;
+  }
+
+ private:
+  std::unordered_map<int64, Layout> constraints_;
+};
+
 // HLO pass which assigns layouts to all instructions in the HLO module while
 // satisfying all necessary invariants and minimizing cost.
 class LayoutAssignment : public HloPassInterface {
  public:
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
-  explicit LayoutAssignment(ComputationLayout* entry_computation_layout);
+  //
+  // channel_constraints is both an input and output. Any sends or recvs that
+  // are present in channel_constraints will be layed out as constrained. Any
+  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // layout will be added as a constraint to channel_constraints.
+  //
+  // If channel_constraints is nullptr, no kSend or kRecvs must be contained
+  // within any module passed to `Run`.
+  explicit LayoutAssignment(
+      ComputationLayout* entry_computation_layout,
+      ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   tensorflow::StringPiece name() const override { return "layout-assignment"; }
 
@@ -247,7 +296,7 @@ class LayoutAssignment : public HloPassInterface {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
-  // By default LayoutAssignment ensures that inputs and ouptuts of CustomCalls
+  // By default LayoutAssignment ensures that inputs and outputs of CustomCalls
   // have the "major-first" layout (i.e.  {n, n-1, ..., 0}).
   //
   // If this function returns true, LayoutAssignment does not set a layout for
@@ -296,9 +345,10 @@ class LayoutAssignment : public HloPassInterface {
  private:
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
-  Status AddMandatoryConstraints(const ComputationLayout& computation_layout,
-                                 HloComputation* computation,
-                                 LayoutConstraints* constraints);
+  Status AddMandatoryConstraints(
+      const ComputationLayout& computation_layout,
+      const ChannelLayoutConstraints* channel_constraints,
+      HloComputation* computation, LayoutConstraints* constraints);
 
   // This method can be overridden to add backend-specific constraints to the
   // layout of the instructions of a computation. This method is called after
@@ -314,7 +364,8 @@ class LayoutAssignment : public HloPassInterface {
   // constrained.
   Status RunOnComputation(const ComputationLayout& computation_layout,
                           const TuplePointsToAnalysis& points_to_analysis,
-                          HloComputation* computation);
+                          HloComputation* computation,
+                          ChannelLayoutConstraints* channel_constraints);
 
   // Assign layouts to the instructions of a computation which satisfy the given
   // layout constraints. Copies may be added to satisfy the constraints. The
@@ -333,6 +384,7 @@ class LayoutAssignment : public HloPassInterface {
   Status CheckLayouts(HloModule* module);
 
   ComputationLayout* entry_computation_layout_;
+  ChannelLayoutConstraints* channel_layout_constraints_;
 
  protected:
   // Map containing the layouts of all computations assigned so

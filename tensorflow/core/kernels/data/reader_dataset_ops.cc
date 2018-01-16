@@ -182,7 +182,7 @@ class TextLineDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();
@@ -409,6 +409,20 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
               dataset()->filenames_[current_file_index_], &file_size));
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
+
+          uint64 body_size =
+              file_size - (dataset()->header_bytes_ + dataset()->footer_bytes_);
+
+          if (body_size % dataset()->record_bytes_ != 0) {
+            return errors::InvalidArgument(
+                "Excluding the header (", dataset()->header_bytes_,
+                " bytes) and footer (", dataset()->footer_bytes_,
+                " bytes), input file \"",
+                dataset()->filenames_[current_file_index_],
+                "\" has body length ", body_size,
+                " bytes, which is not an exact multiple of the record length (",
+                dataset()->record_bytes_, " bytes).");
+          }
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
           input_buffer_.reset(
@@ -433,7 +447,7 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         int64 current_file_index;
@@ -614,7 +628,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();

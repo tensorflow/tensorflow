@@ -417,56 +417,17 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Raises:
     ValueError: if environment variable `TF_CONFIG` is incorrectly set.
   """
-
-  if not isinstance(estimator, estimator_lib.Estimator):
-    raise TypeError('`estimator` must have type `tf.estimator.Estimator`, '
-                    'given {}'.format(type(estimator)))
-  config = estimator.config
-
   executor = _TrainingExecutor(estimator=estimator, train_spec=train_spec,
                                eval_spec=eval_spec)
 
-  _execute_based_on_task_type(executor, config)
-
-
-def _execute_based_on_task_type(executor, config):
-  """Executes the `executor` based on `config.task_type`."""
-  if (not config.cluster_spec and
-      config.task_type != run_config_lib.TaskType.EVALUATOR):
-    logging.info('Running training and evaluation locally (non-distributed).')
-    executor.run_local()
-    return
-
-  # Distributed case.
-  if not config.task_type:
-    # TODO(xiejw): Improve the error message about how to set the TF_CONFIG
-    # correctly.
-    raise ValueError(
-        '`estimator.config` must have task_type set. This usually means '
-        'TF_CONFIG environment is not set correctly.')
-
-  if config.task_type == 'local':
-    raise ValueError(
-        '`task.type` in TF_CONFIG cannot be `local`. Leaving `cluster` and '
-        '`task` properties in TF_CONFIG absent triggers train and evaluate '
-        '`Estimator` locally (non-distributed).')
-
+  config = estimator.config
   if (config.task_type == run_config_lib.TaskType.EVALUATOR and
       config.task_id > 0):
     raise ValueError(
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  # For task type foo, call executor.run_foo.
-  available_tasks = [x for x in dir(executor) if x.startswith('run_')
-                     and x != 'run_local'
-                     and callable(getattr(executor, x))]
-  task_to_run = 'run_' + config.task_type
-  if task_to_run not in available_tasks:
-    raise ValueError(
-        'Task type {} is not supported. Supported task types are {}'.format(
-            config.task_type, [x[len('run_'):] for x in available_tasks]))
-  getattr(executor, task_to_run)()
+  executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):
@@ -522,6 +483,52 @@ class _TrainingExecutor(object):
   @property
   def estimator(self):
     return self._estimator
+
+  def run(self):
+    """Executes the run_foo for task type `foo`.
+
+    `_TrainingExecutor` predefines the procedure for task type 'chief',
+    'worker', 'ps', and 'evaluator'. For task type `foo`, the corresponding
+    procedure is `run_foo'. This `run` method invoke the procedure base on the
+    `RunConfig.task_type`.
+
+    Raises:
+      ValueError: if the estimator.config is mis-configured.
+    """
+    config = self._estimator.config
+
+    if (not config.cluster_spec and
+        config.task_type != run_config_lib.TaskType.EVALUATOR):
+      logging.info('Running training and evaluation locally (non-distributed).')
+      self.run_local()
+      return
+
+    # Distributed case.
+    if not config.task_type:
+      # TODO(xiejw): Improve the error message about how to set the TF_CONFIG
+      # correctly.
+      raise ValueError(
+          '`estimator.config` must have task_type set. This usually means '
+          'TF_CONFIG environment is not set correctly.')
+
+    if config.task_type == 'local':
+      raise ValueError(
+          '`task.type` in TF_CONFIG cannot be `local`. Leaving `cluster` and '
+          '`task` properties in TF_CONFIG absent triggers train and evaluate '
+          '`Estimator` locally (non-distributed).')
+
+    # For task type foo, call executor.run_foo.
+    available_tasks = [
+        x for x in dir(self)
+        if x.startswith('run_') and x != 'run_local' and
+        callable(getattr(self, x))
+    ]
+    task_to_run = 'run_' + config.task_type
+    if task_to_run not in available_tasks:
+      raise ValueError(
+          'Task type {} is not supported. Supported task types are {}'.format(
+              config.task_type, [x[len('run_'):] for x in available_tasks]))
+    getattr(self, task_to_run)()
 
   def run_chief(self):
     """Runs task chief."""

@@ -512,7 +512,7 @@ struct GreaterThan {
   constexpr bool operator()(int a, int b) const { return a > b; }
 };
 
-// For each data type, the tile size posibility frontier denotes the tile size
+// For each data type, the tile size possibility frontier denotes the tile size
 // combinations that consume the most computational resources constrained by
 // - number of threads per SM limit,
 // - limit on size of the short dimension (<=15) due to the definition of
@@ -541,33 +541,35 @@ constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                                                 int TileShortSide,
                                                 int size_of_t, Op op) {
   // clang-format off
-  return size_of_t == 16 && (TileLongSide == 32   && op(TileShortSide, 4)  ||
-                             TileLongSide == 64   && op(TileShortSide, 4)  ||
-                             TileLongSide == 128  && op(TileShortSide, 4)  ||
-                             TileLongSide == 256  && op(TileShortSide, 2)) ||
-          size_of_t == 8 && (TileLongSide == 32   && op(TileShortSide, 15) ||
-                             TileLongSide == 64   && op(TileShortSide, 15) ||
-                             TileLongSide == 128  && op(TileShortSide, 8)  ||
-                             TileLongSide == 256  && op(TileShortSide, 4)  ||
-                             TileLongSide == 512  && op(TileShortSide, 2)) ||
-          size_of_t == 4 && (TileLongSide == 32   && op(TileShortSide, 15) ||
-                             TileLongSide == 64   && op(TileShortSide, 15) ||
-                             TileLongSide == 128  && op(TileShortSide, 15) ||
-                             TileLongSide == 256  && op(TileShortSide, 8)  ||
-                             TileLongSide == 512  && op(TileShortSide, 4)  ||
-                             TileLongSide == 1024 && op(TileShortSide, 2)) ||
-          size_of_t == 2 && (TileLongSide == 32   && op(TileShortSide, 15) ||
-                             TileLongSide == 64   && op(TileShortSide, 15) ||
-                             TileLongSide == 128  && op(TileShortSide, 15) ||
-                             TileLongSide == 256  && op(TileShortSide, 8)  ||
-                             TileLongSide == 512  && op(TileShortSide, 4)  ||
-                             TileLongSide == 1024 && op(TileShortSide, 2)) ||
-          size_of_t == 1 && (TileLongSide == 32   && op(TileShortSide, 15) ||
-                             TileLongSide == 64   && op(TileShortSide, 15) ||
-                             TileLongSide == 128  && op(TileShortSide, 15) ||
-                             TileLongSide == 256  && op(TileShortSide, 8)  ||
-                             TileLongSide == 512  && op(TileShortSide, 4)  ||
-                             TileLongSide == 1024 && op(TileShortSide, 2));
+
+  return (size_of_t == 16 && ((TileLongSide == 32   && op(TileShortSide, 4))  ||
+                             (TileLongSide == 64   && op(TileShortSide, 4))  ||
+                             (TileLongSide == 128  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 256  && op(TileShortSide, 2)))) ||
+          (size_of_t == 8 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 256  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 2)))) ||
+          (size_of_t == 4 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2)))) ||
+          (size_of_t == 2 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2)))) ||
+          (size_of_t == 1 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2))));
+
   // clang-format on
 }
 

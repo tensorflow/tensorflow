@@ -140,31 +140,31 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
     case xla::U8:
-      literal = *xla::Literal::CreateR0<uint8>(value);
+      literal = std::move(*xla::Literal::CreateR0<uint8>(value));
       break;
     case xla::U32:
-      literal = *xla::Literal::CreateR0<uint32>(value);
+      literal = std::move(*xla::Literal::CreateR0<uint32>(value));
       break;
     case xla::U64:
-      literal = *xla::Literal::CreateR0<uint64>(value);
+      literal = std::move(*xla::Literal::CreateR0<uint64>(value));
       break;
     case xla::S8:
-      literal = *xla::Literal::CreateR0<int8>(value);
+      literal = std::move(*xla::Literal::CreateR0<int8>(value));
       break;
     case xla::S32:
-      literal = *xla::Literal::CreateR0<int32>(value);
+      literal = std::move(*xla::Literal::CreateR0<int32>(value));
       break;
     case xla::S64:
-      literal = *xla::Literal::CreateR0<int64>(value);
+      literal = std::move(*xla::Literal::CreateR0<int64>(value));
       break;
     case xla::F32:
-      literal = *xla::Literal::CreateR0<float>(value);
+      literal = std::move(*xla::Literal::CreateR0<float>(value));
       break;
     case xla::F64:
-      literal = *xla::Literal::CreateR0<double>(value);
+      literal = std::move(*xla::Literal::CreateR0<double>(value));
       break;
     case xla::C64:
-      literal = *xla::Literal::CreateR0<complex64>(value);
+      literal = std::move(*xla::Literal::CreateR0<complex64>(value));
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
@@ -172,11 +172,12 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::BF16:
-      literal = *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value));
+      literal = std::move(
+          *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value)));
       break;
     case xla::F16:
-      literal =
-          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value));
+      literal = std::move(
+          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value)));
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
@@ -212,8 +213,8 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
         "elements.");
   }
 
-  *output = input;
-  output->mutable_shape()->Swap(&shape);
+  *output = input.Clone();
+  output->mutable_shape_do_not_use()->Swap(&shape);
   return Status::OK();
 }
 

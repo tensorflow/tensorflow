@@ -31,14 +31,6 @@ if [ ! -e "WORKSPACE" ]; then
   exit 1
 fi
 
-# Enable JNI support for Windows in Bazel.
-# This can be removed once
-# https://github.com/bazelbuild/bazel/pull/2599
-# has been merged and we switch to a bazel release containing it.
-cp "${JAVA_HOME}/include/win32/jni_md.h" "./tensorflow/java/src/main/native/windows_jni_md.h"
-sed -i -e "s|@bazel_tools//tools/jdk:jni_md_header-linux|windows_jni_md.h|" ./tensorflow/java/src/main/native/BUILD
-#### END HACKS TO BE RESOLVED WITH NEW BAZEL VERSIONS ####
-
 export TF_BAZEL_TARGETS="//tensorflow:libtensorflow.so"
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/tools/lib_package:clicenses_generate"
 export TF_BAZEL_TARGETS="${TF_BAZEL_TARGETS} //tensorflow/java:libtensorflow_jni.so"
@@ -55,11 +47,6 @@ bazel build -c opt \
   tensorflow/java:libtensorflow_jni.so \
   tensorflow/tools/lib_package:jnilicenses_generate
 
-# Revert the hacks above
-git checkout ./tensorflow/tools/pip_package/BUILD
-git checkout ./tensorflow/java/src/main/native/BUILD
-rm -f ./tensorflow/java/src/main/native/windows_jni_md.h
-
 DIR=lib_package
 rm -rf ${DIR}
 mkdir -p ${DIR}
@@ -73,13 +60,16 @@ rm -f ${DIR}/tensorflow_jni.dll
 
 # Zip up the .dll, LICENSE and include files for the C library.
 mkdir -p ${DIR}/include/tensorflow/c
+mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/libtensorflow.so ${DIR}/lib/tensorflow.dll
 cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
-zip -j libtensorflow-cpu-windows-$(uname -m).zip \
+zip libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
+  include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/LICENSE
 rm -rf lib include

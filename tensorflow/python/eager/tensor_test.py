@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import re
 
 import numpy as np
 
@@ -179,8 +180,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     np.set_printoptions(threshold=2, edgeitems=1)
 
     t = _create_tensor(np.arange(10, dtype=np.int32))
-    self.assertIn("[0 ..., 9]", str(t))
-    self.assertIn("[0, ..., 9]", repr(t))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", str(t)))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", repr(t)))
 
     # Clean up: reset to previous printoptions.
     np.set_printoptions(threshold=orig_threshold, edgeitems=orig_edgeitems)
