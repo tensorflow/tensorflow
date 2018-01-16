@@ -127,9 +127,9 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
   """Calculates the full beams for `TensorArray`s.
 
   Args:
-    t: A `TensorArray` of size `max_time` that contains `Tensor`s of shape
-      `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]` where
-      `s` is the depth shape.
+    t: A stacked `TensorArray` of size `max_time` that contains `Tensor`s of
+      shape `[batch_size, beam_width, s]` or `[batch_size * beam_width, s]`
+      where `s` is the depth shape.
     parent_ids: The parent ids of shape `[max_time, batch_size, beam_width]`.
     sequence_length: The sequence length of shape `[batch_size, beam_width]`.
 
@@ -174,7 +174,7 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
   indices = array_ops.stack([time_ind, batch_ind, sorted_beam_ids], -1)
 
   # Gather from a tensor with collapsed additional dimensions.
-  gather_from = t.stack()
+  gather_from = t
   final_shape = array_ops.shape(gather_from)
   gather_from = array_ops.reshape(
       gather_from, [max_time, batch_size, beam_width, -1])
@@ -188,6 +188,45 @@ def _check_maybe(t):
   if t.shape.ndims is None:
     raise ValueError(
         "Expected tensor (%s) to have known rank, but ndims == None." % t)
+
+def _check_static_batch_beam_maybe(shape, batch_size, beam_width):
+  """Raises an exception if dimensions are known statically and can not be
+  reshaped to [batch_size, beam_size, -1].
+  """
+  reshaped_shape = tensor_shape.TensorShape([batch_size, beam_width, None])
+  if (batch_size is not None and shape[0].value is not None
+      and (shape[0] != batch_size * beam_width
+           or (shape.ndims >= 2 and shape[1].value is not None
+               and (shape[0] != batch_size or shape[1] != beam_width)))):
+    raise ValueError("TensorArray reordering expects elements to be "
+                     "reshapable to %s which is incompatible with the "
+                     "current shape %s. Consider setting "
+                     "reorder_tensor_arrays to False to disable TensorArray "
+                     "reordering during the beam search."
+                     % (reshaped_shape, shape))
+
+def _check_batch_beam(t, batch_size, beam_width):
+  """Returns an Assert operation checking that the elements of the stacked
+  TensorArray can be reshaped to [batch_size, beam_size, -1].
+  """
+  error_message = ("TensorArray reordering expects elements to be "
+                   "reshapable to [batch_size, beam_size, -1] which is "
+                   "incompatible with the dynamic shape of %s elements. "
+                   "Consider setting reorder_tensor_arrays to False to disable "
+                   "TensorArray reordering during the beam search."
+                   % (t.name))
+  return control_flow_ops.Assert(
+      math_ops.logical_and(
+          math_ops.greater_equal(array_ops.rank(t), 2),
+          math_ops.logical_or(
+              math_ops.equal(array_ops.shape(t)[1], batch_size * beam_width),
+              math_ops.logical_and(
+                  math_ops.greater(array_ops.rank(t), 2),
+                  math_ops.logical_and(
+                      math_ops.equal(array_ops.shape(t)[1], batch_size),
+                      math_ops.equal(array_ops.shape(t)[2], beam_width))))),
+      [error_message])
+
 
 
 class BeamSearchDecoder(decoder.Decoder):
@@ -560,20 +599,12 @@ class BeamSearchDecoder(decoder.Decoder):
       return t
     shape = t._element_shape[0]
     # pylint: enable=protected-access
-    batch_size = tensor_util.constant_value(self._batch_size)
-    reshaped_shape = tensor_shape.TensorShape(
-        [batch_size, self._beam_width, None])
-    if (shape.ndims >= 1 and shape[0] == batch_size * self._beam_width
-        or shape.ndims >= 2
-        and shape[0] == batch_size and shape[1] == self._beam_width):
+    _check_static_batch_beam_maybe(
+        shape, tensor_util.constant_value(self._batch_size), self._beam_width)
+    t = t.stack()
+    with ops.control_dependencies(
+        [_check_batch_beam(t, self._batch_size, self._beam_width)]):
       return gather_tree_from_array(t, parent_ids, sequence_length)
-    else:
-      raise ValueError("TensorArray reordering expects elements to be "
-                       "reshapable to %s which is incompatible with the "
-                       "current shape %s. Consider setting "
-                       "reorder_tensor_arrays to False to disable TensorArray "
-                       "reordering during the beam search."
-                       % (reshaped_shape, shape))
 
   def step(self, time, inputs, state, name=None):
     """Perform a decoding step.

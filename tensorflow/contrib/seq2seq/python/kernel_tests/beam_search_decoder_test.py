@@ -114,8 +114,6 @@ class TestGatherTree(test.TestCase):
       array = _tile_in_depth(array)
       expected_array = _tile_in_depth(expected_array)
 
-    array = tensor_array_ops.TensorArray(
-        array.dtype, size=0, dynamic_size=True).unstack(array)
     sorted_array = beam_search_decoder.gather_tree_from_array(
         array, parent_ids, sequence_length)
 
@@ -350,12 +348,6 @@ class BeamSearchDecoderTest(test.TestCase):
       final_outputs, final_state, final_sequence_lengths = (
           decoder.dynamic_decode(
               bsd, output_time_major=time_major, maximum_iterations=max_out))
-
-      if with_alignment_history:
-        # Remove the alignment history from final_state for purposes of the
-        # remainder of the tests.
-        cell_state = final_state.cell_state._replace(alignment_history=())  # pylint: disable=protected-access
-        final_state = final_state._replace(cell_state=cell_state)  # pylint: disable=protected-access
 
       def _t(shape):
         if time_major:
