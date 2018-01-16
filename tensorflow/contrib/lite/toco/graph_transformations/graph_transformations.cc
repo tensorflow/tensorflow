@@ -149,7 +149,7 @@ bool GraphTransformationsPass(int increment, Model* model,
       changed_now = transformation->Run(model, op_index);
       if (changed_now) {
         DumpGraphvizVideoFrame(*model);
-        CHECK(!model->operators.empty());
+        if (model->operators.empty()) return true;
         op_index = std::min<int>(op_index, model->operators.size() - 1);
         // Uncomment for debugging
         // CheckInvariants(*model);
