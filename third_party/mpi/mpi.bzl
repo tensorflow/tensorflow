@@ -2,7 +2,7 @@
 #based on the configuration options return one or the other
 
 def mpi_hdr():
-    MPI_LIB_IS_OPENMPI=False
+    MPI_LIB_IS_OPENMPI=True
     hdrs = []    
     if MPI_LIB_IS_OPENMPI:
         hdrs = ["mpi.h", "mpi_portable_platform.h"]   #When using OpenMPI
