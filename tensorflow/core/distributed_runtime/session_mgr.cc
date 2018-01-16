@@ -33,12 +33,13 @@ SessionMgr::SessionMgr(
     WorkerCacheFactory worker_cache_factory)
     : worker_env_(worker_env),
       default_worker_cache_(std::move(default_worker_cache)),
-      legacy_session_("", default_worker_name,
-                      std::unique_ptr<WorkerCacheInterface>(
-                          new WorkerCacheWrapper(default_worker_cache_.get())),
-                      std::unique_ptr<DeviceMgr>(worker_env->device_mgr),
-                      std::unique_ptr<GraphMgr>(
-                          new GraphMgr(worker_env, worker_env->device_mgr))),
+      legacy_session_(new WorkerSession(
+          "", default_worker_name,
+          std::unique_ptr<WorkerCacheInterface>(
+              new WorkerCacheWrapper(default_worker_cache_.get())),
+          std::unique_ptr<DeviceMgr>(worker_env->device_mgr),
+          std::unique_ptr<GraphMgr>(
+              new GraphMgr(worker_env, worker_env->device_mgr)))),
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
@@ -75,7 +76,7 @@ Status SessionMgr::CreateSession(const string& session,
   std::unique_ptr<GraphMgr> graph_mgr(
       new GraphMgr(worker_env_, device_mgr.get()));
 
-  std::unique_ptr<WorkerSession> worker_session(new WorkerSession(
+  std::shared_ptr<WorkerSession> worker_session(new WorkerSession(
       session, worker_name, std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(device_mgr), std::move(graph_mgr)));
 
@@ -92,21 +93,24 @@ Status SessionMgr::DeleteSession(const string& session) {
   return Status::OK();
 }
 
-WorkerSession* SessionMgr::WorkerSessionForSessionUnlocked(
+std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSessionUnlocked(
     const string& session) {
   auto it = sessions_.find(session);
   if (it == sessions_.end()) {
-    return &legacy_session_;
+    return legacy_session_;
   } else {
-    return it->second.get();
+    return it->second;
   }
 }
 
-WorkerSession* SessionMgr::WorkerSessionForSession(const string& session) {
+std::shared_ptr<WorkerSession> SessionMgr::WorkerSessionForSession(
+    const string& session) {
   mutex_lock l(mu_);
   return WorkerSessionForSessionUnlocked(session);
 }
 
-WorkerSession* SessionMgr::LegacySession() { return &legacy_session_; }
+std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
+  return legacy_session_;
+}
 
 }  // namespace tensorflow

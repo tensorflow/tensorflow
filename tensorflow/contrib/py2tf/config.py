@@ -20,6 +20,8 @@ from __future__ import print_function
 
 PYTHON_LITERALS = {
     'None': None,
+    'False': False,
+    'True': True,
 }
 
 DEFAULT_UNCOMPILED_MODULES = set((
