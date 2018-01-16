@@ -217,11 +217,11 @@ def _check_batch_beam(t, batch_size, beam_width):
                    % (t.name))
   return control_flow_ops.Assert(
       math_ops.logical_and(
-          math_ops.greater_equal(array_ops.rank(t), 2),
+          array_ops.rank(t) >= 2,
           math_ops.logical_or(
               math_ops.equal(array_ops.shape(t)[1], batch_size * beam_width),
               math_ops.logical_and(
-                  math_ops.greater(array_ops.rank(t), 2),
+                  array_ops.rank(t) > 2,
                   math_ops.logical_and(
                       math_ops.equal(array_ops.shape(t)[1], batch_size),
                       math_ops.equal(array_ops.shape(t)[2], beam_width))))),
