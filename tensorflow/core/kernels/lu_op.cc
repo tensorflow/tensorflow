@@ -15,8 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/LU"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,7 +23,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/LU"
 
 namespace tensorflow {
 
@@ -38,30 +37,33 @@ class LuOp : public LinearAlgebraOp<Scalar> {
   INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit LuOp(OpKernelConstruction* context) : Base(context) {}
- 
+
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0); // input square matrix 
+    int64 m = input_matrix_shapes[0].dim_size(0);  // input square matrix
     return TensorShapes({TensorShape({m, m}), TensorShape({m, m}),
                          TensorShape({m, m}), TensorShape({m, m})});
   }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final { 
-    const ConstMatrixMap& input = inputs[0];    
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& input = inputs[0];
     if (input.rows() == 0) {
       return;
     }
 
     // Perform the actual LU decomposition.
     Eigen::FullPivLU<
-        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
+        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         lu_decomposition(input);
-    
-    OP_REQUIRES(context, lu_decomposition.isInvertible() == true, errors::InvalidArgument(kErrMsg));
+
+    OP_REQUIRES(context, lu_decomposition.isInvertible() == true,
+                errors::InvalidArgument(kErrMsg));
     // Output the lower triangular in a dense form.
-    outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
-    outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
+    outputs->at(0) =
+        lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();
+    outputs->at(1) =
+        lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     outputs->at(2) = lu_decomposition.permutationP();
     outputs->at(3) = lu_decomposition.permutationQ();
   }
@@ -71,6 +73,6 @@ REGISTER_LINALG_OP("Lu", (LuOp<float>), float);
 REGISTER_LINALG_OP("Lu", (LuOp<double>), double);
 REGISTER_LINALG_OP("Lu", (LuOp<complex64>), complex64);
 REGISTER_LINALG_OP("Lu", (LuOp<complex128>), complex128);
-//REGISTER_LINALG_OP("BatchLu", (LuOp<float>), float);
-//REGISTER_LINALG_OP("BatchLu", (LuOp<double>), double);
+// REGISTER_LINALG_OP("BatchLu", (LuOp<float>), float);
+// REGISTER_LINALG_OP("BatchLu", (LuOp<double>), double);
 }  // namespace tensorflow

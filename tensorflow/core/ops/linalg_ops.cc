@@ -25,7 +25,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-
 // Return in <out> the result of making the end of <s> a square matrix.
 Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
                              ShapeHandle* out) {
@@ -47,7 +46,7 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   c->set_output(0, out);
   return Status::OK();
 }
-  
+
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
 // Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
 Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
@@ -258,9 +257,6 @@ output: Shape is `[..., M, M]`.
 Equivalent to np.linalg.inv
 @end_compatibility
 )doc");
-
-
-
 
 REGISTER_OP("Cholesky")
     .Input("input: T")
@@ -536,7 +532,7 @@ REGISTER_OP("Lu")
     .Output("p: T")
     .Output("q: T")
     .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(LuShapeFn)  
+    .SetShapeFn(LuShapeFn)
     .Doc(R"doc(
 Computes the LU decomposition of one or more square matrices.
 
