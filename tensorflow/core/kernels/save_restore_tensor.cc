@@ -109,8 +109,7 @@ void SaveTensors(
     break;
 
     switch (input.dtype()) {
-      TF_CALL_POD_STRING_TYPES(WRITER_ADD)
-      TF_CALL_QUANTIZED_TYPES(WRITER_ADD)
+      TF_CALL_SAVE_RESTORE_TYPES(WRITER_ADD)
       default:
         context->SetStatus(errors::Unimplemented("Saving data type ",
                                                  DataTypeString(input.dtype()),
@@ -225,8 +224,7 @@ void RestoreTensor(OpKernelContext* context,
     break;
 
   switch (type) {
-    TF_CALL_POD_STRING_TYPES(READER_COPY)
-    TF_CALL_QUANTIZED_TYPES(READER_COPY)
+    TF_CALL_SAVE_RESTORE_TYPES(READER_COPY)
     default:
       context->SetStatus(errors::Unimplemented(
           "Restoring data type ", DataTypeString(type), " not yet supported"));
