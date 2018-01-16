@@ -88,6 +88,13 @@ static void SetVertexField(poplar::Graph& graph,
   graph.setInitialValue<TYPE>(field, *value);
 }
 
+static void SetFp16VertexField(poplar::Graph& graph,
+                               const poplar::FieldRef &field,
+                               const Literal& literal) {
+  const uint16_t* value(static_cast<const uint16_t*>(literal.untyped_data()));
+  graph.setInitialValueHalf(field, *value);
+}
+
 port::Status SetVertexField(poplar::Graph &graph,
                             const poplar::FieldRef &field,
                             const Literal &literal) {
@@ -100,7 +107,7 @@ port::Status SetVertexField(poplar::Graph &graph,
       SetVertexField<int>(graph, field, literal);
       break;
     case F16:
-      SetVertexField<poplar::IeeeHalf>(graph, field, literal);
+      SetFp16VertexField(graph, field, literal);
       break;
     case F32:
       SetVertexField<float>(graph, field, literal);

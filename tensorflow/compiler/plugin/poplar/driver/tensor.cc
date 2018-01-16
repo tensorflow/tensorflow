@@ -328,6 +328,27 @@ AddConstantTensor(poplar::Graph& graph,
 }
 
 static void
+AddFp16ConstantTensor(poplar::Graph& graph,
+                     const xla::Literal& literal,
+                     const xla::Shape& shape,
+                     const poplar::Type& type,
+                     poplar::Tensor& tensor) {
+  int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
+  std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
+  const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
+
+  if (num_elements == 0) {
+    tensor = graph.addConstantHalf(type, {0}, (uint16_t)0);
+  } else if (num_elements == 1) {
+    tensor = graph.addConstantHalf(type, dim, data[0]);
+  } else {
+    tensor = graph.addConstantHalf(type, dim, (uint16_t*)data);
+  }
+
+  tensor = ConvertToDeviceLayout(shape, tensor);
+}
+
+static void
 Add64BitConstantTensor(poplar::Graph&graph,
                   const xla::Literal &literal,
                   const xla::Shape &shape,
@@ -358,6 +379,14 @@ SetInitialTensorValue(poplar::Graph &graph,
                       const xla::Literal &literal) {
   const TYPE* data(static_cast<const TYPE*>(literal.untyped_data()));
   graph.setInitialValue<TYPE>(tensor, data);
+}
+
+static void
+SetFp16InitialTensorValue(poplar::Graph &graph,
+                          poplar::Tensor &tensor,
+                          const xla::Literal &literal) {
+  const uint16_t* data(static_cast<const uint16_t*>(literal.untyped_data()));
+  graph.setInitialValueHalf(tensor, data);
 }
 
 static void
@@ -399,7 +428,7 @@ AddConstantTensor(poplar::Graph& graph,
         Set64BitInitialTensorValue(graph, tensor, literal);
         break;
       case F16:
-        SetInitialTensorValue<poplar::IeeeHalf>(graph, tensor, literal);
+        SetFp16InitialTensorValue(graph, tensor, literal);
         break;
       case F32:
         SetInitialTensorValue<float>(graph, tensor, literal);
@@ -423,7 +452,7 @@ AddConstantTensor(poplar::Graph& graph,
         Add64BitConstantTensor(graph, literal, shape, type, tensor);
         break;
       case F16:
-        AddConstantTensor<poplar::IeeeHalf>(graph, literal, shape, type, tensor);
+        AddFp16ConstantTensor(graph, literal, shape, type, tensor);
         break;
       case F32:
         AddConstantTensor<float>(graph, literal, shape, type, tensor);
