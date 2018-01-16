@@ -50,7 +50,7 @@ from tensorflow.python.training import optimizer as optimizer_lib
 
 
 def replicate_model_fn(model_fn,
-                       loss_reduction=losses.Reduction.SUM,
+                       loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                        devices=None):
   """Replicate `Estimator.model_fn` over GPUs within a single host.
 
@@ -181,7 +181,7 @@ class _VariableDistributionMode(object):
 
 def _replicate_model_fn_with_mode(
     model_fn,
-    loss_reduction=losses.Reduction.SUM,
+    loss_reduction,
     devices=None,
     mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
   """A version of `replicate_model_fn` that allows to specify a `mode`."""
@@ -490,7 +490,7 @@ def _get_loss_towers(model_fn,
                      config,
                      devices,
                      local_ps_devices,
-                     loss_reduction=losses.Reduction.SUM,
+                     loss_reduction,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -797,4 +797,3 @@ def _asdict(namedtuple):
     A dictionary version of the tuple.
   """
   return {k: getattr(namedtuple, k) for k in namedtuple._fields}
-

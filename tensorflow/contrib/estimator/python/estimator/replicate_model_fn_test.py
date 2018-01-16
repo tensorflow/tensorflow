@@ -130,7 +130,10 @@ class DNNClassifierIntegrationTest(test_util.TensorFlowTestCase):
           estimator.model_fn, devices=['/gpu:0', '/gpu:1', '/gpu:2'])
     else:
       model_fn = replicate_model_fn._replicate_model_fn_with_mode(
-          estimator.model_fn, devices=['/gpu:0', '/gpu:1', '/gpu:2'], mode=mode)
+          estimator.model_fn,
+          devices=['/gpu:0', '/gpu:1', '/gpu:2'],
+          loss_reduction=losses.Reduction.SUM,
+          mode=mode)
 
     estimator = estimator_lib.Estimator(
         model_fn=model_fn,
@@ -212,7 +215,9 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.model_fn,
+          loss_reduction=losses.Reduction.SUM,
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
       session.run(variables.global_variables_initializer())
@@ -270,7 +275,9 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       with self.test_session() as session, variable_scope.variable_scope(
           '', reuse=variable_scope.AUTO_REUSE):
         replicated_model_fn = replicate_model_fn.replicate_model_fn(
-            self.model_fn, devices=['/gpu:0', '/gpu:1'])
+            self.model_fn,
+            loss_reduction=losses.Reduction.SUM,
+            devices=['/gpu:0', '/gpu:1'])
         estimator_spec = replicated_model_fn(
             features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
         session.run(variables.global_variables_initializer())
@@ -291,7 +298,9 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.model_fn,
+          loss_reduction=losses.Reduction.SUM,
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.params)
       session.run(variables.local_variables_initializer())
@@ -592,7 +601,9 @@ class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.model_fn,
+          loss_reduction=losses.Reduction.SUM,
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN, {})
       session.run(variables.global_variables_initializer())
@@ -687,7 +698,9 @@ class ReplicateWithTwoLossesAndOneOptimizer(test_util.TensorFlowTestCase):
 
     with self.test_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
-          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+          self.model_fn,
+          loss_reduction=losses.Reduction.SUM,
+          devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN, {})
       session.run(variables.global_variables_initializer())
@@ -790,6 +803,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
           labels=[[0.6], [0.6]],
           params=None,
           config=None,
+          loss_reduction=losses.Reduction.SUM,
           devices=['/gpu:0', '/gpu:1'],
           local_ps_devices=['/gpu:0'],
           name_scope_pattern='test_tower_{}')
@@ -875,6 +889,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
           features=[[0.6], [1.6], [2.6]],
           labels=[[0.6], [0.6], [2.6]],
           params=None,
+          loss_reduction=losses.Reduction.SUM,
           config=None,
           devices=['/gpu:0', '/gpu:1', '/gpu:3'],
           local_ps_devices=['/gpu:0', '/gpu:1', '/gpu:3'],
@@ -1114,6 +1129,7 @@ class PredictSpecTest(test_util.TensorFlowTestCase):
           self.model_fn,
           mode=None,
           features=[[0.1], [0.2]],
+          loss_reduction=losses.Reduction.SUM,
           labels=[[], []],
           params=None,
           config=None,
