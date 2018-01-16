@@ -123,7 +123,7 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in [np.float32, np.float64]:
-      inp = np.random.rand(shape).astype(nptype)
+      inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YUV and back, as a batch and individually
       with self.test_session(use_gpu=True) as sess:
