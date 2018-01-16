@@ -4,6 +4,7 @@
 #include "tensorflow/contrib/lite/kernels/register.h"
 
 const char *tflite_model_path = "C:\\temp\\model.lite";
+#include <iostream>
 
 int main()
 {
@@ -20,17 +21,27 @@ int main()
     interpreter->SetNumThreads(1);
 
     float *input = interpreter->typed_input_tensor<float>(0);
+	const int N = 375;
+	for (int i = 0; i < 10; ++i)
+	{
+		
+		for (size_t j = 0; j < N; j++)
+		{
+			input[j] = (float)i;
+		}
+		status = interpreter->Invoke();
+		if (status == kTfLiteError)
+		{
 
-    // std::copy( data, data+length, input );
-    status = interpreter->Invoke();
-    if( status == kTfLiteError )
-    {
+		}
 
-    }
+		float* output = interpreter->typed_output_tensor<float>(0);
+		std::cout << *output << std::endl;
 
-    float* output = interpreter->typed_output_tensor<float>(0);
+	}
 
 
 
+	getchar();
     return 0;
 }

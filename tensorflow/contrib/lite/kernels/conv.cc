@@ -424,6 +424,8 @@ TfLiteRegistration* Register_CONVOLUTION_NEON_OPT() {
 TfLiteRegistration* Register_CONV_2D() {
 #ifdef USE_NEON
   return Register_CONVOLUTION_NEON_OPT();
+#elif _WIN32
+	return Register_CONVOLUTION_REF();
 #else
   return Register_CONVOLUTION_GENERIC_OPT();
 #endif
