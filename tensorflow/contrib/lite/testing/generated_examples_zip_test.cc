@@ -26,15 +26,18 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
-
-namespace {
-bool FLAGS_ignore_known_bugs = true;
-}  // namespace
 
 namespace tflite {
 namespace testing {
+
+namespace {
+bool FLAGS_ignore_known_bugs = true;
+// TODO(b/71769302) zip_files_dir should have a more accurate default, if
+// possible
+string* FLAGS_zip_files_dir = new string("./");
+string* FLAGS_unzip_binary_path = new string("/usr/bin/unzip");
+}  // namespace
 
 // TensorFlow system environment for file system called.
 tensorflow::Env* env = tensorflow::Env::Default();
@@ -105,8 +108,9 @@ class ZipEnvironment : public ::testing::Environment {
     string dir;
     TF_CHECK_OK(MakeTemporaryDirectory(&dir));
     tensorflow::SubProcess proc;
-    string unzip_binary =
-        "/usr/bin/unzip";
+    string unzip_binary = *FLAGS_unzip_binary_path;
+    TF_CHECK_OK(env->FileExists(unzip_binary));
+    TF_CHECK_OK(env->FileExists(zip));
     proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip});
     proc.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     proc.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
@@ -174,8 +178,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
 
 // Get a list of tests from a zip file `zip_file_name`.
 std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file_name) {
-  string zip_file = ::tensorflow::testing::TensorFlowSrcRoot() +
-                    "/contrib/lite/testing/optest/" + zip_file_name;
+  string zip_file = *FLAGS_zip_files_dir + "/" + zip_file_name;
   string decompress_tmp_dir;
   TF_CHECK_OK(zip_environment()->UnZip(zip_file, &decompress_tmp_dir));
   std::vector<string> stuff;
@@ -260,10 +263,16 @@ INSTANTIATE_TESTS(mean)
 int main(int argc, char** argv) {
   ::testing::AddGlobalTestEnvironment(tflite::testing::zip_environment());
 
-  std::vector<tensorflow::Flag> flags = {tensorflow::Flag(
-      "ignore_known_bugs", &FLAGS_ignore_known_bugs,
-      "If a particular model is affected by a known bug, the "
-      "corresponding test should expect the outputs to not match.")};
+  std::vector<tensorflow::Flag> flags = {
+      tensorflow::Flag(
+          "ignore_known_bugs", &tflite::testing::FLAGS_ignore_known_bugs,
+          "If a particular model is affected by a known bug, the "
+          "corresponding test should expect the outputs to not match."),
+      tensorflow::Flag("zip_files_dir", tflite::testing::FLAGS_zip_files_dir,
+                       "Required: Location of the test zips."),
+      tensorflow::Flag("unzip_binary_path",
+                       tflite::testing::FLAGS_unzip_binary_path,
+                       "Required: Location of a suitable unzip binary.")};
   bool success = tensorflow::Flags::Parse(&argc, argv, flags);
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
