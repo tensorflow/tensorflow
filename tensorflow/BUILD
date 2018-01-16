@@ -408,6 +408,7 @@ filegroup(
         "//tensorflow/cc:all_files",
         "//tensorflow/cc/saved_model:all_files",
         "//tensorflow/cc/saved_model/python:all_files",
+        "//tensorflow/cc/tools:all_files",
         "//tensorflow/compiler/aot:all_files",
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",

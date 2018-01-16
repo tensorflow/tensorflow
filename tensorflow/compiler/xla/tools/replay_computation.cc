@@ -171,6 +171,8 @@ int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
       }
     }
   }
+
+  ClientLibrary::DestroyLocalInstances();
   return exit_status;
 }
 

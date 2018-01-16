@@ -106,6 +106,21 @@ class TypeInfoResolverTest(test.TestCase):
     self.assertEquals((session.__name__, 'Session'),
                       anno.getanno(member_call, 'type_fqn'))
 
+  def test_constructor_deta_dependent(self):
+
+    def test_fn(x):
+      if x > 0:
+        opt = training.GradientDescentOptimizer(0.1)
+      else:
+        opt = training.GradientDescentOptimizer(0.01)
+      opt.minimize(0)
+
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+    node = live_values.resolve(node, {'training': training}, {})
+    with self.assertRaises(ValueError):
+      node = type_info.resolve(node, None)
+
   def test_parameter_class_members(self):
 
     def test_fn(opt):

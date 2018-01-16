@@ -170,7 +170,7 @@ enum BuiltinOperator {
   BuiltinOperator_MAX_POOL_2D = 17,
   BuiltinOperator_MUL = 18,
   BuiltinOperator_RELU = 19,
-  BuiltinOperator_RELU1 = 20,
+  BuiltinOperator_RELU_N1_TO_1 = 20,
   BuiltinOperator_RELU6 = 21,
   BuiltinOperator_RESHAPE = 22,
   BuiltinOperator_RESIZE_BILINEAR = 23,
@@ -214,7 +214,7 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[38] {
       BuiltinOperator_MAX_POOL_2D,
       BuiltinOperator_MUL,
       BuiltinOperator_RELU,
-      BuiltinOperator_RELU1,
+      BuiltinOperator_RELU_N1_TO_1,
       BuiltinOperator_RELU6,
       BuiltinOperator_RESHAPE,
       BuiltinOperator_RESIZE_BILINEAR,
@@ -259,7 +259,7 @@ inline const char **EnumNamesBuiltinOperator() {
                                 "MAX_POOL_2D",
                                 "MUL",
                                 "RELU",
-                                "RELU1",
+                                "RELU_N1_TO_1",
                                 "RELU6",
                                 "RESHAPE",
                                 "RESIZE_BILINEAR",
@@ -888,7 +888,7 @@ inline const char *EnumNamePadding(Padding e) {
 enum ActivationFunctionType {
   ActivationFunctionType_NONE = 0,
   ActivationFunctionType_RELU = 1,
-  ActivationFunctionType_RELU1 = 2,
+  ActivationFunctionType_RELU_N1_TO_1 = 2,
   ActivationFunctionType_RELU6 = 3,
   ActivationFunctionType_TANH = 4,
   ActivationFunctionType_SIGN_BIT = 5,
@@ -898,14 +898,14 @@ enum ActivationFunctionType {
 
 inline ActivationFunctionType (&EnumValuesActivationFunctionType())[6] {
   static ActivationFunctionType values[] = {
-      ActivationFunctionType_NONE,  ActivationFunctionType_RELU,
-      ActivationFunctionType_RELU1, ActivationFunctionType_RELU6,
-      ActivationFunctionType_TANH,  ActivationFunctionType_SIGN_BIT};
+      ActivationFunctionType_NONE,         ActivationFunctionType_RELU,
+      ActivationFunctionType_RELU_N1_TO_1, ActivationFunctionType_RELU6,
+      ActivationFunctionType_TANH,         ActivationFunctionType_SIGN_BIT};
   return values;
 }
 
 inline const char **EnumNamesActivationFunctionType() {
-  static const char *names[] = {"NONE", "RELU",     "RELU1", "RELU6",
+  static const char *names[] = {"NONE", "RELU",     "RELU_N1_TO_1", "RELU6",
                                 "TANH", "SIGN_BIT", nullptr};
   return names;
 }
