@@ -2679,7 +2679,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops.unique(x)
+      y, _ = gen_array_ops._unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 

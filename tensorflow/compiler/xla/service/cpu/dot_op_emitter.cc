@@ -176,7 +176,7 @@ class ColumnMajorMatrixVectorProductEmitter {
   }
 
   // Load a tile of values from the RHS.  For the RHS a "tile" is a contiguous
-  // sequnce of `count` values, each one broadcasted to the vector width.
+  // sequence of `count` values, each one broadcasted to the vector width.
   std::vector<llvm::Value*> LoadRhsTile(llvm::Value* offset, int64 count) {
     llvm::Value* base_pointer = vsl_.ComputeOffsetPointer(rhs_, offset);
     std::vector<llvm::Value*> result;

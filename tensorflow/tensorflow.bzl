@@ -150,6 +150,12 @@ def if_darwin(a):
       "//conditions:default": [],
   })
 
+def if_override_eigen_strong_inline(a):
+  return select({
+      clean_dep("//tensorflow:override_eigen_strong_inline"): a,
+      "//conditions:default": [],
+  })
+
 def get_win_copts(is_external=False):
     WINDOWS_COPTS = [
         "/D__VERSION__=\\\"MSVC\\\"",
@@ -196,7 +202,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_linux_x86_64(["-msse3"])
       + if_ios_x86_64(["-msse4.1"])
       + select({
-            "//tensorflow:framework_shared_object": [],
+            clean_dep("//tensorflow:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
       })
       + select({
@@ -922,7 +928,8 @@ def tf_kernel_library(name,
   if not deps:
     deps = []
   if not copts:
-    copts = tf_copts(is_external=is_external)
+    copts = []
+  copts = copts + tf_copts(is_external=is_external)
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude=["*test*"]):
       if not gpu_srcs:

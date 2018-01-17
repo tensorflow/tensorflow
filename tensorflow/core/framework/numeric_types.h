@@ -76,7 +76,7 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 abs(
 }  // namespace numext
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(COMPILER_MSVC) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {
