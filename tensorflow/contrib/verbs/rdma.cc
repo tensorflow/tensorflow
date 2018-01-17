@@ -756,7 +756,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
 
     connected_ = true;
   } else {
-    LOG(INFO) << "channel already connected";
+    RDMA_LOG(2) << "channel already connected";
   }
 }
 

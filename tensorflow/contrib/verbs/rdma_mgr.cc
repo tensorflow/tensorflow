@@ -58,7 +58,7 @@ RdmaMgr::RdmaMgr(const WorkerEnv* const worker_env,
 void RdmaMgr::SetupChannels() {
   for (const auto& p : channel_table_) {
     string worker_name = p.first;
-    LOG(INFO) << "connecting to remote node " << worker_name;
+    RDMA_LOG(2) << "Connecting to remote node " << worker_name;
     RdmaChannel* rc = p.second;
     GetRemoteAddressRequest req;
     GetRemoteAddressResponse resp;
@@ -116,13 +116,16 @@ void RdmaMgr::SetupChannels() {
         }
         CHECK(i == RdmaChannel::kNumMessageBuffers);
       } else {
-        LOG(ERROR) << s.error_message();
+        LOG(ERROR) << "Connecting to " << worker_name
+                   << ": Got " << s.error_message() << ". Retrying ("
+                   << (attempts + 1) << "/" << max_num_attempts << ")..." ;
         if (++attempts == max_num_attempts) {
           break;
         }
         worker_env_->env->SleepForMicroseconds(2000000);
       }
     } while (!s.ok());
+    RDMA_LOG(0) << "Connected to remote node " << worker_name;
     delete client;
   }
 }
