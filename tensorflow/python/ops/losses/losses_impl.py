@@ -492,7 +492,7 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
   """
   if labels is None:
