@@ -529,6 +529,14 @@ class StepCounterHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
 
+  def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
+    steps_per_sec = elapsed_steps / elapsed_time
+    if self._summary_writer is not None:
+      summary = Summary(value=[Summary.Value(
+          tag=self._summary_tag, simple_value=steps_per_sec)])
+      self._summary_writer.add_summary(summary, global_step)
+    logging.info("%s: %g", self._summary_tag, steps_per_sec)
+
   def after_run(self, run_context, run_values):
     _ = run_context
 
@@ -540,12 +548,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
         elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
             global_step)
         if elapsed_time is not None:
-          steps_per_sec = elapsed_steps / elapsed_time
-          if self._summary_writer is not None:
-            summary = Summary(value=[Summary.Value(
-                tag=self._summary_tag, simple_value=steps_per_sec)])
-            self._summary_writer.add_summary(summary, global_step)
-          logging.info("%s: %g", self._summary_tag, steps_per_sec)
+          self._log_and_record(elapsed_steps, elapsed_time, global_step)
 
     # Check whether the global step has been increased. Here, we do not use the
     # timer.last_triggered_step as the timer might record a different global

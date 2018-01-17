@@ -58,7 +58,7 @@ COLOCATE_COV_OPS_WITH_INPUTS = True
 
 
 @contextlib.contextmanager
-def _maybe_colocate_with(op):
+def maybe_colocate_with(op):
   """Context to colocate with `op` if `COLOCATE_COV_OPS_WITH_INPUTS`."""
   if COLOCATE_COV_OPS_WITH_INPUTS:
     if isinstance(op, (list, tuple)):
@@ -111,7 +111,7 @@ def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: di
   return array_ops.ones(shape, dtype)
 
 
-def _compute_cov(tensor, tensor_right=None, normalizer=None):
+def compute_cov(tensor, tensor_right=None, normalizer=None):
   """Compute the empirical second moment of the rows of a 2D Tensor.
 
   This function is meant to be applied to random matrices for which the true row
@@ -139,7 +139,7 @@ def _compute_cov(tensor, tensor_right=None, normalizer=None):
             math_ops.cast(normalizer, tensor.dtype))
 
 
-def _append_homog(tensor):
+def append_homog(tensor):
   """Appends a homogeneous coordinate to the last dimension of a Tensor.
 
   Args:
@@ -281,7 +281,7 @@ class FisherFactor(object):
     # the future we might want to perform the cov computations on each tower,
     # so that each tower will be considered a "source" (allowing us to reuse
     # the existing "source" code for this).
-    with _maybe_colocate_with(new_cov_contribs[0]):
+    with maybe_colocate_with(new_cov_contribs[0]):
       new_cov = math_ops.add_n(new_cov_contribs)
       # Synchronize value across all TPU cores.
       if utils.on_tpu():
@@ -365,27 +365,15 @@ class InverseProvidingFactor(FisherFactor):
             dtype=self._dtype)
       self._matpower_by_exp_and_damping[(exp, damping)] = matpower
 
-  def register_eigendecomp(self):
-    """Registers an eigendecomposition.
-
-    Unlike register_damp_inverse and register_matpower this doesn't create
-    any variables or inverse ops.  Instead it merely makes tensors containing
-    the eigendecomposition available to anyone that wants them.  They will be
-    recomputed (once) for each session.run() call (when they needed by some op).
-    """
-    if not self._eigendecomp:
-      eigenvalues, eigenvectors = linalg_ops.self_adjoint_eig(self._cov)
-
-      # The matrix self._cov is positive semidefinite by construction, but the
-      # numerical eigenvalues could be negative due to numerical errors, so here
-      # we clip them to be at least FLAGS.eigenvalue_clipping_threshold
-      clipped_eigenvalues = math_ops.maximum(eigenvalues,
-                                             EIGENVALUE_CLIPPING_THRESHOLD)
-      self._eigendecomp = (clipped_eigenvalues, eigenvectors)
-
   def make_inverse_update_ops(self):
     """Create and return update ops corresponding to registered computations."""
     ops = []
+
+    # We do this to ensure that we don't reuse the eigendecomp from old calls
+    # to make_inverse_update_ops that may be placed on different devices.  This
+    # can happen is the user has both a permanent and lazily constructed
+    # version of the inverse ops (and only uses one of them).
+    self.reset_eigendecomp()
 
     num_inverses = len(self._inverses_by_damping)
     matrix_power_registered = bool(self._matpower_by_exp_and_damping)
@@ -394,8 +382,7 @@ class InverseProvidingFactor(FisherFactor):
         num_inverses >= EIGENVALUE_DECOMPOSITION_THRESHOLD)
 
     if use_eig:
-      self.register_eigendecomp()  # ensures self._eigendecomp is set
-      eigenvalues, eigenvectors = self._eigendecomp  # pylint: disable=unpacking-non-sequence
+      eigenvalues, eigenvectors = self.get_eigendecomp()  # pylint: disable=unpacking-non-sequence
 
       for damping, inv in self._inverses_by_damping.items():
         ops.append(
@@ -430,10 +417,24 @@ class InverseProvidingFactor(FisherFactor):
     return self._matpower_by_exp_and_damping[(exp, damping)]
 
   def get_eigendecomp(self):
+    """Creates or retrieves eigendecomposition of self._cov."""
     # Unlike get_inverse and get_matpower this doesn't retrieve a stored
     # variable, but instead always computes a fresh version from the current
     # value of get_cov().
+    if not self._eigendecomp:
+      eigenvalues, eigenvectors = linalg_ops.self_adjoint_eig(self._cov)
+
+      # The matrix self._cov is positive semidefinite by construction, but the
+      # numerical eigenvalues could be negative due to numerical errors, so here
+      # we clip them to be at least FLAGS.eigenvalue_clipping_threshold
+      clipped_eigenvalues = math_ops.maximum(eigenvalues,
+                                             EIGENVALUE_CLIPPING_THRESHOLD)
+      self._eigendecomp = (clipped_eigenvalues, eigenvectors)
+
     return self._eigendecomp
+
+  def reset_eigendecomp(self):
+    self._eigendecomp = None
 
 
 class FullFactor(InverseProvidingFactor):
@@ -472,7 +473,7 @@ class FullFactor(InverseProvidingFactor):
 
   def _compute_new_cov(self, idx=0):
     # This will be a very basic rank 1 estimate
-    with _maybe_colocate_with(self._params_grads[idx]):
+    with maybe_colocate_with(self._params_grads[idx]):
       params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
       return ((params_grads_flat * array_ops.transpose(
           params_grads_flat)) / math_ops.cast(self._batch_size,
@@ -528,7 +529,7 @@ class NaiveDiagonalFactor(DiagonalFactor):
     return self._params_grads[0][0].dtype
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._params_grads[idx]):
+    with maybe_colocate_with(self._params_grads[idx]):
       params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
       return (math_ops.square(params_grads_flat) / math_ops.cast(
           self._batch_size, params_grads_flat.dtype))
@@ -589,12 +590,12 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     # square of an outer product is the outer-product of the entry-wise squares.
     # The gradient is the outer product of the input and the output gradients,
     # so we just square both and then take their outer-product.
-    with _maybe_colocate_with(self._outputs_grads[idx]):
+    with maybe_colocate_with(self._outputs_grads[idx]):
       # We only need to compute squared_inputs once
       if self._squared_inputs is None:
         inputs = self._inputs
         if self._has_bias:
-          inputs = _append_homog(self._inputs)
+          inputs = append_homog(self._inputs)
         self._squared_inputs = math_ops.square(inputs)
 
       new_cov = math_ops.matmul(
@@ -661,25 +662,32 @@ class ConvDiagonalFactor(DiagonalFactor):
   def _dtype(self):
     return self._outputs_grads[0].dtype
 
+  def make_covariance_update_op(self, ema_decay):
+    with maybe_colocate_with(self._inputs):
+      filter_height, filter_width, _, _ = self._filter_shape
+
+      # TODO(b/64144716): there is potential here for a big savings in terms
+      # of memory use.
+      patches = array_ops.extract_image_patches(
+          self._inputs,
+          ksizes=[1, filter_height, filter_width, 1],
+          strides=self._strides,
+          rates=[1, 1, 1, 1],
+          padding=self._padding)
+
+      if self._has_bias:
+        patches = append_homog(patches)
+
+      self._patches = patches
+
+    op = super(ConvDiagonalFactor, self).make_covariance_update_op(ema_decay)
+
+    self._patches = None
+
+    return op
+
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._outputs_grads[idx]):
-      if self._patches is None:
-        filter_height, filter_width, _, _ = self._filter_shape
-
-        # TODO(b/64144716): there is potential here for a big savings in terms
-        # of memory use.
-        patches = array_ops.extract_image_patches(
-            self._inputs,
-            ksizes=[1, filter_height, filter_width, 1],
-            strides=self._strides,
-            rates=[1, 1, 1, 1],
-            padding=self._padding)
-
-        if self._has_bias:
-          patches = _append_homog(patches)
-
-        self._patches = patches
-
+    with maybe_colocate_with(self._outputs_grads[idx]):
       outputs_grad = self._outputs_grads[idx]
       batch_size = array_ops.shape(self._patches)[0]
 
@@ -736,11 +744,11 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
     return self._tensors[0].dtype
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._tensors[idx]):
+    with maybe_colocate_with(self._tensors[idx]):
       tensor = self._tensors[idx]
       if self._has_bias:
-        tensor = _append_homog(tensor)
-      return _compute_cov(tensor)
+        tensor = append_homog(tensor)
+      return compute_cov(tensor)
 
 
 class ConvInputKroneckerFactor(InverseProvidingFactor):
@@ -803,7 +811,7 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
     if idx != 0:
       raise ValueError("ConvInputKroneckerFactor only supports idx = 0")
 
-    with _maybe_colocate_with(self._inputs):
+    with maybe_colocate_with(self._inputs):
       filter_height, filter_width, in_channels, _ = self._filter_shape
 
       # TODO(b/64144716): there is potential here for a big savings in terms of
@@ -825,15 +833,15 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
       # We append a homogenous coordinate to patches_flat if the layer has
       # bias parameters. This gives us [[A_l]]_H from the paper.
       if self._has_bias:
-        patches_flat = _append_homog(patches_flat)
-      # We call _compute_cov without passing in a normalizer. _compute_cov uses
+        patches_flat = append_homog(patches_flat)
+      # We call compute_cov without passing in a normalizer. compute_cov uses
       # the first dimension of patches_flat i.e. M|T| as the normalizer by
       # default. Hence we end up computing 1/M|T| * [[A_l]]^T [[A_l]], with
       # shape J|Delta| x J|Delta|. This is related to hat{Omega}_l from
       # the paper but has a different scale here for consistency with
       # ConvOutputKroneckerFactor.
       # (Tilde omitted over A for clarity.)
-      return _compute_cov(patches_flat)
+      return compute_cov(patches_flat)
 
 
 class ConvOutputKroneckerFactor(InverseProvidingFactor):
@@ -876,7 +884,7 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
     return self._outputs_grads[0].dtype
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._outputs_grads[idx]):
+    with maybe_colocate_with(self._outputs_grads[idx]):
       # reshaped_tensor below is the matrix DS_l defined in the KFC paper
       # (tilde omitted over S for clarity). It has shape M|T| x I, where
       # M = minibatch size, |T| = number of spatial locations, and
@@ -884,10 +892,10 @@ class ConvOutputKroneckerFactor(InverseProvidingFactor):
       reshaped_tensor = array_ops.reshape(self._outputs_grads[idx],
                                           [-1, self._out_channels])
       # Following the reasoning in ConvInputKroneckerFactor._compute_new_cov,
-      # _compute_cov here returns 1/M|T| * DS_l^T DS_l = hat{Gamma}_l
+      # compute_cov here returns 1/M|T| * DS_l^T DS_l = hat{Gamma}_l
       # as defined in the paper, with shape I x I.
       # (Tilde omitted over S for clarity.)
-      return _compute_cov(reshaped_tensor)
+      return compute_cov(reshaped_tensor)
 
 
 class FullyConnectedMultiKF(InverseProvidingFactor):
@@ -935,7 +943,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
       new_cov_dt1_contribs = tuple(self._compute_new_cov_dt1(idx)
                                    for idx in range(self._num_sources))
 
-      with _maybe_colocate_with(new_cov_dt1_contribs[0]):
+      with maybe_colocate_with(new_cov_dt1_contribs[0]):
         new_cov_dt1 = math_ops.add_n(new_cov_dt1_contribs)
 
         op2 = moving_averages.assign_moving_average(
@@ -951,17 +959,17 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
     return op
 
   def _compute_new_cov(self, idx=0):
-    with _maybe_colocate_with(self._tensor_lists[idx]):
+    with maybe_colocate_with(self._tensor_lists[idx]):
       tensor = array_ops.concat(self._tensor_lists[idx], 0)
       if self._has_bias:
-        tensor = _append_homog(tensor)
+        tensor = append_homog(tensor)
       # We save these so they can be used by _compute_new_cov_dt1
       self._tensors[idx] = tensor
-      return _compute_cov(tensor)
+      return compute_cov(tensor)
 
   def _compute_new_cov_dt1(self, idx=0):
     tensor = self._tensors[idx]
-    with _maybe_colocate_with(tensor):
+    with maybe_colocate_with(tensor):
       # Is there a more elegant way to do this computation?
       tensor_present = tensor[:-self._batch_size, :]
       tensor_future = tensor[self._batch_size:, :]
@@ -969,7 +977,7 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
       # block estimate.  This is equivalent to padding with zeros, as was done
       # in Section B.2 of the appendix.
       normalizer = self._num_timesteps * self._batch_size
-      return _compute_cov(
+      return compute_cov(
           tensor_future, tensor_right=tensor_present, normalizer=normalizer)
 
   @property
@@ -1009,7 +1017,6 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
 
   def register_option1quants(self, damping):
 
-    self.register_eigendecomp()
     self.register_cov_dt1()
 
     if damping not in self._option1quants_by_damping:
@@ -1035,7 +1042,6 @@ class FullyConnectedMultiKF(InverseProvidingFactor):
 
   def register_option2quants(self, damping):
 
-    self.register_eigendecomp()
     self.register_cov_dt1()
 
     if damping not in self._option2quants_by_damping:

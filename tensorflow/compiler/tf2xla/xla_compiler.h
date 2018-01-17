@@ -152,6 +152,10 @@ class XlaCompiler {
     // as Tensors at compile-time, rather than as run-time outputs of the
     // computation.
     bool resolve_compile_time_constants = true;
+
+    // True when compiling the entry computation, false for subcomputations
+    // (while, call, etc.)
+    bool is_entry_computation = true;
   };
 
   struct OutputDescription {

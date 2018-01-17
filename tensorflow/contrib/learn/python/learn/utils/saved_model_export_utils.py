@@ -392,8 +392,7 @@ def make_export_strategy(serving_input_fn,
                          assets_extra=None,
                          as_text=False,
                          exports_to_keep=5,
-                         strip_default_attrs=False):
-  # pylint: disable=line-too-long
+                         strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
@@ -414,16 +413,16 @@ def make_export_strategy(serving_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
 
-  def export_fn(estimator, export_dir_base, checkpoint_path=None):
+  def export_fn(estimator, export_dir_base, checkpoint_path=None,
+                strip_default_attrs=False):
     """Exports the given Estimator as a SavedModel.
 
     Args:
@@ -432,6 +431,8 @@ def make_export_strategy(serving_input_fn,
         graph and checkpoints.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will
+        be removed from the NodeDefs.
 
     Returns:
       The string path to the exported directory.
@@ -465,7 +466,7 @@ def make_export_strategy(serving_input_fn,
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn, strip_default_attrs)
 
 
 def make_parsing_export_strategy(feature_columns,
@@ -474,8 +475,7 @@ def make_parsing_export_strategy(feature_columns,
                                  as_text=False,
                                  exports_to_keep=5,
                                  target_core=False,
-                                 strip_default_attrs=False):
-  # pylint: disable=line-too-long
+                                 strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -503,14 +503,13 @@ def make_parsing_export_strategy(feature_columns,
     target_core: If True, prepare an ExportStrategy for use with
       tensorflow.python.estimator.*.  If False (default), prepare an
       ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
   if target_core:
     serving_input_fn = (
@@ -630,8 +629,7 @@ def make_best_model_export_strategy(
     event_file_pattern=None,
     compare_fn=None,
     default_output_alternative_key=None,
-    strip_default_attrs=False):
-  # pylint: disable=line-too-long
+    strip_default_attrs=None):
   """Creates an custom ExportStrategy for use with tf.contrib.learn.Experiment.
 
   Args:
@@ -654,14 +652,13 @@ def make_best_model_export_strategy(
         of evaluation result keyed by corresponding checkpoint path.
     default_output_alternative_key: the key for default serving signature for
         multi-headed inference graphs.
-    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
-  # pylint: enable=line-too-long
   best_model_export_strategy = make_export_strategy(
       serving_input_fn,
       exports_to_keep=exports_to_keep,

@@ -270,6 +270,14 @@ class ClientLibraryTestBase : public ::testing::Test {
       int64 parameter_number, const Literal& literal, const string& name,
       ComputationBuilder* builder, ComputationDataHandle* data_handle);
 
+  // As above, but the caller can specify the device that the literal is
+  // transferred to. If device_handle is nullptr, the literal will be
+  // transferred to the default device.
+  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+      int64 parameter_number, const Literal& literal, const string& name,
+      const DeviceHandle* device_handle, ComputationBuilder* builder,
+      ComputationDataHandle* data_handle);
+
   // Creates a parameter instruction and sets the value that will be passed to
   // the computation as specified. This function must be used for all parameters
   // or none and no parameters must be passed when invoking the computation if

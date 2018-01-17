@@ -1528,9 +1528,11 @@ void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
   }
 }
 
-void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
-                  AxesOrder output_axes_order, const Shape& output_shape,
-                  const float* input_data, float* output_data) {
+template <typename T>
+void ShuffleArrayTemplate(const Shape& input_shape, AxesOrder input_axes_order,
+                          AxesOrder output_axes_order,
+                          const Shape& output_shape, const T* input_data,
+                          T* output_data) {
   if (input_axes_order == AxesOrder::kHWIM &&
       output_axes_order == AxesOrder::k1HWO) {
     // This special case isn't just a permutation, the IM pair of dims get
@@ -1582,16 +1584,15 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
   const int output_stride_3 = output_stride_2 * output_size_2;
 
   for (int i3 = 0; i3 < output_size_3; i3++) {
-    const float* const input_ptr_3 = input_data + i3 * input_stride_3;
-    float* const output_ptr_3 = output_data + i3 * output_stride_3;
+    const T* const input_ptr_3 = input_data + i3 * input_stride_3;
+    T* const output_ptr_3 = output_data + i3 * output_stride_3;
     for (int i2 = 0; i2 < output_size_2; i2++) {
-      const float* const input_ptr_2 = input_ptr_3 + i2 * input_stride_2;
-      float* const output_ptr_2 = output_ptr_3 + i2 * output_stride_2;
+      const T* const input_ptr_2 = input_ptr_3 + i2 * input_stride_2;
+      T* const output_ptr_2 = output_ptr_3 + i2 * output_stride_2;
       for (int i1 = 0; i1 < output_size_1; i1++) {
-        const float* input_ptr = input_ptr_2 + i1 * input_stride_1;
-        float* output_ptr = output_ptr_2 + i1 * output_stride_1;
-        float* const output_ptr_end =
-            output_ptr + output_size_0 * output_stride_0;
+        const T* input_ptr = input_ptr_2 + i1 * input_stride_1;
+        T* output_ptr = output_ptr_2 + i1 * output_stride_1;
+        T* const output_ptr_end = output_ptr + output_size_0 * output_stride_0;
         while (output_ptr != output_ptr_end) {
           *output_ptr = *input_ptr;
           input_ptr += input_stride_0;
@@ -1600,6 +1601,20 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
       }
     }
   }
+}
+
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const uint8* input_data, uint8* output_data) {
+  ShuffleArrayTemplate<uint8>(input_shape, input_axes_order, output_axes_order,
+                              output_shape, input_data, output_data);
+}
+
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const float* input_data, float* output_data) {
+  ShuffleArrayTemplate<float>(input_shape, input_axes_order, output_axes_order,
+                              output_shape, input_data, output_data);
 }
 
 int AxesCount(AxesOrder axes_order) {

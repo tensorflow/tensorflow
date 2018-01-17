@@ -54,6 +54,15 @@ inline std::vector<int> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<int64_t> Split(const string& s, const string& delimiter) {
+  std::vector<int64_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtoll(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<float> Split(const string& s, const string& delimiter) {
   std::vector<float> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {

@@ -79,6 +79,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/adjust_hsv_in_yiq_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/bipartite_match_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/image_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/segmentation_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/single_image_random_dot_stereograms_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/image/ops/distort_image_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/image/ops/image_ops.cc"

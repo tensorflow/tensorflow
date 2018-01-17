@@ -138,6 +138,16 @@ TEST_P(ReduceWindowTest, Min3In5Stride2) {
                            ErrorSpec(0.00001));
 }
 
+TEST_P(ReduceWindowTest, Min3In5Stride1WithSamePadding) {
+  const auto input = CreateConstantFromLiteral(
+      *Literal::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);
+  ReduceWindowMin(input, /*window_dimensions=*/{3}, /*window_strides=*/{1},
+                  Padding::kSame);
+  ComputeAndCompareLiteral(&builder_,
+                           *Literal::CreateR1<float>({1000, 100, 10, 1, 1}), {},
+                           ErrorSpec(0.00001));
+}
+
 XLA_TEST_P(ReduceWindowTest, ZeroElementSmall) {
   Array4D<float> input_array(1, 0, 2, 1);
   const auto input = CreateConstantFromArray(input_array, &builder_);
@@ -239,65 +249,6 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
       {win_stride, win_stride, 1, 1}, padding);
 
   ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(*result), {},
-                           DefaultErrorSpec());
-}
-
-XLA_TEST_P(ReduceWindowTest, Add1x1x2In2x1x2) {
-  Array3D<float> input_array(2, 1, 2);
-  input_array(0, 0, 0) = 1000;
-  input_array(0, 0, 1) = 100;
-  input_array(1, 0, 0) = 10;
-  input_array(1, 0, 1) = 1;
-  const auto input = CreateConstantFromArray(input_array, &builder_);
-
-  ReduceWindowAdd(input, {1, 1, 2}, {1, 1, 1}, Padding::kValid);
-
-  Array3D<float> expected(2, 1, 1);
-  expected(0, 0, 0) = 1100;
-  expected(1, 0, 0) = 11;
-  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(expected), {},
-                           DefaultErrorSpec());
-}
-
-XLA_TEST_P(ReduceWindowTest, Add1x1x2In2x1x3Stride1x1x2) {
-  Array3D<float> input_array(2, 1, 3);
-  input_array(0, 0, 0) = 100;
-  input_array(0, 0, 1) = 10;
-  input_array(0, 0, 2) = 1;
-  input_array(1, 0, 0) = 500;
-  input_array(1, 0, 1) = 50;
-  input_array(1, 0, 2) = 5;
-  const auto input = CreateConstantFromArray(input_array, &builder_);
-
-  ReduceWindowAdd(input, {1, 1, 2}, {1, 1, 2}, Padding::kValid);
-
-  Array3D<float> expected(2, 1, 1);
-  expected(0, 0, 0) = 110;
-  expected(1, 0, 0) = 550;
-  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(expected), {},
-                           DefaultErrorSpec());
-}
-
-XLA_TEST_P(ReduceWindowTest, Add1x1x2In2x1x3SamePad) {
-  Array3D<float> input_array(2, 1, 3);
-  input_array(0, 0, 0) = 100;
-  input_array(0, 0, 1) = 10;
-  input_array(0, 0, 2) = 1;
-  input_array(1, 0, 0) = 500;
-  input_array(1, 0, 1) = 50;
-  input_array(1, 0, 2) = 5;
-  const auto input = CreateConstantFromArray(input_array, &builder_);
-
-  ReduceWindowAdd(input, {1, 1, 2}, {1, 1, 1}, Padding::kSame);
-
-  Array3D<float> expected(2, 1, 3);
-  expected(0, 0, 0) = 110;
-  expected(0, 0, 1) = 11;
-  expected(0, 0, 2) = 1;
-  expected(1, 0, 0) = 550;
-  expected(1, 0, 1) = 55;
-  expected(1, 0, 2) = 5;
-  ComputeAndCompareLiteral(&builder_, *Literal::CreateFromArray(expected), {},
                            DefaultErrorSpec());
 }
 
@@ -789,7 +740,7 @@ INSTANTIATE_TEST_CASE_P(
 
 class R4ReduceWindowLargeTest : public R4ReduceWindowTest {};
 
-XLA_TEST_P(R4ReduceWindowLargeTest, DoIt) { DoIt(); }
+XLA_TEST_P(R4ReduceWindowLargeTest, DISABLED_ON_INTERPRETER(DoIt)) { DoIt(); }
 
 // Test cases that are large/slow/failed.
 const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
@@ -813,6 +764,98 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(kR4ReduceWindowLargeTestValues),
                        ::testing::ValuesIn(use_bfloat16_params)),
     R4ReduceWindowTestDataToString);
+
+struct R3ReduceWindowTestData {
+  int64 base_bounds[3];
+  int64 window_bounds[3];
+  int64 strides[3];
+  int64 layout[3];
+  Padding padding;
+  Reducer reducer;
+} kR3TestCases[] = {
+    {/*base_bounds=*/{2, 1, 2}, /*window_bounds=*/{1, 1, 2},
+     /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{4, 3, 3}, /*window_bounds=*/{2, 2, 2},
+     /*strides=*/{2, 2, 2}, /*layout=*/{2, 1, 0},
+     /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{4, 3, 3}, /*window_bounds=*/{2, 2, 2},
+     /*strides=*/{2, 2, 2}, /*layout=*/{2, 1, 0},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{6, 21, 3}, /*window_bounds=*/{2, 3, 2},
+     /*strides=*/{1, 2, 2}, /*layout=*/{2, 1, 0},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{10, 21, 129}, /*window_bounds=*/{2, 9, 1},
+     /*strides=*/{5, 2, 1}, /*layout=*/{2, 1, 0},
+     /*padding=*/Padding::kSame, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{6, 21, 3}, /*window_bounds=*/{2, 3, 2},
+     /*strides=*/{1, 2, 2}, /*layout=*/{0, 1, 2},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+    {/*base_bounds=*/{6, 21, 3}, /*window_bounds=*/{2, 3, 2},
+     /*strides=*/{1, 2, 2}, /*layout=*/{1, 0, 2},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+};
+
+string R3ReduceWindowTestDataToString(
+    const ::testing::TestParamInfo<
+        ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
+  const auto& param = ::testing::get<0>(data.param);
+  string str = tensorflow::strings::StrCat(
+      "base_bounds_", tensorflow::str_util::Join(param.base_bounds, "x"),
+      "__window_bounds_", tensorflow::str_util::Join(param.window_bounds, "x"),
+      "__strides_", tensorflow::str_util::Join(param.strides, "x"),
+      "__padding_", param.padding == Padding::kSame ? "same" : "valid",
+      "__layout_", param.layout[0], "_", param.layout[1], "_", param.layout[2],
+      "__reducer_", param.reducer == kAdd ? "add" : "max");
+  if (::testing::get<1>(data.param)) {
+    str = tensorflow::strings::StrCat(str, "_bfloat16");
+  }
+  return str;
+}
+
+class R3ReduceWindowTest : public ReduceWindowTestBase,
+                           public ::testing::WithParamInterface<
+                               ::testing::tuple<R3ReduceWindowTestData, bool>> {
+ protected:
+  R3ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
+};
+
+TEST_P(R3ReduceWindowTest, Add) {
+  ComputationBuilder b(client_, TestName());
+  const auto& param = ::testing::get<0>(GetParam());
+  CHECK(param.reducer == kAdd);
+
+  const float kInitValue = 0.0f;
+  Array3D<float> input(param.base_bounds[0], param.base_bounds[1],
+                       param.base_bounds[2], 1.0f);
+  std::unique_ptr<Literal> input_literal =
+      Literal::CreateR3FromArray3DWithLayout(
+          input, LayoutUtil::MakeLayout(param.layout));
+
+  ComputationDataHandle parameter;
+  auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
+                                                     &b, &parameter);
+  auto init_value =
+      CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
+  b.ReduceWindow(/*operand=*/parameter,
+                 /*init_value=*/init_value,
+                 /*computation=*/CreateScalarAddComputation(FloatType(), &b),
+                 /*window_dimensions=*/param.window_bounds,
+                 /*window_strides=*/param.strides, /*padding=*/param.padding);
+
+  auto expected = ReferenceUtil::ReduceWindow3DAdd(
+      /*operand=*/input, /*init=*/kInitValue, /*window=*/param.window_bounds,
+      /*stride=*/param.strides, /*padding=*/param.padding);
+
+  ComputeAndCompareLiteral(&b, *Literal::CreateFromArray(*expected),
+                           {input_arg.get()}, DefaultErrorSpec());
+}
+
+INSTANTIATE_TEST_CASE_P(
+    R3ReduceWindowTestInstantiation, R3ReduceWindowTest,
+    ::testing::Combine(::testing::ValuesIn(kR3TestCases),
+                       ::testing::ValuesIn(use_bfloat16_params)),
+    R3ReduceWindowTestDataToString);
 
 struct R2ReduceWindowTestData {
   int64 base_bounds[2];

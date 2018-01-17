@@ -2610,6 +2610,18 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())
 
+  def testTwoGraphs(self):
+
+    def f():
+      g1 = ops.Graph()
+      g2 = ops.Graph()
+      with g1.as_default():
+        with g2.as_default():
+          with ops.name_scope("_"):
+            pass
+
+    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
 
 @test_util.with_c_api
 class TracebackTest(test_util.TensorFlowTestCase):
