@@ -134,7 +134,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     dtype = dtypes.bfloat16
     handle = resource_variable_ops.var_handle_op(dtype=dtype, shape=[])
     self.evaluate(resource_variable_ops.assign_variable_op(
-      handle, constant_op.constant(0, dtype=dtype)))
+        handle, constant_op.constant(0, dtype=dtype)))
 
   @test_util.run_in_graph_and_eager_modes()
   def testManyAssigns(self):
