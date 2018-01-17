@@ -52,6 +52,7 @@ using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
@@ -191,6 +192,32 @@ void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
   }
 }
 
+void ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  ImportShape(input_shape.dim(), output_array->mutable_shape());
+  int input_flat_size = 1;
+  for (int k = 0; k < input_shape.dim_size(); k++) {
+    input_flat_size *= input_shape.dim(k).size();
+  }
+  auto& output_int_data =
+      output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
+  output_int_data.resize(input_flat_size);
+  if (input_tensor.int_val_size()) {
+    for (int i = 0; i < input_tensor.int_val_size(); i++) {
+      output_int_data[i] = input_tensor.int_val(i);
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(uint8_t)) {
+    toco::port::CopyToBuffer(input_tensor.tensor_content(),
+                             reinterpret_cast<char*>(output_int_data.data()));
+  } else {
+    LOG(FATAL) << "Neither input_content nor int_val have the right "
+                  "dimensions for this uint8 tensor.";
+  }
+}
+
 void ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
@@ -305,6 +332,10 @@ void ConvertConstOperator(const NodeDef& node,
     case DT_INT32:
       array.data_type = ArrayDataType::kInt32;
       ImportInt32Array(tensor, &array);
+      break;
+    case DT_QUINT8:
+      array.data_type = ArrayDataType::kUint8;
+      ImportQuint8Array(tensor, &array);
       break;
     case DT_INT64:
       array.data_type = ArrayDataType::kInt64;
