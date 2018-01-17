@@ -68,6 +68,10 @@ class SimpleMemoryArena {
 
   TfLiteStatus Clear();
 
+  int64_t BasePointer() const {
+    return reinterpret_cast<int64_t>(underlying_buffer_aligned_ptr_);
+  }
+
  private:
   bool commited_;
   size_t arena_alignment_;

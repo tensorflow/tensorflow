@@ -102,7 +102,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
-  CheckSimpleOperator<Relu1Operator>("RELU1", OperatorType::kRelu1);
+  CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
   CheckSimpleOperator<ResizeBilinearOperator>("RESIZE_BILINEAR",
                                               OperatorType::kResizeBilinear);

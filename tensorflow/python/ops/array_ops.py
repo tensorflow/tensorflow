@@ -2042,7 +2042,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   hypothesis = tf.SparseTensor(
       [[0, 0, 0],
        [1, 0, 0]],
-      ["a", "b"]
+      ["a", "b"],
       (2, 1, 1))
 
   # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
@@ -2054,7 +2054,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
       [[0, 1, 0],
        [1, 0, 0],
        [1, 0, 1],
-       [1, 1, 0]]
+       [1, 1, 0]],
       ["a", "b", "c", "a"],
       (2, 2, 2))
 

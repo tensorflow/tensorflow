@@ -74,6 +74,24 @@ class ScopeTest(test.TestCase):
     self.assertTrue(child.has('bar'))
     self.assertFalse(scope.has('bar'))
 
+  def test_referenced(self):
+    scope = access.Scope(None)
+    scope.mark_read('a')
+
+    child = access.Scope(scope)
+    child.mark_read('b')
+
+    child2 = access.Scope(child, isolated=False)
+    child2.mark_read('c')
+
+    self.assertTrue('c' in child2.referenced)
+    self.assertTrue('b' in child2.referenced)
+    self.assertFalse('a' in child2.referenced)
+
+    self.assertTrue('c' in child.referenced)
+    self.assertTrue('b' in child.referenced)
+    self.assertFalse('a' in child.referenced)
+
 
 class AccessResolverTest(test.TestCase):
 

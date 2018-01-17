@@ -1127,7 +1127,7 @@ def make_pad_tests(zip_path):
 def make_reshape_tests(zip_path):
   """Make a set of tests to do reshape."""
 
-  # Alll shapes below are suitable for tensors with 420 elements.
+  # All shapes below are suitable for tensors with 420 elements.
   test_parameters = [{
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
