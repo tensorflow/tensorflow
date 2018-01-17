@@ -290,6 +290,7 @@ class RdmaTensorRequest {
   void Done(const Status& s);
   void Send(RdmaMessageType message_type);
   bool AllocateTensors();
+  void AllocateTensorsAsync(StatusCallback done);
   void DeallocateTensors();
 
   uint32_t index_;

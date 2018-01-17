@@ -1539,9 +1539,6 @@ bool RdmaTensorRequest::AllocateTensors() {
       rdma_addr_ = DMAHelper::base(proxy_tensor_);
       mr_ =
           RdmaMemoryMgr::Singleton().FindMemoryRegion(rdma_addr_, tensor_size);
-    } else if (dst_dev_->tensorflow_gpu_device_info() &&
-               !recv_args_.alloc_attrs.on_host()) {
-      GPUUtil::Sync(dst_dev_);
     }
 #endif
   } else {
@@ -1553,6 +1550,18 @@ bool RdmaTensorRequest::AllocateTensors() {
   CHECK(mr_ != nullptr) << " No memory region found for address " << rdma_addr_
                         << ": " << key_;
   return true;
+}
+
+void RdmaTensorRequest::AllocateTensorsAsync(StatusCallback done) {
+  AllocateTensors();
+  bool on_host = recv_args_.alloc_attrs.on_host();
+  if (dst_dev_->tensorflow_gpu_device_info() && !on_host &&
+      (proxy_tensor_ == nullptr)) {
+        // We need to sync the memory allocation on the GPU:
+        StreamGPUOp(dst_dev_, recv_args_.device_context, done);
+  } else {
+    done(Status::OK());
+  }
 }
 
 void RdmaTensorRequest::Send(RdmaMessageType message_type) {
@@ -1591,10 +1600,9 @@ void RdmaTensorRequest::RecvTensorMetaData(DataType dtype, TensorShape shape,
       key_, dtype, shape, is_dead, proto_size);
 
   DeallocateTensors();
-  if (!AllocateTensors()) {
-    return;
-  }
-  Send(RDMA_MESSAGE_TENSOR_RE_REQUEST);
+  AllocateTensorsAsync([this](const Status& s) {
+    Send(RDMA_MESSAGE_TENSOR_RE_REQUEST);
+  });
 }
 
 void RdmaTensorRequest::RecvTensorContent() {
@@ -1649,9 +1657,12 @@ void RdmaTensorRequest::RecvErrorStatus(const Status& status) {
 void RdmaTensorRequest::Start() {
   meta_data_ = RdmaMemoryMgr::Singleton().GetTensorMetaData(key_);
   if (meta_data_ != nullptr) {
-    AllocateTensors();
+    AllocateTensorsAsync([this](const Status& s) {
+      Send(RDMA_MESSAGE_TENSOR_REQUEST);
+    });
+  } else {
+    Send(RDMA_MESSAGE_TENSOR_REQUEST);
   }
-  Send(RDMA_MESSAGE_TENSOR_REQUEST);
 }
 
 }  // end namespace tensorflow
