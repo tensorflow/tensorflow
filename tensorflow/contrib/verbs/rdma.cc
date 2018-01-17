@@ -469,11 +469,9 @@ void RdmaAdapter::Process_CQ() {
 
         if (imm_data <= RDMA_IMM_MAX_REQUEST_ID) {
           // receive a tensor RDMA write
-          SchedClosure([imm_data, rc]() {
-            uint32_t request_index = imm_data;
-            RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
-            request->RecvTensorContent();
-          });
+          uint32_t request_index = imm_data;
+          RdmaTensorRequest* request = rc->GetTensorRequest(request_index);
+          request->RecvTensorContent();
           continue;
         }
 
@@ -486,10 +484,8 @@ void RdmaAdapter::Process_CQ() {
                     << "#" << rm.request_index_ << ": " << rm.name_;
 
         if (rm.type_ == RDMA_MESSAGE_TENSOR_REQUEST) {
-          SchedClosure([rc, rm]() {
-            RdmaTensorResponse* response = rc->AddTensorResponse(rm);
-            response->Start();
-          });
+          RdmaTensorResponse* response = rc->AddTensorResponse(rm);
+          response->Start();
         } else if (rm.type_ == RDMA_MESSAGE_META_DATA_UPDATE) {
           RdmaTensorRequest* request = rc->GetTensorRequest(rm.request_index_);
           request->RecvTensorMetaData(rm.data_type_, rm.tensor_shape_,
@@ -514,7 +510,7 @@ void RdmaAdapter::Process_CQ() {
             RdmaMessageBuffer* rb =
                 reinterpret_cast<RdmaMessageBuffer*>(wr_id->write_context);
             rb->SetBufferStatus(local, idle);
-            SchedClosure([rb]() { rb->SendNextItem(); });
+            rb->SendNextItem();
             break;
           }
           case RDMA_WRITE_ID_TENSOR_WRITE: {
