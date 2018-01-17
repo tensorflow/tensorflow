@@ -3,7 +3,7 @@
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 
-const char *tflite_model_path = "C:\\temp\\model.lite";
+const char *tflite_model_path = "C:\\temp\\test_model\\wtf.lite";
 #include <iostream>
 
 int main()
@@ -21,13 +21,13 @@ int main()
     interpreter->SetNumThreads(1);
 
     float *input = interpreter->typed_input_tensor<float>(0);
-	const int N = 375;
-	for (int i = 0; i < 10; ++i)
+	const int N = 784;
+	for (int i = 0; i < 1; ++i)
 	{
 		
 		for (size_t j = 0; j < N; j++)
 		{
-			input[j] = (float)i;
+			input[j] = (float)1.0f;
 		}
 		status = interpreter->Invoke();
 		if (status == kTfLiteError)
@@ -36,7 +36,7 @@ int main()
 		}
 
 		float* output = interpreter->typed_output_tensor<float>(0);
-		std::cout << *output << std::endl;
+		std::cout << *output << "\t" << *(output+1) << std::endl;
 
 	}
 
