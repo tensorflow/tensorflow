@@ -354,6 +354,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
 
+  size_t num_functions() const { return function_defs_.size(); }
+
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
@@ -428,6 +430,16 @@ class FunctionLibraryRuntime {
     // `FunctionLibraryDefinition` to store an `outer_scope` pointer
     // and implementing name resolution across libraries).
     const FunctionLibraryDefinition* overlay_lib = nullptr;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-empty, the runtime will use `state_handle` to identify
+    // cached state related the instantiated function. Two functions
+    // of the same name and attrs, instantiated with the same
+    // `state_handle` will have the same handle and share the same
+    // state (in stateful kernels); and two functions with different
+    // values for `state_handle` will have independent state.
+    string state_handle;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,

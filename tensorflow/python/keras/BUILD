@@ -392,7 +392,7 @@ py_test(
 
 py_test(
     name = "core_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/core_test.py"],
     srcs_version = "PY2AND3",
     deps = [

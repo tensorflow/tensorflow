@@ -44,7 +44,23 @@ bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
       !IsConstantParameterArray(*model, op->inputs[paddings_index]))
     return false;
 
-  // Handling block_shape.
+  // Handle paddings.
+  const auto& paddings_array = *model->arrays[op->inputs[paddings_index]];
+  if (!paddings_array.has_shape()) return false;
+  const std::vector<int>& paddings_dims = paddings_array.shape().dims();
+  if (paddings_dims.size() != 2) {
+    // Code only handles padding of 2 dimensions. Perhaps another transformation
+    // will delete this op.
+    return false;
+  }
+  std::vector<int> paddings_buffer =
+      paddings_array.GetBuffer<ArrayDataType::kInt32>().data;
+  for (int i = 0; i < paddings_dims[0]; ++i) {
+    op->before_paddings.push_back(paddings_buffer[i * 2]);
+    op->after_paddings.push_back(paddings_buffer[i * 2 + 1]);
+  }
+
+  // Handle block_shape.
   const auto& block_shape_array = *model->arrays[op->inputs[block_shape_index]];
   if (!block_shape_array.has_shape()) return false;
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
@@ -53,18 +69,6 @@ bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
       block_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   for (int i = 0; i < block_shape_dims[0]; ++i) {
     op->block_shape.push_back(block_shape_buffer[i]);
-  }
-
-  // Handling paddings.
-  const auto& paddings_array = *model->arrays[op->inputs[paddings_index]];
-  if (!paddings_array.has_shape()) return false;
-  const std::vector<int>& paddings_dims = paddings_array.shape().dims();
-  CHECK_EQ(paddings_dims.size(), 2);
-  std::vector<int> paddings_buffer =
-      paddings_array.GetBuffer<ArrayDataType::kInt32>().data;
-  for (int i = 0; i < paddings_dims[0]; ++i) {
-    op->before_paddings.push_back(paddings_buffer[i * 2]);
-    op->after_paddings.push_back(paddings_buffer[i * 2 + 1]);
   }
 
   return true;

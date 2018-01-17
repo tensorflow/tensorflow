@@ -24,6 +24,7 @@ gen_zipped_test_files(
         "control_dep.zip",
         "conv.zip",
         "depthwiseconv.zip",
+        "div.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
         "gather.zip",
@@ -44,6 +45,7 @@ gen_zipped_test_files(
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "sub.zip",
         "transpose.zip",
     ],
 )
@@ -195,6 +197,12 @@ tf_cc_test(
     name = "generated_examples_zip_test",
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
+    args = [
+        "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
+        # TODO(angerson) We may be able to add an external unzip binary instead
+        # of relying on an existing one for OSS builds.
+        "--unzip_binary_path=/usr/bin/unzip",
+    ],
     data = [":optest"],
     shard_count = 10,
     tags = ["no_oss"],
@@ -202,15 +210,22 @@ tf_cc_test(
         ":parse_testdata_lib",
         ":tflite_driver",
         ":util",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
-    ],
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+    }),
 )
 
 filegroup(
