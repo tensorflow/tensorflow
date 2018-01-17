@@ -68,10 +68,10 @@ bool ReadRawFloatFileToComplexVector(
   std::vector<std::complex<double> > data_row;
   int row_counter = 0;
   int offset = 0;
-  char arr[4];
   const int end = data_string.size();
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   while (offset < end) {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    char arr[4];
     for (int i = 0; i < kBytesPerValue; ++i ) {
       arr[3 - i] = *(data_string.data() + offset + i);
     }
@@ -82,20 +82,12 @@ bool ReadRawFloatFileToComplexVector(
     }
     memcpy(&imag_out, arr, kBytesPerValue);
     offset += kBytesPerValue;
-    if (row_counter >= row_length) {
-      data->push_back(data_row);
-      data_row.clear();
-      row_counter = 0;
-    }
-    data_row.push_back(std::complex<double>(real_out, imag_out));
-    ++row_counter;
-  }
 #else
-  while (offset < end) {
     memcpy(&real_out, data_string.data() + offset, kBytesPerValue);
     offset += kBytesPerValue;
     memcpy(&imag_out, data_string.data() + offset, kBytesPerValue);
     offset += kBytesPerValue;
+#endif
     if (row_counter >= row_length) {
       data->push_back(data_row);
       data_row.clear();
@@ -104,7 +96,6 @@ bool ReadRawFloatFileToComplexVector(
     data_row.push_back(std::complex<double>(real_out, imag_out));
     ++row_counter;
   }
-#endif
   if (row_counter >= row_length) {
     data->push_back(data_row);
   }
