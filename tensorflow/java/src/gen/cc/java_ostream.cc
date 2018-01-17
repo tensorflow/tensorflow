@@ -47,8 +47,8 @@ void ScanType(const Type& type, TypeScanner* scanner) {
 // the ScanType() utilities in java_defs.h)
 class GenericTypeScanner {
  public:
-  explicit GenericTypeScanner(std::set<string>* declared_generic_names)
-    : generic_names_(declared_generic_names) {}
+  explicit GenericTypeScanner(std::set<string>* generic_namespace)
+    : generic_namespace_(generic_namespace) {}
   const std::vector<const Type*>& discoveredTypes() const {
     return discovered_generics_;
   }
@@ -56,14 +56,14 @@ class GenericTypeScanner {
     // ignore non-generic parameters, wildcards and generics already declared
     if (type.kind() == Type::GENERIC
         && !type.IsWildcard()
-        && generic_names_->find(type.name()) == generic_names_->end()) {
+        && generic_namespace_->find(type.name()) == generic_namespace_->end()) {
       discovered_generics_.push_back(&type);
-      generic_names_->insert(type.name());
+      generic_namespace_->insert(type.name());
     }
   }
  private:
   std::vector<const Type*> discovered_generics_;
-  std::set<string>* generic_names_;
+  std::set<string>* generic_namespace_;
 };
 
 // Writes a list of Java modifiers.
@@ -189,7 +189,7 @@ MethodOutputStream* MethodOutputStream::Begin(const Method& method,
     int modifiers) {
   WriteModifiers(modifiers, writer_);
   // Look for generics we need to declare at the beginning of the signature
-  GenericTypeScanner generic_scanner(&declared_generics_names_);
+  GenericTypeScanner generic_scanner(&generic_namespace_);
   if (!method.constructor()) {
     ScanType(method.return_type(), &generic_scanner);
   }
@@ -241,7 +241,7 @@ MethodOutputStream* ClassOutputStream::BeginMethod(const Method& method,
   if (modifiers & STATIC) {
     method_ostream = new MethodOutputStream(writer_);
   } else {
-    method_ostream = new MethodOutputStream(writer_, declared_generics_names_);
+    method_ostream = new MethodOutputStream(writer_, generic_namespace_);
   }
   return method_ostream->Begin(method, modifiers);
 }
@@ -253,7 +253,7 @@ ClassOutputStream* ClassOutputStream::BeginInnerClass(const Type& clazz,
   if (modifiers & STATIC) {
     class_ostream = new ClassOutputStream(writer_);
   } else {
-    class_ostream = new ClassOutputStream(writer_, declared_generics_names_);
+    class_ostream = new ClassOutputStream(writer_, generic_namespace_);
   }
   return class_ostream->Begin(clazz, modifiers);
 }
@@ -272,7 +272,7 @@ ClassOutputStream* ClassOutputStream::Begin(const Type& clazz, int modifiers) {
   *this << "class " << clazz.name();
 
   // Look for generics to declare with this class
-  GenericTypeScanner generic_scanner(&declared_generics_names_);
+  GenericTypeScanner generic_scanner(&generic_namespace_);
   ScanType(clazz, &generic_scanner);
   if (!generic_scanner.discoveredTypes().empty()) {
     WriteGenerics(generic_scanner.discoveredTypes(), writer_);

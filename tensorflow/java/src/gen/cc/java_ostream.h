@@ -32,7 +32,10 @@ namespace java {
 // Java-specific features.
 class JavaOutputStream {
  public:
-  explicit JavaOutputStream(SourceWriter* writer) : writer_(writer) {}
+  explicit JavaOutputStream(SourceWriter* writer)
+    : writer_(writer) {}
+  JavaOutputStream(SourceWriter* writer, std::set<string> generic_namespace)
+    : writer_(writer), generic_namespace_(generic_namespace) {}
   virtual ~JavaOutputStream() = default;
 
   // Returns the underlying source writer for direct access.
@@ -81,6 +84,7 @@ class JavaOutputStream {
 
  protected:
   SourceWriter* writer_;
+  std::set<string> generic_namespace_;
 };
 
 // A Java output stream specialized for writing class methods.
@@ -97,13 +101,11 @@ class MethodOutputStream : public JavaOutputStream {
  private:
   explicit MethodOutputStream(SourceWriter* writer)
     : JavaOutputStream(writer) {}
-  MethodOutputStream(SourceWriter* writer, std::set<string> generics)
-    : JavaOutputStream(writer), declared_generics_names_(generics) {}
+  MethodOutputStream(SourceWriter* writer, std::set<string> generic_namespace)
+    : JavaOutputStream(writer, generic_namespace) {}
   virtual ~MethodOutputStream() = default;
 
   MethodOutputStream* Begin(const Method& method, int modifiers);
-
-  std::set<string> declared_generics_names_;
 
   friend class ClassOutputStream;
 };
@@ -133,13 +135,11 @@ class ClassOutputStream : public JavaOutputStream {
  private:
   explicit ClassOutputStream(SourceWriter* writer)
     : JavaOutputStream(writer) {}
-  ClassOutputStream(SourceWriter* writer, std::set<string> generics)
-    : JavaOutputStream(writer), declared_generics_names_(generics) {}
+  ClassOutputStream(SourceWriter* writer, std::set<string> generic_namespace)
+    : JavaOutputStream(writer, generic_namespace) {}
   virtual ~ClassOutputStream() = default;
 
   ClassOutputStream* Begin(const Type& clazz, int modifiers);
-
-  std::set<string> declared_generics_names_;
 
   friend class SourceOutputStream;
 };
