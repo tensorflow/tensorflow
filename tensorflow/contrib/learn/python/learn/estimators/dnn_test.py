@@ -965,7 +965,7 @@ class DNNClassifierTest(test.TestCase):
     self.assertIn('loss', scores)
 
   def testExport(self):
-    """Tests export model for TensorFlow Serving."""
+    """Tests export model for servo."""
 
     def input_fn():
       return {

@@ -150,7 +150,7 @@ TEST(FastParse, DenseInt64WithContext) {
     EXPECT_TRUE(deserialized.ParseFromString(serialized));
     EXPECT_EQ(deserialized.DebugString(), context.DebugString());
     // Whoa! Last EQ is very surprising, but standard deserialization is what it
-    // is and TensorFlow Serving team requested to replicate this 'feature'.
+    // is and Servo team requested to replicate this 'feature'.
     // In future we should return error.
   }
   TestCorrectness(serialized);

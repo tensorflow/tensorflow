@@ -200,10 +200,10 @@ class ModelFnOps(
       default_serving_output_alternative_key: Required for multiple heads. If
         you have multiple entries in `output_alternatives` dict (comparable to
         multiple heads), `EstimatorSpec` requires a default head that will be
-        used if a TensorFlow Serving request does not explicitly mention which
-        head to infer on. Pass the key of the output alternative here that you
-        want to designate as default. A separate ExportOutpout for this default
-        head will be added to the export_outputs dict with the special key
+        used if a Servo request does not explicitly mention which head to infer
+        on. Pass the key of the output alternative here that you want to
+        designate as default. A separate ExportOutpout for this default head
+        wil be added to the export_outputs dict with the special key
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
         already an enry in output_alternatives with this special key.
 
@@ -223,14 +223,12 @@ class ModelFnOps(
       classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
       if classes is None:
         logging.warning(
-            'classes is None, TensorFlow Serving inference will not have '
-            'class ids.')
+            'classes is None, Servo inference will not have class ids.')
         return None
       elif classes.dtype != dtypes.string:
-        # TensorFlow Serving classification can only serve string classes
+        # Servo classification can only serve string classes
         logging.warning(
-            'classes is not string, TensorFlow Serving inference will not have '
-            'class ids.')
+            'classes is not string, Servo inference will not have class ids.')
         return None
 
       return classes
