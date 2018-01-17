@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/op_gen_overrides.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -246,29 +245,6 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
   return pbtxt;
 }
 
-OpGenOverrideMap::OpGenOverrideMap() {}
-OpGenOverrideMap::~OpGenOverrideMap() {}
-
-Status OpGenOverrideMap::LoadFileList(Env* env, const string& filenames) {
-  std::vector<string> v = str_util::Split(filenames, ",");
-  for (const string& f : v) {
-    TF_RETURN_IF_ERROR(LoadFile(env, f));
-  }
-  return Status::OK();
-}
-
-Status OpGenOverrideMap::LoadFile(Env* env, const string& filename) {
-  if (filename.empty()) return Status::OK();
-  string contents;
-  TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &contents));
-  OpGenOverrides all;
-  protobuf::TextFormat::ParseFromString(contents, &all);
-  for (const auto& one : all.op()) {
-    map_[one.name()].reset(new OpGenOverride(one));
-  }
-  return Status::OK();
-}
-
 static void StringReplace(const string& from, const string& to, string* s) {
   // Split *s into pieces delimited by `from`.
   std::vector<string> split;
@@ -349,83 +325,6 @@ static void RenameInDocs(const string& from, const string& to,
   }
 }
 
-const OpGenOverride* OpGenOverrideMap::ApplyOverride(OpDef* op_def) const {
-  // Look up
-  const auto iter = map_.find(op_def->name());
-  if (iter == map_.end()) return nullptr;
-  const OpGenOverride& proto = *iter->second;
-
-  // Apply overrides from `proto`.
-  if (!proto.rename_to().empty()) {
-    op_def->set_name(proto.rename_to());
-    RenameInDocs(proto.name(), proto.rename_to(), op_def);
-  }
-  for (const auto& attr_default : proto.attr_default()) {
-    bool found = false;
-    for (int i = 0; i < op_def->attr_size(); ++i) {
-      if (op_def->attr(i).name() == attr_default.name()) {
-        *op_def->mutable_attr(i)->mutable_default_value() =
-            attr_default.value();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      LOG(WARNING) << proto.name() << " can't find attr " << attr_default.name()
-                   << " to override default";
-    }
-  }
-  for (const auto& attr_rename : proto.attr_rename()) {
-    bool found = false;
-    for (int i = 0; i < op_def->attr_size(); ++i) {
-      if (op_def->attr(i).name() == attr_rename.from()) {
-        *op_def->mutable_attr(i)->mutable_name() = attr_rename.to();
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      RenameInDocs(attr_rename.from(), attr_rename.to(), op_def);
-    } else {
-      LOG(WARNING) << proto.name() << " can't find attr " << attr_rename.from()
-                   << " to rename";
-    }
-  }
-  for (const auto& input_rename : proto.input_rename()) {
-    bool found = false;
-    for (int i = 0; i < op_def->input_arg_size(); ++i) {
-      if (op_def->input_arg(i).name() == input_rename.from()) {
-        *op_def->mutable_input_arg(i)->mutable_name() = input_rename.to();
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      RenameInDocs(input_rename.from(), input_rename.to(), op_def);
-    } else {
-      LOG(WARNING) << proto.name() << " can't find input "
-                   << input_rename.from() << " to rename";
-    }
-  }
-  for (const auto& output_rename : proto.output_rename()) {
-    bool found = false;
-    for (int i = 0; i < op_def->output_arg_size(); ++i) {
-      if (op_def->output_arg(i).name() == output_rename.from()) {
-        *op_def->mutable_output_arg(i)->mutable_name() = output_rename.to();
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      RenameInDocs(output_rename.from(), output_rename.to(), op_def);
-    } else {
-      LOG(WARNING) << proto.name() << " can't find output "
-                   << output_rename.from() << " to rename";
-    }
-  }
-
-  return &proto;
-}
 
 namespace {
 

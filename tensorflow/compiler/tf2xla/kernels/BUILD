@@ -4,6 +4,7 @@ package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 tf_kernel_library(
@@ -30,6 +31,7 @@ tf_kernel_library(
         "diag_op.cc",
         "dynamic_stitch_op.cc",
         "elu_op.cc",
+        "fft_ops.cc",
         "fill_op.cc",
         "function_ops.cc",
         "gather_op.cc",
@@ -105,6 +107,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:linalg_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:spectral_ops_op_lib",
         "//tensorflow/core:stateless_random_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
@@ -165,6 +168,7 @@ tf_kernel_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
@@ -177,6 +181,7 @@ cc_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",

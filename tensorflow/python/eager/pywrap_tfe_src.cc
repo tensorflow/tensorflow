@@ -538,62 +538,67 @@ static PyTypeObject TFE_Py_Tape_Type = {
     "TFE_Py_Tape objects",                        /* tp_doc */
 };
 
+// Note: in the current design no mutex is needed here because of the python
+// GIL, which is always held when any TFE_Py_* methods are called. We should
+// revisit this if/when decide to not hold the GIL while manipulating the tape
+// stack.
+static std::unordered_set<TFE_Py_Tape*>* tape_set = nullptr;
+std::unordered_set<TFE_Py_Tape*>* GetTapeSet() {
+  if (tape_set == nullptr) {
+    tape_set = new std::unordered_set<TFE_Py_Tape*>;
+  }
+  return tape_set;
+}
+
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
-std::vector<TFE_Py_Tape*>* GetTapeStack() {
-  thread_local std::vector<TFE_Py_Tape*> tape_stack;
-  return &tape_stack;
+bool* ThreadTapeIsStopped() {
+  thread_local bool thread_tape_is_stopped{false};
+  return &thread_tape_is_stopped;
 }
 #else
-static tensorflow::mutex stack_mu(tensorflow::LINKER_INITIALIZED);
-static std::unordered_map<std::thread::id, std::vector<TFE_Py_Tape*>*>*
-    tape_stack GUARDED_BY(stack_mu) = nullptr;
-std::vector<TFE_Py_Tape*>* GetTapeStack() {
-  tensorflow::mutex_lock ml(stack_mu);
-  if (tape_stack == nullptr) {
-    tape_stack =
-        new std::unordered_map<std::thread::id, std::vector<TFE_Py_Tape*>*>;
+static std::unordered_map<std::thread::id, bool>* tape_is_stopped = nullptr;
+bool* ThreadTapeIsStopped() {
+  if (tape_is_stopped == nullptr) {
+    tape_is_stopped = new std::unordered_map<std::thread::id, bool>;
   }
-  auto it = tape_stack->find(std::this_thread::get_id());
-  if (it != tape_stack->end()) {
-    return it->second;
+  auto it = tape_is_stopped->find(std::this_thread::get_id());
+  if (it != tape_is_stopped->end()) {
+    return &(it->second);
   }
-  return tape_stack
-      ->emplace(std::this_thread::get_id(), new std::vector<TFE_Py_Tape*>)
-      .first->second;
+  return &(tape_is_stopped->emplace(std::this_thread::get_id(), false)
+               .first->second);
 }
 #endif
 
-void TFE_Py_TapeStackPushNew(PyObject* persistent) {
+void TFE_Py_TapeSetStopOnThread() { *ThreadTapeIsStopped() = true; }
+
+void TFE_Py_TapeSetRestartOnThread() { *ThreadTapeIsStopped() = false; }
+
+PyObject* TFE_Py_TapeSetNew(PyObject* persistent) {
   TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
-  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return;
+  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
   TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
   tape->tape = new GradientTape(persistent == Py_True);
-  GetTapeStack()->push_back(tape);
-}
-
-void TFE_Py_TapeStackPush(PyObject* tape) {
   Py_INCREF(tape);
-  GetTapeStack()->push_back(reinterpret_cast<TFE_Py_Tape*>(tape));
+  GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape));
+  return reinterpret_cast<PyObject*>(tape);
 }
 
-PyObject* TFE_Py_TapeStackIsEmpty() {
-  if (GetTapeStack()->empty()) {
+PyObject* TFE_Py_TapeSetIsEmpty() {
+  if (*ThreadTapeIsStopped() || GetTapeSet()->empty()) {
     Py_RETURN_TRUE;
   }
   Py_RETURN_FALSE;
 }
 
-PyObject* TFE_Py_TapeStackPop() {
-  auto* stack = GetTapeStack();
-  if (stack->empty()) {
-    PyErr_SetString(PyExc_RuntimeError, "tape stack is empty.");
-    return nullptr;
-  }
-  TFE_Py_Tape* top = stack->back();
-  stack->pop_back();
-  return reinterpret_cast<PyObject*>(top);
+void TFE_Py_TapeSetRemove(PyObject* tape) {
+  auto* stack = GetTapeSet();
+  stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+  // We kept a reference to the tape in the set to ensure it wouldn't get
+  // deleted under us; cleaning it up here.
+  Py_DECREF(tape);
 }
 
 static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
@@ -609,7 +614,11 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   tensor_ids.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+#if PY_MAJOR_VERSION >= 3
     if (PyLong_Check(item)) {
+#else
+    if (PyLong_Check(item) || PyInt_Check(item)) {
+#endif
       tensorflow::int64 id = MakeInt(item);
       tensor_ids.push_back(id);
     } else {
@@ -620,12 +629,15 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
   return tensor_ids;
 }
 
-PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors) {
+PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   if (tensors == Py_None) {
     Py_RETURN_FALSE;
   }
-  auto* stack = GetTapeStack();
-  if (stack->empty()) {
+  if (*ThreadTapeIsStopped()) {
+    Py_RETURN_FALSE;
+  }
+  auto* tape_set = GetTapeSet();
+  if (tape_set->empty()) {
     Py_RETURN_FALSE;
   }
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
@@ -642,7 +654,7 @@ PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors) {
     tensor_ids.push_back(FastTensorId(item));
   }
   Py_DECREF(seq);
-  for (TFE_Py_Tape* tape : *stack) {
+  for (TFE_Py_Tape* tape : *tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids)) {
       Py_RETURN_TRUE;
     }
@@ -650,12 +662,15 @@ PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors) {
   Py_RETURN_FALSE;
 }
 
-void TFE_Py_TapeStackWatch(PyObject* tensor) {
+void TFE_Py_TapeSetWatch(PyObject* tensor) {
+  if (*ThreadTapeIsStopped()) {
+    return;
+  }
   tensorflow::int64 tensor_id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
     return;
   }
-  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->Watch(tensor_id);
   }
 }
@@ -720,8 +735,11 @@ std::vector<tensorflow::int64> MakeTensorIDList(PyObject* tensors) {
   return list;
 }
 
-void TFE_Py_TapeStackWatchVariable(PyObject* variable) {
-  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
+  if (*ThreadTapeIsStopped()) {
+    return;
+  }
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->WatchVariable(variable);
   }
 }
@@ -736,12 +754,11 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   return result;
 }
 
-void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
-                                     PyObject* output_tensors,
-                                     PyObject* input_tensors,
-                                     PyObject* backward_function) {
-  auto* stack = GetTapeStack();
-  if (stack->empty()) {
+void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
+                                   PyObject* input_tensors,
+                                   PyObject* backward_function) {
+  auto* set = GetTapeSet();
+  if (set->empty() || *ThreadTapeIsStopped()) {
     return;
   }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
@@ -776,7 +793,7 @@ void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
     return;
   }
 
-  for (TFE_Py_Tape* tape : *stack) {
+  for (TFE_Py_Tape* tape : *set) {
     Py_INCREF(backward_function);
     tape->tape->RecordOperation(
         op_type_str, output_info, input_ids, backward_function,
@@ -784,8 +801,8 @@ void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
   }
 }
 
-void TFE_Py_TapeStackDeleteTrace(tensorflow::int64 tensor_id) {
-  for (TFE_Py_Tape* tape : *GetTapeStack()) {
+void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }

@@ -343,7 +343,9 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
         self.sess.graph,
         debug_urls=debug_url)
     run_metadata = config_pb2.RunMetadata()
+    self.assertAllClose(2.0, self.sess.run(self.u))
     self.sess.run(train_op, options=run_options, run_metadata=run_metadata)
+    self.assertAllClose(-1.0, self.sess.run(self.u))
 
     dump = debug_data.DebugDumpDir(
         dump_dir, partition_graphs=run_metadata.partition_graphs)

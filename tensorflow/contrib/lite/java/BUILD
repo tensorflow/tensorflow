@@ -7,6 +7,16 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/contrib/lite/java:aar_with_jni.bzl", "aar_with_jni")
+
+# Building tensorflow-lite.aar including 4 variants of .so
+# To build an aar for release, run below command:
+# bazel build --cxxopt='--std=c++11' -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+# tensorflow/contrib/lite/java:tensorflow-lite
+aar_with_jni(
+    name = "tensorflow-lite",
+    android_library = ":tensorflowlite",
+)
 
 android_library(
     name = "tensorflowlite",
@@ -15,6 +25,7 @@ android_library(
             "src/main/java/org/tensorflow/lite/*.java",
         ],
     ),
+    manifest = "AndroidManifest.xml",
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_runtime",

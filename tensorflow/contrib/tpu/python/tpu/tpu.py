@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -105,7 +106,7 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
-class TPUReplicateContext(control_flow_ops.ControlFlowContext):
+class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
   The primary role of `TPUReplicateContext` is to mark operators inside a
@@ -121,7 +122,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   """
 
   def __init__(self, name):
-    control_flow_ops.ControlFlowContext.__init__(self)
+    super(TPUReplicateContext, self).__init__()
     self._name = name
     self._unsupported_ops = []
 
@@ -141,8 +142,9 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
-      raise ValueError("Operation of type %s (%s) is not supported on the TPU" %
-                       (op.type, op.name))
+      logging.error("Operation of type %s (%s) is not supported on the TPU. "
+                    "Execution will fail if this op is used in the graph. " %
+                    (op.type, op.name))
 
     if op.type in _NOT_IMPLEMENTED_OPS:
       self._unsupported_ops.append(op)
@@ -154,7 +156,7 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     # pylint: enable=protected-access
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr[_TPU_REPLICATE_ATTR].s = self._name
+    op.node_def.attr[_TPU_REPLICATE_ATTR].s = compat.as_bytes(self._name)
     op.graph.prevent_feeding(op)
     op.graph.prevent_fetching(op)
 

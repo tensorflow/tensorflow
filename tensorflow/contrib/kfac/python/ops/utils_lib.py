@@ -37,6 +37,8 @@ _allowed_symbols = [
     "SubGraph",
     "generate_random_signs",
     "fwd_gradients",
+    "ensure_sequence",
+    "batch_execute",
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

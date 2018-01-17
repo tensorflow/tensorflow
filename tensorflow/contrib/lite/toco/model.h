@@ -957,6 +957,7 @@ struct TensorFlowSquareOperator : Operator {
 // TensorFlow equivalent: Transpose
 struct TransposeOperator : Operator {
   TransposeOperator() : Operator(OperatorType::kTranspose) {}
+  std::vector<int> perm;
 };
 
 // Element-wise subtraction operator.
@@ -1271,6 +1272,10 @@ struct ResizeBilinearOperator : Operator {
 // TensorFlow equivalent: SpaceToBatchND
 struct SpaceToBatchNDOperator : Operator {
   SpaceToBatchNDOperator() : Operator(OperatorType::kSpaceToBatchND) {}
+
+  std::vector<int> block_shape;
+  std::vector<int> before_paddings;
+  std::vector<int> after_paddings;
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of

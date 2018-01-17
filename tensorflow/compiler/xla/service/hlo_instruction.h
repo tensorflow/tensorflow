@@ -25,6 +25,7 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -260,6 +261,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
+
+  // Creates an FFT op, of the type indicated by fft_type.
+  static std::unique_ptr<HloInstruction> CreateFft(
+      const Shape& shape, HloInstruction* operand, FftType fft_type,
+      tensorflow::gtl::ArraySlice<int64> fft_length);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
@@ -548,9 +554,9 @@ class HloInstruction {
   // Layout of the instructions' output array is not considered.
   bool Identical(
       const HloInstruction& other,
-      std::function<bool(const HloInstruction*, const HloInstruction*)>
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
           eq_operands = std::equal_to<const HloInstruction*>(),
-      std::function<bool(const HloComputation*, const HloComputation*)>
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations = std::equal_to<const HloComputation*>()) const {
     // An instruction is always identical to itself.
     if (this == &other) {
@@ -560,10 +566,18 @@ class HloInstruction {
     // Identical instruction must have the same opcode and identical operands.
     // In general, there is no need to check shape because shape is inferred
     // from the shape of the operands.
-    if (opcode() != other.opcode() ||
-        !ContainersEqual(operands(), other.operands(),
-                         std::move(eq_operands))) {
+    if (opcode() != other.opcode()) {
       return false;
+    }
+    if (operands().size() != other.operands().size()) {
+      return false;
+    }
+    // Use an explicit loop rather than ContainerEquals, because copying around
+    // std::functions may be too expensive in some cases.
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
     }
 
     return IdenticalSlowPath(other, eq_computations);
@@ -1031,6 +1045,16 @@ class HloInstruction {
     return *convolution_dimension_numbers_;
   }
 
+  FftType fft_type() const {
+    CHECK_EQ(HloOpcode::kFft, opcode_);
+    return fft_type_;
+  }
+
+  const std::vector<int64>& fft_length() const {
+    CHECK_EQ(HloOpcode::kFft, opcode_);
+    return fft_length_;
+  }
+
   // Returns the dump string of the convolution dimension numbers.
   string ConvolutionDimensionNumbersToString() const;
 
@@ -1197,7 +1221,7 @@ class HloInstruction {
   // See comments on Identical().
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      std::function<bool(const HloComputation*, const HloComputation*)>
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
 
   // Creates an n-ary elementwise operation.
@@ -1302,6 +1326,12 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
+
+  // Describes FFT type for an FFT instruction.
+  FftType fft_type_ = FftType::FFT;
+
+  // Indicates the FFT length for an FFT instruction.
+  std::vector<int64> fft_length_;
 
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
@@ -1429,6 +1459,10 @@ using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
 template <typename ValueT>
 using ConstHloInstructionMap =
     std::map<const HloInstruction*, ValueT, HloPtrComparator>;
+
+using HloInstructionSet = std::set<HloInstruction*, HloPtrComparator>;
+using ConstHloInstructionSet =
+    std::set<const HloInstruction*, HloPtrComparator>;
 
 }  // namespace xla
 

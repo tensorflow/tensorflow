@@ -17,24 +17,21 @@ tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
 with basic machine learning concepts, and also with
-@{$get_started/estimator$Estimators}.
+@{$get_started/premade_estimators$Estimators}.
 
 [TOC]
 
 ## What is a linear model?
 
 A **linear model** uses a single weighted sum of features to make a prediction.
-For example, if you have
-[data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names)
+For example, if you have [data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names)
 on age, years of education, and weekly hours of
 work for a population, a model can learn weights for each of those numbers so that
 their weighted sum estimates a person's salary. You can also use linear models
 for classification.
 
 Some linear models transform the weighted sum into a more convenient form. For
-example, 
-[**logistic regression**](https://developers.google.com/machine-learning/glossary/#logistic_regression)
-plugs the weighted sum into the logistic
+example, [**logistic regression**](https://developers.google.com/machine-learning/glossary/#logistic_regression) plugs the weighted sum into the logistic
 function to turn the output into a value between 0 and 1. But you still just
 have one weight for each input feature.
 
@@ -177,7 +174,7 @@ the data itself. You provide the data through an input function.
 The input function must return a dictionary of tensors. Each key corresponds to
 the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See
-@{$input_fn$Building Input Functions} for a
+@{$premade_estimators#input_fn} for a
 more comprehensive look at input functions, and `input_fn` in the
 [linear models tutorial code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
 for an example implementation of an input function.

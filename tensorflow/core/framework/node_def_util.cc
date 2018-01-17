@@ -347,6 +347,21 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 
 }  // namespace
 
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type) {
+  DataTypeVector input_types;
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &input_types));
+    if (input_types.size() > input_port) {
+      const DataType dtype = input_types[input_port];
+      *input_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Input ", input_port, " not found for node ",
+                                 node_def.name());
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   for (const auto& arg : op_def.input_arg()) {

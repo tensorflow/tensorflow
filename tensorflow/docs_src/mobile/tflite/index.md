@@ -95,7 +95,7 @@ following:
 
     All of the following models are guaranteed to work out of the box:
 
-    - Inception V3, a popular model for detecting the the dominant objects
+    - Inception V3, a popular model for detecting the dominant objects
       present in an image.
 
     - [MobileNets](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md),

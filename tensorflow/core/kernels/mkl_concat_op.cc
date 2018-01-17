@@ -598,7 +598,6 @@ class MklConcatOp : public OpKernel {
             concat_dim_tensor.shape().DebugString()));
       int32 concat_dim = internal::SubtleMustCopy(
                            concat_dim_tensor.scalar<int32>()());
-      if (concat_dim < 0) concat_dim = N + concat_dim;
 
       // check that ranks of all tensors match
       // and that their shapes match except for concat_dim.
@@ -609,6 +608,9 @@ class MklConcatOp : public OpKernel {
                                          input_shapes[0].GetTfShape() :
                                          input_tensors[0].shape();
       size_t expected_dims = expected_shape.dims();
+
+      if (concat_dim < 0) concat_dim = expected_dims + concat_dim;
+
       for (auto& s : input_shapes) {
         if (s == expected_shape) {++i; continue;}
 
@@ -650,10 +652,6 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
-      // Temporary fallback to Eigen until MKLDNN Concat performance
-      // is improved. To be removed.
-      invoke_eigen = true;
-
       // Call Eigen library
       if (invoke_eigen) {
         TensorShapeList tf_input_shapes;
@@ -694,7 +692,7 @@ class MklConcatOp : public OpKernel {
           // It does not matter what data format we use here (NHWC or NCHW).
           // We just need to ensure that output of Concat uses same data format
           // as input.
-                  memory::desc(src_dims, MklDnnType<T>(), memory::format::nhwc);
+                  memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
 
         srcs[k].SetUsrMem(src_md, &input_tensors[k]);
         auto src_mpd = srcs[k].GetUsrMemPrimDesc();
@@ -720,7 +718,7 @@ class MklConcatOp : public OpKernel {
       } else {
         // Again, format does not matter here. We just need to make it same as
         // input format.
-        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nhwc);
+        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nchw);
       }
 
       std::vector<primitive::at> inputs;

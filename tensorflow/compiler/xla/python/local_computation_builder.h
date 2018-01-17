@@ -19,12 +19,53 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
 namespace swig {
+
+// Initializes the number of replicas that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializeReplicaCount(int replica_count);
+
+// Returns the replica count that is currently set, regardless of whether the
+// local XLA service has been instantiated yet or not.
+int GetReplicaCount();
+
+// Wraps the local client's infeed-transfer function.
+//
+// The default device ordinal (0) is used.
+Status TransferToInfeedLocal(const Literal& literal);
+
+// Transfers the given literal to the infeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
+
+// Transfers a literal of the given shape from the outfeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number);
+
+// Wraps a ScopedShapedBuffer produced by copying a literal "to
+// device," i.e. copying a literal to a scoped buffer via the local
+// client.
+class LocalShapedBuffer {
+ public:
+  static LocalShapedBuffer* FromLiteral(const Literal& argument);
+  LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
+  const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
+  std::unique_ptr<Literal> ToLiteral() const;
+
+ private:
+  std::unique_ptr<ScopedShapedBuffer> shaped_buffer_;
+};
 
 // Wraps a LocalExecutable produced by compiling a
 // LocalComputation. The Execute method forwards to that of the
@@ -35,7 +76,10 @@ namespace swig {
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
-  std::unique_ptr<Literal> Execute(const std::vector<Literal>& arguments);
+  StatusOr<std::unique_ptr<Literal> > Execute(
+      const std::vector<Literal>& arguments);
+  LocalShapedBuffer* ExecuteWithShapedBuffers(
+      tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -47,12 +91,13 @@ class CompiledLocalComputation {
 // made available to Python via SWIG.
 class LocalComputation {
  public:
-  LocalComputation(std::unique_ptr<Computation> computation);
-  CompiledLocalComputation* Compile(const std::vector<Shape>& argument_shapes);
+  LocalComputation(Computation computation);
+  StatusOr<CompiledLocalComputation*> Compile(
+      const std::vector<Shape>& argument_shapes);
   const Computation& computation() const;
 
  private:
-  std::unique_ptr<Computation> computation_;
+  Computation computation_;
 };
 
 // Wraps the ComputationBuilder API in order to:
@@ -66,12 +111,18 @@ class LocalComputationBuilder {
  public:
   LocalComputationBuilder(const string& computation_name);
 
-  LocalComputation* Build();
+  // Returns an owned LocalComputation to the caller on success.
+  StatusOr<LocalComputation*> Build();
 
   ComputationDataHandle Parameter(int64 parameter_number, const Shape& shape,
                                   const string& name);
 
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
+
+  ComputationDataHandle Infeed(const Shape& shape);
+
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
+               const string& outfeed_config);
 
   ComputationDataHandle ConstantLiteral(const Literal& literal);
 
@@ -153,6 +204,14 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
+  ComputationDataHandle RngNormal(const ComputationDataHandle& mu,
+                                  const ComputationDataHandle& sigma,
+                                  const Shape& shape);
+
+  ComputationDataHandle RngUniform(const ComputationDataHandle& a,
+                                   const ComputationDataHandle& b,
+                                   const Shape& shape);
+
   ComputationDataHandle While(const LocalComputation& condition,
                               const LocalComputation& body,
                               const ComputationDataHandle& init);
@@ -211,14 +270,10 @@ class LocalComputationBuilder {
   ComputationBuilder builder_;
 };
 
-static void DeleteLocalComputation(LocalComputation* computation) {
-  delete computation;
-}
-
-static void DeleteCompiledLocalComputation(
-    CompiledLocalComputation* computation) {
-  delete computation;
-}
+// Functions for freeing resources from the Python side.
+void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
+void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
+void DeleteLocalComputation(LocalComputation* computation);
 
 }  // namespace swig
 

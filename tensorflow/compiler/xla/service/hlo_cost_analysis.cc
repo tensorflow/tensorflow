@@ -392,6 +392,21 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.

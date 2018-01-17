@@ -2067,6 +2067,15 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
+  def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
+    with context.graph_mode():
+      # pylint: disable=protected-access
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with ops.init_scope():
+        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # pylint: enable=protected-access
+
 
 @test_util.with_c_api
 class GraphTest(test_util.TensorFlowTestCase):
@@ -2281,6 +2290,8 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
       t4.set_shape([43, 37])
       t5.set_shape([43, None])
 
+      b = constant_op.constant(1.0)  # pylint: disable=unused-variable
+
       gd = g.as_graph_def(add_shapes=True)
       self.assertProtoEqualsVersion("""
       node { name: "FiveFloatOutputs" op: "FiveFloatOutputs"
@@ -2297,6 +2308,26 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
           }
         }
       }
+    node { name: "Const" op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape { }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value { type: DT_FLOAT }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape { }
+         float_val: 1.0  } } } }
       """, gd)
 
 
@@ -2636,7 +2667,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops.unique(x)
+      y, _ = gen_array_ops._unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 
@@ -2653,47 +2684,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
-class InputTypesTest(test_util.TensorFlowTestCase):
-  """Tests Operation._input_dtypes and Operation._input_types properties.
-
-  This test should not exist as _input_types is a private property.
-  This property is used by many tests that would normally cover its
-  behavior. However, we can't yet run these tests in C
-  API mode because they use _set_device method. This test will be deleted
-  once we port _set_device.
-  """
-  # TODO(iga): Remove this test
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
-    ops._USE_C_API = True  # pylint: disable=protected-access
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
-
-  def testZeroInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      # Using a constant because creating unregistered ops
-      # doesn't work with the C API.
-      op = constant_op.constant(12, dtype=dtypes.uint16).op
-      # pylint: disable=protected-access
-      self.assertEqual([], op._input_types)
-      self.assertEqual([], op._input_dtypes)
-      # pylint: enable=protected-access
-
-  def testTwoInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      x = constant_op.constant(1.0, dtype=dtypes.double)
-      y = constant_op.constant(2.0, dtype=dtypes.double)
-      z = math_ops.multiply(x, y)
-      # pylint: disable=protected-access
-      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
-      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
-      # pylint: enable=protected-access
+class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
   def testBadArgumentsToEnableEagerExecution(self):
     with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):

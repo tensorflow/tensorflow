@@ -54,7 +54,6 @@ REGISTER_OP("SingleImageRandomDotStereograms")
           c->MakeShapeFromPartialTensorShape(shape, &output_image_shape));
       DimensionHandle x_dim = c->Dim(output_image_shape, 0);
       DimensionHandle y_dim = c->Dim(output_image_shape, 1);
-      DimensionHandle c_dim = c->Dim(output_image_shape, 2);
 
       int colors;
       TF_RETURN_IF_ERROR(c->GetAttr("number_colors", &colors));

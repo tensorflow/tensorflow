@@ -88,6 +88,13 @@ class ExpiringLRUCache {
     return s;
   }
 
+  /// Clear the cache.
+  void Clear() {
+    mutex_lock lock(mu_);
+    cache_.clear();
+    lru_list_.clear();
+  }
+
   /// Accessors for cache parameters.
   uint64 max_age() const { return max_age_; }
   size_t max_entries() const { return max_entries_; }

@@ -20,11 +20,9 @@ limitations under the License.
 #include <sstream>
 #include <gtest/gtest.h>
 #include "re2/re2.h"
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/testing/parse_testdata.h"
+#include "tensorflow/contrib/lite/testing/tflite_driver.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/subprocess.h"
@@ -55,20 +53,19 @@ std::map<string, string> kBrokenTests = {
     {R"(constant.*int32)", "68808744"},
     {R"(mul.*int32)", "68808744"},
 
-    // Toco or TFLite has a bug to deal with some constant functions with
-    // more than 1 element.
-    {R"(constant.*input_shape=\[(2|2,2,2,2)\])", "68721522"},
-
-    // Pad only supports 4D float32 tensors.
+    // Pad only supports 4D tensors.
     {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
-    {R"(padd.*int32)", "70527055"},
 
-    // L2Norm only supports 4D tensors.
-    {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.\])", "67963684"},
+    // L2Norm only supports tensors with 4D or fewer.
     {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
+    // SpaceToBatch only supports 4D tensors.
+    {R"(space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
+
     // L2Norm only works for dim=-1.
+    {R"(l2normdim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(l2normdim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
     {R"(l2normdim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
     {R"(l2normdim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
     {R"(l2normdim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
@@ -82,6 +79,9 @@ std::map<string, string> kBrokenTests = {
 
     // ResizeBilinear looks completely incompatible with Tensorflow
     {R"(resize_bilinear)", "67964336"},
+
+    // Transpose only supports 1D-4D input tensors.
+    {R"(transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -187,20 +187,14 @@ class OpsTest : public ::testing::TestWithParam<string> {};
 
 TEST_P(OpsTest, RunStuff) {
   string test_path = GetParam();
-  string tflite_file = test_path + ".bin";
-  string tflite_examples = test_path + ".inputs";
+  string tflite_test_case = test_path + "_tests.txt";
+  string tflite_dir = test_path.substr(0, test_path.find_last_of("/"));
   string test_name = test_path.substr(test_path.find_last_of('/'));
 
-  auto model = tflite::FlatBufferModel::BuildFromFile(tflite_file.c_str());
-  std::unique_ptr<tflite::Interpreter> interpreter;
-
-  tflite::ops::builtin::BuiltinOpResolver builtins;
-  ASSERT_EQ(tflite::InterpreterBuilder(*model, builtins)(&interpreter),
-            kTfLiteOk);
-
-  std::vector<tflite::testing::Example> examples;
-  ASSERT_EQ(tflite::testing::ParseExamples(tflite_examples.c_str(), &examples),
-            kTfLiteOk);
+  std::ifstream tflite_stream(tflite_test_case);
+  ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
+  tflite::testing::TfLiteDriver test_driver(/*use_nnapi=*/true);
+  test_driver.SetModelBaseDir(tflite_dir);
 
   string bug_number;
   for (const auto& p : kBrokenTests) {
@@ -209,25 +203,15 @@ TEST_P(OpsTest, RunStuff) {
     }
   }
 
-  for (const auto& example : examples) {
-    ASSERT_EQ(interpreter->inputs().size(), example.inputs.size());
-    auto result = [&]() {
-      TF_LITE_ENSURE_STATUS(FeedExample(interpreter.get(), example));
-      TF_LITE_ENSURE_STATUS(interpreter->Invoke());
-      TF_LITE_ENSURE_STATUS(CheckOutputs(interpreter.get(), example));
-      return kTfLiteOk;
-    }();
-
-    if (bug_number.empty()) {
-      ASSERT_EQ(result, kTfLiteOk);
+  bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
+  if (bug_number.empty()) {
+    EXPECT_TRUE(result) << test_driver.GetErrorMessage();
+  } else {
+    if (FLAGS_ignore_known_bugs) {
+      EXPECT_FALSE(result);
     } else {
-      if (FLAGS_ignore_known_bugs) {
-        ASSERT_EQ(result, kTfLiteError)
-            << "Not failing as expected due to http://b/" << bug_number;
-      } else {
-        ASSERT_EQ(result, kTfLiteOk)
-            << "Possibly due to http://b/" << bug_number;
-      }
+      EXPECT_TRUE(result) << test_driver.GetErrorMessage()
+                          << ": Possibly due to http://b/" << bug_number;
     }
   }
 }
@@ -241,9 +225,11 @@ TEST_P(OpsTest, RunStuff) {
 
 INSTANTIATE_TESTS(add)
 INSTANTIATE_TESTS(avg_pool)
+INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
-INSTANTIATE_TESTS(constant)
+// TODO(b/71642435) re-enable this test
+// INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)
 INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)
@@ -265,6 +251,8 @@ INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_depth)
+INSTANTIATE_TESTS(transpose)
+INSTANTIATE_TESTS(mean)
 
 }  // namespace testing
 }  // namespace tflite
@@ -282,6 +270,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

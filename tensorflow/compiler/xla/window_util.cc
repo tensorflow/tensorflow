@@ -159,6 +159,12 @@ bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
 }
 
+bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
+  const WindowDimension& window_dim = window.dimensions(logical_dim);
+  return window_dim.size() == 1 && window_dim.stride() == 1 &&
+         window_dim.padding_low() == 0 && window_dim.padding_high() == 0;
+}
+
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);

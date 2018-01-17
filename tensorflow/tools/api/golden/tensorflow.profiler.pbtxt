@@ -26,11 +26,11 @@ tf_module {
   }
   member_method {
     name: "advise"
-    argspec: "args=[\'graph\', \'run_meta\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
+    argspec: "args=[\'graph\', \'run_meta\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
   }
   member_method {
     name: "profile"
-    argspec: "args=[\'graph\', \'run_meta\', \'op_log\', \'cmd\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'scope\', \'0\'], "
+    argspec: "args=[\'graph\', \'run_meta\', \'op_log\', \'cmd\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'scope\', \'0\'], "
   }
   member_method {
     name: "write_op_log"

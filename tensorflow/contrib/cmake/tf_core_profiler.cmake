@@ -17,6 +17,8 @@
 ########################################################
 file(GLOB_RECURSE tf_core_profiler_srcs
     "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/tfprof_options.h"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/tfprof_options.cc"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*.h"

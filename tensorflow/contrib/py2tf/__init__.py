@@ -21,9 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf.api import to_code
+from tensorflow.contrib.py2tf.api import to_graph
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-_allowed_symbols = []
+_allowed_symbols = ['to_graph', 'to_code']
 
 remove_undocumented(__name__, _allowed_symbols)

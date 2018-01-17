@@ -123,6 +123,12 @@ message HloInstructionProto {
 
   // Describes the dimension numbers used for a dot operation
   xla.DotDimensionNumbers dot_dimension_numbers = 30;
+
+  // FFT type (FFT, IFFT, etc).
+  xla.FftType fft_type = 31;
+
+  // FFT length.
+  repeated int64 fft_length = 32;
 }
 
 // Serialization of HloComputation.

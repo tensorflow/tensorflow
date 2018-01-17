@@ -65,6 +65,7 @@ py_library(
     srcs = ["loss_functions.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
@@ -198,6 +199,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",

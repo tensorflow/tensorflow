@@ -17,6 +17,7 @@ py_library(
         "python/ops/__init__.py",
         "python/ops/alpha_dropout.py",
         "python/ops/cross_entropy.py",
+        "python/ops/fwd_gradients.py",
         "python/ops/sampling_ops.py",
         "python/ops/scaled_softplus.py",
     ],
@@ -28,6 +29,7 @@ py_library(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
@@ -52,6 +54,19 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:random_ops",
+    ],
+)
+
+py_test(
+    name = "fwd_gradients_test",
+    size = "small",
+    srcs = ["python/ops/fwd_gradients_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nn_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:math_ops",
     ],
 )
 

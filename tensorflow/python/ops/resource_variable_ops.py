@@ -276,10 +276,6 @@ class ResourceVariable(variables.Variable):
           dtype=dtype,
           constraint=constraint)
 
-  # LINT.IfChange
-  # _VariableFromResource inherits from ResourceVariable but
-  # doesn't call the constructor, so changes here might need to be reflected
-  # there.
   # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
@@ -438,7 +434,8 @@ class ResourceVariable(variables.Variable):
               self._initializer_op = (
                   gen_resource_variable_ops.assign_variable_op(
                       self._handle,
-                      self._build_initializer_expr(initial_value),
+                      self._try_guard_against_uninitialized_dependencies(
+                          initial_value),
                       name=n))
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
@@ -522,7 +519,6 @@ class ResourceVariable(variables.Variable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
     self._constraint = None
-  # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   def __nonzero__(self):
     return self.__bool__()
@@ -890,11 +886,6 @@ def _GatherGrad(op, grad):
   # Build appropriately shaped IndexedSlices
   handle = op.inputs[0]
   indices = op.inputs[1]
-  if context.in_graph_mode():
-    # Walk graph back until the original handle is found.
-    # TODO(apassos): implement this for EAGER mode.
-    while handle.op.type != "VarHandleOp":
-      handle = handle.op.inputs[0]
   params_shape = gen_resource_variable_ops.variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)

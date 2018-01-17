@@ -112,7 +112,7 @@ class GraphDefBuilderWrapper {
   Status AddTensor(const Tensor& val, Node** output) {
     AddTensorInternal(val, output);
     if (*output == nullptr) {
-      return errors::Internal("AddTesor: Failed to build Const op.");
+      return errors::Internal("AddTensor: Failed to build Const op.");
     }
     return Status::OK();
   }
@@ -258,6 +258,8 @@ class IteratorContext {
     // created. Better suggestions are welcome!
     std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
         nullptr;
+
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -274,6 +276,10 @@ class IteratorContext {
     } else {
       return nullptr;
     }
+  }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
   }
 
  private:
@@ -320,7 +326,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator.
-  virtual Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     return RestoreInternal(ctx, reader);
   }
 
@@ -336,7 +342,7 @@ class IteratorBase {
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
   // `RepeatDataasetOp::Dataset`.
-  Status RestoreParent(OpKernelContext* ctx, IteratorStateReader* reader,
+  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
   }
@@ -347,7 +353,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator recursively.
-  virtual Status RestoreInternal(OpKernelContext* ctx,
+  virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
@@ -485,7 +491,16 @@ class DatasetIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     port::Tracing::TraceMe activity(params_.prefix);
-    return GetNextInternal(ctx, out_tensors, end_of_sequence);
+    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
+      s = errors::Internal(
+          "Iterator \"", params_.prefix,
+          "\" returned OutOfRange without setting `*end_of_sequence`. This "
+          "indicates that an error may have occurred. Original message: ",
+          s.error_message());
+      LOG(ERROR) << s;
+    }
+    return s;
   }
 
   Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) final {

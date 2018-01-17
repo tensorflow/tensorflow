@@ -1,36 +1,35 @@
 # Getting Started
 
-For a brief overview of TensorFlow programming fundamentals, see the following
-guide:
+TensorFlow is a tool for machine learning. While it contains a wide range of
+functionality, TensorFlow is mainly designed for deep neural network models.
 
-  * @{$get_started/get_started$Getting Started with TensorFlow}
+TensorFlow provides many APIs. This section focuses on the high-level APIs.
+If you are new to TensorFlow, begin by reading one of the following documents:
 
-MNIST has become the canonical dataset for trying out a new machine learning
-toolkit.  We offer three guides that each demonstrate a different approach
-to training an MNIST model on TensorFlow:
+  * @{$get_started/get_started_for_beginners}, which is aimed at readers
+    new to machine learning.
+  * @{$get_started/premade_estimators}, which is aimed at readers who have
+    experience in machine learning.
 
-  * @{$mnist/beginners$MNIST for ML Beginners}, which introduces MNIST through
-    the high-level API.
-  * @{$mnist/pros$Deep MNIST for Experts}, which is more-in depth than
-    "MNIST for ML Beginners," and assumes some familiarity with machine
-    learning concepts.
-  * @{$mnist/mechanics$TensorFlow Mechanics 101}, which introduces MNIST through
-    the low-level API.
+Then, read the following documents, which demonstrate the key features
+in the high-level APIs:
 
-For developers new to TensorFlow, the high-level API is a good place to start.
-To learn about the high-level API, read the following guides:
+  * @{$get_started/checkpoints}, which explains how to save training progress
+    and resume where you left off.
+  * @{$get_started/feature_columns}, which shows how an
+    Estimator can handle a variety of input data types without changes to the
+    model.
+  * @{$get_started/datasets_quickstart}, which introduces TensorFlow's
+    input pipelines.
+  * @{$get_started/custom_estimators}, which demonstrates how
+    to build and train models you design yourself.
 
-  * @{$get_started/estimator$tf.estimator Quickstart}, which introduces this
-    API.
-  * @{$get_started/input_fn$Building Input Functions},
-    which takes you into a somewhat more sophisticated use of this API.
+For more advanced users:
 
-TensorBoard is a utility to visualize different aspects of machine learning.
-The following guides explain how to use TensorBoard:
-
-  * @{$get_started/summaries_and_tensorboard$TensorBoard: Visualizing Learning},
-    which gets you started.
-  * @{$get_started/graph_viz$TensorBoard: Graph Visualization}, which explains
-    how to visualize the computational graph.  Graph visualization is typically
-    more useful for programmers using the low-level API.
-
+  * The @{$low_level_intro$Low Level Introduction} demonstrates how to use
+    TensorFlow outside of the Estimator framework, for debugging and
+    experimentation.
+  * The @{$programmers_guide$Programmer's Guide} details major
+    TensorFlow components.
+  * The @{$tutorials$Tutorials} provide walkthroughs of a variety of
+    TensorFlow models.

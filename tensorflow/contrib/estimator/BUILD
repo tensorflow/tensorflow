@@ -205,6 +205,7 @@ py_test(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -376,5 +377,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
-    tags = ["multi_gpu"],
+    tags = [
+        "manual",
+        "multi_gpu",
+        "notap",
+    ],
 )
