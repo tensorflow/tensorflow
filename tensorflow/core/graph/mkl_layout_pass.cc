@@ -2456,9 +2456,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAddN, AddNRewrite});
-    rinfo_.push_back({csinfo_.add,
+    /* rinfo_.push_back({csinfo_.add,
                       mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsDataType, AlwaysRewrite});
+                      CopyAttrsDataType, AlwaysRewrite}); */
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsPooling, AlwaysRewrite});
