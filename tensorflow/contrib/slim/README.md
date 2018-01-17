@@ -676,7 +676,7 @@ file were implicitly obtained from each provided variable's `var.op.name`.
 
 This works well when the variable names in the checkpoint file match those in
 the graph. However, sometimes, we want to restore a model from a checkpoint
-whose variables have different names those in the current graph. In this case,
+whose variables have different names to those in the current graph. In this case,
 we must provide the `Saver` a dictionary that maps from each checkpoint variable
 name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:

@@ -25,6 +25,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -342,6 +343,81 @@ def cross_replica_mean(tensor, name=None):
     if num_shards == 1:
       return tensor
     return tpu_ops.cross_replica_sum(tensor / num_shards)
+
+
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
+
+
+def batch_execute(global_step, thunks, batch_size, name=None):
+  """Executes a subset of ops per global step.
+
+  Given a list of thunks, each of which produces a single stateful op,
+  ensures that exactly 'batch_size' ops are run per global step. Ops are
+  scheduled in a round-robin fashion. For example, with 3 ops
+
+    global_step | op0 | op1 | op2
+    ------------+-----+-----+-----
+        0       |  x  |  x  |
+    ------------+-----+-----+-----
+        1       |  x  |     |  x
+    ------------+-----+-----+-----
+        2       |     |  x  |  x
+    ------------+-----+-----+-----
+        3       |  x  |  x  |
+    ------------+-----+-----+-----
+        4       |  x  |     |  x
+
+  Does not guarantee order of op execution within a single global step.
+
+  Args:
+    global_step: Tensor indicating time. Determines which ops run.
+    thunks: List of thunks. Each thunk encapsulates one op. Return values are
+      ignored.
+    batch_size: int. Number of ops to execute per global_step.
+    name: string or None. Name scope for newly added ops.
+
+  Returns:
+    List of ops. Exactly 'batch_size' ops are guaranteed to have an effect
+    every global step.
+  """
+
+  def true_fn(thunk):
+    """Ensures thunk is executed and returns an Op (not a Tensor)."""
+
+    def result():
+      with ops.control_dependencies([thunk()]):
+        return control_flow_ops.no_op()
+
+    return result
+
+  def false_fn(_):
+    """Executes a no-op."""
+
+    def result():
+      return control_flow_ops.no_op()
+
+    return result
+
+  with ops.name_scope(name, "batch_execute"):
+    true_fns = [true_fn(thunk) for thunk in thunks]
+    false_fns = [false_fn(thunk) for thunk in thunks]
+    num_thunks = len(thunks)
+    conditions = [
+        math_ops.less(
+            math_ops.mod(batch_size - 1 + global_step * batch_size - j,
+                         num_thunks), batch_size) for j in range(num_thunks)
+    ]
+    result = [
+        control_flow_ops.cond(condition, true_fn, false_fn)
+        for (condition, true_fn,
+             false_fn) in zip(conditions, true_fns, false_fns)
+    ]
+    return result
 
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients

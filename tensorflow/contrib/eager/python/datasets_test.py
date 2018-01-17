@@ -16,11 +16,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
+import numpy as np
+
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 
@@ -32,6 +38,15 @@ class IteratorTest(test.TestCase):
     for t in datasets.Iterator(Dataset.range(4)):
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
+
+  def testGetNext(self):
+    iterator = datasets.Iterator(Dataset.range(4))
+    self.assertEqual(0, iterator.get_next().numpy())
+    self.assertEqual(1, iterator.get_next().numpy())
+    self.assertEqual(2, iterator.get_next().numpy())
+    self.assertEqual(3, iterator.get_next().numpy())
+    with self.assertRaises(errors.OutOfRangeError):
+      iterator.get_next()
 
   def testMultipleIteratorsOnTheSameDataset(self):
     ds = Dataset.range(4)
@@ -72,6 +87,53 @@ class IteratorTest(test.TestCase):
     got2 = [x.numpy() for x in datasets.Iterator(ds)]
     self.assertAllEqual(got1, got2)
 
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparseTensorElements(self):
+    components = (sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 0], [1, 0], [2, 0]]),
+        values=np.array([0, 0, 0]),
+        dense_shape=np.array([3, 1])),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0, 0], [1, 1], [2, 2]]),
+                      values=np.array([1, 2, 3]),
+                      dense_shape=np.array([3, 3])))
+
+    expected = [
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[0]]),
+             values=np.array([1]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[1]]),
+             values=np.array([2]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[2]]),
+             values=np.array([3]),
+             dense_shape=np.array([3]))),
+    ]
+
+    for i, result in enumerate(
+        datasets.Iterator(Dataset.from_tensor_slices(components))):
+      self.assertSparseValuesEqual(expected[i][0], result[0])
+      self.assertSparseValuesEqual(expected[i][1], result[1])
+
   def testPyFunc(self):
 
     def my_map(inp):
@@ -88,6 +150,65 @@ class IteratorTest(test.TestCase):
       x = datasets.Iterator(ds).next()
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
+
+
+class DatasetConstructorBenchmark(test.Benchmark):
+
+  def benchmarkSliceRepeatBatchEager(self):
+    input_size = 10000
+    batch_size = 100
+    num_epochs = 100
+
+    input_data = np.random.randn(input_size)
+
+    dataset = (
+        Dataset.from_tensor_slices(input_data).repeat(num_epochs)
+        .batch(batch_size))
+    iterator = datasets.Iterator(dataset)
+
+    ends = [time.time()]
+    for _ in iterator:
+      ends.append(time.time())
+
+    deltas = np.ediff1d(ends)
+    median_wall_time = np.median(deltas)
+    print(
+        'Slice/repeat/batch eager input size: %d batch size: %d Median wall '
+        'time per element: %f'
+        % (input_size, batch_size, median_wall_time))
+    self.report_benchmark(
+        iters=len(deltas),
+        wall_time=median_wall_time,
+        name='benchmark_slice_repeat_batch_eager_input_%d_batch_%d' %
+        (input_size, batch_size))
+
+  def benchmarkSliceBatchCacheRepeatCallable(self):
+    input_size = 10000
+    batch_size = 100
+    num_epochs = 100
+
+    input_data = np.random.randn(input_size)
+
+    dataset = (
+        Dataset.from_tensor_slices(input_data).batch(batch_size).cache()
+        .repeat(num_epochs))
+    iterator = datasets.Iterator(dataset)
+
+    ends = [time.time()]
+    for _ in iterator:
+      ends.append(time.time())
+
+    deltas = np.ediff1d(ends)
+    median_wall_time = np.median(deltas)
+    print(
+        'Slice/batch/cache/repeat eager input size: %d batch size: %d Median '
+        'wall time per element: %f'
+        % (input_size, batch_size, median_wall_time))
+    self.report_benchmark(
+        iters=len(deltas),
+        wall_time=median_wall_time,
+        name='benchmark_slice_batch_cache_repeat_eager_input_%d_batch_%d' %
+        (input_size, batch_size))
 
 
 if __name__ == '__main__':

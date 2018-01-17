@@ -169,7 +169,6 @@ static void GetTopN(const float* prediction,
     LOG(INFO) << "Loaded model " << graph_path.UTF8String;
     model->error_reporter();
     LOG(INFO) << "resolved reporter";
-    
 #ifdef TFLITE_CUSTOM_OPS_HEADER
     tflite::MutableOpResolver resolver;
     RegisterSelectedOps(&resolver);

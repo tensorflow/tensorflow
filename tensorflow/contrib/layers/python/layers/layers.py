@@ -1896,7 +1896,7 @@ class GDN(base.Layer):
     outputs.set_shape(inputs.get_shape())
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
@@ -2674,16 +2674,25 @@ def spatial_softmax(features,
                                         indexing='ij')
       pos_x = array_ops.reshape(pos_x, [height * width])
       pos_y = array_ops.reshape(pos_y, [height * width])
+      
       if temperature is None:
-        temperature_collections = utils.get_variable_collections(
-            variables_collections, 'temperature')
-        temperature = variables.model_variable(
-            'temperature',
-            shape=(),
-            dtype=dtypes.float32,
-            initializer=init_ops.ones_initializer(),
-            collections=temperature_collections,
-            trainable=trainable)
+        temp_initializer = init_ops.ones_initializer()
+      else:
+        temp_initializer = init_ops.constant_initializer(temperature)
+          
+      if not trainable:
+        temp_collections = None
+      else:
+        temp_collections = utils.get_variable_collections(
+              variables_collections, 'temperature')
+      
+      temperature = variables.model_variable(
+          'temperature',
+          shape=(),
+          dtype=dtypes.float32,
+          initializer=temp_initializer,
+          collections=temp_collections,
+          trainable=trainable)
       if data_format == 'NCHW':
         features = array_ops.reshape(features, [-1, height * width])
       else:

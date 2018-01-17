@@ -151,18 +151,6 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
-namespace functor {
-
-// Partial specialization of FillFunctor<Device=CPUDevice, T>.
-template <typename T>
-struct FillFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstScalar in) {
-    out.device(d) = out.constant(in());
-  }
-};
-
-}  // end namespace functor
 
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {
@@ -190,28 +178,6 @@ class FillOp : public OpKernel {
             Tvalue.scalar<T>());
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-
-namespace functor {
-// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
-template <typename T>
-struct FillFunctor<SYCLDevice, T> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstScalar in) {
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 1> rank1{1};
-#else
-    Eigen::IndexList<Eigen::type2index<1> > rank1;
-#endif
-    const int size = out.dimension(0);
-    Eigen::array<int, 1> broadcast_dims{size};
-
-    To32Bit(out).device(d) = in.reshape(rank1).broadcast(broadcast_dims);
-  }
-};
-}  // namespace functor
-#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNEL(D, TYPE)                                   \
   REGISTER_KERNEL_BUILDER(Name("Fill")                             \

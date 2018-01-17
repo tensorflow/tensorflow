@@ -117,3 +117,9 @@ cc_library(
         "//tensorflow/core:lib",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = ["c_api.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+)

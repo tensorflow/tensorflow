@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.tensorflow</groupId>
     <artifactId>parentpom</artifactId>
-    <version>1.4.0</version>
+    <version>1.5.0-rc1</version>
     <relativePath>../</relativePath>
   </parent>
   <artifactId>proto</artifactId>

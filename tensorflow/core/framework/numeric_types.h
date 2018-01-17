@@ -25,7 +25,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -200,6 +199,24 @@ inline bfloat16& operator-=(bfloat16& a, bfloat16 b) {
   a = a - b;
   return a;
 }
+inline bfloat16 operator++(bfloat16& a) {
+  a += bfloat16(1);
+  return a;
+}
+inline bfloat16 operator--(bfloat16& a) {
+  a -= bfloat16(1);
+  return a;
+}
+inline bfloat16 operator++(bfloat16& a, int) {
+  bfloat16 original_value = a;
+  ++a;
+  return original_value;
+}
+inline bfloat16 operator--(bfloat16& a, int) {
+  bfloat16 original_value = a;
+  --a;
+  return original_value;
+}
 inline bfloat16& operator*=(bfloat16& a, bfloat16 b) {
   a = a * b;
   return a;
@@ -218,7 +235,7 @@ using ::tensorflow::operator==;
 using ::tensorflow::operator!=;
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(COMPILER_MSVC) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {

@@ -305,6 +305,10 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
   return std::forward<T>(t);
 }
 
+int64 MinLogLevelFromEnv();
+
+int64 MinVLogLevelFromEnv();
+
 }  // namespace internal
 }  // namespace tensorflow
 

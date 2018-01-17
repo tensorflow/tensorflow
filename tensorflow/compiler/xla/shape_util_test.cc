@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -71,7 +72,8 @@ TEST(ShapeUtilTest, Rank4DimensionIndexing) {
 
 TEST(ShapeUtilTest, ParseShapeStringR2F32) {
   string shape_string = "f32[123,456]";
-  Shape actual = ShapeUtil::ParseShapeString(shape_string).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
   Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
@@ -80,7 +82,8 @@ TEST(ShapeUtilTest, ParseShapeStringR2F32) {
 
 TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
   string shape_string = "(f32[1572864],s8[5120,1024])";
-  Shape actual = ShapeUtil::ParseShapeString(shape_string).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
   Shape expected =
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1572864}),
                                  ShapeUtil::MakeShape(S8, {5120, 1024})});
@@ -91,7 +94,8 @@ TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
 
 TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
   string shape_string = "(f32[1],(f32[2]), f32[3])";
-  Shape actual = ShapeUtil::ParseShapeString(shape_string).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
   Shape expected = ShapeUtil::MakeTupleShape({
       ShapeUtil::MakeShape(F32, {1}),
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2})}),
@@ -100,6 +104,47 @@ TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseShapeStringWithLayout) {
+  string shape_string = "f32[123,456]{0,1}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseShapeStringWithExplicitDenseLayout) {
+  string shape_string = "f32[123,456]dense{0,1}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseShapeStringWithSparseLayout) {
+  string shape_string = "f32[123,456]sparse{10}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithSparseLayout(F32, {123, 456}, 10);
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual: " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseInvalidShapeString) {
+  string shape_strings[] = {
+      "f32[123,456]foobar{0,1}", "f32[123,456]sparse{0,1}", "f32[123,456]{foo}",
+      "f32[123,456]dense{foo}",  "f32[123,456]sparse{foo}",
+  };
+  for (const string& shape_string : shape_strings) {
+    StatusOr<Shape> result = ShapeUtil::ParseShapeString(shape_string);
+    ASSERT_FALSE(result.ok()) << "shape: " << shape_string;
+  }
 }
 
 TEST(ShapeUtilTest, CompatibleIdenticalShapes) {

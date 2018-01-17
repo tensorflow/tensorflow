@@ -111,6 +111,17 @@ typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
   int block_shape[2];
+  int before_paddings[2];
+  int after_paddings[2];
+} TfLiteSpaceToBatchNDParams;
+
+typedef struct {
+  // Number of spatial dimensions.
+  // For now only NHWC is supported, and the value should always be 2.
+  int num_spatial_dimensions;
+  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
+  // For now we will fix the maximum possible number of dimensions.
+  int block_shape[2];
   int before_crops[2];
   int after_crops[2];
 } TfLiteBatchToSpaceNDParams;
@@ -179,6 +190,21 @@ typedef struct {
 typedef struct {
   int axis;
 } TfLiteGatherParams;
+
+typedef struct {
+  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
+  // For now we will fix the maximum possible number of dimensions.
+  int perm[8];
+  int num_dimensions;
+} TfLiteTransposeParams;
+
+typedef struct {
+  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
+  // For now we will fix the maximum possible number of dimensions.
+  int axis[8];
+  int num_axis_dimensions;
+  bool keep_dims;
+} TfLiteMeanParams;
 
 #ifdef __cplusplus
 }  // extern "C"

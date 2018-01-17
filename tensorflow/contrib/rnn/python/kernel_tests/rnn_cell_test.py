@@ -845,12 +845,14 @@ class RNNCellTest(test.TestCase):
       batch_size = 3
       input_size = 4
       expected_state_c = np.array(
-          [[0.00072015, 0.00036633], [0.00083481, 0.00047266],
-           [0.00085111, 0.00053054]],
+          [[6.450831e-04, 4.697885e-04],
+           [9.862894e-05, 7.212213e-04],
+           [4.401947e-04, 9.143004e-04]],
           dtype=np.float32)
       expected_state_h = np.array(
-          [[0.0005159, 0.00026243], [0.00062958, 0.00035646],
-           [0.00064732, 0.00040351]],
+          [[4.621217e-04, 3.365449e-04],
+           [7.438179e-05, 5.439147e-04],
+           [3.347936e-04, 6.953785e-04]],
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -1328,7 +1330,7 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
     h_low = 0.761552567265
     h_high = 0.995008519604
     num_units = 5
-    allowed_low = [2, 3]
+    allowed_low = [1, 2, 3]
 
     with self.test_session() as sess:
       with variable_scope.variable_scope(

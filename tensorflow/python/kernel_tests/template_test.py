@@ -182,7 +182,8 @@ class TemplateTest(test.TestCase):
   def test_unique_name_raise_error_in_eager(self):
     with context.eager_mode():
       with self.assertRaisesRegexp(
-          ValueError, "unique_name cannot be used in eager mode."):
+          ValueError,
+          "unique_name_ cannot be used when eager exeuction is enabled."):
         template.make_template(
             "_", variable_scoped_function, unique_name_="s1")
 
@@ -307,6 +308,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/nested/x:0", v1.name)
     self.assertEqual("s1_1/nested/x:0", v3.name)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_nested_templates(self):
 
     def nested_template():
@@ -314,35 +316,101 @@ class TemplateTest(test.TestCase):
       nested2 = template.make_template("nested", variable_scoped_function)
       v1 = nested1()
       v2 = nested2()
+
+      # nested1 and nested2 should not share variables
       self.assertNotEqual(v1, v2)
-      return v2
+
+      # Variables created by nested1 should be isolated from variables
+      # created by nested2.
+      self.assertEqual(nested1.variables, [v1])
+      self.assertEqual(nested2.variables, [v2])
+      self.assertEqual(nested1.trainable_variables, [v1])
+      self.assertEqual(nested2.trainable_variables, [v2])
+      self.assertEqual(len(nested1.non_trainable_variables), 0)
+      self.assertEqual(len(nested2.non_trainable_variables), 0)
+      return v1, v2
 
     tmpl1 = template.make_template("s1", nested_template)
     tmpl2 = template.make_template("s1", nested_template)
 
-    v1 = tmpl1()
-    v2 = tmpl1()
-    v3 = tmpl2()
-    self.assertTrue(v1, v2)
-    self.assertNotEqual(v1, v3)
-    self.assertEqual("s1/nested_1/dummy:0", v1.name)
-    self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
+    v1, v2 = tmpl1()
+    v3, v4 = tmpl1()
+    v5, v6 = tmpl2()
 
-  def test_nested_eager_templates_raises_error(self):
+    # The second invocation of tmpl1 should reuse the variables
+    # created in the first invocation.
+    self.assertEqual([v1, v2], [v3, v4])
+    self.assertEqual(tmpl1.variables, [v1, v2])
+    self.assertEqual(tmpl1.trainable_variables, [v1, v2])
+    self.assertEqual(len(tmpl1.non_trainable_variables), 0)
+
+    # tmpl1 and tmpl2 should not share variables.
+    self.assertNotEqual([v1, v2], [v5, v6])
+    self.assertSequenceEqual(tmpl2.variables, [v5, v6])
+    self.assertSequenceEqual(tmpl2.trainable_variables, [v5, v6])
+    self.assertEqual(len(tmpl2.non_trainable_variables), 0)
+    self.assertEqual("s1/nested/dummy:0", v1.name)
+    self.assertEqual("s1/nested_1/dummy:0", v2.name)
+    self.assertEqual("s1_1/nested/dummy:0", v5.name)
+    self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_templates_with_defun(self):
+
+    def variable_scoped_function_no_return_value(trainable=True):
+      # defun cannot compile functions that return non-Tensor objects
+      _ = variable_scope.get_variable(
+          "dummy",
+          shape=[1],
+          trainable=trainable,
+          initializer=init_ops.zeros_initializer())
 
     def nested_template():
-      nested1 = template.make_template("nested", variable_scoped_function)
-      nested2 = template.make_template("nested", variable_scoped_function)
-      v1 = nested1()
-      v2 = nested2()
-      self.assertNotEqual(v1, v2)
-      return v2
+      nested1 = template.make_template_internal(
+          "nested",
+          variable_scoped_function_no_return_value,
+          create_graph_function_=True)
+      nested2 = template.make_template_internal(
+          "nested",
+          variable_scoped_function_no_return_value,
+          create_graph_function_=True)
+      nested1()
+      nested2()
+      v1 = nested1.variables
+      v2 = nested2.variables
 
-    with context.eager_mode():
-      tmpl1 = template.make_template("s1", nested_template)
-      with self.assertRaisesRegexp(
-          ValueError, "Nested EagerTemaplates are not currently supported."):
-        tmpl1()
+      # nested1 and nested2 should not share variables
+      self.assertNotEqual(v1, v2)
+
+      # Variables created by nested1 should be isolated from variables
+      # created by nested2.
+      self.assertEqual(nested1.variables, v1)
+      self.assertEqual(nested2.variables, v2)
+      self.assertEqual(nested1.trainable_variables, v1)
+      self.assertEqual(nested2.trainable_variables, v2)
+      self.assertEqual(len(nested1.non_trainable_variables), 0)
+      self.assertEqual(len(nested2.non_trainable_variables), 0)
+
+    tmpl1 = template.make_template("s1", nested_template)
+    tmpl2 = template.make_template("s1", nested_template)
+
+    tmpl1()
+    v1 = tmpl1.variables
+    tmpl1()
+    v2 = tmpl1.variables
+    tmpl2()
+    v3 = tmpl2.variables
+
+    # The second invocation of tmpl1 should reuse the variables
+    # created in the first invocation.
+    self.assertSequenceEqual(v1, v2)
+
+    # tmpl1 and tmpl2 should not share variables.
+    self.assertNotEqual(v1, v3)
+    self.assertEqual("s1/nested/dummy:0", v1[0].name)
+    self.assertEqual("s1/nested_1/dummy:0", v1[1].name)
+    self.assertEqual("s1_1/nested/dummy:0", v3[0].name)
+    self.assertEqual("s1_1/nested_1/dummy:0", v3[1].name)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_immediate_scope_creation(self):
@@ -589,6 +657,31 @@ class TemplateTest(test.TestCase):
     # Ensure we can get the scopes before either template is actually called.
     self.assertEqual(0, len(ta.local_variables))
     self.assertEqual(1, len(tb.local_variables))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_make_template_with_defun(self):
+
+    def variable_scoped_function_no_return_value(scope_name):
+      # defun cannot compile functions that return non-Tensor objects
+      with variable_scope.variable_scope(scope_name):
+        _ = variable_scope.get_variable(
+            "dummy", shape=[1], initializer=init_ops.zeros_initializer())
+
+    tmpl = template.make_template_internal(
+        "s1",
+        variable_scoped_function_no_return_value,
+        create_graph_function_=True,
+        scope_name="test")
+
+    # The first invocation of tmpl1 creates variables, the second should
+    # be executed as a graph function.
+    tmpl()
+    v1 = tmpl.variables
+    tmpl()
+    v2 = tmpl.variables
+
+    self.assertSequenceEqual(v1, v2)
+    self.assertEqual("s1/test/dummy:0", v1[0].name)
 
 
 if __name__ == "__main__":

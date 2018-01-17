@@ -24,6 +24,7 @@ import random
 import shutil
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -58,6 +59,7 @@ def _TestDir(test_name):
 # pylint: enable=invalid-name
 
 
+@test_util.with_c_api
 class SimpleMetaGraphTest(test.TestCase):
 
   def testNoVariables(self):
@@ -102,7 +104,8 @@ class SimpleMetaGraphTest(test.TestCase):
       # Re-exports the current graph state for comparison to the original.
       new_meta_graph_def, _ = meta_graph.export_scoped_meta_graph(filename +
                                                                   "_new")
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+      test_util.assert_meta_graph_protos_equal(self, meta_graph_def,
+                                               new_meta_graph_def)
 
       # Ensures that we can still get a reference to our graph collections.
       new_input_tensor = ops.get_collection("input_tensor")[0]
@@ -154,7 +157,110 @@ class SimpleMetaGraphTest(test.TestCase):
     op_list = meta_graph.stripped_op_list_for_graph(graph)
     self.assertEqual(["Const"], [op.name for op in op_list.op])
 
+  def testDefaultAttrStripping(self):
+    """Verifies that default attributes are stripped from a graph def."""
 
+    # Complex Op has 2 attributes with defaults:
+    #   o "T"    : float32.
+    #   o "Tout" : complex64.
+
+    # When inputs to the Complex Op are float32 instances, "T" maps to float32
+    # and "Tout" maps to complex64. Since these attr values map to their
+    # defaults, they must be stripped unless stripping of default attrs is
+    # disabled.
+    with self.test_session():
+      real_num = constant_op.constant(1.0, dtype=dtypes.float32, name="real")
+      imag_num = constant_op.constant(2.0, dtype=dtypes.float32, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+
+      # strip_default_attrs is enabled.
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          graph_def=ops.get_default_graph().as_graph_def(),
+          strip_default_attrs=True)
+      node_def = test_util.get_node_def_from_graph("complex",
+                                                   meta_graph_def.graph_def)
+      self.assertNotIn("T", node_def.attr)
+      self.assertNotIn("Tout", node_def.attr)
+      self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
+
+      # strip_default_attrs is disabled.
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          graph_def=ops.get_default_graph().as_graph_def(),
+          strip_default_attrs=False)
+      node_def = test_util.get_node_def_from_graph("complex",
+                                                   meta_graph_def.graph_def)
+      self.assertIn("T", node_def.attr)
+      self.assertIn("Tout", node_def.attr)
+      self.assertFalse(meta_graph_def.meta_info_def.stripped_default_attrs)
+
+    # When inputs to the Complex Op are float64 instances, "T" maps to float64
+    # and "Tout" maps to complex128. Since these attr values don't map to their
+    # defaults, they must not be stripped.
+    with self.test_session(graph=ops.Graph()):
+      real_num = constant_op.constant(1.0, dtype=dtypes.float64, name="real")
+      imag_num = constant_op.constant(2.0, dtype=dtypes.float64, name="imag")
+      math_ops.complex(real_num, imag_num, name="complex")
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          graph_def=ops.get_default_graph().as_graph_def(),
+          strip_default_attrs=True)
+      node_def = test_util.get_node_def_from_graph("complex",
+                                                   meta_graph_def.graph_def)
+      self.assertEqual(node_def.attr["T"].type, dtypes.float64)
+      self.assertEqual(node_def.attr["Tout"].type, dtypes.complex128)
+      self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
+
+  def testDefaultAttrStrippingNestedFunctions(self):
+    """Verifies that default attributes are stripped from function node defs."""
+    with self.test_session():
+      @function.Defun(dtypes.float32, dtypes.float32)
+      def f0(i, j):
+        return math_ops.complex(i, j, name="double_nested_complex")
+
+      @function.Defun(dtypes.float32, dtypes.float32)
+      def f1(i, j):
+        return f0(i, j)
+
+      _ = f1(constant_op.constant(1.0), constant_op.constant(2.0))
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          graph_def=ops.get_default_graph().as_graph_def(),
+          strip_default_attrs=True)
+
+      double_nested_complex_node_def = None
+      for function_def in meta_graph_def.graph_def.library.function:
+        for node_def in function_def.node_def:
+          if node_def.name.startswith("double_nested_complex"):
+            double_nested_complex_node_def = node_def
+            break
+        if double_nested_complex_node_def:
+          break
+
+      self.assertIsNotNone(double_nested_complex_node_def)
+      self.assertNotIn("T", double_nested_complex_node_def.attr)
+      self.assertNotIn("Tout", double_nested_complex_node_def.attr)
+      self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
+
+  def testDefaultAttrStrippingUnregisteredOps(self):
+    """Verifies that nodes with un-registered ops are not stripped."""
+    graph_def = graph_pb2.GraphDef()
+    node = graph_def.node.add()
+    node.name = "node_with_unreg_op"
+    node.op = "unreg_op"
+    node.attr["attr_1"].i = 1
+
+    meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
+    meta_info_def.stripped_op_list.op.add()
+
+    with self.test_session():
+      meta_graph_def = meta_graph.create_meta_graph_def(
+          meta_info_def=meta_info_def, graph_def=graph_def,
+          strip_default_attrs=True)
+      node_def = test_util.get_node_def_from_graph("node_with_unreg_op",
+                                                   meta_graph_def.graph_def)
+      self.assertEqual(node_def.attr["attr_1"].i, 1)
+      self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
+
+
+@test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):
@@ -332,10 +438,13 @@ class ScopedMetaGraphTest(test.TestCase):
     ]
     orig_meta_graphs = self._testScopedExport(test_dir, filenames)
     new_meta_graphs = self._testScopedImport(test_dir, filenames)
-    # Delete the unbound_inputs to allow directly calling ProtoEqual.
-    del orig_meta_graphs[0].collection_def["unbound_inputs"]
-    del new_meta_graphs[0].collection_def["unbound_inputs"]
     for a, b in zip(orig_meta_graphs, new_meta_graphs):
+      # The unbound input strings are slightly different with the C API enabled
+      # ("images" vs "images:0") due to the original import_graph_def code
+      # vs. ImportGraphDef in C++.
+      # TODO(skyewm): update the pbtxts once _USE_C_API is removed.
+      del a.collection_def["unbound_inputs"]
+      del b.collection_def["unbound_inputs"]
       test_util.assert_meta_graph_protos_equal(self, a, b)
 
   def testScopedImportUnderNameScope(self):
@@ -352,6 +461,19 @@ class ScopedMetaGraphTest(test.TestCase):
         self.assertEqual(len(imported_variables), 1)
         self.assertEqual(list(imported_variables.values())[0].name,
                          "foo/bar/myvar:0")
+
+  def testImportsUsingSameScopeName(self):
+    with ops.Graph().as_default():
+      variables.Variable(0, name="v")
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph()
+    with ops.Graph().as_default():
+      for suffix in ["", "_1"]:
+        imported_variables = meta_graph.import_scoped_meta_graph(
+            meta_graph_def, import_scope="s")
+        self.assertEqual(len(imported_variables), 1)
+        self.assertEqual(list(imported_variables.keys())[0], "v:0")
+        self.assertEqual(list(imported_variables.values())[0].name,
+                         "s" + suffix + "/v:0")
 
   def testScopedImportWithSelectedCollections(self):
     meta_graph_filename = os.path.join(
@@ -456,7 +578,8 @@ class ScopedMetaGraphTest(test.TestCase):
                                                       "exported_queue1.pbtxt")
     new_meta_graph = self._testScopedImportWithQueue(
         test_dir, "exported_queue1.pbtxt", "exported_new_queue1.pbtxt")
-    self.assertProtoEquals(orig_meta_graph, new_meta_graph)
+    test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
+                                             new_meta_graph)
 
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
@@ -602,6 +725,7 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
 
 
+@test_util.with_c_api
 class MetaGraphWithVariableScopeTest(test.TestCase):
 
   def testMetricsCollection(self):
@@ -659,6 +783,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
         initializer = variables.local_variables_initializer()
 
 
+@test_util.with_c_api
 class ExportImportAcrossScopesTest(test.TestCase):
 
   def testPartionedVariables(self):
@@ -729,7 +854,7 @@ class ExportImportAcrossScopesTest(test.TestCase):
             if shared_name_value.s:
               node.attr[shared_name_attr].s = b""
 
-    self.assertProtoEquals(expected, result)
+    test_util.assert_meta_graph_protos_equal(self, expected, result)
 
 
 if __name__ == "__main__":

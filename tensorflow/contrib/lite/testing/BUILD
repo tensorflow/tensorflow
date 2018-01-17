@@ -32,6 +32,7 @@ gen_zipped_test_files(
         "l2norm.zip",
         "local_response_norm.zip",
         "max_pool.zip",
+        "mean.zip",
         "mul.zip",
         "pad.zip",
         "relu.zip",
@@ -41,7 +42,9 @@ gen_zipped_test_files(
         "resize_bilinear.zip",
         "sigmoid.zip",
         "softmax.zip",
+        "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "transpose.zip",
     ],
 )
 
@@ -183,9 +186,7 @@ cc_binary(
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        ":tflite_driver",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
     ],
 )
@@ -199,6 +200,8 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":parse_testdata_lib",
+        ":tflite_driver",
+        ":util",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",

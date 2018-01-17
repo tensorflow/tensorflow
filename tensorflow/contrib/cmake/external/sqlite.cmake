@@ -28,6 +28,7 @@ endif()
 
 set(sqlite_HEADERS
     "${sqlite_BUILD}/sqlite3.h"
+    "${sqlite_BUILD}/sqlite3ext.h"
 )
 
 if (WIN32)
@@ -53,11 +54,7 @@ else()
         INSTALL_DIR ${sqlite_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
         CMAKE_CACHE_ARGS
-			if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
-				-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-			else()
-				-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
-			endif()
+            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
             -DCMAKE_BUILD_TYPE:STRING=Release
             -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
             -DCMAKE_INSTALL_PREFIX:STRING=${sqlite_INSTALL}

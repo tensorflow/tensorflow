@@ -3237,7 +3237,11 @@ class SeparableConv2dTest(test.TestCase):
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
       regularizer = regularizers.l2_regularizer(0.01)
       layers_lib.separable_conv2d(
-          images, 32, [3, 3], 2, weights_regularizer=regularizer)
+          images,
+          32, [3, 3],
+          2,
+          weights_regularizer=regularizer,
+          weights_initializer=init_ops.ones_initializer())
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
       weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[0]
@@ -3245,12 +3249,31 @@ class SeparableConv2dTest(test.TestCase):
           weight_decay.op.name,
           'SeparableConv2d/depthwise_kernel/Regularizer/l2_regularizer')
       sess.run(variables_lib.global_variables_initializer())
-      self.assertLessEqual(sess.run(weight_decay), 0.05)
+      depth_weight_one = sess.run(weight_decay)
       weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[1]
       self.assertEqual(
           weight_decay.op.name,
           'SeparableConv2d/pointwise_kernel/Regularizer/l2_regularizer')
-      self.assertLessEqual(sess.run(weight_decay), 0.05)
+      pointwise_weight_one = sess.run(weight_decay)
+
+      regularizer = regularizers.l2_regularizer(1.0)
+      layers_lib.separable_conv2d(
+          images,
+          32, [3, 3],
+          2,
+          weights_regularizer=regularizer,
+          weights_initializer=init_ops.ones_initializer())
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 4)
+      weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[2]
+      sess.run(variables_lib.global_variables_initializer())
+      depth_weight_two = sess.run(weight_decay)
+      weight_decay = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)[3]
+      pointwise_weight_two = sess.run(weight_decay)
+
+      self.assertAllClose(
+          [100.0 * depth_weight_one, 100.0 * pointwise_weight_one],
+          [depth_weight_two, pointwise_weight_two])
 
   def testReuseConvWithWeightDecay(self):
     height, width = 3, 3

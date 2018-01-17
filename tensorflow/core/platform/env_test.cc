@@ -281,6 +281,15 @@ class TmpDirFileSystem : public NullFileSystem {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
+    // The special "flushed" file exists only if the filesystem's caches have
+    // been flushed.
+    if (path == "/flushed") {
+      if (flushed_) {
+        return Status::OK();
+      } else {
+        return errors::NotFound("FlushCaches() not called yet");
+      }
+    }
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
@@ -295,9 +304,22 @@ class TmpDirFileSystem : public NullFileSystem {
     }
     return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
   }
+
+  void FlushCaches() override { flushed_ = true; }
+
+ private:
+  bool flushed_ = false;
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
+
+TEST_F(DefaultEnvTest, FlushFileSystemCaches) {
+  Env* env = Env::Default();
+  const string flushed = "tmpdirfs://testhost/flushed";
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(flushed).code());
+  TF_EXPECT_OK(env->FlushFileSystemCaches());
+  TF_EXPECT_OK(env->FileExists(flushed));
+}
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();

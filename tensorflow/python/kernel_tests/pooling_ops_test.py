@@ -361,6 +361,16 @@ class PoolingTest(test.TestCase):
         expected=expected_output,
         use_gpu=use_gpu)
 
+  def _testAvgPoolEmptyInput(self, use_gpu):
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[0, 8, 8, 8],
+        ksize=[1, 3, 3, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[],
+        use_gpu=use_gpu)
+
   def testAvgPooling(self):
     for use_gpu in True, False:
       self._testAvgPoolValidPadding(use_gpu)
@@ -371,6 +381,7 @@ class PoolingTest(test.TestCase):
       self._testAvgPoolSamePadding4(use_gpu)
       self._testAvgPoolSamePaddingPacket4(use_gpu)
       self._testAvgPoolSamePaddingPacket8(use_gpu)
+      self._testAvgPoolEmptyInput(use_gpu)
 
   def _testMaxPoolValidPadding(self, use_gpu):
     expected_output = [13.0, 14.0, 15.0]
@@ -543,6 +554,16 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu,
           v2=v2)
 
+  def _testMaxPoolEmptyInput(self, use_gpu):
+    self._VerifyValues(
+        gen_nn_ops._max_pool_v2,
+        input_sizes=[0, 8, 8, 8],
+        ksize=[1, 3, 3, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[],
+        use_gpu=use_gpu)
+
   def testMaxPooling(self):
     for use_gpu in True, False:
       self._testMaxPoolValidPadding(use_gpu)
@@ -551,6 +572,7 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolValidPaddingUnevenStride(use_gpu)
       self._testMaxPoolSamePaddingPacket4(use_gpu)
       self._testMaxPoolSamePaddingPacket8(use_gpu)
+      self._testMaxPoolEmptyInput(use_gpu)
 
   # Tests for DepthwiseMaxPooling on CPU only.
   def testDepthwiseMaxPool1x1DepthWindow1(self):

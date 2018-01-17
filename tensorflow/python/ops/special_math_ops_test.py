@@ -223,7 +223,7 @@ class EinsumTest(test.TestCase):
 
   dim_mismatch_cases = [('ijk,jkl->il', [(2, 3, 4), (3, 5, 6)])]
 
-  def test_simple(self):
+  def disabled_test_simple(self):
     for case in self.simple_cases:
       self.run_test(case)
 

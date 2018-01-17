@@ -27,6 +27,7 @@ import time
 
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
