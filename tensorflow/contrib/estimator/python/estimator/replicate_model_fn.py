@@ -52,7 +52,7 @@ from tensorflow.python.training import optimizer as optimizer_lib
 def replicate_model_fn(model_fn,
                        loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                        devices=None):
-  """Replicate `Estimator.model_fn` over GPUs within a single host.
+  """Replicate `Estimator.model_fn` over GPUs.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
   such a model over GPUs, each GPU gets its own instance of the forward pass
@@ -138,6 +138,10 @@ def replicate_model_fn(model_fn,
       argument can be used to replice only on the subset of available GPUs.
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
+
+  Raises:
+    ValueError: if there is no `loss_reduction` or if TowerOptimizer is
+      mis-used.
 
   Returns:
     A replicated version of the supplied `model_fn`. Returned function that
@@ -261,6 +265,10 @@ class TowerOptimizer(optimizer_lib.Optimizer):
     If TowerOptimizer is used but `replicate_model_fn` isn't, then no
     aggregation will happen.  All calls will simply be forwarded to the
     underlying optimizer. The behavior is similar if there is only one tower.
+
+    If TowerOptimizer is used together with SyncReplicasOptimizer that wraps
+    the user's optimizer, then it's the SyncReplicasOptimizer that needs to be
+    wrapped with TowerOptimizer.
 
     Args:
       optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
@@ -631,7 +639,12 @@ def _train_spec(tower_specs,
                 aggregation_device,
                 aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.TRAIN`."""
-  estimator_spec = _asdict(tower_specs[0])
+  # Spec of the last tower is used as the template for the final spec, because
+  # some `EstimatorSpec.training_hooks` rely on calls made in model_fn.  For
+  # example, `SyncReplicasOptimizerHook` validates the
+  # `SyncReplicasOptimizer.apply_gradients` call. `TowerEstimator` makes that
+  # call only in the last tower.
+  estimator_spec = _asdict(tower_specs[-1])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.TRAIN
   estimator_spec['train_op'] = train_op
   estimator_spec['loss'] = _compute_sum_on_device(

@@ -53,6 +53,7 @@ from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import adam
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import training
 
 
 # TODO(isaprykin):  Parametrize all the tests on
@@ -549,6 +550,67 @@ class UseTowerEstimatorWithoutReplication(test_util.TensorFlowTestCase):
       estimator.train(train_input_fn, steps=1)
 
       self.assertEqual(7.0, estimator.get_variable_value('c'))
+
+
+class MakeSureSyncReplicasOptimizerWorks(test_util.TensorFlowTestCase):
+
+  def model_fn(self, mode, features, labels, params):
+    c = variable_scope.get_variable(
+        'c',
+        initializer=constant_op.constant(10, dtype=dtypes.float64),
+        dtype=dtypes.float64)
+
+    features = features['features']
+    predictions = math_ops.multiply(features, c)
+
+    loss = losses.absolute_difference(
+        labels=labels, predictions=predictions, reduction=losses.Reduction.SUM)
+    loss = math_ops.reduce_sum(loss)
+
+    metrics = {
+        'accuracy': metrics_lib.accuracy(labels, predictions),
+        'auc': metrics_lib.auc(labels, predictions)
+    }
+
+    optimizer = gradient_descent.GradientDescentOptimizer(
+        params['learning_rate'])
+    optimizer = training.SyncReplicasOptimizer(
+        optimizer, replicas_to_aggregate=1)
+    sync_hook = optimizer.make_session_run_hook(True)
+    optimizer = replicate_model_fn.TowerOptimizer(optimizer)
+
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        loss=loss,
+        eval_metric_ops=metrics,
+        training_hooks=[sync_hook],
+        predictions={'probabilities': predictions},
+        train_op=optimizer.minimize(
+            loss, global_step=training.get_global_step()))
+
+  @property
+  def params(self):
+    params = {}
+    params['learning_rate'] = 1.0
+    return params
+
+  def test_train_multiple_towers(self):
+    features = np.array([[1.0], [2.0]])
+    labels = np.array([[1.0], [2.0]])
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'features': features}, y=labels, batch_size=2, shuffle=False)
+
+    model_fn = replicate_model_fn.replicate_model_fn(
+        self.model_fn,
+        loss_reduction=losses.Reduction.SUM,
+        devices=['/gpu:0', '/gpu:1'])
+
+    estimator = estimator_lib.Estimator(
+        model_fn=model_fn, model_dir=tempfile.mkdtemp(), params=self.params)
+    estimator.train(train_input_fn, steps=1)
+
+    self.assertEqual(7.0, estimator.get_variable_value('c'))
 
 
 class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
