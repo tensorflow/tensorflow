@@ -1181,21 +1181,6 @@ void ConvertStridedSliceOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "StridedSlice");
   CheckInputsCount(node, tf_import_flags, 4);
 
-  // Only a subset of the full TF op functionality is supported now.
-  if (  // No 64-bit indices.
-      GetDataTypeAttr(node, "Index") != DT_INT32 ||
-      // No dimensionality changes.
-      GetIntAttr(node, "new_axis_mask") != 0 ||
-      GetIntAttr(node, "shrink_axis_mask") != 0 ||
-      // No sparse indices.
-      GetIntAttr(node, "ellipsis_mask") != 0 ||
-      // Only 4D tensors are supported.
-      GetIntAttr(node, "begin_mask") > 15 ||
-      GetIntAttr(node, "end_mask") > 15) {
-    ConvertUnsupportedOperator(node, tf_import_flags, model);
-    return;
-  }
-
   auto* op = new StridedSliceOperator;
   for (const auto& input : node.input()) {
     op->inputs.push_back(input);
