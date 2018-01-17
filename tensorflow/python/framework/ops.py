@@ -2007,10 +2007,6 @@ class Operation(object):
     return Operation._InputList(self._inputs)
 
   @property
-  def _input_dtypes(self):
-    return self._input_types
-
-  @property
   def _input_types(self):
     if self._c_op:
       num_inputs = c_api.TF_OperationNumInputs(self._c_op)

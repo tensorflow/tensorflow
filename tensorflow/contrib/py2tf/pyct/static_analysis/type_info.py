@@ -62,7 +62,11 @@ class Scope(object):
             (self.parent is not None and self.parent.hasval(name)))
 
   def getval(self, name):
-    return self.values[name]
+    if name in self.values:
+      return self.values[name]
+    if self.parent is not None:
+      return self.parent.getval(name)
+    raise KeyError(name)
 
 
 class TypeInfoResolver(gast.NodeTransformer):
@@ -79,9 +83,37 @@ class TypeInfoResolver(gast.NodeTransformer):
     self.function_level = 0
 
   def visit_FunctionDef(self, node):
+    self.scope = Scope(self.scope)
     self.function_level += 1
     self.generic_visit(node)
     self.function_level -= 1
+    self.scope = self.scope.parent
+    return node
+
+  def _visit_block(self, block):
+    self.scope = Scope(self.scope)
+    for i, n in enumerate(block):
+      block[i] = self.generic_visit(n)
+    self.scope = self.scope.parent
+    return block
+
+  def visit_For(self, node):
+    self.generic_visit(node.target)
+    self.generic_visit(node.iter)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
+    return node
+
+  def visit_While(self, node):
+    self.generic_visit(node.test)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
+    return node
+
+  def visit_If(self, node):
+    self.generic_visit(node.test)
+    node.body = self._visit_block(node.body)
+    node.orelse = self._visit_block(node.orelse)
     return node
 
   def visit_Name(self, node):
@@ -150,11 +182,17 @@ class TypeInfoResolver(gast.NodeTransformer):
       # In the example below, object_source is 'tr.train.Optimizer()':
       #   opt = tf.train.Optimizer()
       #   opt.foo()
-      object_source = self.scope.getval(target.value.id)
-      if not anno.hasanno(object_source, 'type'):
-        raise ValueError('Could not determine type of "%s". Is it dynamic?' %
+      if self.scope.hasval(target.value.id):
+        object_source = self.scope.getval(target.value.id)
+        if not anno.hasanno(object_source, 'type'):
+          raise ValueError('Could not determine type of "%s". Is it dynamic?' %
+                           (target.value.id))
+        anno.setanno(target, 'type_fqn', anno.getanno(object_source,
+                                                      'type_fqn'))
+      else:
+        # TODO(mdan): Figure out what could the user do to get past this.
+        raise ValueError('No info on "%s". Is it dynamically built?' %
                          (target.value.id))
-      anno.setanno(target, 'type_fqn', anno.getanno(object_source, 'type_fqn'))
     self.generic_visit(node)
     return node
 

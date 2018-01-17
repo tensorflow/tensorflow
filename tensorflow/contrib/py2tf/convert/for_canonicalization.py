@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,24 +41,53 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
     # TODO(mdan): Distinguish between `for i in n` and `for i in range(n)`
     # Or maybe we should replace range with tf.range?
 
-    def template(loop_iter, target, body, i, n):  # pylint:disable=unused-argument
-      i = 0
-      n = len(loop_iter)  # pylint:disable=undefined-variable
-      while i < n:
-        # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
-        target = loop_iter[i]
-        body  # pylint:disable=pointless-statement
-        i += 1
+    if anno.hasanno(node, 'extra_cond'):
 
-    return templates.replace(
-        template,
-        loop_iter=node.iter,
-        target=node.target,
-        body=node.body,
-        i=gast.Name(
-            self.namer.new_symbol('i', body_scope.referenced), None, None),
-        n=gast.Name(
-            self.namer.new_symbol('n', body_scope.referenced), None, None))
+      def template(loop_iter, target, body, i, n, extra_cond):  # pylint:disable=unused-argument
+        i = 0
+        n = len(loop_iter)  # pylint:disable=undefined-variable
+        while i < n and extra_cond:
+          # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
+          target = loop_iter[i]
+          body  # pylint:disable=pointless-statement
+          i += 1
+
+      return templates.replace(
+          template,
+          loop_iter=node.iter,
+          target=node.target,
+          body=node.body,
+          i=gast.Name(
+              self.namer.new_symbol('i', body_scope.referenced), None, None),
+          n=gast.Name(
+              self.namer.new_symbol('n', body_scope.referenced), None, None),
+          extra_cond=anno.getanno(node, 'extra_cond'))
+    else:
+
+      def template(loop_iter, target, body, i, n):  # pylint:disable=unused-argument
+        i = 0
+        n = len(loop_iter)  # pylint:disable=undefined-variable
+        while i < n:
+          # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
+          target = loop_iter[i]
+          body  # pylint:disable=pointless-statement
+          i += 1
+
+      return templates.replace(
+          template,
+          loop_iter=node.iter,
+          target=node.target,
+          body=node.body,
+          i=gast.Name(
+              self.namer.new_symbol('i', body_scope.referenced), None, None),
+          n=gast.Name(
+              self.namer.new_symbol('n', body_scope.referenced), None, None))
+
+  def visit_Continue(self, node):
+    assert False, 'continue statement should be desugared at this point'
+
+  def visit_Break(self, node):
+    assert False, 'break statement should be desugared at this point'
 
 
 def transform(node, namer):

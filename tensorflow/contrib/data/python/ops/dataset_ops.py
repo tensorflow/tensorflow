@@ -364,7 +364,7 @@ class Dataset(dataset_ops.Dataset):
     When reading a single input file, you can skip elements as follows:
 
     ```python
-    d = tf.contrib.data.TFRecordDataset(FLAGS.input_file)
+    d = tf.data.TFRecordDataset(FLAGS.input_file)
     d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
     d = d.repeat(FLAGS.num_epochs)
     d = d.shuffle(FLAGS.shuffle_buffer_size)
@@ -382,12 +382,12 @@ class Dataset(dataset_ops.Dataset):
       sharding strategy within a complete pipeline:
 
     ```python
-    d = Dataset.list_files(FLAGS.pattern)
+    d = tf.data.Dataset.list_files(FLAGS.pattern)
     d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
     d = d.repeat(FLAGS.num_epochs)
     d = d.shuffle(FLAGS.shuffle_buffer_size)
     d = d.repeat()
-    d = d.interleave(tf.contrib.data.TFRecordDataset,
+    d = d.interleave(tf.data.TFRecordDataset,
                      cycle_length=FLAGS.num_readers, block_length=1)
     d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
     ```
@@ -549,7 +549,7 @@ class Dataset(dataset_ops.Dataset):
     elements are produced. `cycle_length` controls the number of input elements
     that are processed concurrently. If you set `cycle_length` to 1, this
     transformation will handle one input element at a time, and will produce
-    identical results = to @{tf.contrib.data.Dataset.flat_map}. In general,
+    identical results = to @{tf.data.Dataset.flat_map}. In general,
     this transformation will apply `map_func` to `cycle_length` input elements,
     open iterators on the returned `Dataset` objects, and cycle through them
     producing `block_length` consecutive elements from each iterator, and

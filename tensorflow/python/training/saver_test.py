@@ -2660,52 +2660,5 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(2.0, var_dict2["variable2:0"].eval())
 
 
-# TODO(b/64763924): Remove after Jan 1st 2018.
-@test_util.with_c_api
-class LenientNamesTest(test.TestCase):
-
-  def setUp(self):
-    super(LenientNamesTest, self).setUp()
-    os.putenv("TF_SAVER_LENIENT_NAMES", "True")
-
-  def tearDown(self):
-    os.putenv("TF_SAVER_LENIENT_NAMES", "")
-    super(LenientNamesTest, self).tearDown()
-
-  def testSaveRestore(self):
-    save_path = os.path.join(self.get_temp_dir(), "basic_save_restore")
-
-    # Build a graph with 2 parameter nodes, and Save and
-    # Restore nodes for them.
-    v0 = variables.Variable(10.0, name="v0")
-    v1 = variables.Variable(20.0, name="v1")
-    v2 = saver_test_utils.CheckpointedOp(name="v2")
-    v2_init = v2.insert("k1", 30.0)
-    save = saver_module.Saver(
-        {
-            "v0:0": v0,
-            "v1": v1,
-            "v2": v2.saveable
-        }, restore_sequentially=True)
-    init_all_op = [variables.global_variables_initializer(), v2_init]
-
-    with self.test_session() as sess:
-      sess.run(init_all_op)
-      save.save(sess, save_path)
-
-    with self.test_session() as sess:
-      v0 = variables.Variable(-1.0, name="v0")
-      v1 = variables.Variable(-1.0, name="v1")
-      v2 = saver_test_utils.CheckpointedOp(name="v2")
-      save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
-
-      save.restore(sess, save_path)
-      # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
-
-
 if __name__ == "__main__":
   test.main()

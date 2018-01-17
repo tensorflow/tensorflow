@@ -719,20 +719,6 @@ class ComputationBuilder(object):
             _unwrap_data_handle(a), _unwrap_data_handle(b),
             _unwrap_shape(shape)))
 
-  def RngBernoulli(self, mean, dims):
-    """Enqueues an RngBernoulli operation onto the computation.
-
-    Args:
-      mean: A ComputationDataHandle to an F32 scalar specifying the mean.
-      dims: A 1D array-like of nonnegative integers specifying the dimensions.
-
-    Returns: a ComputationDataHandle to the generated array of U32 values.
-    """
-    shape = Shape(np.dtype(np.uint32), dims)
-    return _wrap_data_handle(
-        self._client.RngBernoulli(
-            _unwrap_data_handle(mean), _unwrap_shape(shape)))
-
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
 
