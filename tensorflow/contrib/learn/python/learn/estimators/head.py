@@ -2047,10 +2047,10 @@ def _classification_output_alternatives(head_name, problem_type,
                                         label_keys=None):
   """Creates a func to generate output alternatives for classification.
 
-  Servo expects classes to be a string tensor, and have the same dimensions
-  as the probabilities tensor. It should contain the labels of the corresponding
-  entries in probabilities. This function creates a new classes tensor that
-  satisfies these conditions and can be exported.
+  TensorFlow Serving expects classes to be a string tensor, and have the same
+  dimensions as the probabilities tensor. It should contain the labels of the
+  corresponding entries in probabilities. This function creates a new classes
+  tensor that satisfies these conditions and can be exported.
 
   Args:
     head_name: Name of the head.

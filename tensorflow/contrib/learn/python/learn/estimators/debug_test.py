@@ -564,7 +564,7 @@ class DebugClassifierTest(test.TestCase):
     self.assertEqual(list(predictions1), list(predictions2))
 
   def testExport(self):
-    """Tests export model for servo."""
+    """Tests export model for TensorFlow Serving."""
 
     def input_fn():
       return {

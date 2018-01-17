@@ -620,7 +620,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertLess(loss_weighted, loss_unweighted)
 
   def testExport(self):
-    """Tests that export model for servo works."""
+    """Tests that export model for TensorFlow Serving works."""
 
     def input_fn():
       return {

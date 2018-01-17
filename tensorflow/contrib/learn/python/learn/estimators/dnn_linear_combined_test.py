@@ -896,7 +896,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
       classifier.get_variable_value(name)
 
   def testExport(self):
-    """Tests export model for servo."""
+    """Tests export model for TensorFlow Serving."""
 
     def input_fn():
       return {
@@ -1535,7 +1535,7 @@ class DNNLinearCombinedRegressorTest(test.TestCase):
           })
 
   def testExport(self):
-    """Tests export model for servo."""
+    """Tests export model for TensorFlow Serving."""
     labels = [1., 0., 0.2]
 
     def _input_fn(num_epochs=None):

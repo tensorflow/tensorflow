@@ -267,8 +267,8 @@ class SavedModelExportUtilsTest(test.TestCase):
   def test_build_standardized_signature_def_classification5(self):
     """Tests multiple output tensors that include integer classes and scores.
 
-    Integer classes are dropped out, because Servo classification can only serve
-    string classes. So, only scores are present in the signature.
+    Integer classes are dropped out, because TensorFlow Serving classification
+    can only serve string classes. So, only scores are present in the signature.
     """
     input_tensors = {
         "input-1":
@@ -311,8 +311,8 @@ class SavedModelExportUtilsTest(test.TestCase):
   def test_build_standardized_signature_def_classification6(self):
     """Tests multiple output tensors that with integer classes and no scores.
 
-    Servo classification cannot serve integer classes, but no scores are
-    available. So, we fall back to predict signature.
+    TensorFlow Serving classification cannot serve integer classes, but no
+    scores are available. So, we fall back to predict signature.
     """
     input_tensors = {
         "input-1":
@@ -813,11 +813,11 @@ class SavedModelExportUtilsTest(test.TestCase):
       return post_export_path
 
     base_export_strategy = export_strategy_lib.ExportStrategy(
-        "Servo", _base_export_fn)
+        "TFServing", _base_export_fn)
 
     final_export_strategy = saved_model_export_utils.extend_export_strategy(
-        base_export_strategy, _post_export_fn, "Servo2")
-    self.assertEqual(final_export_strategy.name, "Servo2")
+        base_export_strategy, _post_export_fn, "TFServing2")
+    self.assertEqual(final_export_strategy.name, "TFServing2")
 
     test_estimator = TestEstimator()
     tmpdir = tempfile.mkdtemp()
@@ -843,11 +843,11 @@ class SavedModelExportUtilsTest(test.TestCase):
       return post_export_path
 
     base_export_strategy = export_strategy_lib.ExportStrategy(
-        "Servo", _base_export_fn)
+        "TFServing", _base_export_fn)
 
     final_export_strategy = saved_model_export_utils.extend_export_strategy(
         base_export_strategy, _post_export_fn)
-    self.assertEqual(final_export_strategy.name, "Servo")
+    self.assertEqual(final_export_strategy.name, "TFServing")
 
     test_estimator = TestEstimator()
     tmpdir = tempfile.mkdtemp()
@@ -870,7 +870,7 @@ class SavedModelExportUtilsTest(test.TestCase):
       return tempfile.mkdtemp()
 
     base_export_strategy = export_strategy_lib.ExportStrategy(
-        "Servo", _base_export_fn)
+        "TFServing", _base_export_fn)
 
     final_export_strategy = saved_model_export_utils.extend_export_strategy(
         base_export_strategy, _post_export_fn)

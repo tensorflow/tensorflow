@@ -136,7 +136,7 @@ def _get_classification_scores(output_tensors):
 def _get_classification_classes(output_tensors):
   classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
   if classes is not None and classes.dtype != dtypes.string:
-    # Servo classification can only serve string classes.
+    # TensorFlow Serving classification can only serve string classes.
     return None
   return classes
 
@@ -465,7 +465,7 @@ def make_export_strategy(serving_input_fn,
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('TFServing', export_fn)
 
 
 def make_parsing_export_strategy(feature_columns,
