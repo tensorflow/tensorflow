@@ -348,8 +348,7 @@ class RdmaTensorResponse {
   void Clone(const Tensor& in, const TensorProto& proto, bool is_dead);
   void Send(const Tensor& in, const TensorProto& proto, bool is_dead,
             const Status& status);
-  bool TensorMetaDataChanged(const Tensor& in, bool is_dead,
-                             size_t tensor_bytes);
+  bool TensorMetaDataChanged(const Tensor& in, bool is_dead);
   Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                            Device** src_dev);
   void SendMetaData(const Tensor& in, const TensorProto& proto, bool is_dead);
@@ -362,6 +361,7 @@ class RdmaTensorResponse {
   void* src_addr_ = nullptr;
   ibv_mr* mr_ = nullptr;
   uint64_t checksum_ = 0;
+  bool meta_data_changed_ = false;
 
   // Re-item:
   TensorProto* proto_ = nullptr;

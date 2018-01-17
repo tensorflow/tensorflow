@@ -953,6 +953,16 @@ static void ValidateChecksum(uint64_t expected, uint64_t actual,
   }
 }
 
+// Sync the 'done' operation on the GPU stream, but without all the data
+// copying.
+static void StreamGPUOp(Device* gpu_device,
+                        const DeviceContext* device_context,
+                        StatusCallback done) {
+  Tensor dummy1, dummy2;
+  GPUUtil::CopyGPUTensorToCPU(
+      gpu_device, device_context, &dummy1, &dummy2, done);
+}
+
 RdmaTensorResponse* RdmaChannel::AddTensorResponse(const RdmaMessage& rm) {
   mutex_lock lock{mu_};
   auto it =
@@ -1029,7 +1039,10 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
     return;
   }
 
+  meta_data_changed_ = TensorMetaDataChanged(in, is_dead);
 #ifdef RDMA_DATA_VALIDATION
+  // Always send a meta data message with the source checksum
+  meta_data_changed_ = rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
   checksum_ = Checksum(src_dev, send_args.device_context, in);
 #endif
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
@@ -1045,12 +1058,30 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
         << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
 
     if (can_memcpy) {
+      // If the tensor is located on a GDR compatible GPU, there is no need to
+      // copy it. We can send directly from the source, just need to make sure
+      // we are in sync with the GPU stream.
+      // If the tensor's meta-data changed however, we will need to clone it,
+      // so anyway we'll have to copy it from GPU to CPU first. If at some
+      // point in time Clone() is changed to only save a shallow copy, we can
+      // skip the copy here as well.
+      if ((in.TotalBytes() > 0) && !meta_data_changed_ &&
+          (RdmaMemoryMgr::Singleton().FindMemoryRegion(
+              (void*)DMAHelper::base(&in), in.TotalBytes()) != nullptr)) {
+        StreamGPUOp(src_dev, send_dev_context,
+                    [this, in, proto, is_dead](const Status& s) {
+                      Send(in, proto, is_dead, s);
+                    });
+        return;
+      }
+
+      // The tensor must be copied from GPU to CPU, because either:
+      // 1. The tensor is located on a non GDR compatible GPU.
+      // 2. The tensor's meta-data has changed.
       Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
       copy = Tensor(alloc, in.dtype(), in.shape());
-
       CountCopies(rm_.name_, (void*)DMAHelper::base(&in),
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
-
       GPUUtil::CopyGPUTensorToCPU(
           src_dev, send_dev_context, &in, &copy,
           [this, copy, proto, is_dead](const Status& s) {
@@ -1082,13 +1113,9 @@ void RdmaTensorResponse::Send(const Tensor& in, const TensorProto& proto,
     return;
   }
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
-  size_t tensor_bytes = (can_memcpy) ? in.TotalBytes() : proto.ByteSize();
-  bool meta_data_changed = TensorMetaDataChanged(in, is_dead, tensor_bytes);
-#ifdef RDMA_DATA_VALIDATION
-  // Always send meta-data
-  meta_data_changed = rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
-#endif
-  if (meta_data_changed) {
+  bool proto_size_changed = (!can_memcpy) &&
+                            (proto.ByteSize() != rm_.tensor_bytes_);
+  if (meta_data_changed_ || proto_size_changed) {
     Clone(in, proto, is_dead);
     SendMetaData(in, proto, is_dead);
   } else {
@@ -1096,10 +1123,9 @@ void RdmaTensorResponse::Send(const Tensor& in, const TensorProto& proto,
   }
 }
 
-bool RdmaTensorResponse::TensorMetaDataChanged(const Tensor& in, bool is_dead,
-                                               size_t tensor_bytes) {
+bool RdmaTensorResponse::TensorMetaDataChanged(const Tensor& in, bool is_dead) {
   return (rm_.data_type_ != in.dtype()) || (rm_.tensor_shape_ != in.shape()) ||
-         (rm_.is_dead_ != is_dead) || (rm_.tensor_bytes_ != tensor_bytes);
+         (rm_.is_dead_ != is_dead);
 }
 
 void RdmaTensorResponse::Clone(const Tensor& in, const TensorProto& proto,
