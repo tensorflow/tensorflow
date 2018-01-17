@@ -2161,7 +2161,7 @@ def _conv(args, filter_size, num_features, bias, bias_start=0.0):
   # Now the computation.
   kernel = vs.get_variable(
       "kernel",
-      filter_size + [total_arg_size_depth, num_features],
+      filter_size + (total_arg_size_depth, num_features),
       dtype=dtype)
   if len(args) == 1:
     res = conv_op(args[0],
