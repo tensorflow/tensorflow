@@ -84,17 +84,27 @@ class TFExampleDecoderTest(test.TestCase):
     Returns:
       image: the generated image.
       example: a TF-example with a feature key 'image/encoded' set to the
-        serialized image and a feature key 'image/format' set to the image
-        encoding format ['jpeg', 'JPEG', 'png', 'PNG', 'raw'].
+        serialized image, a feature key 'image/format' set to the image
+        encoding format ['jpeg', 'JPEG', 'png', 'PNG', 'raw'], the feature keys
+        'image/height', 'image/width', and 'image/channels' set to the three
+        respective shape components, and 'image/shape' to the image shape.
     """
+    shape_array = np.asarray(image_shape)
     num_pixels = image_shape[0] * image_shape[1] * image_shape[2]
     image = np.linspace(
         0, num_pixels - 1, num=num_pixels).reshape(image_shape).astype(np.uint8)
     tf_encoded = self._Encoder(image, image_format)
-    example = example_pb2.Example(features=feature_pb2.Features(feature={
-        'image/encoded': self._EncodedBytesFeature(tf_encoded),
-        'image/format': self._StringFeature(image_format)
-    }))
+    feature_dict = {
+      'image/encoded': self._EncodedBytesFeature(tf_encoded),
+      'image/format': self._StringFeature(image_format),
+      'image/shape': self._EncodedInt64Feature(shape_array),
+      'image/height': self._EncodedInt64Feature(shape_array[0:1]),
+      'image/width': self._EncodedInt64Feature(shape_array[1:2]),
+    }
+    if len(image_shape) > 2:
+      feature_dict['image/channels'] = self._EncodedInt64Feature(shape_array[2:3])
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature=feature_dict))
 
     return image, example.SerializeToString()
 
@@ -133,17 +143,6 @@ class TFExampleDecoderTest(test.TestCase):
       # We need to recast them here to avoid some issues with uint8.
       return decoded_image.astype(np.float32)
 
-  def testDecodeExampleWithJpegEncoding(self):
-    image_shape = (2, 3, 3)
-    image, serialized_example = self.GenerateImage(
-        image_format='jpeg', image_shape=image_shape)
-
-    decoded_image = self.RunDecodeExample(
-        serialized_example, tfexample_decoder.Image(), image_format='jpeg')
-
-    # Need to use a tolerance of 1 because of noise in the jpeg encode/decode
-    self.assertAllClose(image, decoded_image, atol=1.001)
-
   def testDecodeExampleWithJPEGEncoding(self):
     test_image_channels = [1, 3]
     for channels in test_image_channels:
@@ -160,18 +159,64 @@ class TFExampleDecoderTest(test.TestCase):
       self.assertAllClose(image, decoded_image, atol=1.001)
 
   def testDecodeExampleWithNoShapeInfo(self):
-    test_image_channels = [1, 3]
-    for channels in test_image_channels:
-      image_shape = (2, 3, channels)
+    test_image_shapes = [
+      (2, 3),
+      (2, 3, 1),
+      (2, 3, 3),
+    ]
+    for image_shape in test_image_shapes:
       _, serialized_example = self.GenerateImage(
-          image_format='jpeg', image_shape=image_shape)
+        image_format='jpeg', image_shape=image_shape)
+
+      if len(image_shape) == 3:
+        channels = image_shapel[2]
+      else:
+        channels = None
 
       tf_decoded_image = self.DecodeExample(
           serialized_example,
           tfexample_decoder.Image(
               shape=None, channels=channels),
           image_format='jpeg')
-      self.assertEqual(tf_decoded_image.get_shape().ndims, 3)
+      self.assertEqual(tf_decoded_image.get_shape().ndims, len(image_shape))
+
+  def testDecodeExampleWithShapeKeys(self):
+    test_image_shapes = [
+      (2, 3),
+      (2, 3, 1),
+      (2, 3, 3),
+    ]
+    for image_shape in test_image_shapes:
+      _, serialized_example = self.GenerateImage(
+        image_format='jpeg', image_shape=image_shape)
+
+      tf_decoded_image = self.DecodeExample(
+        serialized_example,
+        tfexample_decoder.Image(
+          shape_keys='image/shape', channels=None),
+        image_format='jpeg')
+      self.assertEqual(tf_decoded_image.get_shape().ndims, len(image_shape))
+
+  def testDecodeExampleWithShapeKeysList(self):
+    test_image_shapes = [
+      (2, 3),
+      (2, 3, 1),
+      (2, 3, 3),
+    ]
+    for image_shape in test_image_shapes:
+      _, serialized_example = self.GenerateImage(
+        image_format='jpeg', image_shape=image_shape)
+
+      if len(image_shape) == 3:
+        shape_keys = ['image/height', 'image/width', 'image/channels']
+      else:
+        shape_keys = ['image/height', 'image/width']
+      tf_decoded_image = self.DecodeExample(
+        serialized_example,
+        tfexample_decoder.Image(
+          shape_keys=shape_keys, channels=None),
+        image_format='jpeg')
+      self.assertEqual(tf_decoded_image.get_shape().ndims, len(image_shape))
 
   def testDecodeExampleWithPngEncoding(self):
     test_image_channels = [1, 3, 4]
