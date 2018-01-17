@@ -173,6 +173,17 @@ tf_py_test(
 )
 
 py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["python/learn/export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "graph_actions_test",
     size = "small",
     srcs = ["python/learn/graph_actions_test.py"],

@@ -457,6 +457,14 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
+int64 HloModule::instruction_count() const {
+  int64 n = 0;
+  for (const auto& computation : computations_) {
+    n += computation->instruction_count();
+  }
+  return n;
+}
+
 std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the

@@ -281,11 +281,6 @@ class FisherEstimator(object):
 
     return thunk
 
-  @property
-  def inv_updates_dict(self):
-    """Returns a dictionary mapping strings to inv_update_ops."""
-    return {op.name: op for op in self.inv_update_ops}
-
   def _get_grads_lists_gradients(self, tensors):
     grads_flat = gradients_impl.gradients(
         self._layers.total_sampled_loss(),
