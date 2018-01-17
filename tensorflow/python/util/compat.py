@@ -108,6 +108,20 @@ def as_str_any(value):
     return str(value)
 
 
+def as_path_repr(path):
+  """Returns the file system path representation of a `PathLike` object, else as it is.
+
+  Args:
+    path: An object that can be converted to path representation.
+
+  Returns:
+    A `str` object.
+  """
+  if hasattr(path, "__fspath__"):
+    path = as_str_any(path.__fspath__())
+  return path
+
+
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we
 # need to check them specifically.  The same goes from Real and Complex.
 integral_types = (_numbers.Integral, _np.integer)

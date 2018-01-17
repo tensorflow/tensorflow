@@ -27,6 +27,7 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import compat
 
 
 _USE_DEFAULT = object()
@@ -399,7 +400,8 @@ class RunConfig(object):
 
     Args:
       model_dir: directory where model parameters, graph, etc are saved. If
-        `None`, will use a default value set by the Estimator.
+        `PathLike` object, the path will be resolved. If `None`, will use a
+        default value set by the Estimator.
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
@@ -442,7 +444,7 @@ class RunConfig(object):
     if tf_config:
       logging.info('TF_CONFIG environment variable: %s', tf_config)
 
-    model_dir = _get_model_dir(tf_config, model_dir)
+    model_dir = _get_model_dir(tf_config, compat.as_path_repr(model_dir))
 
     RunConfig._replace(
         self,

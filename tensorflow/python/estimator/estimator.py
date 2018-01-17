@@ -128,9 +128,10 @@ class Estimator(object):
 
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model. If `None`, the model_dir in
-        `config` will be used if set. If both are set, they must be same. If
-        both are `None`, a temporary directory will be used.
+        continue training a previously saved model. If `PathLike` object, the
+        path will be resolved. If `None`, the model_dir in `config` will be used
+        if set. If both are set, they must be same. If both are `None`, a
+        temporary directory will be used.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
@@ -158,6 +159,7 @@ class Estimator(object):
       self._config = config
 
     # Model directory.
+    model_dir = compat.as_path_repr(model_dir)
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
         # TODO(alanyee): remove this suppression after it is no longer needed
