@@ -5487,8 +5487,12 @@ class name_scope(object):  # pylint: disable=invalid-name
       g = _get_graph_from_inputs(self._values)
       self._g_manager = g.as_default()
       self._g_manager.__enter__()
-      self._name_scope = g.name_scope(self._name)
-      return self._name_scope.__enter__()
+      try:
+        self._name_scope = g.name_scope(self._name)
+        return self._name_scope.__enter__()
+      except:
+        self._g_manager.__exit__(*sys.exc_info())
+        raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     if self._in_eager_mode:

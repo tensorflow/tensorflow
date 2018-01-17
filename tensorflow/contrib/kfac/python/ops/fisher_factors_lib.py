@@ -41,6 +41,9 @@ _allowed_symbols = [
     "ConvOutputKroneckerFactor",
     "ConvDiagonalFactor",
     "set_global_constants",
+    "maybe_colocate_with",
+    "compute_cov",
+    "append_homog"
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

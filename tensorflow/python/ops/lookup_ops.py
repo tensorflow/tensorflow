@@ -528,7 +528,7 @@ class TextFileInitializer(TableInitializerBase):
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if constant_op.is_constant(filename):
+    if context.in_graph_mode() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 

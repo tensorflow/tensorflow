@@ -28,8 +28,8 @@ using flatbuffers::Vector;
 
 // These are types that exist in TF Mini but don't have a correspondence
 // in TF Lite.
-static const ArrayDataType kUnsupportedTocoTypes[] = {
-    ArrayDataType::kNone, ArrayDataType::kBool, ArrayDataType::kInt64};
+static const ArrayDataType kUnsupportedTocoTypes[] = {ArrayDataType::kNone,
+                                                      ArrayDataType::kBool};
 
 // These are TF Lite types for which there is no correspondence in TF Mini.
 static const ::tflite::TensorType kUnsupportedTfLiteTypes[] = {
@@ -70,6 +70,7 @@ TEST(DataType, SupportedTypes) {
   std::vector<std::pair<ArrayDataType, ::tflite::TensorType>> testdata = {
       {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
+      {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, DataType::Serialize(x.first));

@@ -173,6 +173,10 @@ class ReferenceUtil {
       const Array2D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
+      const Array3D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
@@ -195,6 +199,7 @@ class ReferenceUtil {
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,

@@ -132,6 +132,14 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+} TfLiteSubParams;
+
+typedef struct {
+  TfLiteFusedActivation activation;
+} TfLiteDivParams;
+
+typedef struct {
+  TfLiteFusedActivation activation;
 } TfLiteL2NormParams;
 
 typedef struct {

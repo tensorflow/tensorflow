@@ -1656,23 +1656,22 @@ class InitializeTableFromFileOpTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInitializeStringTable(self):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
+    default_value = -1
+    table = lookup.HashTable(
+        lookup.TextFileInitializer(vocabulary_file, dtypes.string,
+                                   lookup.TextFileIndex.WHOLE_LINE,
+                                   dtypes.int64,
+                                   lookup.TextFileIndex.LINE_NUMBER),
+        default_value)
+    self.evaluate(table.init)
 
-    with self.test_session():
-      default_value = -1
-      table = lookup.HashTable(
-          lookup.TextFileInitializer(vocabulary_file, dtypes.string,
-                                     lookup.TextFileIndex.WHOLE_LINE,
-                                     dtypes.int64,
-                                     lookup.TextFileIndex.LINE_NUMBER),
-          default_value)
-      table.init.run()
+    output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
 
-      output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
-
-      result = output.eval()
-      self.assertAllEqual([0, 1, -1], result)
+    result = self.evaluate(output)
+    self.assertAllEqual([0, 1, -1], result)
 
   def testInitializeInt64Table(self):
     vocabulary_file = self._createVocabFile(

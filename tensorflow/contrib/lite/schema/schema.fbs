@@ -111,6 +111,8 @@ enum BuiltinOperator : byte {
   SPACE_TO_BATCH_ND = 38,
   TRANSPOSE = 39,
   MEAN = 40,
+  SUB = 41,
+  DIV = 42,
 }
 
 // Options for the builtin operators.
@@ -142,6 +144,8 @@ union BuiltinOptions {
   SpaceToBatchNDOptions,
   TransposeOptions,
   MeanOptions,
+  SubOptions,
+  DivOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -286,6 +290,14 @@ table SkipGramOptions {
 
 table SpaceToDepthOptions {
   block_size: int;
+}
+
+table SubOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+table DivOptions {
+  fused_activation_function:ActivationFunctionType;
 }
 
 enum CombinerType : byte {

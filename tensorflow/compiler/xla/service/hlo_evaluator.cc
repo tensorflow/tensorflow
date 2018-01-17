@@ -1462,8 +1462,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           std::fill(operand_index.begin(), operand_index.end(), 0);
 
           do {
-            // Set curr_val to 0 if out of bound (padded).
-            ReturnT curr_val = static_cast<ReturnT>(0);
             bool out_of_bound = false;
             for (int i = 0; i < operand_index.size(); ++i) {
               operand_index[i] =
@@ -1476,23 +1474,25 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
               }
             }
             if (!out_of_bound) {
-              curr_val = operand_literal.Get<ReturnT>(operand_index);
+              auto curr_val = operand_literal.Get<ReturnT>(operand_index);
+
+              // Evaluate computation with specified literal operands.
+              const auto curr_val_literal =
+                  Literal::CreateR0<ReturnT>(curr_val);
+              const auto result_val_literal =
+                  Literal::CreateR0<ReturnT>(result_val);
+              const std::vector<const Literal*> args = {
+                  curr_val_literal.get(), result_val_literal.get()};
+              std::unique_ptr<Literal> computed_result =
+                  embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                      .ConsumeValueOrDie();
+
+              // Clear visit states so that the we can use the evaluate again on
+              // the same computation.
+              embedded_evaluator.ResetVisitStates();
+
+              result_val = computed_result->Get<ReturnT>({});
             }
-            // Evaluate computation with specified literal operands.
-            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            const auto result_val_literal =
-                Literal::CreateR0<ReturnT>(result_val);
-            const std::vector<const Literal*> args = {curr_val_literal.get(),
-                                                      result_val_literal.get()};
-            std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*function, args)
-                    .ConsumeValueOrDie();
-
-            // Clear visit states so that the we can use the evaluate again on
-            // the same computation.
-            embedded_evaluator.ResetVisitStates();
-
-            result_val = computed_result->Get<ReturnT>({});
           } while (IndexUtil::BumpIndices(window_shape, &window_index));
 
           return result_val;

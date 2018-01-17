@@ -157,6 +157,14 @@ class LocalComputationBuilder {
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       int64 dimension);
 
+  ComputationDataHandle SelectAndScatterWithGeneralPadding(
+      const ComputationDataHandle& operand, const LocalComputation& select,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
+      const ComputationDataHandle& source,
+      const ComputationDataHandle& init_value, const LocalComputation& scatter);
+
   ComputationDataHandle Select(const ComputationDataHandle& pred,
                                const ComputationDataHandle& on_true,
                                const ComputationDataHandle& on_false);
@@ -203,6 +211,14 @@ class LocalComputationBuilder {
       const ComputationDataHandle& init_value,
       const LocalComputation& local_computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+
+  ComputationDataHandle ReduceWindowWithGeneralPadding(
+      const ComputationDataHandle& operand,
+      const ComputationDataHandle& init_value,
+      const LocalComputation& local_computation,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding);
 
   ComputationDataHandle RngNormal(const ComputationDataHandle& mu,
                                   const ComputationDataHandle& sigma,

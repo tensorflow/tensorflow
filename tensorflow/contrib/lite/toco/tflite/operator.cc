@@ -161,6 +161,46 @@ class SpaceToBatchND
   }
 };
 
+class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
+                                   ::tflite::BuiltinOptions_SubOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto activation_function =
+        ActivationFunction::Serialize(op.fused_activation_function);
+    return ::tflite::CreateSubOptions(*builder, activation_function);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->fused_activation_function =
+        ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+};
+
+class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
+                                   ::tflite::BuiltinOptions_DivOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto activation_function =
+        ActivationFunction::Serialize(op.fused_activation_function);
+    return ::tflite::CreateDivOptions(*builder, activation_function);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->fused_activation_function =
+        ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+};
+
 class BatchToSpaceND
     : public BuiltinOperator<BatchToSpaceNDOperator,
                              ::tflite::BatchToSpaceNDOptions,
@@ -669,6 +709,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
 
   // Builtin Operators.
   ops.emplace_back(new Add(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
+  ops.emplace_back(new Div(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
+  ops.emplace_back(new Sub(::tflite::BuiltinOperator_SUB, OperatorType::kSub));
   ops.emplace_back(new AveragePool(::tflite::BuiltinOperator_AVERAGE_POOL_2D,
                                    OperatorType::kAveragePool));
   ops.emplace_back(
@@ -727,9 +769,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
       "RSQRT", OperatorType::kTensorFlowRsqrt));
-  ops.emplace_back(
-      new SimpleOperator<TensorFlowRsqrtOperator>("DIV", OperatorType::kDiv));
-
   // Simple Operators.
   ops.emplace_back(new SimpleOperator<DequantizeOperator>(
       "DEQUANTIZE", OperatorType::kDequantize));

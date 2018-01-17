@@ -43,7 +43,7 @@ void downsize(T* out, uint8_t* in, int image_height, int image_width,
   }
 }
 
-}  // label_image
-}  // tflite
+}  // namespace label_image
+}  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
