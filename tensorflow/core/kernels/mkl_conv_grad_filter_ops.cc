@@ -467,6 +467,13 @@ class MklConv2DCustomBackpropFilterOp :
     return filter_tf_shape;
   }
 
+  TensorShape GetOutputTfShape(const TensorShape& input_shape,
+                               const TensorShape& filter_shape,
+                               const TensorShape& outbprop_shape) {
+    // Shape of output of Conv2DBackpropFilter is same as shape of filter.
+    return filter_shape;
+  }
+
   const memory::dims& GetOutputDims(const memory::dims& fwd_input_dims,
                                     const memory::dims& fwd_filter_dims) {
     // Shape of output of Conv2DBackpropFilter is same as shape of filter.
