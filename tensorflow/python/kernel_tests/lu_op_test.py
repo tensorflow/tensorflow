@@ -40,21 +40,20 @@ class LuOpTest(test.TestCase):
         tol = 1e-5
       else:
         tol = 1e-12
-      for adjoint in False, True:
-        if np_type is [np.float32, np.float64]:
-          a = x.real().astype(np_type) 
-        else:
-          a = x.astype(np_type) 
-        L, U, P, Q = linalg_ops.lu(a)
-        pinv = linalg_ops.matrix_inverse(P)
-        qinv = linalg_ops.matrix_inverse(Q)
-        pL = math_ops.matmul(pinv, L)
-        pLU = math_ops.matmul(pL, U)
-        pLUq = math_ops.matmul(pLU, qinv)
-        with self.test_session() as sess:
-          out = pLUq.eval()
-        self.assertEqual(a.shape, out.shape)
-        self.assertAllClose(a, out, atol=tol, rtol=tol)
+      if np_type is [np.float32, np.float64]:
+        a = x.real().astype(np_type)
+      else:
+        a = x.astype(np_type)
+      l, u, p, q = linalg_ops.lu(a)
+      pinv = linalg_ops.matrix_inverse(p)
+      qinv = linalg_ops.matrix_inverse(q)
+      pl = math_ops.matmul(pinv, l)
+      plu = math_ops.matmul(pl, u)
+      pluq = math_ops.matmul(plu, qinv)
+      with self.test_session() as sess:
+        out = pluq.eval()
+      self.assertEqual(a.shape, out.shape)
+      self.assertAllClose(a, out, atol=tol, rtol=tol)
 
   def _generateMatrix(self, m, n):
     matrix = (np.random.normal(-5, 5,
