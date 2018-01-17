@@ -752,11 +752,10 @@ def cast(x, dtype, name=None):
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
-      x = ops.convert_to_tensor(x, name="x")
+      x = ops.convert_to_tensor(x, name="Sx")
       if x.dtype.base_dtype == base_type:
         return x
       return gen_math_ops.cast(x, base_type, name=name)
-
 
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
@@ -766,7 +765,7 @@ def saturate_cast(value, dtype, name=None):
   applies the appropriate clamping before the cast.
 
   Args:
-    value: A `Tensor`.
+    value: A `Tensor` or 'SparseTensor'.
     dtype: The desired output `DType`.
     name: A name for the operation (optional).
 
@@ -776,27 +775,33 @@ def saturate_cast(value, dtype, name=None):
   # When casting to a type with smaller representable range, clamp.
   # Note that this covers casting to unsigned types as well.
   with ops.name_scope(name, "saturate_cast", [value]) as name:
-    value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
-    if value.dtype.min < dtype.min:
-      value = gen_math_ops.maximum(value,
-                                   ops.convert_to_tensor(
-                                       dtype.min, dtype=value.dtype,
-                                       name="min"))
-    if value.dtype.max > dtype.max:
-      value = gen_math_ops.minimum(value,
-                                   ops.convert_to_tensor(
-                                       dtype.max, dtype=value.dtype,
-                                       name="max"))
-    return cast(value, dtype, name=name)
+    if isinstance(value, sparse_tensor.SparseTensor):
+      #SparseTensor execute
+      values_cast = saturate_cast(value.values, dtype, name=name)
+      return sparse_tensor.SparseTensor(value.indices, values_cast, value.dense_shape)
+    else:
+      value = ops.convert_to_tensor(value, name="value")
+      if value.dtype.min < dtype.min:
+        value = gen_math_ops.maximum(value,
+                                     ops.convert_to_tensor(
+                                         dtype.min, dtype=value.dtype,
+                                         name="min"))
+      if value.dtype.max > dtype.max:
+        value = gen_math_ops.minimum(value,
+                                     ops.convert_to_tensor(
+                                         dtype.max, dtype=value.dtype,
+                                         name="max"))
+      return cast(value, dtype, name=name)
 
 
-def to_float(x, name="ToFloat"):
+def to_float(x, name="ToFloat", mode="unsafe"):
   """Casts a tensor to type `float32`.
 
   Args:
     x: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    mode: "safe"/"unsafe" mode setting
 
   Returns:
     A `Tensor` or `SparseTensor` with same shape as `x` with type `float32`.
@@ -804,15 +809,19 @@ def to_float(x, name="ToFloat"):
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
   """
-  return cast(x, dtypes.float32, name=name)
+  if mode == "safe":
+    return saturate_cast(x, dtypes.float32, name=name)
+  else:
+    return cast(x, dtypes.float32, name=name)
 
 
-def to_double(x, name="ToDouble"):
+def to_double(x, name="ToDouble", mode="unsafe"):
   """Casts a tensor to type `float64`.
 
   Args:
     x: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    mode: "safe"/"unsafe" mode setting
 
   Returns:
     A `Tensor` or `SparseTensor` with same shape as `x` with type `float64`.
@@ -820,15 +829,19 @@ def to_double(x, name="ToDouble"):
   Raises:
     TypeError: If `x` cannot be cast to the `float64`.
   """
-  return cast(x, dtypes.float64, name=name)
+  if mode == "safe":
+    return saturate_cast(x,dtypes.float64, name=name)
+  else:
+    return cast(x, dtypes.float64, name=name)
 
 
-def to_int32(x, name="ToInt32"):
+def to_int32(x, name="ToInt32", mode="unsafe"):
   """Casts a tensor to type `int32`.
 
   Args:
     x: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    mode: "safe"/"unsafe" mode setting
 
   Returns:
     A `Tensor` or `SparseTensor` with same shape as `x` with type `int32`.
@@ -836,15 +849,20 @@ def to_int32(x, name="ToInt32"):
   Raises:
     TypeError: If `x` cannot be cast to the `int32`.
   """
-  return cast(x, dtypes.int32, name=name)
+
+  if mode == "safe":
+    return saturate_cast(x,dtypes.int32, name=name)
+  else:
+    return cast(x, dtypes.int32, name=name)
 
 
-def to_int64(x, name="ToInt64"):
+def to_int64(x, name="ToInt64", mode="unsafe"):
   """Casts a tensor to type `int64`.
 
   Args:
     x: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    mode: "safe"/"unsafe" mode setting
 
   Returns:
     A `Tensor` or `SparseTensor` with same shape as `x` with type `int64`.
@@ -852,15 +870,20 @@ def to_int64(x, name="ToInt64"):
   Raises:
     TypeError: If `x` cannot be cast to the `int64`.
   """
-  return cast(x, dtypes.int64, name=name)
+
+  if mode == "safe":
+    return saturate_cast(x,dtypes.int64, name=name)
+  else:
+    return cast(x, dtypes.int64, name=name)
 
 
-def to_bfloat16(x, name="ToBFloat16"):
+def to_bfloat16(x, name="ToBFloat16", mode="unsafe"):
   """Casts a tensor to type `bfloat16`.
 
   Args:
     x: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    mode: "safe"/"unsafe" mode setting
 
   Returns:
     A `Tensor` or `SparseTensor` with same shape as `x` with type `bfloat16`.
@@ -868,7 +891,10 @@ def to_bfloat16(x, name="ToBFloat16"):
   Raises:
     TypeError: If `x` cannot be cast to the `bfloat16`.
   """
-  return cast(x, dtypes.bfloat16, name=name)
+  if mode == "safe":
+    return saturate_cast(x,dtypes.bfloat16, name=name)
+  else:
+    return cast(x, dtypes.bfloat16, name=name)
 
 
 ops.Tensor._override_operator("__neg__", gen_math_ops._neg)
