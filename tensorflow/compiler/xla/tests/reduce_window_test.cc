@@ -138,6 +138,16 @@ TEST_P(ReduceWindowTest, Min3In5Stride2) {
                            ErrorSpec(0.00001));
 }
 
+TEST_P(ReduceWindowTest, Min3In5Stride1WithSamePadding) {
+  const auto input = CreateConstantFromLiteral(
+      *Literal::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);
+  ReduceWindowMin(input, /*window_dimensions=*/{3}, /*window_strides=*/{1},
+                  Padding::kSame);
+  ComputeAndCompareLiteral(&builder_,
+                           *Literal::CreateR1<float>({1000, 100, 10, 1, 1}), {},
+                           ErrorSpec(0.00001));
+}
+
 XLA_TEST_P(ReduceWindowTest, ZeroElementSmall) {
   Array4D<float> input_array(1, 0, 2, 1);
   const auto input = CreateConstantFromArray(input_array, &builder_);
@@ -789,7 +799,7 @@ INSTANTIATE_TEST_CASE_P(
 
 class R4ReduceWindowLargeTest : public R4ReduceWindowTest {};
 
-XLA_TEST_P(R4ReduceWindowLargeTest, DoIt) { DoIt(); }
+XLA_TEST_P(R4ReduceWindowLargeTest, DISABLED_ON_INTERPRETER(DoIt)) { DoIt(); }
 
 // Test cases that are large/slow/failed.
 const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
