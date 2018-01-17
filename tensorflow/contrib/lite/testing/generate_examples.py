@@ -687,7 +687,7 @@ def make_mean_tests(zip_path):
   """Make a set of tests to do mean."""
 
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
       "input_shape": [[3, 2, 4]],
       "axis": [
           None, 0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
@@ -696,7 +696,7 @@ def make_mean_tests(zip_path):
       ],
       "keep_dims": [True, False],
   }, {
-      "input_dtype": [tf.float32, tf.int32],
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
       "input_shape": [[1, 224, 224, 3]],
       "axis": [
           None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
