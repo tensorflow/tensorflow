@@ -129,6 +129,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
     self.assertAllEqual(1, value)
 
+  def testSupportDtypes(self):
+    # Github: 16103
+    dtype = dtypes.bfloat16
+    handle = resource_variable_ops.var_handle_op(dtype=dtype, shape=[])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+      handle, constant_op.constant(0, dtype=dtype)))
+
   @test_util.run_in_graph_and_eager_modes()
   def testManyAssigns(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
