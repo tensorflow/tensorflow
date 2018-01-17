@@ -5,6 +5,7 @@
   * `PYTHON_BIN_PATH`: location of python binary.
 """
 
+_TF_CONFIG_TIME = "TF_CONFIG_TIME"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 def _fail(msg):
@@ -50,6 +51,7 @@ def _git_conf_impl(repository_ctx):
 git_configure = repository_rule(
     implementation = _git_conf_impl,
     environ = [
+        _TF_CONFIG_TIME,
         _PYTHON_BIN_PATH,
     ],
 )
