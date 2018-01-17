@@ -79,6 +79,22 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
         cfg.verifySSL = true;
       }
     }
+    const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
+    if (connect_timeout) {
+      int64 timeout;
+
+      if (strings::safe_strto64(connect_timeout, &timeout)) {
+        cfg.connectTimeoutMs = timeout;
+      }
+    }
+    const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
+    if (request_timeout) {
+      int64 timeout;
+
+      if (strings::safe_strto64(request_timeout, &timeout)) {
+        cfg.requestTimeoutMs = timeout;
+      }
+    }
 
     init = true;
   }
