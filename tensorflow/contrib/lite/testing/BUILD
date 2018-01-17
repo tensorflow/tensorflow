@@ -24,6 +24,7 @@ gen_zipped_test_files(
         "control_dep.zip",
         "conv.zip",
         "depthwiseconv.zip",
+        "div.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
         "gather.zip",
@@ -44,6 +45,7 @@ gen_zipped_test_files(
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "sub.zip",
         "transpose.zip",
     ],
 )

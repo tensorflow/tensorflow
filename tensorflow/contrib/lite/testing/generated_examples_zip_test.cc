@@ -48,13 +48,17 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
     // Add doesn't support broadcasting.
-    {R"(addd.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(muld.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(adda.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(mula.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(diva.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(suba.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
 
     // Add only supports float32. (and "constant" tests use Add)
-    {R"(addd.*int32)", "68808744"},
+    {R"(adda.*int32)", "68808744"},
     {R"(constant.*int32)", "68808744"},
     {R"(mul.*int32)", "68808744"},
+    {R"(div.*int32)", "68808744"},
+    {R"(sub.*int32)", "68808744"},
 
     // Pad only supports 4D tensors.
     {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
@@ -254,6 +258,8 @@ INSTANTIATE_TESTS(resize_bilinear)
 INSTANTIATE_TESTS(sigmoid)
 INSTANTIATE_TESTS(softmax)
 INSTANTIATE_TESTS(space_to_depth)
+INSTANTIATE_TESTS(sub)
+INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(transpose)
 INSTANTIATE_TESTS(mean)
 
