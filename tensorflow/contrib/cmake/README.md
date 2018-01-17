@@ -30,9 +30,9 @@ bindings.
 
 * CMake version 3.5 or later.
 
-* [Git](http://git-scm.com)
+* [Git](https://git-scm.com)
 
-* [SWIG](http://www.swig.org/download.html)
+* [SWIG](https://www.swig.org/download.html)
 
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015
@@ -48,9 +48,9 @@ bindings.
 
 * Microsoft Windows 10
   - Microsoft Visual Studio Enterprise 2015 with Visual C++ 2015
-  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
+  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.anaconda.com/download/)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
-  - [swigwin-3.0.10](http://www.swig.org/download.html)
+  - [swigwin-3.0.10](https://www.swig.org/download.html)
   - [NVidia CUDA Toolkit 8.0](https://developer.nvidia.com/cuda-downloads)
   - [NVidia CUDNN 5.1](https://developer.nvidia.com/cudnn)
   - [CMake 3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
