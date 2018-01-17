@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
 import errno
 import os
 import platform
@@ -1233,6 +1234,7 @@ def main():
 
   reset_tf_configure_bazelrc()
   cleanup_makefile()
+  write_action_env_to_bazelrc("TF_CONFIG_TIME", str(datetime.datetime.now()))
   setup_python(environ_cp)
 
   if is_windows():
