@@ -513,9 +513,9 @@ TF_CAPI_EXPORT extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
                                               int num_values);
 // Set a 'func' attribute to the specified name.
 // `value` must point to a string of length `length` bytes.
-TF_CAPI_EXPORT extern void TF_SetAttrFunc(TF_OperationDescription* desc,
-                                          const char* attr_name,
-                                          const char* value, size_t length);
+TF_CAPI_EXPORT extern void TF_SetAttrFuncName(TF_OperationDescription* desc,
+                                              const char* attr_name,
+                                              const char* value, size_t length);
 
 // Set `num_dims` to -1 to represent "unknown rank".  Otherwise,
 // `dims` points to an array of length `num_dims`.  `dims[i]` must be
