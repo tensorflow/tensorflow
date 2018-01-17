@@ -1201,6 +1201,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
                      reinterpret_cast<const DataType*>(values), num_values));
 }
 
+void TF_SetAttrFunc(TF_OperationDescription* desc, const char* attr_name,
+                    const char* value, size_t length) {
+  tensorflow::NameAttrList func_name;
+  func_name.set_name(std::string(value, value + length));
+  desc->node_builder.Attr(attr_name, func_name);
+}
+
 void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
                      const int64_t* dims, int num_dims) {
   PartialTensorShape shape;
