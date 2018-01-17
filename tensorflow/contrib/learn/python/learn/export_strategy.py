@@ -26,13 +26,14 @@ __all__ = ['ExportStrategy']
 
 
 class ExportStrategy(
-    collections.namedtuple('ExportStrategy', ['name', 'export_fn'])):
+    collections.namedtuple('ExportStrategy',
+                           ['name', 'export_fn', 'strip_default_attrs'])):
   """A class representing a type of model export.
 
   Typically constructed by a utility function specific to the exporter, such as
   `saved_model_export_utils.make_export_strategy()`.
 
-  The fields are:
+  Attributes:
     name: The directory name under the export base directory where exports of
       this type will be written.
     export_fn: A function that writes an export, given an estimator, a
@@ -45,10 +46,19 @@ class ExportStrategy(
 
     The signature of this function must be one of:
 
-    * `(estimator, export_path) -> export_path`
-    * `(estimator, export_path, checkpoint_path) -> export_path`
-    * `(estimator, export_path, checkpoint_path, eval_result) -> export_path`
+      * `(estimator, export_path) -> export_path`
+      * `(estimator, export_path, checkpoint_path) -> export_path`
+      * `(estimator, export_path, checkpoint_path, eval_result) -> export_path`
+      * `(estimator, export_path, checkpoint_path, eval_result,
+          strip_default_attrs) -> export_path`
+    strip_default_attrs: (Optional) Boolean. If set as True, default attrs in
+        the `GraphDef` will be stripped on write. This is recommended for better
+        forward compatibility of the resulting `SavedModel`.
   """
+
+  def __new__(cls, name, export_fn, strip_default_attrs=None):
+    return super(ExportStrategy, cls).__new__(
+        cls, name, export_fn, strip_default_attrs)
 
   def export(self,
              estimator,
@@ -83,5 +93,6 @@ class ExportStrategy(
         raise ValueError('An export_fn accepting eval_result must also accept '
                          'checkpoint_path.')
       kwargs['eval_result'] = eval_result
-
+    if 'strip_default_attrs' in export_fn_args:
+      kwargs['strip_default_attrs'] = self.strip_default_attrs
     return self.export_fn(estimator, export_path, **kwargs)
