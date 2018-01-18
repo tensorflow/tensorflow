@@ -444,7 +444,7 @@ class RunConfig(object):
     if tf_config:
       logging.info('TF_CONFIG environment variable: %s', tf_config)
 
-    model_dir = _get_model_dir(tf_config, compat.as_path_repr(model_dir))
+    model_dir = _get_model_dir(tf_config, compat.path_to_str(model_dir))
 
     RunConfig._replace(
         self,

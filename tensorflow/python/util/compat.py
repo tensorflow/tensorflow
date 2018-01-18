@@ -21,6 +21,7 @@ In addition to the functions below, `as_str` converts an object to a `str`.
 @@as_bytes
 @@as_text
 @@as_str_any
+@@path_to_str
 
 ## Types
 The compatibility module also provides the following types:
@@ -108,7 +109,7 @@ def as_str_any(value):
     return str(value)
 
 
-def as_path_repr(path):
+def path_to_str(path):
   """Returns the file system path representation of a `PathLike` object, else as it is.
 
   Args:

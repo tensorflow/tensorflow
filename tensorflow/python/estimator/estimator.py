@@ -159,7 +159,7 @@ class Estimator(object):
       self._config = config
 
     # Model directory.
-    model_dir = compat.as_path_repr(model_dir)
+    model_dir = compat.path_to_str(model_dir)
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
         # TODO(alanyee): remove this suppression after it is no longer needed
