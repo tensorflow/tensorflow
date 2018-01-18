@@ -33,3 +33,12 @@ py_test(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+py_test(
+    name = "example_estimator",
+    size = "enormous",
+    srcs = ["example_estimator.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
