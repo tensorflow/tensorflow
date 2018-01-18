@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import enum  # pylint: disable=g-bad-import-order
+import inspect
 import itertools
+import os
 
 import numpy as np
 
@@ -31,6 +34,29 @@ from tensorflow.compiler.xla.python import pywrap_xla as c_api
 # whereas method names of ComputationBuilder and LocalComputation are
 # CamelCase for consistency with XLA.
 # pylint: disable=invalid-name
+
+
+OpMetadata = collections.namedtuple(
+    'OpMetadata',
+    [
+        'op_type',
+        'op_name',
+        'source_file',
+        'source_line',
+    ],
+)
+
+
+def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
+  """Helper for use in source mapping that returns an OpMetadata object."""
+  caller = inspect.stack()[skip_frames][0]
+  frame_info = inspect.getframeinfo(caller)
+  filename = os.path.basename(frame_info.filename)
+  return OpMetadata(
+      op_type=op_type,
+      op_name=op_name,
+      source_file=filename,
+      source_line=frame_info.lineno)
 
 
 class PaddingType(enum.Enum):
@@ -334,6 +360,14 @@ class ComputationBuilder(object):
 
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
+
+  def SetOpMetadata(self, op_metadata):
+    """Set metadata for operations that are about to be enqueued."""
+    self._client.SetOpMetadata(op_metadata)
+
+  def ClearOpMetadata(self):
+    """Clear metadata for operations that are about to be enqueued."""
+    self._client.ClearOpMetadata()
 
   def Infeed(self, shape):
     """Enqueues an infeed op onto the computation.

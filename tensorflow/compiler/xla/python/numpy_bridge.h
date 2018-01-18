@@ -66,6 +66,10 @@ Status CheckPyShapeInfo(PyObject* o);
 // The return value is a new reference.
 Shape XlaShapeFromPyShapeInfo(PyObject* o);
 
+// Converts a PyObject that represents operation metadata into protocol buffer
+// form.
+StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o);
+
 // Converts an XLA literal to a Python object, either a Numpy ndarray
 // or a nested Python tuple thereof.
 //

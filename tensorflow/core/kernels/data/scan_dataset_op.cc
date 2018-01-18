@@ -60,9 +60,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(ctx, input, func_, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
@@ -173,19 +172,17 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         FunctionLibraryRuntime::Options opts;
         opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer step_container(
-            opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
+        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
+                                                                   name) {
+          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
+        });
         opts.step_container = &step_container;
         opts.runner = ctx->runner();
         std::vector<Tensor> state_and_output;
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
-        Status s = dataset()->captured_func_->Run(opts, std::move(args),
+
+        Status s = dataset()->captured_func_->Run(ctx, opts, std::move(args),
                                                   &state_and_output);
         if (s.ok()) {
           state_.clear();

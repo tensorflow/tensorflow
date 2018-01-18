@@ -361,11 +361,12 @@ class MapDatasetTest(test.TestCase):
                 .map(lambda _: counter_var.assign_add(1))
                 .make_initializable_iterator())
     init_op = iterator.initializer
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   "Failed to capture resource"):
-        sess.run(init_op)
+      sess.run(init_op)
+      with self.assertRaises(errors.NotFoundError):
+        sess.run(get_next)
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
     iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)

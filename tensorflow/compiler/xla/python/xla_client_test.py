@@ -1178,9 +1178,12 @@ class ErrorTest(LocalComputationTest):
 
   def testInvokeWithWrongElementType(self):
     c = self._NewComputation()
+    c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
     c.ParameterFromNumpy(self.s32_scalar_2)
+    c.ClearOpMetadata()
     self.assertRaisesRegexp(
-        RuntimeError, r"invalid argument shape.*expected s32\[\], got f32\[\]",
+        RuntimeError, r"Invalid argument shape.*xla_client_test.py.*"
+        r"expected s32\[\], got f32\[\]",
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
 
 

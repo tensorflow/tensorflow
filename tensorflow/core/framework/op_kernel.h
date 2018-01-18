@@ -1033,33 +1033,21 @@ class OpKernelContext {
   bool allocate_on_host(AllocatorAttributes alloc_attr) const;
 
   // Records temporary memory sizes.
-  void record_host_temp_memory_size(int64 size) {
-    host_temp_memory_size_ += size;
-  }
-  void record_device_temp_memory_size(int64 size) {
-    device_temp_memory_size_ += size;
-  }
+  void record_temp_memory_size(int64 size) { temp_memory_size_ += size; }
 
   // Returns recorded size of temporary memory;
-  int64 host_temp_memory_size() const { return host_temp_memory_size_; }
-  int64 device_temp_memory_size() const { return device_temp_memory_size_; }
+  int64 temp_memory_size() const { return temp_memory_size_; }
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
-  void record_host_persistent_memory_allocation(int64 size,
-                                                int64 alloc_id = -1);
-  void record_device_persistent_memory_allocation(int64 size,
-                                                  int64 alloc_id = -1);
+  void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1);
 
   // Returns recorded size and ids of persistent memory.
-  int64 host_persistent_memory_allocated() const {
-    return host_persistent_memory_allocated_;
+  int64 persistent_memory_allocated() const {
+    return persistent_memory_allocated_;
   }
-  int64 device_persistent_memory_allocated() const {
-    return device_persistent_memory_allocated_;
-  }
-  std::vector<int64> host_persistent_alloc_ids() const;
-  std::vector<int64> device_persistent_alloc_ids() const;
+
+  std::vector<int64> persistent_alloc_ids() const;
 
   bool input_is_ref(int index) const;
 
@@ -1104,12 +1092,9 @@ class OpKernelContext {
 
   bool is_output_dead_ = false;
 
-  int64 host_temp_memory_size_;
-  int64 device_temp_memory_size_;
-  gtl::InlinedVector<int64, 2> host_persistent_alloc_ids_;
-  gtl::InlinedVector<int64, 2> device_persistent_alloc_ids_;
-  int64 host_persistent_memory_allocated_;
-  int64 device_persistent_memory_allocated_;
+  int64 temp_memory_size_;
+  gtl::InlinedVector<int64, 2> persistent_alloc_ids_;
+  int64 persistent_memory_allocated_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
