@@ -12,62 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.gen_linalg_ops.matrix_exponential."""
+"""Tests for tensorflow.ops.gen_linalg_ops.matrix_logarithm."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
-import math
 
 import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def np_expm(x):
-  """Slow but accurate Taylor series matrix exponential."""
-  y = np.zeros(x.shape, dtype=x.dtype)
-  xn = np.eye(x.shape[0], dtype=x.dtype)
-  for n in range(40):
-    y += xn / float(math.factorial(n))
-    xn = np.dot(xn, x)
-  return y
+class LogarithmOpTest(test.TestCase):
 
-
-class ExponentialOpTest(test.TestCase):
-
-  def _verifyExponential(self, x, np_type):
+  def _verifyLogarithm(self, x, np_type):
     inp = x.astype(np_type)
     with self.test_session(use_gpu=True):
-      tf_ans = gen_linalg_ops._matrix_exponential(inp)
-      if x.size == 0:
-        np_ans = np.empty(x.shape, dtype=np_type)
-      else:
-        if x.ndim > 2:
-          np_ans = np.zeros(inp.shape, dtype=np_type)
-          for i in itertools.product(*[range(x) for x in inp.shape[:-2]]):
-            np_ans[i] = np_expm(inp[i])
-        else:
-          np_ans = np_expm(inp)
+      # Verify that expm(logm(A)) == A.
+      tf_ans = gen_linalg_ops._matrix_exponential(
+          gen_linalg_ops._matrix_logarithm(inp))
       out = tf_ans.eval()
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+      self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
-  def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
-      self._verifyExponential(x, np_type)
-
-  def _verifyExponentialComplex(self, x):
+  def _verifyLogarithmComplex(self, x):
     for np_type in [np.complex64, np.complex128]:
-      self._verifyExponential(x, np_type)
+      self._verifyLogarithm(x, np_type)
 
   def _makeBatch(self, matrix1, matrix2):
     matrix_batch = np.concatenate(
@@ -80,76 +59,69 @@ class ExponentialOpTest(test.TestCase):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
-    self._verifyExponentialReal(matrix1)
-    self._verifyExponentialReal(matrix2)
-    # A multidimensional batch of 2x2 matrices
-    self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
-    # Complex
     matrix1 = matrix1.astype(np.complex64)
     matrix1 += 1j * matrix1
     matrix2 = matrix2.astype(np.complex64)
     matrix2 += 1j * matrix2
-    self._verifyExponentialComplex(matrix1)
-    self._verifyExponentialComplex(matrix2)
+    self._verifyLogarithmComplex(matrix1)
+    self._verifyLogarithmComplex(matrix2)
     # Complex batch
-    self._verifyExponentialComplex(self._makeBatch(matrix1, matrix2))
+    self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
-    self._verifyExponentialReal(matrix1)
-    self._verifyExponentialReal(matrix2)
-    # A multidimensional batch of 2x2 matrices
-    self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
-    # Complex
     matrix1 = matrix1.astype(np.complex64)
     matrix1 += 1j * matrix1
     matrix2 = matrix2.astype(np.complex64)
     matrix2 += 1j * matrix2
-    self._verifyExponentialComplex(matrix1)
-    self._verifyExponentialComplex(matrix2)
+    self._verifyLogarithmComplex(matrix1)
+    self._verifyLogarithmComplex(matrix2)
     # Complex batch
-    self._verifyExponentialComplex(self._makeBatch(matrix1, matrix2))
+    self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
   def testNonSquareMatrix(self):
-    # When the exponential of a non-square matrix is attempted we should return
+    # When the logarithm of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
+      gen_linalg_ops._matrix_logarithm(
+          np.array([[1., 2., 3.], [3., 4., 5.]], dtype=np.complex64))
 
   def testWrongDimensions(self):
-    # The input to the exponential should be at least a 2-dimensional tensor.
-    tensor3 = constant_op.constant([1., 2.])
+    # The input to the logarithm should be at least a 2-dimensional tensor.
+    tensor3 = constant_op.constant([1., 2.], dtype=dtypes.complex64)
     with self.assertRaises(ValueError):
-      gen_linalg_ops._matrix_exponential(tensor3)
+      gen_linalg_ops._matrix_logarithm(tensor3)
 
   def testEmpty(self):
-    self._verifyExponentialReal(np.empty([0, 2, 2]))
-    self._verifyExponentialReal(np.empty([2, 0, 0]))
+    self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
+    self._verifyLogarithmComplex(np.empty([2, 0, 0], dtype=np.complex64))
 
   def testRandomSmallAndLarge(self):
     np.random.seed(42)
-    for dtype in np.float32, np.float64, np.complex64, np.complex128:
+    for dtype in np.complex64, np.complex128:
       for batch_dims in [(), (1,), (3,), (2, 2)]:
         for size in 8, 31, 32:
           shape = batch_dims + (size, size)
           matrix = np.random.uniform(
               low=-1.0, high=1.0,
               size=np.prod(shape)).reshape(shape).astype(dtype)
-          self._verifyExponentialReal(matrix)
+          self._verifyLogarithmComplex(matrix)
 
   def testConcurrentExecutesWithoutError(self):
     with self.test_session(use_gpu=True) as sess:
-      matrix1 = random_ops.random_normal([5, 5], seed=42)
-      matrix2 = random_ops.random_normal([5, 5], seed=42)
-      expm1 = gen_linalg_ops._matrix_exponential(matrix1)
-      expm2 = gen_linalg_ops._matrix_exponential(matrix2)
-      expm = sess.run([expm1, expm2])
-      self.assertAllEqual(expm[0], expm[1])
+      matrix1 = math_ops.cast(
+          random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
+      matrix2 = math_ops.cast(
+          random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
+      logm1 = gen_linalg_ops._matrix_logarithm(matrix1)
+      logm2 = gen_linalg_ops._matrix_logarithm(matrix2)
+      logm = sess.run([logm1, logm2])
+      self.assertAllEqual(logm[0], logm[1])
 
 
-class MatrixExponentialBenchmark(test.Benchmark):
+class MatrixLogarithmBenchmark(test.Benchmark):
 
   shapes = [
       (4, 4),
@@ -170,23 +142,23 @@ class MatrixExponentialBenchmark(test.Benchmark):
     shape = shape[-2:]
     assert shape[0] == shape[1]
     n = shape[0]
-    matrix = np.ones(shape).astype(np.float32) / (
-        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    matrix = np.ones(shape).astype(np.complex64) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.complex64))
     return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
 
-  def benchmarkMatrixExponentialOp(self):
+  def benchmarkMatrixLogarithmOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
           session.Session() as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
-        expm = gen_linalg_ops._matrix_exponential(matrix)
+        logm = gen_linalg_ops._matrix_logarithm(matrix)
         variables.global_variables_initializer().run()
         self.run_op_benchmark(
             sess,
-            control_flow_ops.group(expm),
+            control_flow_ops.group(logm),
             min_iters=25,
-            name="matrix_exponential_cpu_{shape}".format(
+            name="matrix_logarithm_cpu_{shape}".format(
                 shape=shape))
 
 

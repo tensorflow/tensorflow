@@ -90,6 +90,7 @@ See the @{$python/math_ops} guide.
 @@cholesky
 @@cholesky_solve
 @@matrix_exponential
+@@matrix_logarithm
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
