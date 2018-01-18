@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
 
@@ -31,14 +32,14 @@ Status MakeIteratorFromInputElement(
   // MasterSession generates 56-bit random step IDs whose MSB
   // is always 0, so a negative random step ID should suffice.
   opts.step_id = CapturedFunction::generate_step_id();
-  ScopedStepContainer step_container(
-      opts.step_id, [captured_func](const string& name) {
-        captured_func->resource_manager()->Cleanup(name).IgnoreError();
-      });
+  ScopedStepContainer step_container(opts.step_id, [ctx](const string& name) {
+    ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
+  });
   opts.step_container = &step_container;
   std::vector<Tensor> return_values;
-  TF_RETURN_IF_ERROR(
-      captured_func->RunWithBorrowedArgs(opts, input_element, &return_values));
+
+  TF_RETURN_IF_ERROR(captured_func->RunWithBorrowedArgs(
+      ctx, opts, input_element, &return_values));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {

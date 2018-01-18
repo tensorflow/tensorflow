@@ -92,8 +92,12 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
-    return errors::Unimplemented("File system scheme ", scheme,
-                                 " not implemented");
+    if (scheme.empty()) {
+      scheme = "[local]";
+    }
+
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
   return Status::OK();
@@ -173,8 +177,8 @@ bool Env::FilesExist(const std::vector<string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        Status s = errors::Unimplemented("File system scheme ", itr.first,
-                                         " not implemented");
+        Status s = errors::Unimplemented("File system scheme '", itr.first,
+                                         "' not implemented");
         local_status.resize(itr.second.size(), s);
       }
     } else {

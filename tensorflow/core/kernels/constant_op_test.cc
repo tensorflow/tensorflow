@@ -72,9 +72,9 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
   TF_EXPECT_OK(ctx.status());
 
   if (on_gpu) {
-    EXPECT_EQ(ctx.device_persistent_memory_allocated(), 512);
+    EXPECT_EQ(ctx.persistent_memory_allocated(), 512);
   } else {
-    EXPECT_EQ(ctx.host_persistent_memory_allocated(), 480);
+    EXPECT_EQ(ctx.persistent_memory_allocated(), 480);
   }
 
   // Remove memry leak errors.

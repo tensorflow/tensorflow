@@ -153,6 +153,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/coder/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"

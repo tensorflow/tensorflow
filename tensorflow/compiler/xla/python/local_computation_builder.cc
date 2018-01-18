@@ -255,6 +255,12 @@ const Computation& LocalComputation::computation() const {
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
+void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+  builder_.SetOpMetadata(metadata);
+}
+
+void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+
 StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
   return new LocalComputation(std::move(computation));
@@ -290,6 +296,13 @@ ComputationDataHandle LocalComputationBuilder::Broadcast(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return builder_.Broadcast(operand, broadcast_sizes);
+}
+
+ComputationDataHandle LocalComputationBuilder::Pad(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& padding_value,
+    const PaddingConfig& padding_config) {
+  return builder_.Pad(operand, padding_value, padding_config);
 }
 
 ComputationDataHandle LocalComputationBuilder::Reshape(
