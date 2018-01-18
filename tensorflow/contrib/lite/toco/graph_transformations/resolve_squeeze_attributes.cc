@@ -25,15 +25,13 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveTensorFlowSqueeze::Run(Model* model, std::size_t op_index) {
-  const auto squeeze_it = model->operators.begin() + op_index;
-  const auto* squeeze_op = squeeze_it->get();
+bool ResolveSqueezeAttributes::Run(Model* model, std::size_t op_index) {
+  auto* squeeze_op = model->operators[op_index].get();
   if (squeeze_op->type != OperatorType::kSqueeze) {
     return false;
   }
-
-  CHECK_EQ(squeeze_op->inputs.size(), 1);
-  CHECK_EQ(squeeze_op->outputs.size(), 1);
+  DCHECK_EQ(squeeze_op->inputs.size(), 1);
+  DCHECK_EQ(squeeze_op->outputs.size(), 1);
 
   // If the output is consumed by a reshape op, it's a trivial squeeze.
   if (CountOpsWithInput(*model, squeeze_op->outputs[0]) == 1) {
@@ -47,7 +45,6 @@ bool ResolveTensorFlowSqueeze::Run(Model* model, std::size_t op_index) {
       return RemoveTrivialPassthroughOp(this, model, op_index);
     }
   }
-
   return false;
 }
 
