@@ -414,7 +414,7 @@ if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
   if [[ $? != "0" ]]; then
     die "FAIL: Unable to login. Invalid credentials."
   fi
-  docker push $1
+  docker push "${FINAL_IMG}"
   if [[ $? == "0" ]]; then
     docker logout
     echo "Successfully pushed Docker image ${FINAL_IMG}"
