@@ -58,9 +58,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
                           output_shapes_, std::move(captured_func));
@@ -330,17 +329,20 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
           FunctionLibraryRuntime::Options opts;
           opts.step_id = CapturedFunction::generate_step_id();
-          ScopedStepContainer* step_container =
-              new ScopedStepContainer(opts.step_id, [this](const string& name) {
-                dataset()
-                    ->captured_func_->resource_manager()
-                    ->Cleanup(name)
-                    .IgnoreError();
+          ResourceMgr* resource_manager =
+              ctx->lib()->device()->resource_manager();
+          ScopedStepContainer* step_container = new ScopedStepContainer(
+              opts.step_id, [resource_manager](const string& name) {
+                resource_manager->Cleanup(name).IgnoreError();
               });
           opts.step_container = step_container;
           opts.runner = ctx->runner();
+          FunctionLibraryRuntime::InstantiateOptions inst_opts;
+          inst_opts.overlay_lib = ctx->function_library().get();
+
           dataset()->captured_func_->RunAsync(
-              opts, std::move(input_element), &result->return_values,
+              ctx->lib(), inst_opts, opts, std::move(input_element),
+              &result->return_values,
               [result, step_container, result_index](Status ret_status) {
                 delete step_container;
                 result->status.Update(ret_status);

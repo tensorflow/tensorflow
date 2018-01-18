@@ -453,6 +453,7 @@ filegroup(
         "//tensorflow/contrib/cloud:all_files",
         "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/cluster_resolver:all_files",
+        "//tensorflow/contrib/coder:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",

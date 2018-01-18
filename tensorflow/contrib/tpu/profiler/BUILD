@@ -47,7 +47,7 @@ cc_library(
 tf_cc_binary(
     name = "capture_tpu_profile",
     srcs = ["capture_tpu_profile.cc"],
-    visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":dump_tpu_profile",
         ":tpu_profiler_proto_cc",

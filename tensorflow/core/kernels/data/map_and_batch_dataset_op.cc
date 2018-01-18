@@ -67,9 +67,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_batches must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(input, batch_size, num_parallel_batches,
                           output_types_, output_shapes_,
@@ -282,21 +281,25 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // to unblock a consumer.
         FunctionLibraryRuntime::Options opts;
         opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer* step_container =
-            new ScopedStepContainer(opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
+        ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
+        ScopedStepContainer* step_container = new ScopedStepContainer(
+            opts.step_id, [resource_mgr](const string& name) {
+              resource_mgr->Cleanup(name).IgnoreError();
             });
         opts.step_container = step_container;
         std::function<void(std::function<void()>)>* runner =
             new std::function<void(std::function<void()>)>(*ctx->runner());
         opts.runner = runner;
+        FunctionLibraryRuntime* lib = ctx->lib();
+        FunctionLibraryRuntime::InstantiateOptions inst_opts;
+        inst_opts.overlay_lib = ctx->function_library().get();
+
         (*ctx->runner())(std::bind(
-            [=](std::vector<Tensor> input_element) {
+            [this, lib, inst_opts, opts, result, step_container, runner,
+             batch_result, offset](std::vector<Tensor> input_element) {
               dataset()->captured_func_->RunAsync(
-                  opts, std::move(input_element), &result->return_values,
+                  lib, inst_opts, opts, std::move(input_element),
+                  &result->return_values,
                   [this, step_container, runner, result, batch_result,
                    offset](Status ret_status) {
                     delete step_container;

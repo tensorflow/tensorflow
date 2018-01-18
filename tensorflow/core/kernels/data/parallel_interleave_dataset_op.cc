@@ -80,9 +80,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("`prefetch_input_elements` must be >= 0"));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output =
         new Dataset(input, std::move(captured_func), cycle_length, block_length,

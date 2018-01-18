@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
+from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf

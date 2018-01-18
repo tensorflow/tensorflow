@@ -73,20 +73,19 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     // TODO(mrry): Refactor CapturedFunction to share the runtime
     // state between multiple functions?
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(ctx, key_func_, graph_def_version_,
-                                            std::move(key_func_other_arguments),
-                                            &captured_key_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            key_func_, std::move(key_func_other_arguments),
+                            &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(ctx, reduce_func_, graph_def_version_,
+        ctx, CapturedFunction::Create(reduce_func_,
                                       std::move(reduce_func_other_arguments),
                                       &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_window_size_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            ctx, window_size_func_, graph_def_version_,
-                            std::move(window_size_func_other_arguments),
-                            &captured_window_size_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(
+                 window_size_func_, std::move(window_size_func_other_arguments),
+                 &captured_window_size_func));
 
     *output = new Dataset(
         ctx, input, key_func_, reduce_func_, window_size_func_,
@@ -236,13 +235,14 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               FunctionLibraryRuntime::Options opts;
               opts.step_id = CapturedFunction::generate_step_id();
               opts.runner = ctx->runner();
-              ScopedStepContainer step_container(
-                  opts.step_id, [this](const string& name) {
-                    dataset()
-                        ->captured_key_func_->resource_manager()
-                        ->Cleanup(name)
-                        .IgnoreError();
-                  });
+              ScopedStepContainer step_container(opts.step_id,
+                                                 [ctx](const string& name) {
+                                                   ctx->lib()
+                                                       ->device()
+                                                       ->resource_manager()
+                                                       ->Cleanup(name)
+                                                       .IgnoreError();
+                                                 });
               opts.step_container = &step_container;
 
               // Run the key function on the input element to identify its
@@ -250,7 +250,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(
                   dataset()->captured_key_func_->RunWithBorrowedArgs(
-                      opts, next_input_element, &key_func_output));
+                      ctx, opts, next_input_element, &key_func_output));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -266,20 +266,21 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 FunctionLibraryRuntime::Options opts2;
                 opts2.step_id = CapturedFunction::generate_step_id();
                 opts2.runner = ctx->runner();
-                ScopedStepContainer step_container2(
-                    opts2.step_id, [this](const string& name) {
-                      dataset()
-                          ->captured_window_size_func_->resource_manager()
-                          ->Cleanup(name)
-                          .IgnoreError();
-                    });
+                ScopedStepContainer step_container2(opts2.step_id,
+                                                    [ctx](const string& name) {
+                                                      ctx->lib()
+                                                          ->device()
+                                                          ->resource_manager()
+                                                          ->Cleanup(name)
+                                                          .IgnoreError();
+                                                    });
                 opts2.step_container = &step_container2;
 
                 // Run the window size function on the key to identify its
                 // window size.
                 std::vector<Tensor> window_size_func_output;
                 TF_RETURN_IF_ERROR(dataset()->captured_window_size_func_->Run(
-                    opts2, std::move(key_func_output),
+                    ctx, opts2, std::move(key_func_output),
                     &window_size_func_output));
 
                 if (window_size_func_output.size() != 1 ||
@@ -427,11 +428,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               reader->ReadScalar(full_name("current_key"), &current_key_));
 
           // Initialize current_group_iterator_
-          IteratorContext::Params params;
-          params.env = ctx->env();
-          params.runner = *(ctx->runner());
-          IteratorContext iter_ctx(std::move(params));
-          TF_RETURN_IF_ERROR(StartFlushingGroup(&iter_ctx, current_key_));
+          TF_RETURN_IF_ERROR(StartFlushingGroup(ctx, current_key_));
           // Restore current_group_iterator_ state
           TF_RETURN_IF_ERROR(
               RestoreParent(ctx, reader, current_group_iterator_));
@@ -481,13 +478,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         FunctionLibraryRuntime::Options opts;
         opts.step_id = CapturedFunction::generate_step_id();
         opts.runner = ctx->runner();
-        ScopedStepContainer step_container(
-            opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_reduce_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
+        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
+                                                                   name) {
+          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
+        });
         opts.step_container = &step_container;
 
         DatasetBase* group_dataset;
@@ -505,9 +499,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
-
         TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
-            opts, std::move(args), &return_values));
+            ctx, opts, std::move(args), &return_values));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

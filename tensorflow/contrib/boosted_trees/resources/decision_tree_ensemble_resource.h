@@ -111,6 +111,35 @@ class DecisionTreeEnsembleResource : public StampedResource {
     return decision_tree_ensemble_->tree_weights(index);
   }
 
+  void MaybeAddUsedHandler(const int32 handler_id) {
+    protobuf::RepeatedField<protobuf_int64>* used_ids =
+        decision_tree_ensemble_->mutable_growing_metadata()
+            ->mutable_used_handler_ids();
+    protobuf::RepeatedField<protobuf_int64>::iterator first =
+        std::lower_bound(used_ids->begin(), used_ids->end(), handler_id);
+    if (first == used_ids->end()) {
+      used_ids->Add(handler_id);
+      return;
+    }
+    if (handler_id == *first) {
+      // It is a duplicate entry.
+      return;
+    }
+    used_ids->Add(handler_id);
+    std::rotate(first, used_ids->end() - 1, used_ids->end());
+  }
+
+  std::vector<int64> GetUsedHandlers() const {
+    std::vector<int64> result;
+    result.reserve(
+        decision_tree_ensemble_->growing_metadata().used_handler_ids().size());
+    for (int64 h :
+         decision_tree_ensemble_->growing_metadata().used_handler_ids()) {
+      result.push_back(h);
+    }
+    return result;
+  }
+
   // Sets the weight of i'th tree, and increment num_updates in tree_metadata.
   void SetTreeWeight(const int32 index, const float weight,
                      const int32 increment_num_updates) {

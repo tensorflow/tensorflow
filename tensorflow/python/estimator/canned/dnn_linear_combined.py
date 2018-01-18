@@ -23,6 +23,7 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
+from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import linear
@@ -74,12 +75,19 @@ def _add_layer_summary(value, tag):
   summary.histogram('%s/activation' % tag, value)
 
 
-def _dnn_linear_combined_model_fn(
-    features, labels, mode, head,
-    linear_feature_columns=None, linear_optimizer='Ftrl',
-    dnn_feature_columns=None, dnn_optimizer='Adagrad', dnn_hidden_units=None,
-    dnn_activation_fn=nn.relu, dnn_dropout=None,
-    input_layer_partitioner=None, config=None):
+def _dnn_linear_combined_model_fn(features,
+                                  labels,
+                                  mode,
+                                  head,
+                                  linear_feature_columns=None,
+                                  linear_optimizer='Ftrl',
+                                  dnn_feature_columns=None,
+                                  dnn_optimizer='Adagrad',
+                                  dnn_hidden_units=None,
+                                  dnn_activation_fn=nn.relu,
+                                  dnn_dropout=None,
+                                  input_layer_partitioner=None,
+                                  config=None):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
@@ -121,6 +129,7 @@ def _dnn_linear_combined_model_fn(
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         'Either linear_feature_columns or dnn_feature_columns must be defined.')
+
   num_ps_replicas = config.num_ps_replicas if config else 0
   input_layer_partitioner = input_layer_partitioner or (
       partitioned_variables.min_max_variable_partitioner(
@@ -243,7 +252,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           categorical_feature_a_emb, categorical_feature_b_emb,
           numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
-      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...),
+      # warm-start settings
+      warm_start_from="/path/to/checkpoint/dir")
 
   # To apply L1 and L2 regularization, you can set optimizers as follows:
   tf.train.ProximalAdagradOptimizer(
@@ -297,7 +308,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                weight_column=None,
                label_vocabulary=None,
                input_layer_partitioner=None,
-               config=None):
+               config=None,
+               warm_start_from=None):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -339,6 +351,11 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights are warm-started, and it is assumed that vocabularies and Tensor
+        names are unchanged.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -360,8 +377,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           n_classes,
           weight_column=weight_column,
           label_vocabulary=label_vocabulary)
+
     def _model_fn(features, labels, mode, config):
-      return _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
+      estimator_spec = _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -375,6 +394,14 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
+      # pylint: disable=protected-access
+      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
+          warm_start_from)
+      if warm_start_settings:
+        warm_starting_util._warm_start(warm_start_settings)
+      # pylint: enable=protected-access
+
+      return estimator_spec
 
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
@@ -407,7 +434,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           categorical_feature_a_emb, categorical_feature_b_emb,
           numeric_feature],
       dnn_hidden_units=[1000, 500, 100],
-      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...),
+      # warm-start settings
+      warm_start_from="/path/to/checkpoint/dir")
 
   # To apply L1 and L2 regularization, you can set optimizers as follows:
   tf.train.ProximalAdagradOptimizer(
@@ -460,7 +489,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                label_dimension=1,
                weight_column=None,
                input_layer_partitioner=None,
-               config=None):
+               config=None,
+               warm_start_from=None):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -496,6 +526,11 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights are warm-started, and it is assumed that vocabularies and Tensor
+        names are unchanged.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -510,7 +545,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                        'must be defined.')
 
     def _model_fn(features, labels, mode, config):
-      return _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
+      estimator_spec = _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -526,6 +562,14 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
+      # pylint: disable=protected-access
+      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
+          warm_start_from)
+      if warm_start_settings:
+        warm_starting_util._warm_start(warm_start_settings)
+      # pylint: enable=protected-access
+
+      return estimator_spec
 
     super(DNNLinearCombinedRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

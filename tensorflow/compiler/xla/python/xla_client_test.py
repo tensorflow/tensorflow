@@ -644,6 +644,38 @@ class SingleOpTest(LocalComputationTest):
         c.Constant(NumpyArrayF32([1.0, 0.0, 2.0, 7.0, 12.0])))
     self._ExecuteAndCompareExact(c, expected=[1.0, 0.0, 2.0, 4.0, 9.0])
 
+  def testPad(self):
+    c = self._NewComputation()
+    c.Pad(
+        c.Constant(NumpyArrayF32([[1.0, 2.0], [3.0, 4.0]])),
+        c.Constant(NumpyArrayF32(0.0)),
+        [(1, 2, 1), (0, 1, 0)])
+    self._ExecuteAndCompareClose(c, expected=[[0.0, 0.0, 0.0],
+                                              [1.0, 2.0, 0.0],
+                                              [0.0, 0.0, 0.0],
+                                              [3.0, 4.0, 0.0],
+                                              [0.0, 0.0, 0.0],
+                                              [0.0, 0.0, 0.0]])
+
+  def testPadWithPaddingConfig(self):
+    c = self._NewComputation()
+    padding_config = xla_client.xla_data_pb2.PaddingConfig()
+    for lo, hi, interior in [(1, 2, 1), (0, 1, 0)]:
+      dimension = padding_config.dimensions.add()
+      dimension.edge_padding_low = lo
+      dimension.edge_padding_high = hi
+      dimension.interior_padding = interior
+    c.Pad(
+        c.Constant(NumpyArrayF32([[1.0, 2.0], [3.0, 4.0]])),
+        c.Constant(NumpyArrayF32(0.0)),
+        padding_config)
+    self._ExecuteAndCompareClose(c, expected=[[0.0, 0.0, 0.0],
+                                              [1.0, 2.0, 0.0],
+                                              [0.0, 0.0, 0.0],
+                                              [3.0, 4.0, 0.0],
+                                              [0.0, 0.0, 0.0],
+                                              [0.0, 0.0, 0.0]])
+
   def testReshape(self):
     c = self._NewComputation()
     c.Reshape(
@@ -1178,9 +1210,12 @@ class ErrorTest(LocalComputationTest):
 
   def testInvokeWithWrongElementType(self):
     c = self._NewComputation()
+    c.SetOpMetadata(xla_client.CurrentSourceInfoMetadata())
     c.ParameterFromNumpy(self.s32_scalar_2)
+    c.ClearOpMetadata()
     self.assertRaisesRegexp(
-        RuntimeError, r"invalid argument shape.*expected s32\[\], got f32\[\]",
+        RuntimeError, r"Invalid argument shape.*xla_client_test.py.*"
+        r"expected s32\[\], got f32\[\]",
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
 
 
