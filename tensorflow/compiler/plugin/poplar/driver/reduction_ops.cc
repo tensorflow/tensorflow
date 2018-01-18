@@ -103,18 +103,18 @@ IsPoplibsPool(const HloInstruction* inst,
   }
 
   const Window& window(inst->window());
-  if (window.dimensions(0).size() != 1 ||
-      window.dimensions(0).stride() != 1 ||
-      window.dimensions(0).padding_low() != 0 ||
-      window.dimensions(0).padding_high() != 0 ||
-      window.dimensions(1).size() != 1 ||
-      window.dimensions(1).stride() != 1 ||
-      window.dimensions(1).padding_low() != 0 ||
-      window.dimensions(1).padding_high() != 0) {
-    return false;
+  unsigned reduction_count=0;
+  for (int64 i=0; i<window.dimensions_size(); i++) {
+    auto& d = window.dimensions(i);
+    if (d.size() != 1 ||
+        d.stride() != 1 ||
+        d.padding_low() != 0 ||
+        d.padding_high() != 0) {
+      reduction_count++;
+    }
   }
 
-  return true;
+  return (reduction_count <= 2);
 }
 
 static Literal
