@@ -76,13 +76,7 @@ void VariableOp::Compute(OpKernelContext* ctx) {
     AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
     attr.set_nic_compatible(true);
-    if (ctx->allocate_on_host(attr)) {
-      ctx->record_host_persistent_memory_allocation(
-          var->tensor()->AllocatedBytes());
-    } else {
-      ctx->record_device_persistent_memory_allocation(
-          var->tensor()->AllocatedBytes());
-    }
+    ctx->record_persistent_memory_allocation(var->tensor()->AllocatedBytes());
   }
   var->Unref();
 }
@@ -113,14 +107,8 @@ class TemporaryVariableOp : public OpKernel {
                                        var_name_, tmp_var));
     context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
     if (context->track_allocations()) {
-      AllocatorAttributes attr;
-      if (context->allocate_on_host(attr)) {
-        context->record_host_persistent_memory_allocation(
-            tmp_var->val.AllocatedBytes());
-      } else {
-        context->record_device_persistent_memory_allocation(
-            tmp_var->val.AllocatedBytes());
-      }
+      context->record_persistent_memory_allocation(
+          tmp_var->val.AllocatedBytes());
     }
   }
 
@@ -163,13 +151,8 @@ class DestroyTemporaryVariableOp : public OpKernel {
     OP_REQUIRES_OK(context, rm->Delete<TemporaryVariableOp::TmpVar>(
                                 context->step_container()->name(), var_name_));
     if (context->track_allocations()) {
-      if (context->allocate_on_host(AllocatorAttributes())) {
-        context->record_host_persistent_memory_allocation(
-            -static_cast<int64>(tmpvar.AllocatedBytes()));
-      } else {
-        context->record_device_persistent_memory_allocation(
-            -static_cast<int64>(tmpvar.AllocatedBytes()));
-      }
+      context->record_persistent_memory_allocation(
+          -static_cast<int64>(tmpvar.AllocatedBytes()));
     }
   }
 

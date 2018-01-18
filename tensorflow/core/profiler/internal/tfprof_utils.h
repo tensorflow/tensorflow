@@ -66,6 +66,9 @@ Status ReadProtoFile(Env* env, const string& fname, T* proto,
 
 void PrintHelp();
 
+// Generate helper message based on the command and options.
+string QueryDoc(const string& cmd, const Options& opts);
+
 }  // namespace tfprof
 }  // namespace tensorflow
 

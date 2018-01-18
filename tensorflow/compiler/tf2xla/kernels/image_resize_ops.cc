@@ -126,8 +126,10 @@ xla::ComputationDataHandle MakeBilinearResizeKernel(
       XlaHelpers::Iota(builder, DataType::DT_INT32, channels, &channels_iota));
 
   auto diag = builder->ConvertElementType(
-      builder->Eq(builder->Reshape(channels_iota, {1, 1, 1, channels}),
-                  channels_iota, /*broadcast_dimensions=*/{2}),
+      builder->Eq(
+          builder->Broadcast(channels_iota, {2 * kernel_size[0] - 1,
+                                             2 * kernel_size[1] - 1, channels}),
+          channels_iota, /*broadcast_dimensions=*/{2}),
       xla::PrimitiveType::F32);
   return builder->Mul(
       builder->Mul(diag,

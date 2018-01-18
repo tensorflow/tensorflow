@@ -16,112 +16,36 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/lookup_interface.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/queue_interface.h"
-#include "tensorflow/core/framework/reader_interface.h"
-#include "tensorflow/core/framework/resource_handle.pb_text.h"
-#include "tensorflow/core/kernels/data/dataset.h"
-#include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/gtl/optional.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
-#include "tensorflow/core/public/session_options.h"
 
 
 namespace tensorflow {
 
 /* static */
 Status CapturedFunction::Create(
-    OpKernelContext* ctx, const NameAttrList& func, int graph_def_version,
-    std::vector<Tensor> captured_inputs,
+    const NameAttrList& func, std::vector<Tensor> captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
-  // NOTE(mrry): We need to assign a name to the device, and we choose
-  // the same name as the calling context's device so that we do not
-  // need to rewrite resource handles that are found in `captured_inputs`.
-  Device* device =
-      new ThreadPoolDevice(SessionOptions(), ctx->device()->attributes().name(),
-                           Bytes(256 << 20), DeviceLocality(), cpu_allocator());
+  out_function->reset(new CapturedFunction(func, std::move(captured_inputs)));
+  return Status::OK();
+}
 
-// TODO(mrry): Handle arbitrary resource types, which might require a
-// redesign (or opening up access to `ResourceMgr::DoLookup()` and
-// `ResourceMgr::DoCreate()` to this code).
-#define HANDLE_RESOURCE_TYPE(ResourceType)                                     \
-  if (input_handle.hash_code() == MakeTypeIndex<ResourceType>().hash_code()) { \
-    ResourceType* resource;                                                    \
-    Status s = LookupResource(ctx, input_handle, &resource);                   \
-    if (errors::IsNotFound(s)) {                                               \
-      return errors::FailedPrecondition(                                       \
-          "Failed to capture resource named \"", input_handle.name(),          \
-          "\" in a dataset function. You may need to initialize it "           \
-          "explicitly before initializing an iterator that uses it.");         \
-    } else if (!s.ok()) {                                                      \
-      return s;                                                                \
-    }                                                                          \
-    ResourceType* already_created_resource;                                    \
-    /* Look up the resource in the this function's resource manager, in case   \
-     * it has already been created. */                                         \
-    s = device->resource_manager()->Lookup(input_handle.container(),           \
-                                           input_handle.name(),                \
-                                           &already_created_resource);         \
-    if (s.ok()) {                                                              \
-      CHECK_EQ(resource, already_created_resource);                            \
-      resource->Unref();                                                       \
-      already_created_resource->Unref();                                       \
-    } else {                                                                   \
-      if (errors::IsNotFound(s)) {                                             \
-        TF_RETURN_IF_ERROR(device->resource_manager()->Create(                 \
-            input_handle.container(), input_handle.name(), resource));         \
-      } else {                                                                 \
-        return s;                                                              \
-      }                                                                        \
-    }                                                                          \
-    continue;                                                                  \
+CapturedFunction::~CapturedFunction() {}
+
+Status CapturedFunction::set_lib(FunctionLibraryRuntime* lib) {
+  mutex_lock l(mu_);
+  if (lib_ == nullptr) {
+    lib_ = lib;
+    return Status::OK();
   }
-
-  for (size_t i = 0; i < captured_inputs.size(); ++i) {
-    if (captured_inputs[i].dtype() == DT_RESOURCE) {
-      // Extract the resource from `ctx->resource_manager()` and
-      // insert it into `device->resource_manager()` so that it can be
-      // used when the function executes.
-      ResourceHandle input_handle =
-          captured_inputs[i].scalar<ResourceHandle>()();
-      HANDLE_RESOURCE_TYPE(lookup::LookupInterface);
-      HANDLE_RESOURCE_TYPE(QueueInterface);
-      HANDLE_RESOURCE_TYPE(Var);
-      return errors::Unimplemented(
-          "Cannot currently capture resource '",
-          ProtoDebugString(input_handle),
-          "' in a dataset function (type not supported).");
-    }
+  if (lib != lib_) {
+    return errors::Internal(
+        "Captured function was called with a different "
+        "FunctionLibraryRuntime*, which is not permitted.");
   }
-#undef HANDLE_RESOURCE_TYPE
-
-  std::unique_ptr<DeviceMgr> device_mgr(new DeviceMgr({device}));
-  std::unique_ptr<FunctionLibraryDefinition> flib_def(
-      new FunctionLibraryDefinition(
-          *ctx->function_library()->GetFunctionLibraryDefinition()));
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(device_mgr.get(), ctx->env(),
-                                        graph_def_version, flib_def.get(),
-                                        {} /* TODO(mrry): OptimizerOptions? */,
-                                        nullptr /* TODO(mrry): ClusterFLR */));
-
-  FunctionLibraryRuntime* lib = pflr->GetFLR(device->name());
-
-  FunctionLibraryRuntime::Handle f_handle;
-  TF_RETURN_IF_ERROR(
-      lib->Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
-  const FunctionBody* fbody = lib->GetFunctionBody(f_handle);
-  if (fbody == nullptr) {
-    return errors::Internal("Failed to instantiate function body.");
-  }
-
-  out_function->reset(new CapturedFunction(
-      device, std::move(device_mgr), std::move(flib_def), std::move(pflr), lib,
-      f_handle, std::move(captured_inputs), fbody->ret_types));
   return Status::OK();
 }
 
@@ -245,9 +169,31 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
+Status CapturedFunction::MaybeInstantiate(
+    FunctionLibraryRuntime* lib,
+    FunctionLibraryRuntime::InstantiateOptions inst_opts) {
+  TF_RETURN_IF_ERROR(set_lib(lib));
+  inst_opts.state_handle = std::to_string(random::New64());
+  mutex_lock l(mu_);
+  if (f_handle_ == kInvalidHandle) {
+    TF_RETURN_IF_ERROR(lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
+                                         inst_opts, &f_handle_));
+  }
+  const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
+  if (fbody == nullptr) {
+    return errors::Internal("Failed to instantiate function body.");
+  }
+  ret_types_ = fbody->ret_types;
+  return Status::OK();
+}
+
+Status CapturedFunction::Run(IteratorContext* ctx,
+                             FunctionLibraryRuntime::Options f_opts,
                              std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
+  FunctionLibraryRuntime::InstantiateOptions inst_opts;
+  inst_opts.overlay_lib = ctx->function_library().get();
+  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx->lib(), inst_opts));
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -260,6 +206,7 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
   f_opts.cancellation_manager = c_mgr;
   Notification n;
   Status s;
+  mutex_lock l(mu_);
   lib_->Run(f_opts, f_handle_, frame,
             [rets, c_mgr, frame, &n, &s](Status func_status) {
               delete c_mgr;
@@ -275,8 +222,11 @@ Status CapturedFunction::Run(FunctionLibraryRuntime::Options f_opts,
 }
 
 Status CapturedFunction::RunWithBorrowedArgs(
-    FunctionLibraryRuntime::Options f_opts, const std::vector<Tensor>& args,
-    std::vector<Tensor>* rets) {
+    IteratorContext* ctx, FunctionLibraryRuntime::Options f_opts,
+    const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
+  FunctionLibraryRuntime::InstantiateOptions inst_opts;
+  inst_opts.overlay_lib = ctx->function_library().get();
+  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx->lib(), inst_opts));
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -288,6 +238,8 @@ Status CapturedFunction::RunWithBorrowedArgs(
   f_opts.cancellation_manager = c_mgr;
   Notification n;
   Status s;
+  mutex_lock l(mu_);
+
   lib_->Run(f_opts, f_handle_, &frame,
             [rets, c_mgr, &frame, &n, &s](Status func_status) {
               delete c_mgr;
@@ -301,10 +253,16 @@ Status CapturedFunction::RunWithBorrowedArgs(
   return s;
 }
 
-void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
-                                std::vector<Tensor>&& args,
-                                std::vector<Tensor>* rets,
-                                FunctionLibraryRuntime::DoneCallback done) {
+void CapturedFunction::RunAsync(
+    FunctionLibraryRuntime* lib,
+    FunctionLibraryRuntime::InstantiateOptions inst_opts,
+    FunctionLibraryRuntime::Options f_opts, std::vector<Tensor>&& args,
+    std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
+  Status s = MaybeInstantiate(lib, inst_opts);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -315,6 +273,8 @@ void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
   auto frame =
       new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
   f_opts.cancellation_manager = c_mgr;
+  mutex_lock l(mu_);
+
   lib_->Run(f_opts, f_handle_, frame,
             std::bind(
                 [rets, c_mgr, frame](FunctionLibraryRuntime::DoneCallback done,
@@ -330,19 +290,11 @@ void CapturedFunction::RunAsync(FunctionLibraryRuntime::Options f_opts,
                 std::move(done), std::placeholders::_1));
 }
 
-CapturedFunction::CapturedFunction(
-    Device* device, std::unique_ptr<DeviceMgr> device_mgr,
-    std::unique_ptr<FunctionLibraryDefinition> flib_def,
-    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
-    std::vector<Tensor> captured_inputs, DataTypeSlice ret_types)
-    : device_(device),
-      device_mgr_(std::move(device_mgr)),
-      flib_def_(std::move(flib_def)),
-      pflr_(std::move(pflr)),
-      lib_(lib),
-      f_handle_(f_handle),
-      captured_inputs_(std::move(captured_inputs)),
-      ret_types_(ret_types) {}
+CapturedFunction::CapturedFunction(const NameAttrList& func,
+                                   std::vector<Tensor> captured_inputs)
+    : func_(func),
+      lib_(nullptr),
+      f_handle_(kInvalidHandle),
+      captured_inputs_(std::move(captured_inputs)) {}
 
 }  // namespace tensorflow
