@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
+        "//tensorflow/contrib/coder:coder_ops_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
@@ -112,6 +113,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/batching:batch_ops_kernels",
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
+        "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
@@ -134,6 +136,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/batching:batch_ops_op_lib",
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
+        "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
