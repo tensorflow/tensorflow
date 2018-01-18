@@ -106,6 +106,8 @@ PadTest.Pad4DU8Array POPLAR // U8
 ConvertTest.ConvertR1U8ToR1F32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1S32 POPLAR // U8
 ConvertTest.ConvertR1U8ToR1U32 POPLAR // U8
+ReduceTest.ReduceAndPredR2_128x64_To_R1 POPLAR // U8
+ReduceTest.ReduceOrPredR2_64x32_To_R1 POPLAR // U8
 
 UnaryOpTest.AbsTestR1Size0 POPLAR // Complex<float>
 UnaryOpTest.AbsTestR1 POPLAR // Complex<float>
