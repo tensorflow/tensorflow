@@ -651,7 +651,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   NodeDef* swap_out_node = graph->add_node();
   swap_out_node->set_name(swap_out_name);
   swap_out_node->set_op("Identity");
-  swap_out_node->set_device("/CPU");
+  swap_out_node->set_device("/device:CPU:0");
 
   // Force the tensor to be restored to the device.
   NodeDef* swap_in_node = graph->add_node();
@@ -695,7 +695,7 @@ struct SwapInfo {
   Costs::NanoSeconds time_to_swap = 0;
 };
 
-static const NodeDef* FindSwapTrigger(
+static const NodeDef* FindSwapInTrigger(
     const NodeDef* node, const SwapInfo& swap_info,
     const std::unordered_map<string, const NodeDef*>& name_map,
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
@@ -794,6 +794,39 @@ static bool IsSwappable(GraphView::OutputPort output) {
   return !IsRefType(dtype);
 }
 
+static NodeDef* FindSwapOutTrigger(
+    const NodeDef* node, int input_id, const GraphView& view,
+    const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
+        execution_times) {
+  // Find the output port that generated the tensor to swap.
+  GraphView::InputPort swap;
+  swap.node = const_cast<NodeDef*>(node);
+  swap.port_id = input_id;
+  GraphView::OutputPort generator = view.GetRegularFanin(swap);
+  if (!generator.node) {
+    return nullptr;
+  }
+
+  const std::unordered_set<GraphView::InputPort, GraphView::HashPort>& fanout =
+      view.GetFanout(generator);
+  NodeDef* trigger = nullptr;
+  Costs::NanoSeconds earliest_fanout(
+      static_cast<double>(std::numeric_limits<int>::max()));
+
+  for (const auto& port : fanout) {
+    if (port.node == node) {
+      continue;
+    }
+    auto it = execution_times.find(port.node);
+    if (it != execution_times.end() && it->second < earliest_fanout) {
+      earliest_fanout = it->second;
+      trigger = port.node;
+    }
+  }
+
+  return trigger;
+}
+
 static bool IsSwappable(GraphView::InputPort input) {
   const NodeDef& node = *input.node;
 
@@ -810,7 +843,7 @@ static bool IsSwappable(GraphView::InputPort input) {
   return !IsRefType(dtype);
 }
 
-static void IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
+static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
                                        std::unordered_set<string>* skip_list) {
   GraphMemory memory(*item);
   const std::unordered_map<string, DeviceProperties>& devices =
@@ -818,9 +851,10 @@ static void IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
   Status s = memory.InferStatically(devices);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer memory usage: " << s.error_message();
-    return;
+    return false;
   }
 
+  bool updated_graph = false;
   for (const auto& device : devices) {
     const string& name = device.first;
     const DeviceProperties& prop = device.second;
@@ -845,7 +879,7 @@ static void IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
           tmp_execution_times;
       if (!EstimateEarliestExecutionTimes(*item, cluster, &tmp_execution_times)
                .ok()) {
-        return;
+        return false;
       }
       for (const auto& exec_time : tmp_execution_times) {
         execution_times.emplace(exec_time.first->name(), exec_time.second);
@@ -913,21 +947,25 @@ static void IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
             (*fanout_to_swap.node->mutable_attr())["_swap_to_host"];
         val.mutable_list()->add_i(fanout_to_swap.port_id);
         required_savings -= live_tensor.memory_used;
+        updated_graph = true;
         if (required_savings < 0) {
           break;
         }
       }
     }
   }
+
+  return updated_graph;
 }
 
 bool SwappingPass(RewriterConfig::MemOptType optimization_level,
                   Cluster* cluster, GrapplerItem* item,
                   std::unordered_set<string>* skip_list) {
+  bool updated_graph = false;
   if (optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
     // Use heuristics to figure out what needs to be swapped;
-    IdentifySwappingCandidates(cluster, item, skip_list);
+    updated_graph = IdentifySwappingCandidates(cluster, item, skip_list);
   }
   // Look for manual annotatations in the graph.
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
@@ -974,11 +1012,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     return false;
   }
 
-  bool updated_graph = false;
   std::unordered_map<string, const NodeDef*> name_map;
   for (const auto& node : item->graph.node()) {
     name_map[node.name()] = &node;
   }
+  GraphView view(&item->graph);
 
   for (auto& swap : nodes_to_swap) {
     NodeDef* node = swap.first;
@@ -991,20 +1029,33 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     // Make sure the tensor isn't swapped back in right away: look for node that
     // will execute just before we need to swap the data back, and add a control
     // dependency from that node to the swap node.
-    const NodeDef* trigger =
-        FindSwapTrigger(node, swap_info, name_map, execution_times);
-    if (!trigger) {
+    const NodeDef* in_trigger =
+        FindSwapInTrigger(node, swap_info, name_map, execution_times);
+    // If we failed, don't attempt to reprocess this node in a subsequent pass.
+    if (!in_trigger) {
       skip_list->insert(node->name());
       continue;
     }
+
     // Swap all the tensors that are marked with the 'swap_to_host' attribute.
     for (int input_id : swap_info.inputs_to_swap) {
       string input_name = strings::StrCat(node->name(), ":", input_id);
       if (skip_list->find(input_name) != skip_list->end()) {
         continue;
       } else {
+        // Don't attempt to reprocess this input in a subsequent pass.
         skip_list->insert(input_name);
       }
+
+      // Make sure the tensor isn't swapped out quickly look for node that
+      // will execute just after the tensor is generated and add a control
+      // dependency from the swap out node to that node.
+      NodeDef* out_trigger =
+          FindSwapOutTrigger(node, input_id, view, execution_times);
+      if (!out_trigger) {
+        continue;
+      }
+
       std::pair<NodeDef*, NodeDef*> swap_nodes;
       if (!BuildSwapPair(node, input_id, name_map, &item->graph, &swap_nodes)
                .ok()) {
@@ -1013,13 +1064,13 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
       *swap_nodes.first->add_input() = node->input(input_id);
       *node->mutable_input(input_id) = swap_nodes.second->name();
 
-      // Add the control dependency needed to delay the execution of the swap.
-      *swap_nodes.second->add_input() = strings::StrCat("^", trigger->name());
+      // Add the control dependencies needed to delay the execution of the swap.
+      out_trigger->add_input(strings::StrCat("^", swap_nodes.first->name()));
+      swap_nodes.second->add_input(strings::StrCat("^", in_trigger->name()));
 
-      // Make sure we won't try to swap the swap node in subsequent passes.
+      // Make sure we won't try to swap the swap nodes in subsequent passes.
+      skip_list->insert(swap_nodes.first->name());
       skip_list->insert(swap_nodes.second->name());
-
-      updated_graph = true;
     }
   }
   return updated_graph;
@@ -1034,7 +1085,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                              optimized_graph, item);
 
   GrapplerItem optimized_item(item, std::move(*optimized_graph));
-  std::unordered_set<string> skip_nodes;
+  std::unordered_set<string> skip_list;
   // Bound the number of rewrite passes to avoid long processing times on graphs
   // that simply won't fit in memory.
   bool updated_graph = true;
@@ -1051,7 +1102,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
          optimization_level_ == RewriterConfig::MANUAL) &&
         cluster != nullptr) {
       updated_graph |= SwappingPass(optimization_level_, cluster,
-                                    &optimized_item, &skip_nodes);
+                                    &optimized_item, &skip_list);
     }
   }
 
