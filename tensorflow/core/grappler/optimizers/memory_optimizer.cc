@@ -775,6 +775,25 @@ static const NodeDef* FindSwapTrigger(
   return nullptr;
 }
 
+static bool IsSwappable(GraphView::OutputPort output) {
+  const NodeDef& node = *output.node;
+  if (IsPersistent(node)) {
+    return false;
+  }
+
+  const OpDef* op_def;
+  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
+    return false;
+  }
+
+  DataType dtype;
+  if (!OutputTypeForNode(node, *op_def, output.port_id, &dtype).ok()) {
+    return false;
+  }
+
+  return !IsRefType(dtype);
+}
+
 static bool IsSwappable(GraphView::InputPort input) {
   const NodeDef& node = *input.node;
 
@@ -784,7 +803,7 @@ static bool IsSwappable(GraphView::InputPort input) {
   }
 
   DataType dtype;
-  if (!InputTypeForNode(*input.node, *op_def, input.port_id, &dtype).ok()) {
+  if (!InputTypeForNode(node, *op_def, input.port_id, &dtype).ok()) {
     return false;
   }
 
@@ -845,11 +864,14 @@ static void IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
         // Don't bother with small tensors.
         continue;
       }
-
-      Costs::NanoSeconds execution_time(-1);
-      GraphView::InputPort fanout_to_swap;
+      // Don't try to swap out persistent data
       GraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
+      if (!IsSwappable(port)) {
+        continue;
+      }
+      Costs::NanoSeconds execution_time(-1);
+      GraphView::InputPort fanout_to_swap;
       for (GraphView::InputPort input : graph.GetFanout(port)) {
         if (skip_list->find(input.node->name()) != skip_list->end()) {
           continue;
