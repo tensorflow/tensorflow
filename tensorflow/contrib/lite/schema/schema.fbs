@@ -116,6 +116,7 @@ enum BuiltinOperator : byte {
   MEAN = 40,
   SUB = 41,
   DIV = 42,
+  SQUEEZE = 43,
 }
 
 // Options for the builtin operators.
@@ -149,6 +150,7 @@ union BuiltinOptions {
   MeanOptions,
   SubOptions,
   DivOptions,
+  SqueezeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -324,6 +326,10 @@ table TransposeOptions {
 table MeanOptions {
   axis:[int];
   keep_dims: bool;
+}
+
+table SqueezeOptions {
+  squeeze_dims:[int];
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
