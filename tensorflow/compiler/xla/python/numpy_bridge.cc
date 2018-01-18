@@ -287,11 +287,11 @@ static tensorflow::gtl::optional<int32> GetAttrAsInt32(
     Py_DECREF(attr);
     return tensorflow::gtl::nullopt;
   }
-  if (!PyInt_Check(attr)) {
+  if (!CheckPyIntOrLong(attr)) {
     Py_DECREF(attr);
     return tensorflow::gtl::nullopt;
   }
-  long value = PyInt_AsLong(attr);  // NOLINT
+  long value = PyIntOrPyLongToLong(attr);  // NOLINT
   Py_DECREF(attr);
   if (value == -1 && PyErr_Occurred() != nullptr) {
     return tensorflow::gtl::nullopt;

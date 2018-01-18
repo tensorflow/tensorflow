@@ -49,14 +49,13 @@ OpMetadata = collections.namedtuple(
 
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
   """Helper for use in source mapping that returns an OpMetadata object."""
-  caller = inspect.stack()[skip_frames][0]
-  frame_info = inspect.getframeinfo(caller)
-  filename = os.path.basename(frame_info.filename)
+  full_filename, lineno = inspect.stack()[skip_frames][1:3]
+  filename = os.path.basename(full_filename)
   return OpMetadata(
       op_type=op_type,
       op_name=op_name,
       source_file=filename,
-      source_line=frame_info.lineno)
+      source_line=lineno)
 
 
 class PaddingType(enum.Enum):
