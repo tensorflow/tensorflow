@@ -54,14 +54,13 @@ class CapturedFunction {
   // tensors in `args`, in order to be able to deallocate them as early as
   // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
   // ownership of the `args`.
-  Status Run(IteratorContext* ctx, FunctionLibraryRuntime::Options f_opts,
-             std::vector<Tensor>&& args, std::vector<Tensor>* rets);
+  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets);
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
   // possible.
   Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             FunctionLibraryRuntime::Options f_opts,
                              const std::vector<Tensor>& args,
                              std::vector<Tensor>* rets);
 
@@ -69,10 +68,8 @@ class CapturedFunction {
   // the results in `*rets`, and calls the given `done` callback when the
   // function returns. This method takes ownership of the tensors in `args`,
   // in order to be able to deallocate them as early as possible.
-  void RunAsync(FunctionLibraryRuntime* lib,
-                FunctionLibraryRuntime::InstantiateOptions inst_opts,
-                FunctionLibraryRuntime::Options f_opts,
-                std::vector<Tensor>&& args, std::vector<Tensor>* rets,
+  void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
+                std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done);
 
   // Returns that additional captured inputs that will be passed to the function
@@ -93,10 +90,8 @@ class CapturedFunction {
   CapturedFunction(const NameAttrList& func,
                    std::vector<Tensor> captured_inputs);
 
-  Status set_lib(FunctionLibraryRuntime* lib);
-
-  Status MaybeInstantiate(FunctionLibraryRuntime* lib,
-                          FunctionLibraryRuntime::InstantiateOptions inst_opts);
+  Status MaybeInstantiate(IteratorContext* ctx,
+                          FunctionLibraryRuntime::Handle* out_handle);
 
   mutex mu_;
   const NameAttrList func_;
