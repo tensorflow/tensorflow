@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Handles function calls, by generating compiled function names and calls."""
+"""Handles function calls, by generating compiled function names and calls.
+
+Note: this transformer does not rename the top level object being converted;
+that is the caller's responsibility.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,12 +33,28 @@ from tensorflow.contrib.py2tf.pyct import templates
 class FunctionNamer(object):
   """Describes the interface for CallTreeTransformer's namer."""
 
-  def compiled_function_name(self, original_name, live_object=None):
+  def compiled_function_name(self,
+                             original_name,
+                             live_object=None,
+                             owner_type=None):
     """Generate the name corresponding to the compiled version of a function.
 
     Args:
       original_name: String
       live_object: Callable, the actual target function, if known.
+      owner_type: Optional object. If present, it indicates that the function is
+          a member of the given type.
+    Returns:
+      String.
+    """
+    raise NotImplementedError()
+
+  def compiled_class_name(self, original_name, live_object=None):
+    """Generate the name corresponding to the compiled version of a class.
+
+    Args:
+      original_name: String
+      live_object: The actual target class, if known.
     Returns:
       String.
     """
@@ -49,11 +69,6 @@ class CallTreeTransformer(gast.NodeTransformer):
     self.uncompiled_modules = uncompiled_modules
 
   # pylint:disable=invalid-name
-
-  def visit_FunctionDef(self, node):
-    self.generic_visit(node)
-    node.name = self.namer.compiled_function_name(node.name)
-    return node
 
   def _should_compile(self, fqn):
     for i in range(1, len(fqn)):
@@ -70,17 +85,32 @@ class CallTreeTransformer(gast.NodeTransformer):
     if not self._should_compile(target_fqn):
       return node
 
-    new_name = self.namer.compiled_function_name(
-        '.'.join(target_fqn), live_object=target_obj)
+    if anno.hasanno(node, 'is_constructor'):
+      new_name = self.namer.compiled_class_name(
+          '.'.join(target_fqn), live_object=target_obj)
+    else:
+      new_name = self.namer.compiled_function_name(
+          '.'.join(target_fqn), live_object=target_obj)
     node.func = gast.Name(id=new_name, ctx=gast.Load(), annotation=None)
     return node
 
   def _rename_member_function_of_known_type(self, node):
-    target_fqn = anno.getanno(node.func, 'type_fqn')
-    if not self._should_compile(target_fqn):
+    assert isinstance(node.func, gast.Attribute)
+
+    type_fqn = anno.getanno(node.func, 'type_fqn')
+    assert anno.hasanno(node.func, 'type')
+    target_type = anno.getanno(node.func, 'type')
+
+    if not self._should_compile(type_fqn):
       return node
 
-    raise NotImplementedError('Member function call (of known type).')
+    # TODO(mdan): We should not assume that the namer only needs the
+    # member function name.
+    new_name = self.namer.compiled_function_name(
+        node.func.attr, live_object=None, owner_type=target_type)
+    node.func.attr = new_name
+
+    return node
 
   def _wrap_to_py_func_no_return(self, node):
     args_scope = anno.getanno(node, 'args_scope')

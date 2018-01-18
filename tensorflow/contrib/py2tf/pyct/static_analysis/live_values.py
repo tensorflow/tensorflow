@@ -43,6 +43,11 @@ class LiveValueResolver(gast.NodeTransformer):
     self.namespace = namespace
     self.literals = literals
 
+  def visit_ClassDef(self, node):
+    self.generic_visit(node)
+    anno.setanno(node, 'live_val', self.namespace[node.name])
+    return node
+
   def visit_Name(self, node):
     self.generic_visit(node)
     if isinstance(node.ctx, gast.Load):
@@ -74,8 +79,13 @@ class LiveValueResolver(gast.NodeTransformer):
                                                          node.attr))
       anno.setanno(node, 'live_val', getattr(parent_object, node.attr))
       anno.setanno(node, 'fqn', anno.getanno(node.value, 'fqn') + (node.attr,))
-    # TODO(mdan): Figure out what to do when calling attribute on local object.
-    # Maybe just leave as-is?
+    elif isinstance(node.value, gast.Name):
+      stem_name = node.value
+      # All nonlocal symbols should be fully resolved.
+      assert anno.hasanno(stem_name, 'is_local'), stem_name
+      assert anno.getanno(stem_name, 'is_local'), stem_name
+      # TODO(mdan): Figure out what to do when calling attribute on local object
+      # Maybe just leave as-is?
     return node
 
 

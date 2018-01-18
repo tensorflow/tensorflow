@@ -25,22 +25,33 @@ from tensorflow.contrib.py2tf import config
 from tensorflow.contrib.py2tf import conversion
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.python.util import tf_inspect
+
+# TODO(mdan): Properly document the type hints.
+# TODO(mdan): Reduce the type hint information to (module, type).
+# (currently we require (module + class name, type))
 
 
-def to_graph(f, arg_value_hints=None):
-  """Compile a Python function into equivalent TensorFlow code.
+def to_graph(o, arg_value_hints=None):
+  """Compile a Python entity into equivalent TensorFlow code.
+
+  Currently supported entities:
+    * functions
+    * classes
+
+  Classes are handled by converting all their methods into a new class.
 
   Args:
-    f: A Python function with arbitrary arguments and return values.
+    o: A Python function or class.
     arg_value_hints: A dict mapping parameter names to objects that can hint
         at the type of those parameters.
 
   Returns:
-    A function with a signature identical to `f`, but which when executed it
-  creates TF a graph that has the same functionality as the original function.
+    A function with a signature identical to `o`, but which when executed it
+  creates TF a graph that has the same functionality as the original entity.
   """
   conversion_map = conversion.ConversionMap()
-  _, name = conversion.object_to_graph(f, conversion_map, arg_value_hints)
+  _, name = conversion.object_to_graph(o, conversion_map, arg_value_hints)
 
   module = gast.Module([])
   for import_line in config.COMPILED_IMPORT_STATEMENTS:
@@ -51,17 +62,20 @@ def to_graph(f, arg_value_hints=None):
 
   # The compiled code should see everything the entry function saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
-  compiled_node.__dict__.update(six.get_function_globals(f))
+  if tf_inspect.isfunction(o):
+    compiled_node.__dict__.update(six.get_function_globals(o))
 
   compiled_fn = getattr(compiled_node, name)
   return compiled_fn
 
 
-def to_code(f, arg_value_hints=None, indentation='  '):
-  """Return the equivalent of a function in TensorFlow code.
+def to_code(o, arg_value_hints=None, indentation='  '):
+  """Return the equivalent of an entity in TensorFlow code.
+
+  See `to_graph` for more details.
 
   Args:
-    f: A Python function with arbitrary arguments and return values.
+    o: A Python function or class.
     arg_value_hints: A dict mapping parameter names to objects that can hint
         at the type of those parameters.
     indentation: String, when to use for each level of indentation.
@@ -70,7 +84,7 @@ def to_code(f, arg_value_hints=None, indentation='  '):
     String.
   """
   conversion_map = conversion.ConversionMap()
-  conversion.object_to_graph(f, conversion_map, arg_value_hints)
+  conversion.object_to_graph(o, conversion_map, arg_value_hints)
 
   imports = '\n'.join(config.COMPILED_IMPORT_STATEMENTS)
   code = '\n'.join(
