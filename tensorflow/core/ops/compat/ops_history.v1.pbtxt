@@ -34387,14 +34387,6 @@ op {
     name: "max_b"
     type: DT_FLOAT
   }
-  input_arg {
-    name: "buffer_output_elements"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "prefetch_input_elements"
-    type: DT_INT64
-  }
   output_arg {
     name: "out"
     type_attr: "Toutput"
