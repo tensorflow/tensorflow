@@ -2768,7 +2768,8 @@ def tensordot(a, b, axes, name=None):
       if axes < 1:
         raise ValueError("'axes' must be at least 1.")
       if a_shape.ndims is not None:
-        return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
+        return (list(xrange(a_shape.ndims - axes, a_shape.ndims)),
+                list(xrange(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank, dtype=dtypes.int32),
