@@ -2610,6 +2610,18 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())
 
+  def testTwoGraphs(self):
+
+    def f():
+      g1 = ops.Graph()
+      g2 = ops.Graph()
+      with g1.as_default():
+        with g2.as_default():
+          with ops.name_scope("_"):
+            pass
+
+    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
 
 @test_util.with_c_api
 class TracebackTest(test_util.TensorFlowTestCase):
@@ -2684,47 +2696,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
 
 
 @test_util.with_c_api
-class InputTypesTest(test_util.TensorFlowTestCase):
-  """Tests Operation._input_dtypes and Operation._input_types properties.
-
-  This test should not exist as _input_types is a private property.
-  This property is used by many tests that would normally cover its
-  behavior. However, we can't yet run these tests in C
-  API mode because they use _set_device method. This test will be deleted
-  once we port _set_device.
-  """
-  # TODO(iga): Remove this test
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
-    ops._USE_C_API = True  # pylint: disable=protected-access
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
-
-  def testZeroInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      # Using a constant because creating unregistered ops
-      # doesn't work with the C API.
-      op = constant_op.constant(12, dtype=dtypes.uint16).op
-      # pylint: disable=protected-access
-      self.assertEqual([], op._input_types)
-      self.assertEqual([], op._input_dtypes)
-      # pylint: enable=protected-access
-
-  def testTwoInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      x = constant_op.constant(1.0, dtype=dtypes.double)
-      y = constant_op.constant(2.0, dtype=dtypes.double)
-      z = math_ops.multiply(x, y)
-      # pylint: disable=protected-access
-      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
-      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
-      # pylint: enable=protected-access
+class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
   def testBadArgumentsToEnableEagerExecution(self):
     with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):

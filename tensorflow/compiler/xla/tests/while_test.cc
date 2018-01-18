@@ -563,6 +563,53 @@ TEST_F(WhileTest, WhileWithPredicateTupleResult) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0));
 }
 
+TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
+  std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
+                                       ShapeUtil::MakeShape(S32, {})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable and set the other tuple element to a
+  // constant.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto result =
+        builder.Tuple({builder.Add(iteration, builder.ConstantR0<int32>(1)),
+                       builder.ConstantR0<int32>(7)});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple(
+      {builder.ConstantR0<int32>(0), builder.ConstantR0<int32>(7)});
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_data = Literal::CreateR0<int32>(7);
+  auto expected =
+      Literal::MakeTuple({expected_counter.get(), expected_data.get()});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
 // Tests two while nodes when the result type T is a Tuple and the second
 // while node uses the result of the first while node which is used in two
 // nodes.

@@ -173,6 +173,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
+  const bool src_cpu = IsCPU(srcd);
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
@@ -196,7 +197,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
-  if (!IsCPU(srcd)) {
+  if (!src_cpu) {
     src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;

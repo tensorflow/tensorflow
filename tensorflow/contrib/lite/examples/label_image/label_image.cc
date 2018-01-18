@@ -24,12 +24,12 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <fcntl.h>
-#include <getopt.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
+#include <fcntl.h>      // NOLINT(build/include_order)
+#include <getopt.h>     // NOLINT(build/include_order)
+#include <sys/time.h>   // NOLINT(build/include_order)
+#include <sys/types.h>  // NOLINT(build/include_order)
+#include <sys/uio.h>    // NOLINT(build/include_order)
+#include <unistd.h>     // NOLINT(build/include_order)
 
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -89,7 +89,7 @@ void RunInference(Settings* s) {
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
@@ -244,16 +244,19 @@ int Main(int argc, char** argv) {
 
     switch (c) {
       case 'a':
-        s.accel = strtol(optarg, (char**)NULL, 10);
+        s.accel = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'b':
         s.input_mean = strtod(optarg, NULL);
         break;
       case 'c':
-        s.loop_count = strtol(optarg, (char**)NULL, 10);
+        s.loop_count = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'f':
-        s.input_floating = strtol(optarg, (char**)NULL, 10);
+        s.input_floating = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         s.input_layer_type = "float";
         break;
       case 'i':
@@ -269,10 +272,12 @@ int Main(int argc, char** argv) {
         s.input_std = strtod(optarg, NULL);
         break;
       case 't':
-        s.number_of_threads = strtol(optarg, (char**)NULL, 10);
+        s.number_of_threads = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'v':
-        s.verbose = strtol(optarg, (char**)NULL, 10);
+        s.verbose = strtol(  // NOLINT(runtime/deprecated_fn)
+            optarg, (char**)NULL, 10);
         break;
       case 'h':
       case '?':

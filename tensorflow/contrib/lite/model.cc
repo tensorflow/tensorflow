@@ -230,7 +230,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         return kTfLiteActNone;
       case ActivationFunctionType_RELU:
         return kTfLiteActRelu;
-      case ActivationFunctionType_RELU1:
+      case ActivationFunctionType_RELU_N1_TO_1:
         return kTfLiteActRelu1;
       case ActivationFunctionType_RELU6:
         return kTfLiteActRelu6;
@@ -286,7 +286,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU1:
+    case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
       break;
@@ -408,6 +408,24 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ADD: {
       auto* params = MallocPOD<TfLiteAddParams>();
       if (auto* schema_params = op->builtin_options_as_AddOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_DIV: {
+      auto* params = MallocPOD<TfLiteDivParams>();
+      if (auto* schema_params = op->builtin_options_as_DivOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SUB: {
+      auto* params = MallocPOD<TfLiteSubParams>();
+      if (auto* schema_params = op->builtin_options_as_SubOptions()) {
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }

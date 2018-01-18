@@ -1392,9 +1392,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-    const bool safe_to_use_shapes =
-        use_shape_info && (feed_nodes_.empty() || is_aggressive);
-    if (safe_to_use_shapes && IsSimplifiableReshape(*node, properties)) {
+    if (use_shape_info && IsSimplifiableReshape(*node, properties)) {
       DataType output_type = node->attr().at("T").type();
       node->set_op("Identity");
       node->clear_attr();
@@ -1403,7 +1401,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-
+    const bool safe_to_use_shapes =
+        use_shape_info && (feed_nodes_.empty() || is_aggressive);
     const bool is_mul = IsMul(*node);
     const bool is_matmul = IsMatMul(*node);
     const bool is_add = IsAdd(*node) || IsBiasAdd(*node);
@@ -1516,9 +1515,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       (*reciprocal_node->mutable_attr())["T"].set_type(type);
       node->set_input(1, reciprocal_node->name());
       node_map_->AddNode(reciprocal_node->name(), reciprocal_node);
-      node_map_->UpdateInput(node->name(), const_input,
-                             reciprocal_node->name());
-      node_map_->AddOutput(NodeName(const_input), reciprocal_node->name());
+      node_map_->UpdateOutput(node->name(), const_input,
+                              reciprocal_node->name());
       graph_modified_ = true;
     }
 

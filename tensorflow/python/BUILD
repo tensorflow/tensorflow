@@ -396,6 +396,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -2380,6 +2381,8 @@ py_library(
         ":platform",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

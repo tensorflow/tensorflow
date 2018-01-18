@@ -35,9 +35,22 @@ class LogicalExpressionTransformer(gast.NodeTransformer):
         gast.And: 'tf.logical_and',
         gast.Or: 'tf.logical_or',
         gast.Not: 'tf.logical_not',
+        gast.Eq: 'tf.equal',
     }
 
+  def visit_Compare(self, node):
+    node = self.generic_visit(node)
+    if len(node.ops) > 1:
+      raise NotImplementedError()
+    cmp_type = type(node.ops[0])
+    if cmp_type in self.op_mapping:
+      tf_function = parser.parse_str(self.op_mapping[cmp_type]).body[0].value
+      return gast.Call(
+          func=tf_function, args=[node.left, node.comparators[0]], keywords=[])
+    return node
+
   def visit_UnaryOp(self, node):
+    node = self.generic_visit(node)
     if isinstance(node.op, gast.Not):
       tf_function = parser.parse_str(self.op_mapping[type(
           node.op)]).body[0].value
@@ -46,6 +59,7 @@ class LogicalExpressionTransformer(gast.NodeTransformer):
 
   def visit_BoolOp(self, node):
     # TODO(mdan): A normalizer may be useful here. Use ANF?
+    node = self.generic_visit(node)
     tf_function = parser.parse_str(self.op_mapping[type(node.op)]).body[0].value
     left = node.values[0]
     for i in range(1, len(node.values)):

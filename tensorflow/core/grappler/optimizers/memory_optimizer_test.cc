@@ -328,7 +328,8 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
 
   for (const auto& node : output.node()) {
     if (node.name() == "d") {
-      EXPECT_EQ(0, node.attr().count("_swap_to_host"));
+      EXPECT_EQ(1, node.attr().count("_swap_to_host"));
+      EXPECT_EQ(2, node.attr().at("_swap_to_host").list().i(0));
     }
   }
 }
@@ -355,7 +356,6 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
 
   int count = 0;
   for (const auto& node : output.node()) {
-    std::cout << node.DebugString() << std::endl;
     if (node.name() == "d") {
       EXPECT_EQ("DestroyTemporaryVariable", node.op());
       count++;

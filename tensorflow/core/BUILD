@@ -203,6 +203,8 @@ CORE_PROTO_SRCS = [
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/control_flow.proto",
+    # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+    # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
@@ -275,6 +277,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
+        "lib/bfloat16/bfloat16.h",
     ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
@@ -287,6 +290,7 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/arena.h",
         "lib/core/bitmap.h",
         "lib/core/bits.h",
@@ -558,6 +562,7 @@ cc_library(
         "framework/numeric_types.h",
         "framework/tensor_types.h",
         "framework/type_traits.h",
+        "lib/bfloat16/bfloat16.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
@@ -854,6 +859,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]),
@@ -1587,6 +1593,7 @@ cc_library(
         "platform/jpeg.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
@@ -1614,6 +1621,7 @@ cc_library(
         "platform/gif.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/gif/gif_io.h",
         "lib/gtl/cleanup.h",
@@ -1641,6 +1649,7 @@ cc_library(
         "platform/png.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
@@ -2810,6 +2819,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )

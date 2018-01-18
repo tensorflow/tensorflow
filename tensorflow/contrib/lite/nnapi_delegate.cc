@@ -329,12 +329,14 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_CALL:
       case tflite::BuiltinOperator_SKIP_GRAM:
-      case tflite::BuiltinOperator_RELU1:
+      case tflite::BuiltinOperator_RELU_N1_TO_1:
       case tflite::BuiltinOperator_GATHER:
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
       case tflite::BuiltinOperator_TRANSPOSE:
       case tflite::BuiltinOperator_MEAN:
+      case tflite::BuiltinOperator_DIV:
+      case tflite::BuiltinOperator_SUB:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

@@ -19,3 +19,4 @@ from __future__ import division
 from __future__ import print_function
 
 # TODO(mdan): Define a base transformer class that can recognize skip_processing
+# TODO(mdan): All converters are incomplete, especially those that change blocks

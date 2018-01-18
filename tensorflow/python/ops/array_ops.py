@@ -1280,11 +1280,12 @@ def sparse_mask(a, mask_indices, name=None):
 
 
 def unique(x, out_idx=dtypes.int32, name=None):
-  # TODO (yongtang): switch to v2 once API deprecation
+  # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
-  # TODO (yongtang): The documentation should also
+  # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
   return gen_array_ops._unique(x, out_idx, name)
+
 
 unique.__doc__ = gen_array_ops._unique.__doc__
 
@@ -2042,7 +2043,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   hypothesis = tf.SparseTensor(
       [[0, 0, 0],
        [1, 0, 0]],
-      ["a", "b"]
+      ["a", "b"],
       (2, 1, 1))
 
   # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
@@ -2054,7 +2055,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
       [[0, 1, 0],
        [1, 0, 0],
        [1, 0, 1],
-       [1, 1, 0]]
+       [1, 1, 0]],
       ["a", "b", "c", "a"],
       (2, 2, 2))
 

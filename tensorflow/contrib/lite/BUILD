@@ -35,12 +35,53 @@ cc_library(
     hdrs = ["version.h"],
 )
 
+cc_library(
+    name = "arena_planner",
+    srcs = ["arena_planner.cc"],
+    hdrs = ["arena_planner.h"],
+    deps = [
+        ":context",
+        ":graph_info",
+        ":memory_planner",
+        ":simple_memory_arena",
+    ],
+)
+
+cc_test(
+    name = "arena_planner_test",
+    size = "small",
+    srcs = ["arena_planner_test.cc"],
+    deps = [
+        ":arena_planner",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Main library. No ops are included here.
 # TODO(aselle): Resolve problems preventing C99 usage.
 cc_library(
     name = "context",
     srcs = ["context.c"],
     hdrs = ["context.h"],
+)
+
+cc_library(
+    name = "graph_info",
+    hdrs = ["graph_info.h"],
+    deps = [":context"],
+)
+
+cc_library(
+    name = "memory_planner",
+    hdrs = ["memory_planner.h"],
+    deps = [":context"],
+)
+
+cc_library(
+    name = "simple_memory_arena",
+    srcs = ["simple_memory_arena.cc"],
+    hdrs = ["simple_memory_arena.h"],
+    deps = [":context"],
 )
 
 cc_library(
@@ -70,7 +111,6 @@ cc_library(
         "model.cc",
         "nnapi_delegate.cc",
         "optional_debug_tools.cc",
-        "simple_memory_arena.cc",
     ],
     hdrs = [
         "allocation.h",
@@ -80,13 +120,16 @@ cc_library(
         "model.h",
         "nnapi_delegate.h",
         "optional_debug_tools.h",
-        "simple_memory_arena.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":arena_planner",
         ":builtin_op_data",
         ":context",
+        ":graph_info",
+        ":memory_planner",
         ":schema_fbs_version",
+        ":simple_memory_arena",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/schema:schema_fbs",
@@ -134,7 +177,7 @@ cc_test(
     size = "small",
     srcs = ["simple_memory_arena_test.cc"],
     deps = [
-        ":framework",
+        ":simple_memory_arena",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

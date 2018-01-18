@@ -332,9 +332,9 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], b.outputs[0])
 
       self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
-      self.assertEqual(c._input_dtypes, [dtypes.int32, dtypes.int32])
+      self.assertEqual(c._input_types, [dtypes.int32, dtypes.int32])
       self.assertEqual(c.outputs, [])
-      self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
+      self.assertEqual(d._input_types, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
   def testWhileLoop(self):
