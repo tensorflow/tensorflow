@@ -386,7 +386,6 @@ class Dataset(dataset_ops.Dataset):
     d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
     d = d.repeat(FLAGS.num_epochs)
     d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.repeat()
     d = d.interleave(tf.data.TFRecordDataset,
                      cycle_length=FLAGS.num_readers, block_length=1)
     d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
