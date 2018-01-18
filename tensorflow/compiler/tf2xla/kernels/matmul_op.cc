@@ -29,10 +29,12 @@ constexpr std::array<DataType, 5> kMatmulTypes = {
 class MatMulOp : public XlaOpKernel {
  public:
   explicit MatMulOp(OpKernelConstruction* ctx, bool is_sparse = false)
-      : XlaOpKernel(ctx) {
+      : XlaOpKernel(ctx), is_sparse_(is_sparse) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
     if (is_sparse) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("Ta", &a_type_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("Tb", &b_type_));
       // SparseMatMul is actually dense matmul with a hint that one or
       // both of the inputs may contain a lot of zeroes. On CPU these
       // inputs are dynamically converted to sparse representation
@@ -66,14 +68,25 @@ class MatMulOp : public XlaOpKernel {
 
     xla::ComputationDataHandle a = ctx->Input(0);
     xla::ComputationDataHandle b = ctx->Input(1);
+    if (is_sparse_) {
+      if (a_type_ == DT_BFLOAT16) {
+        a = ctx->builder()->ConvertElementType(a, xla::F32);
+      }
+      if (b_type_ == DT_BFLOAT16) {
+        b = ctx->builder()->ConvertElementType(b, xla::F32);
+      }
+    }
     auto lhs = (transpose_a_) ? ctx->builder()->Transpose(a, {1, 0}) : a;
     auto rhs = (transpose_b_) ? ctx->builder()->Transpose(b, {1, 0}) : b;
     ctx->SetOutput(0, ctx->builder()->Dot(lhs, rhs));
   }
 
  private:
+  bool is_sparse_;
   bool transpose_a_;
   bool transpose_b_;
+  DataType a_type_;
+  DataType b_type_;
 };
 
 REGISTER_XLA_OP(Name("MatMul").TypeConstraint("T", kMatmulTypes), MatMulOp);
