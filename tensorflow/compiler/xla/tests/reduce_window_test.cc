@@ -473,6 +473,23 @@ XLA_TEST_P(ReduceWindowTest, Add128In128Stride128) {
                            DefaultErrorSpec());
 }
 
+XLA_TEST_P(ReduceWindowTest, Add128In128) {
+  std::vector<float> input_vector{
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  const auto input = CreateConstantFromLiteral(
+      *Literal::CreateR1<float>(input_vector), &builder_);
+  ReduceWindowAdd(input, {128}, {1}, Padding::kValid);
+  ComputeAndCompareLiteral(&builder_, *Literal::CreateR1<float>({1088}), {},
+                           DefaultErrorSpec());
+}
+
 // Regression test for a bug that appeared in Inception (b/34784899).
 TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
   Array2D<float> input_array(14, 14, 1.0f);
