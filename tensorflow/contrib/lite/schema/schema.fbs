@@ -89,6 +89,9 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
+  // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
+  // since different model developers use RELU1 in different ways. Never
+  // create another op called RELU1.
   RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
