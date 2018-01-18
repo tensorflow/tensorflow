@@ -232,25 +232,12 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 input_impl_->GetNext(ctx, &next_input_element, &end_of_input_));
 
             if (!end_of_input_) {
-              FunctionLibraryRuntime::Options opts;
-              opts.step_id = CapturedFunction::generate_step_id();
-              opts.runner = ctx->runner();
-              ScopedStepContainer step_container(opts.step_id,
-                                                 [ctx](const string& name) {
-                                                   ctx->lib()
-                                                       ->device()
-                                                       ->resource_manager()
-                                                       ->Cleanup(name)
-                                                       .IgnoreError();
-                                                 });
-              opts.step_container = &step_container;
-
               // Run the key function on the input element to identify its
               // group.
               std::vector<Tensor> key_func_output;
               TF_RETURN_IF_ERROR(
                   dataset()->captured_key_func_->RunWithBorrowedArgs(
-                      ctx, opts, next_input_element, &key_func_output));
+                      ctx, next_input_element, &key_func_output));
 
               if (key_func_output.size() != 1 ||
                   key_func_output[0].dtype() != DT_INT64 ||
@@ -262,26 +249,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
               const int64 key = key_func_output[0].scalar<int64>()();
 
               if (window_sizes_.find(key) == window_sizes_.end()) {
-                // Run window_size function
-                FunctionLibraryRuntime::Options opts2;
-                opts2.step_id = CapturedFunction::generate_step_id();
-                opts2.runner = ctx->runner();
-                ScopedStepContainer step_container2(opts2.step_id,
-                                                    [ctx](const string& name) {
-                                                      ctx->lib()
-                                                          ->device()
-                                                          ->resource_manager()
-                                                          ->Cleanup(name)
-                                                          .IgnoreError();
-                                                    });
-                opts2.step_container = &step_container2;
-
                 // Run the window size function on the key to identify its
                 // window size.
                 std::vector<Tensor> window_size_func_output;
                 TF_RETURN_IF_ERROR(dataset()->captured_window_size_func_->Run(
-                    ctx, opts2, std::move(key_func_output),
-                    &window_size_func_output));
+                    ctx, std::move(key_func_output), &window_size_func_output));
 
                 if (window_size_func_output.size() != 1 ||
                     window_size_func_output[0].dtype() != DT_INT64 ||
@@ -475,15 +447,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        opts.runner = ctx->runner();
-        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
-                                                                   name) {
-          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-        });
-        opts.step_container = &step_container;
-
         DatasetBase* group_dataset;
         TF_RETURN_IF_ERROR(NewWindowDataset(
             groups_[key], dataset()->input_->output_dtypes(),
@@ -500,7 +463,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             {std::move(key_arg), std::move(group_dataset_arg)});
         std::vector<Tensor> return_values;
         TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Run(
-            ctx, opts, std::move(args), &return_values));
+            ctx, std::move(args), &return_values));
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

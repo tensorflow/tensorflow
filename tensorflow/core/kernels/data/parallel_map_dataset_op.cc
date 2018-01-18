@@ -326,25 +326,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           // `result->return_values`, and notify `result->notification`
           // to unblock a consumer.
           result->notification.reset(new Notification);
-
-          FunctionLibraryRuntime::Options opts;
-          opts.step_id = CapturedFunction::generate_step_id();
-          ResourceMgr* resource_manager =
-              ctx->lib()->device()->resource_manager();
-          ScopedStepContainer* step_container = new ScopedStepContainer(
-              opts.step_id, [resource_manager](const string& name) {
-                resource_manager->Cleanup(name).IgnoreError();
-              });
-          opts.step_container = step_container;
-          opts.runner = ctx->runner();
-          FunctionLibraryRuntime::InstantiateOptions inst_opts;
-          inst_opts.overlay_lib = ctx->function_library().get();
-
           dataset()->captured_func_->RunAsync(
-              ctx->lib(), inst_opts, opts, std::move(input_element),
-              &result->return_values,
-              [result, step_container, result_index](Status ret_status) {
-                delete step_container;
+              ctx, std::move(input_element), &result->return_values,
+              [result, result_index](Status ret_status) {
                 result->status.Update(ret_status);
                 result->notification->Notify();
               });
