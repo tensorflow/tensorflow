@@ -327,6 +327,18 @@ tensorflow::ImportNumpy();
   $1 = &temps;
 }
 
+// OpMetadata
+
+%typemap(in) const OpMetadata& (OpMetadata temp) {
+  StatusOr<OpMetadata> statusor = numpy::OpMetadataFromPyObject($input);
+  if (!statusor.ok()) {
+    PyErr_SetString(PyExc_RuntimeError, statusor.status().ToString().c_str());
+    return NULL;
+  }
+  temp = std::move(statusor).ValueOrDie();
+  $1 = &temp;
+}
+
 // Shape
 
 %typemap(in) const Shape& (Shape temp) {
@@ -587,6 +599,8 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::Build;
+%unignore xla::swig::LocalComputationBuilder::SetOpMetadata;
+%unignore xla::swig::LocalComputationBuilder::ClearOpMetadata;
 %unignore xla::swig::LocalComputationBuilder::Parameter;
 %unignore xla::swig::LocalComputationBuilder::GetShape;
 %unignore xla::swig::LocalComputationBuilder::Infeed;

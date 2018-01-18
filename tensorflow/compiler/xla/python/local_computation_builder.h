@@ -111,6 +111,9 @@ class LocalComputationBuilder {
  public:
   LocalComputationBuilder(const string& computation_name);
 
+  void SetOpMetadata(const OpMetadata& metadata);
+  void ClearOpMetadata();
+
   // Returns an owned LocalComputation to the caller on success.
   StatusOr<LocalComputation*> Build();
 

@@ -255,6 +255,12 @@ const Computation& LocalComputation::computation() const {
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
+void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+  builder_.SetOpMetadata(metadata);
+}
+
+void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+
 StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
   return new LocalComputation(std::move(computation));
