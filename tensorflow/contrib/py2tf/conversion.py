@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
 import six
 
 from tensorflow.contrib.py2tf import config
@@ -35,6 +36,7 @@ from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
+from tensorflow.python.util import tf_inspect
 
 
 class ConversionMap(object):
@@ -93,13 +95,61 @@ def object_to_graph(o, conversion_map, value_hints):
   Raises:
     ValueError: if the object is not supported.
   """
-  if callable(o):
-    return function_to_graph(o, conversion_map, value_hints)
-  raise ValueError(
-      'Unsupported object type %s. Only functions are supported for now.')
+  if value_hints is None:
+    value_hints = {}
+
+  if tf_inspect.isclass(o):
+    node, new_name = class_to_graph(o, conversion_map, value_hints)
+  elif tf_inspect.isfunction(o):
+    node, new_name = function_to_graph(o, conversion_map, value_hints)
+  else:
+    raise ValueError(
+        'Unsupported object type %s. Only functions and classes are supported'
+        ' for now.')
+
+  conversion_map.add_to_cache(o, node)
+  # Recursively convert remaining dependencies.
+  for obj in conversion_map.name_map.keys():
+    if obj not in conversion_map.dependency_cache:
+      if hasattr(obj, 'im_class'):
+        # Class members are converted with their objects.
+        continue
+      object_to_graph(obj, conversion_map, None)
+
+  return node, new_name
 
 
-def function_to_graph(f, conversion_map, param_value_hints):
+def class_to_graph(c, conversion_map, param_value_hints):
+  """Specialization of `object_to_graph` for classes."""
+  converted_members = {}
+  members = tf_inspect.getmembers(c, predicate=tf_inspect.ismethod)
+  if not members:
+    raise ValueError('Cannot convert %s: it has no member methods.')
+
+  if 'self' in param_value_hints:
+    raise ValueError('Hints may not be provided for reserved name "self".')
+  param_value_hints['self'] = (c.__name__, c)
+
+  class_globals = None
+  for _, m in members:
+    node, _ = function_to_graph(m, conversion_map, param_value_hints, c)
+    # TODO(mdan): Do not assume all members have the same view of globals.
+    if class_globals is None:
+      class_globals = six.get_function_globals(m)
+    converted_members[m] = node
+  namer = conversion_map.new_namer(class_globals)
+  class_name = namer.compiled_class_name(c.__name__, c)
+  node = gast.ClassDef(
+      class_name,
+      bases=[],
+      keywords=[],
+      body=converted_members.values(),
+      decorator_list=[])
+
+  return node, class_name
+
+
+def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
   """Specialization of `object_to_graph` for callable functions."""
   node = parser.parse_object(f).body[0]
   node_globals = six.get_function_globals(f)
@@ -118,15 +168,12 @@ def function_to_graph(f, conversion_map, param_value_hints):
   # Simulate a rename to ensure the top level is in the name map. This is needed
   # for top level functions, and it also helps the consistency verification made
   # by update_name_map.
-  namer.compiled_function_name(f.__name__, f)
-
-  conversion_map.add_to_cache(f, node)
+  if owner_type is not None:
+    new_name = namer.compiled_function_name(f.__name__, f, owner_type)
+  else:
+    new_name = namer.compiled_function_name(f.__name__, f)
+  node.name = new_name
   conversion_map.update_name_map(namer)
-
-  # Recursively convert any remaining dependencies.
-  for obj in conversion_map.name_map.keys():
-    if obj not in conversion_map.dependency_cache:
-      object_to_graph(obj, conversion_map, None)
   return node, conversion_map.name_map[f]
 
 
