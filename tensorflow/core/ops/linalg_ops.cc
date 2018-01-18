@@ -146,12 +146,12 @@ Status QrShapeFn(InferenceContext* c) {
 Status LuShapeFn(InferenceContext* c) {
   ShapeHandle l_shape;
   ShapeHandle u_shape;
+  ShapeHandle p_shape;
   ShapeHandle q_shape;
-  ShapeHandle r_shape;
   c->set_output(0, l_shape);
   c->set_output(1, u_shape);
-  c->set_output(2, q_shape);
-  c->set_output(3, r_shape);
+  c->set_output(2, p_shape);
+  c->set_output(3, q_shape);
   return Status::OK();
 }
 
