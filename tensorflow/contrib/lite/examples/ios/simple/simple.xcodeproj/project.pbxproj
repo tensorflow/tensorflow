@@ -38,7 +38,6 @@
 		59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunModelViewController.h; sourceTree = "<group>"; };
 		59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
 		59A3D0001CF4E68100C4259F /* RunModelViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = RunModelViewController.xib; sourceTree = "<group>"; };
-		73DBC33C5DD9A526EE6D1EF2 /* libPods-tf_simple_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tf_simple_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,7 +61,6 @@
 				1C0D734A1ECCC460008C1DAB /* CoreGraphics.framework */,
 				1C0D73481ECCC41B008C1DAB /* CoreImage.framework */,
 				1CA45FFE1ECCC356002FA6A4 /* UIKit.framework */,
-				73DBC33C5DD9A526EE6D1EF2 /* libPods-tf_simple_example.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
