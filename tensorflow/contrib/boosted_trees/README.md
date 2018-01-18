@@ -1,7 +1,7 @@
 # TF Boosted Trees (TFBT)
 
 TF Boosted trees is an implementation of a gradient boosting algorithm with
-trees used as week learners.
+trees used as weak learners.
 
 ## Examples
 Folder "examples" demonstrates how TFBT estimators can be used for various

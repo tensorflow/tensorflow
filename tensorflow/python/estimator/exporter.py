@@ -71,16 +71,17 @@ class _SavedModelExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
-               as_text=False):
+               as_text=False,
+               strip_default_attrs=True):
     """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
 
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -90,14 +91,18 @@ class _SavedModelExporter(Exporter):
         `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
       as_text: whether to write the SavedModel proto in text format. Defaults to
         `False`.
+      strip_default_attrs: Boolean. If set, default attrs in the `GraphDef` will
+        be stripped on write. This is the default behavior and recommended for
+        better forward compatibility of the resulting `SavedModel`.
 
     Raises:
       ValueError: if any arguments is invalid.
     """
     self._name = name
-    self._serving_input_fn = serving_input_fn
+    self._serving_input_receiver_fn = serving_input_receiver_fn
     self._assets_extra = assets_extra
     self._as_text = as_text
+    self._strip_default_attrs = strip_default_attrs
 
   @property
   def name(self):
@@ -109,10 +114,11 @@ class _SavedModelExporter(Exporter):
 
     export_result = estimator.export_savedmodel(
         export_path,
-        self._serving_input_fn,
+        self._serving_input_receiver_fn,
         assets_extra=self._assets_extra,
         as_text=self._as_text,
-        checkpoint_path=checkpoint_path)
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=self._strip_default_attrs)
 
     return export_result
 
@@ -125,7 +131,7 @@ class FinalExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
                as_text=False):
     """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
@@ -133,8 +139,8 @@ class FinalExporter(Exporter):
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -148,7 +154,8 @@ class FinalExporter(Exporter):
     Raises:
       ValueError: if any arguments is invalid.
     """
-    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+    self._saved_model_exporter = _SavedModelExporter(name,
+                                                     serving_input_receiver_fn,
                                                      assets_extra, as_text)
 
   @property
@@ -175,7 +182,7 @@ class LatestExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
                as_text=False,
                exports_to_keep=5):
@@ -184,8 +191,8 @@ class LatestExporter(Exporter):
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -196,13 +203,14 @@ class LatestExporter(Exporter):
       as_text: whether to write the SavedModel proto in text format. Defaults to
         `False`.
       exports_to_keep: Number of exports to keep.  Older exports will be
-       garbage-collected.  Defaults to 5.  Set to `None` to disable garbage
-       collection.
+        garbage-collected.  Defaults to 5.  Set to `None` to disable garbage
+        collection.
 
     Raises:
       ValueError: if any arguments is invalid.
     """
-    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+    self._saved_model_exporter = _SavedModelExporter(name,
+                                                     serving_input_receiver_fn,
                                                      assets_extra, as_text)
     self._exports_to_keep = exports_to_keep
     if exports_to_keep is not None and exports_to_keep <= 0:

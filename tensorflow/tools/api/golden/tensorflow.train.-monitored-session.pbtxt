@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.monitored_session._MonitoredSession\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "StepContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "graph"
     mtype: "<type \'property\'>"
   }
@@ -18,6 +22,10 @@ tf_class {
   member_method {
     name: "run"
     argspec: "args=[\'self\', \'fetches\', \'feed_dict\', \'options\', \'run_metadata\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "run_step_fn"
+    argspec: "args=[\'self\', \'step_fn\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "should_stop"

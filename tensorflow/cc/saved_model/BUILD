@@ -89,7 +89,6 @@ tf_cc_test(
 filegroup(
     name = "saved_model_half_plus_two",
     srcs = glob([
-        "testdata/half_plus_two_forward_compatibility/**",
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",

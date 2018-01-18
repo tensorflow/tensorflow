@@ -42,11 +42,15 @@ See the @{$python/contrib.layers} guide.
 @@relu
 @@relu6
 @@repeat
+@@recompute_grad
+@@RevBlock
+@@rev_block
 @@safe_embedding_lookup_sparse
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
+@@spatial_softmax
 @@stack
 @@unit_norm
 @@bow_encoder

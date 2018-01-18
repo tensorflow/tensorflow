@@ -107,23 +107,40 @@ def _get_raw_docstring(py_object):
 
 
 # A regular expression for capturing a @{symbol} reference.
-SYMBOL_REFERENCE_RE = re.compile(r'@\{([^}]+)\}')
+SYMBOL_REFERENCE_RE = re.compile(
+    r"""
+    # Start with a literal "@{".
+    @\{
+      # Group at least 1 symbol: not "}" or "\n".
+      ([^}\n]+)
+    # Followed by a closing "}"
+    \}
+    """,
+    flags=re.VERBOSE)
 
 
 class ReferenceResolver(object):
   """Class for replacing @{...} references with Markdown links.
 
-  Args:
-    duplicate_of: A map from duplicate names to preferred names of API
-      symbols.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
-    index: A map from all full names to python objects.
-    py_module_names: A list of string names of Python modules.
+  Attributes:
+    current_doc_full_name: A string (or None) indicating the name of the
+      document currently being processed, so errors can reference the broken
+      doc.
   """
 
   def __init__(self, duplicate_of, doc_index, is_class, is_module,
                py_module_names):
+    """Initializes a Reference Resolver.
+
+    Args:
+      duplicate_of: A map from duplicate names to preferred names of API
+        symbols.
+      doc_index: A `dict` mapping symbol name strings to objects with `url`
+        and `title` fields. Used to resolve @{$doc} references in docstrings.
+      is_class: A map from full names to bool for each symbol.
+      is_module: A map from full names to bool for each symbol.
+      py_module_names: A list of string names of Python modules.
+    """
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
     self._is_class = is_class
@@ -249,11 +266,19 @@ class ReferenceResolver(object):
     Returns:
       A markdown link to the documentation page of `ref_full_name`.
     """
-    link = self.reference_to_url(ref_full_name, relative_path_to_root)
+    url = self.reference_to_url(ref_full_name, relative_path_to_root)
+
     if code_ref:
-      return '[`%s`](%s)' % (link_text, link)
+      link_text = link_text.join(['<code>', '</code>'])
     else:
-      return '[%s](%s)' % (link_text, link)
+      link_text = self._link_text_to_html(link_text)
+
+    return '<a href="{}">{}</a>'.format(url, link_text)
+
+  @staticmethod
+  def _link_text_to_html(link_text):
+    code_re = '`(.*?)`'
+    return re.sub(code_re, r'<code>\1</code>', link_text)
 
   def py_master_name(self, full_name):
     """Return the master name for a Python symbol name."""
@@ -322,13 +347,13 @@ class ReferenceResolver(object):
 
     # Handle different types of references.
     if string.startswith('$'):  # Doc reference
-      return self._doc_link(
-          string, link_text, manual_link_text, relative_path_to_root)
+      return self._doc_link(string, link_text, manual_link_text,
+                            relative_path_to_root)
 
     elif string.startswith('tensorflow::'):
       # C++ symbol
-      return self._cc_link(
-          string, link_text, manual_link_text, relative_path_to_root)
+      return self._cc_link(string, link_text, manual_link_text,
+                           relative_path_to_root)
 
     else:
       is_python = False
@@ -337,8 +362,11 @@ class ReferenceResolver(object):
           is_python = True
           break
       if is_python:  # Python symbol
-        return self.python_link(link_text, string, relative_path_to_root,
-                                code_ref=not manual_link_text)
+        return self.python_link(
+            link_text,
+            string,
+            relative_path_to_root,
+            code_ref=not manual_link_text)
 
     # Error!
     self.add_error('Did not understand "%s"' % match.group(0))
@@ -361,7 +389,9 @@ class ReferenceResolver(object):
       if not manual_link_text: link_text = self._doc_index[string].title
       url = os.path.normpath(os.path.join(
           relative_path_to_root, '../..', self._doc_index[string].url))
-      return '[%s](%s%s)' % (link_text, url, hash_tag)
+      link_text = self._link_text_to_html(link_text)
+      return '<a href="{}{}">{}</a>'.format(url, hash_tag, link_text)
+
     return self._doc_missing(string, hash_tag, link_text, manual_link_text,
                              relative_path_to_root)
 
@@ -392,7 +422,9 @@ class ReferenceResolver(object):
     # to api_docs/cc, and then add ret.
     cc_relative_path = os.path.normpath(os.path.join(
         relative_path_to_root, '../cc', ret))
-    return '[`%s`](%s)' % (link_text, cc_relative_path)
+
+    return '<a href="{}"><code>{}</code></a>'.format(cc_relative_path,
+                                                     link_text)
 
 
 # TODO(aselle): Collect these into a big list for all modules and functions

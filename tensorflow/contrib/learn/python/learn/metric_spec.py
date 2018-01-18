@@ -42,10 +42,8 @@ def _args(fn):
   """
   if hasattr(fn, 'func') and hasattr(fn, 'keywords'):
     # Handle functools.partial and similar objects.
-    return tuple([
-        arg for arg in tf_inspect.getargspec(fn.func).args
-        if arg not in set(fn.keywords.keys())
-    ])
+    return tuple(
+        [arg for arg in _args(fn.func) if arg not in set(fn.keywords.keys())])
   # Handle function.
   return tuple(tf_inspect.getargspec(fn).args)
 

@@ -191,12 +191,9 @@ def _embedding_lookup_and_transform(params,
             (flat_ids - extras) // ids_per_partition)
 
         # Emulate a conditional using a boolean indicator tensor
-        is_in_first_extras_partitions = math_ops.cast(p_assignments < extras,
-                                                      flat_ids.dtype)
-        new_ids = (is_in_first_extras_partitions * (flat_ids %
-                                                    (ids_per_partition + 1)) +
-                   (1 - is_in_first_extras_partitions) *
-                   ((flat_ids - extras) % ids_per_partition))
+        new_ids = array_ops.where(p_assignments < extras,
+                                  flat_ids % (ids_per_partition + 1),
+                                  (flat_ids - extras) % ids_per_partition)
       else:
         raise ValueError("Unrecognized partition strategy: " +
                          partition_strategy)

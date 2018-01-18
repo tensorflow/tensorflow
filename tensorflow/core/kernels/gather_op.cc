@@ -106,7 +106,7 @@ class GatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({outer_size, N, inner_size});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
+      int64 bad_i = functor(c, params_flat,
                             indices_flat, out_flat);
 
       OP_REQUIRES(
@@ -140,6 +140,8 @@ class GatherOp : public OpKernel {
 // Registration of the CPU implementations.
 TF_CALL_ALL_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
+TF_CALL_quint16(REGISTER_GATHER_CPU);
+TF_CALL_qint16(REGISTER_GATHER_CPU);
 
 #undef REGISTER_GATHER_CPU
 

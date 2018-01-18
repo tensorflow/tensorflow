@@ -35,14 +35,17 @@ bool NewProfiler(const string* graph, const string* op_log);
 
 void DeleteProfiler();
 
-void AddStep(int64 step, const string* graph, const string* run_meta,
-             const string* op_log);
+double AddStep(int64 step, const string* graph, const string* run_meta,
+               const string* op_log);
 
 // Write the profiler's profile to a proto buffer.
 void WriteProfile(const string* filename);
 
 // Load the profile to profiler from a proto buffer file.
 void ProfilerFromFile(const string* filename);
+
+// Returns a binary string that represents the serialized ProfileProto.
+string SerializeToString();
 
 string Profile(const string* command, const string* options);
 

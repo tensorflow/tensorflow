@@ -68,26 +68,6 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend)
     : Service(options, std::move(execute_backend)) {}
 
-namespace {
-// Returns the space required to allocate a shape. If
-// allocate_space_for_deep_copy the space includes all sub-buffers of
-// a tuple.
-int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
-                    TransferManager* transfer_manager) {
-  int64 size = 0;
-  // TODO(b/33492279) remove once no devices represent result tuples as
-  // contiguous buffers.
-  if (allocate_space_for_deep_copy) {
-    ShapeUtil::ForEachSubshape(
-        shape, [&size, transfer_manager](const Shape& subshape,
-                                         const ShapeIndex& /*index*/) {
-          size += transfer_manager->GetByteSizeRequirement(subshape);
-        });
-  }
-  return size;
-}
-}  // namespace
-
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
@@ -138,10 +118,14 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));
 
-  std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
-      argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         argument_buffers, execute_backend_.get(), executor);
+                         execute_backend_.get(), executor);
+}
+
+StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return backend().computation_placer()->DeviceId(
+      replica_number, /*computation=*/0, options_.number_of_replicas(),
+      /*computation_count=*/1);
 }
 
 }  // namespace xla

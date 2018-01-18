@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TFGRAPH_BUILDER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 
@@ -26,6 +27,8 @@ namespace hlo_graph_dumper {
 // This constructs a tensorflow graph for HLO computations.
 class HloTfGraphBuilder {
  public:
+  HloTfGraphBuilder(const DebugOptions& debug_options = DebugOptions());
+
   // Adds a computation to the graph.
   Status AddComputation(const HloComputation& computation);
 
@@ -42,15 +45,13 @@ class HloTfGraphBuilder {
 
   Status AddInstruction(const HloInstruction* instruction);
 
+  DebugOptions debug_options_;
   tensorflow::GraphDef graph_def_;
   // This records instructions that have been visited.
   std::unordered_set<const HloInstruction*> visited_instructions_;
   // A cache that maps instruction to the node name.
   std::unordered_map<const HloInstruction*, string> instruction_to_node_name_;
 };
-
-// Cleans the node name to make it a valid name in a tensorflow graph.
-void CleanNodeName(string* name);
 
 }  // namespace hlo_graph_dumper
 }  // namespace xla

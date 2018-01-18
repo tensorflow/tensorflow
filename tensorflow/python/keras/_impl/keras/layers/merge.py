@@ -172,7 +172,7 @@ class _Merge(Layer):
     else:
       return self._merge_function(inputs)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -299,11 +299,26 @@ class Maximum(_Merge):
     return output
 
 
+class Minimum(_Merge):
+  """Layer that computes the minimum (element-wise) a list of inputs.
+
+  It takes as input a list of tensors,
+  all of the same shape, and returns
+  a single tensor (also of the same shape).
+  """
+
+  def _merge_function(self, inputs):
+    output = inputs[0]
+    for i in range(1, len(inputs)):
+      output = K.minimum(output, inputs[i])
+    return output
+
+
 class Concatenate(_Merge):
   """Layer that concatenates a list of inputs.
 
   It takes as input a list of tensors,
-  all of the same shape expect for the concatenation axis,
+  all of the same shape except for the concatenation axis,
   and returns a single tensor, the concatenation of all inputs.
 
   Arguments:
@@ -343,7 +358,7 @@ class Concatenate(_Merge):
                        'on a list of inputs.')
     return K.concatenate(inputs, axis=self.axis)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list):
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of inputs.')
@@ -375,9 +390,8 @@ class Concatenate(_Merge):
     masks = []
     for input_i, mask_i in zip(inputs, mask):
       if mask_i is None:
-        # Input is unmasked. Append all 1s to masks,
-        # but cast it to bool first
-        masks.append(K.cast(K.ones_like(input_i), 'bool'))
+        # Input is unmasked. Append all 1s to masks
+        masks.append(K.ones_like(input_i, dtype='bool'))
       elif K.ndim(mask_i) < K.ndim(input_i):
         # Mask is smaller than the input, expand it
         masks.append(K.expand_dims(mask_i))
@@ -471,7 +485,7 @@ class Dot(_Merge):
     output = K.batch_dot(x1, x2, axes)
     return output
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '
                        'on a list of 2 inputs.')
@@ -582,6 +596,19 @@ def maximum(inputs, **kwargs):
       A tensor, the element-wise maximum of the inputs.
   """
   return Maximum(**kwargs)(inputs)
+
+
+def minimum(inputs, **kwargs):
+  """Functional interface to the `Minimum` layer.
+
+  Arguments:
+      inputs: A list of input tensors (at least 2).
+      **kwargs: Standard layer keyword arguments.
+
+  Returns:
+      A tensor, the element-wise minimum of the inputs.
+  """
+  return Minimum(**kwargs)(inputs)
 
 
 def concatenate(inputs, axis=-1, **kwargs):

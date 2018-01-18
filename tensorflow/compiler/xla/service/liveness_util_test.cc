@@ -277,8 +277,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto b = builder.AddInstruction(HloInstruction::CreateConstant(
       Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
@@ -312,8 +315,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
   auto b_t = builder.AddInstruction(
       HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
 
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b_t));
+      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
@@ -413,6 +419,45 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
 
   EXPECT_TRUE(
       CanShareOperandBufferWithUser(data, {}, whil, {}, *dataflow_analysis_));
+}
+
+// Tests that Call can alias operand buffer if the only use of the operand
+// in the called computation is an elementwise instruction.
+TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  // Build sub-computation with fusion root.
+  auto sub_builder = HloComputation::Builder(TestName() + "_sub");
+  auto sub_param = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "sub_param"));
+  auto one = sub_builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto ones = sub_builder.AddInstruction(
+      HloInstruction::CreateBroadcast(shape, one, {1}));
+  auto add = sub_builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
+
+  module_ = CreateNewModule();
+  auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
+  sub_computation->CreateFusionInstruction({add, ones},
+                                           HloInstruction::FusionKind::kLoop);
+
+  // Build entry-computation with kCall which calls 'sub_computation'.
+  auto builder = HloComputation::Builder(TestName());
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto reverse =
+      builder.AddInstruction(HloInstruction::CreateReverse(shape, param, {0}));
+  auto call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {reverse}, sub_computation));
+  computation_ = module_->AddEntryComputation(builder.Build());
+
+  RunAnalysis();
+
+  EXPECT_TRUE(CanShareOperandBufferWithUser(reverse, {}, call, {},
+                                            *points_to_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(reverse, {}, call, {},
+                                            *dataflow_analysis_));
 }
 
 }  // namespace

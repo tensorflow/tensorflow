@@ -130,6 +130,13 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
 }
 
+TEST(TypesTest, ComplexTypes) {
+  EXPECT_TRUE(DataTypeIsComplex(DT_COMPLEX64));
+  EXPECT_TRUE(DataTypeIsComplex(DT_COMPLEX128));
+  EXPECT_FALSE(DataTypeIsComplex(DT_FLOAT));
+  EXPECT_FALSE(DataTypeIsComplex(DT_DOUBLE));
+}
+
 TEST(TypesTest, IntegerTypes) {
   for (auto dt : AllTypes()) {
     const string name = DataTypeString(dt);

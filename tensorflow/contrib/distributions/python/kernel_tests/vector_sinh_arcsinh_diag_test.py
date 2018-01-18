@@ -210,15 +210,15 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
           validate_args=True)
 
       self.run_test_sample_consistent_log_prob(
-          sess, sasnorm, radius=1.0, center=0., rtol=0.1)
+          sess.run, sasnorm, radius=1.0, center=0., rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=-0.15,
           rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=0.15,
@@ -237,15 +237,15 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
           validate_args=True)
 
       self.run_test_sample_consistent_log_prob(
-          sess, sasnorm, radius=1.0, center=0., rtol=0.1)
+          sess.run, sasnorm, radius=1.0, center=0., rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=-0.15,
           rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=0.15,

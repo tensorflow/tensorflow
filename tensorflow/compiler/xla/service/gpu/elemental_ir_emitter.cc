@@ -195,28 +195,49 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
   return EmitLibdeviceMathCall("__nv_erfcinv", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_cos", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
+                                                      llvm::Value* lhs,
+                                                      llvm::Value* rhs) const {
+  return EmitLibdeviceMathCall("__nv_pow", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
+  return EmitLibdeviceMathCall("__nv_atan2", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
   PrimitiveType input_type = op->operand(0)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
-    case HloOpcode::kExp:
-      return EmitLibdeviceMathCall("__nv_exp", {operand_value}, {input_type},
-                                   output_type);
     case HloOpcode::kFloor:
       return EmitLibdeviceMathCall("__nv_floor", {operand_value}, {input_type},
                                    output_type);
     case HloOpcode::kCeil:
       return EmitLibdeviceMathCall("__nv_ceil", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kLog:
-      return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kCos:
-      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kSin:
-      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
                                    output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
@@ -235,13 +256,12 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, ir_builder_));
+        llvm_ir::PrimitiveTypeToIrType(input_type, module_));
   }
   llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type,
-                                     ir_builder_),  // The return type.
-      ir_input_types,                               // The parameter types.
-      false);                                       // No variadic arguments.
+      llvm_ir::PrimitiveTypeToIrType(output_type, module_),  // Return type.
+      ir_input_types,                                        // Parameter types.
+      false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::cast<llvm::Function>(
@@ -315,7 +335,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(operand_element_type, ir_builder_),
+            llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
             "reduce_window_accum_ptr", ir_builder_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
@@ -377,7 +397,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         llvm::Value* accum_ptr =
             ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
-                hlo->shape().element_type(), ir_builder()));
+                hlo->shape().element_type(), module_));
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
                             operand_to_generator.at(hlo->operand(1))({}));
         ir_builder()->CreateStore(init_value, accum_ptr);

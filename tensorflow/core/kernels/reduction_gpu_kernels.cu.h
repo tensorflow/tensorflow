@@ -460,7 +460,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     return;
   } else if (in_size <= 1 << 19) {
     const int num_threads = 256;
-    const int num_blocks = min(32, Eigen::divup(in_size, num_threads));
+    const int num_blocks = std::min(32, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
     // would be more effective, but all attempts
     // at making this a multiple of the number of
@@ -557,13 +557,13 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const cudaStream_t& cu_stream) {
   int rows_per_warp = 32 / extent_y;
-  dim3 block_dim(32, min(Eigen::divup(extent_x, rows_per_warp), 32), 1);
+  dim3 block_dim(32, std::min(Eigen::divup(extent_x, rows_per_warp), 32), 1);
   dim3 grid_dim(1,
                 Eigen::divup(static_cast<unsigned int>(extent_x),
                              rows_per_warp * block_dim.y),
                 1);
 
-  grid_dim.y = min((int)grid_dim.y, 32);
+  grid_dim.y = std::min((int)grid_dim.y, 32);
 
   if (grid_dim.y > 2 && grid_dim.y < 32) {
     int log2 = Log2Floor(grid_dim.y);
@@ -596,10 +596,10 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                        int extent_x, int extent_y, Op op,
                                        T init, const cudaStream_t& cu_stream) {
-  dim3 block_dim(32, min(extent_x, 32), 1);
+  dim3 block_dim(32, std::min(extent_x, 32), 1);
   dim3 grid_dim((extent_y + 31) / 32, 1, 1);
 
-  if (grid_dim.x < 16) grid_dim.y = min((extent_x + 31) / 32, 32);
+  if (grid_dim.x < 16) grid_dim.y = std::min((extent_x + 31) / 32, 32);
 
   if (grid_dim.y > 2 && grid_dim.y < 32) {
     int log2 = Log2Floor(grid_dim.y);

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -280,6 +281,15 @@ class TmpDirFileSystem : public NullFileSystem {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
+    // The special "flushed" file exists only if the filesystem's caches have
+    // been flushed.
+    if (path == "/flushed") {
+      if (flushed_) {
+        return Status::OK();
+      } else {
+        return errors::NotFound("FlushCaches() not called yet");
+      }
+    }
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
@@ -294,9 +304,22 @@ class TmpDirFileSystem : public NullFileSystem {
     }
     return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
   }
+
+  void FlushCaches() override { flushed_ = true; }
+
+ private:
+  bool flushed_ = false;
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
+
+TEST_F(DefaultEnvTest, FlushFileSystemCaches) {
+  Env* env = Env::Default();
+  const string flushed = "tmpdirfs://testhost/flushed";
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(flushed).code());
+  TF_EXPECT_OK(env->FlushFileSystemCaches());
+  TF_EXPECT_OK(env->FileExists(flushed));
+}
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
@@ -338,6 +361,20 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));
   EXPECT_FALSE(env->FileExists(filename).ok());
+}
+
+TEST_F(DefaultEnvTest, CreateUniqueFileName) {
+  Env* env = Env::Default();
+
+  string prefix = "tempfile-prefix-";
+  string suffix = ".tmp";
+  string filename = prefix;
+
+  EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
+
+  StringPiece str(filename);
+  EXPECT_TRUE(str.starts_with(prefix));
+  EXPECT_TRUE(str.ends_with(suffix));
 }
 
 }  // namespace tensorflow

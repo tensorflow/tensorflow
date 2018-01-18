@@ -198,23 +198,23 @@ def avg_pool3d(inputs,
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
-def _fused_batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
+def _fused_batch_norm(inputs,
+                      decay=0.999,
+                      center=True,
+                      scale=False,
+                      epsilon=0.001,
+                      activation_fn=None,
+                      param_initializers=None,
+                      param_regularizers=None,
+                      updates_collections=ops.GraphKeys.UPDATE_OPS,
+                      is_training=True,
+                      reuse=None,
+                      variables_collections=None,
+                      outputs_collections=None,
+                      trainable=True,
+                      data_format=DATA_FORMAT_NHWC,
+                      zero_debias_moving_mean=False,
+                      scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -257,6 +257,7 @@ def _fused_batch_norm(
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
+    param_regularizers: Optional regularizer for beta and gamma.
     updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
@@ -285,7 +286,6 @@ def _fused_batch_norm(
     ValueError: If the rank of `inputs` is neither 2 or 4.
     ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
-  # TODO(reedwm): Add support for fp16 inputs.
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
@@ -309,7 +309,6 @@ def _fused_batch_norm(
         new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
-    dtype = inputs.dtype.base_dtype
     if data_format == DATA_FORMAT_NHWC:
       params_shape = inputs_shape[-1:]
     else:
@@ -319,23 +318,30 @@ def _fused_batch_norm(
                        (inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
-    trainable_beta = trainable and center
     beta_collections = utils.get_variable_collections(variables_collections,
                                                       'beta')
+    # Float32 required to avoid precision-loss when using fp16 input/output
+    variable_dtype = dtypes.float32
     if not param_initializers:
       param_initializers = {}
+    if not param_regularizers:
+      param_regularizers = {}
+    beta_regularizer = param_regularizers.get('beta')
+    gamma_regularizer = param_regularizers.get('gamma')
+
     if center:
       beta_initializer = param_initializers.get('beta',
                                                 init_ops.zeros_initializer())
       beta = variables.model_variable(
           'beta',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=beta_initializer,
+          regularizer=beta_regularizer,
           collections=beta_collections,
-          trainable=trainable_beta)
+          trainable=trainable)
     else:
-      beta = array_ops.constant(0.0, shape=params_shape)
+      beta = array_ops.constant(0.0, dtype=variable_dtype, shape=params_shape)
 
     if scale:
       gamma_collections = utils.get_variable_collections(
@@ -345,12 +351,13 @@ def _fused_batch_norm(
       gamma = variables.model_variable(
           'gamma',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=gamma_initializer,
+          regularizer=gamma_regularizer,
           collections=gamma_collections,
           trainable=trainable)
     else:
-      gamma = array_ops.constant(1.0, shape=params_shape)
+      gamma = array_ops.constant(1.0, dtype=variable_dtype, shape=params_shape)
 
     # Create moving_mean and moving_variance variables and add them to the
     # appropriate collections. We disable variable partitioning while creating
@@ -367,7 +374,7 @@ def _fused_batch_norm(
       moving_mean = variables.model_variable(
           'moving_mean',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=moving_mean_initializer,
           trainable=False,
           collections=moving_mean_collections)
@@ -378,7 +385,7 @@ def _fused_batch_norm(
       moving_variance = variables.model_variable(
           'moving_variance',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=moving_variance_initializer,
           trainable=False,
           collections=moving_variance_collections)
@@ -463,7 +470,8 @@ def batch_norm(inputs,
                scope=None,
                renorm=False,
                renorm_clipping=None,
-               renorm_decay=0.99):
+               renorm_decay=0.99,
+               adjustment=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -546,6 +554,17 @@ def batch_norm(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `decay` is still applied
       to get the means and variances for inference.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -569,7 +588,10 @@ def batch_norm(inputs,
   #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  possible_to_fuse = batch_weights is None and not renorm and rank in [2, 4]
+  possible_to_fuse = (batch_weights is None and
+                      not renorm and
+                      rank in [2, 4] and
+                      adjustment is None)
   if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
@@ -581,6 +603,7 @@ def batch_norm(inputs,
         epsilon=epsilon,
         activation_fn=activation_fn,
         param_initializers=param_initializers,
+        param_regularizers=param_regularizers,
         updates_collections=updates_collections,
         is_training=is_training,
         reuse=reuse,
@@ -636,6 +659,7 @@ def batch_norm(inputs,
           renorm=renorm,
           renorm_clipping=renorm_clipping,
           renorm_momentum=renorm_decay,
+          adjustment=adjustment,
           name=sc.name,
           _scope=sc,
           _reuse=reuse,
@@ -1251,7 +1275,7 @@ def convolution2d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1360,7 +1384,7 @@ def convolution3d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1378,7 +1402,8 @@ def dropout(inputs,
             noise_shape=None,
             is_training=True,
             outputs_collections=None,
-            scope=None):
+            scope=None,
+            seed=None):
   """Returns a dropout op applied to the input.
 
   With probability `keep_prob`, outputs the input element scaled up by
@@ -1396,6 +1421,8 @@ def dropout(inputs,
       Otherwise, inputs is returned.
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed} for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1405,6 +1432,7 @@ def dropout(inputs,
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dropout(rate=1 - keep_prob,
                                 noise_shape=noise_shape,
+                                seed=seed,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
@@ -1868,7 +1896,7 @@ class GDN(base.Layer):
     outputs.set_shape(inputs.get_shape())
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
@@ -1992,7 +2020,7 @@ def layer_norm(inputs,
 
   Given a tensor `inputs` of rank `R`, moments are calculated and normalization
   is performed over axes `begin_norm_axis ... R - 1`.  Scaling and centering,
-  if requested, is performed over axes `begin_shift_axis .. R - 1`.
+  if requested, is performed over axes `begin_params_axis .. R - 1`.
 
   By default, `begin_norm_axis = 1` and `begin_params_axis = -1`,
   meaning that normalization is performed over all but the first axis
@@ -2506,7 +2534,7 @@ def separable_convolution2d(
                                    variables_collections, 'weights')
       _add_variable_to_collections(layer.pointwise_kernel,
                                    variables_collections, 'weights')
-      if layer.bias:
+      if layer.bias is not None:
         _add_variable_to_collections(layer.bias,
                                      variables_collections, 'biases')
 
@@ -2533,7 +2561,10 @@ def separable_convolution2d(
           regularizer=weights_regularizer,
           trainable=trainable,
           collections=weights_collections)
-      strides = [1, stride_h, stride_w, 1]
+      strides = [1, 1, stride_h,
+                 stride_w] if data_format.startswith('NC') else [
+                     1, stride_h, stride_w, 1
+                 ]
 
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
                                     rate=utils.two_element_tuple(rate),
@@ -2623,51 +2654,61 @@ def spatial_softmax(features,
     ValueError: If unexpected data_format specified.
     ValueError: If num_channels dimension is unspecified.
   """
-  shape = array_ops.shape(features)
-  static_shape = features.shape
-  if data_format == DATA_FORMAT_NHWC:
-    height, width, num_channels = shape[1], shape[2], static_shape[3]
-  elif data_format == DATA_FORMAT_NCHW:
-    num_channels, height, width = static_shape[1], shape[2], shape[3]
-  else:
-    raise ValueError('data_format has to be either NCHW or NHWC.')
-  if num_channels.value is None:
-    raise ValueError('The num_channels dimension of the inputs to '
-                     '`spatial_softmax` should be defined. Found `None`.')
+  with variable_scope.variable_scope(name, 'spatial_softmax'):
+    shape = array_ops.shape(features)
+    static_shape = features.shape
+    if data_format == DATA_FORMAT_NHWC:
+      height, width, num_channels = shape[1], shape[2], static_shape[3]
+    elif data_format == DATA_FORMAT_NCHW:
+      num_channels, height, width = static_shape[1], shape[2], shape[3]
+    else:
+      raise ValueError('data_format has to be either NCHW or NHWC.')
+    if num_channels.value is None:
+      raise ValueError('The num_channels dimension of the inputs to '
+                       '`spatial_softmax` should be defined. Found `None`.')
 
-  with ops.name_scope(name, 'spatial_softmax', [features]) as name:
-    # Create tensors for x and y coordinate values, scaled to range [-1, 1].
-    pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
-                                      math_ops.lin_space(-1., 1., num=width),
-                                      indexing='ij')
-    pos_x = array_ops.reshape(pos_x, [height * width])
-    pos_y = array_ops.reshape(pos_y, [height * width])
-    if temperature is None:
-      temperature_collections = utils.get_variable_collections(
-          variables_collections, 'temperature')
+    with ops.name_scope('spatial_softmax_op', 'spatial_softmax_op', [features]):
+      # Create tensors for x and y coordinate values, scaled to range [-1, 1].
+      pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
+                                        math_ops.lin_space(-1., 1., num=width),
+                                        indexing='ij')
+      pos_x = array_ops.reshape(pos_x, [height * width])
+      pos_y = array_ops.reshape(pos_y, [height * width])
+      
+      if temperature is None:
+        temp_initializer = init_ops.ones_initializer()
+      else:
+        temp_initializer = init_ops.constant_initializer(temperature)
+          
+      if not trainable:
+        temp_collections = None
+      else:
+        temp_collections = utils.get_variable_collections(
+              variables_collections, 'temperature')
+      
       temperature = variables.model_variable(
           'temperature',
           shape=(),
           dtype=dtypes.float32,
-          initializer=init_ops.ones_initializer(),
-          collections=temperature_collections,
+          initializer=temp_initializer,
+          collections=temp_collections,
           trainable=trainable)
-    if data_format == 'NCHW':
-      features = array_ops.reshape(features, [-1, height * width])
-    else:
-      features = array_ops.reshape(
-          array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+      if data_format == 'NCHW':
+        features = array_ops.reshape(features, [-1, height * width])
+      else:
+        features = array_ops.reshape(
+            array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
 
-    softmax_attention = nn.softmax(features/temperature)
-    expected_x = math_ops.reduce_sum(
-        pos_x * softmax_attention, [1], keep_dims=True)
-    expected_y = math_ops.reduce_sum(
-        pos_y * softmax_attention, [1], keep_dims=True)
-    expected_xy = array_ops.concat([expected_x, expected_y], 1)
-    feature_keypoints = array_ops.reshape(
-        expected_xy, [-1, num_channels.value * 2])
-    feature_keypoints.set_shape([None, num_channels.value * 2])
-    return feature_keypoints
+      softmax_attention = nn.softmax(features/temperature)
+      expected_x = math_ops.reduce_sum(
+          pos_x * softmax_attention, [1], keep_dims=True)
+      expected_y = math_ops.reduce_sum(
+          pos_y * softmax_attention, [1], keep_dims=True)
+      expected_xy = array_ops.concat([expected_x, expected_y], 1)
+      feature_keypoints = array_ops.reshape(
+          expected_xy, [-1, num_channels.value * 2])
+      feature_keypoints.set_shape([None, num_channels.value * 2])
+  return feature_keypoints
 
 
 def stack(inputs, layer, stack_args, **kwargs):

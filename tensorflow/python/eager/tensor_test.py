@@ -18,11 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+import re
+
 import numpy as np
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -45,7 +50,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testScalarTensor(self):
     t = _create_tensor(3, dtype=dtypes.int32)
-    self.assertEqual(t.numpy(), _create_tensor(np.array(3)).numpy())
+    self.assertAllEqual(t, _create_tensor(np.array(3)))
     self.assertEqual(dtypes.int32, t.dtype)
     self.assertEqual(0, t.shape.ndims)
     self.assertAllEqual([], t.shape.as_list())
@@ -85,12 +90,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testNumpyValue(self):
     values = np.array([3.0])
     t = _create_tensor(values)
-    self.assertAllEqual(values, t.numpy())
+    self.assertAllEqual(values, t)
 
   def testNumpyValueWithCast(self):
     values = np.array([3.0], dtype=np.float32)
     t = _create_tensor(values, dtype=dtypes.float64)
-    self.assertAllEqual(values, t.numpy())
+    self.assertAllEqual(values, t)
     ctx = context.context()
     # Bad dtype value.
     with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
@@ -100,13 +105,32 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
     t = _create_tensor(n)
-    self.assertAllEqual([[1, 2], [3, 4]], t.numpy())
+    self.assertAllEqual([[1, 2], [3, 4]], t)
+
+  def testNumpyArrayDtype(self):
+    tensor = constant_op.constant([1.0, 2.0, 3.0])
+    numpy_tensor = np.asarray(tensor, dtype=np.int32)
+    self.assertAllEqual(numpy_tensor, [1, 2, 3])
+
+  def testCopy(self):
+    t = constant_op.constant(1.0)
+    tt = copy.copy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    tt = copy.deepcopy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    self.assertAllEqual(t, 1.0)
+
+  def testConstantDtype(self):
+    self.assertEqual(constant_op.constant(1.0, dtype=np.int64).dtype,
+                     dtypes.int64)
 
   def testTensorAndNumpyMatrix(self):
     expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
     actual = _create_tensor([[1.0, 2.0], [3.0, 4.0]])
-    self.assertAllEqual(expected, actual.numpy())
-    self.assertEqual(np.float32, actual.numpy().dtype)
+    self.assertAllEqual(expected, actual)
+    self.assertEqual(np.float32, actual.dtype)
     self.assertEqual(dtypes.float32, actual.dtype)
     self.assertAllEqual([2, 2], actual.shape.as_list())
 
@@ -140,7 +164,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(np.eye(3))
     tensor_str = str(t)
     self.assertIn("shape=%s, dtype=%s" % (t.shape, t.dtype.name), tensor_str)
-    self.assertIn(str(t.numpy()), tensor_str)
+    self.assertIn(str(t), tensor_str)
 
   def testMultiLineTensorRepr(self):
     t = _create_tensor(np.eye(3))
@@ -156,8 +180,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     np.set_printoptions(threshold=2, edgeitems=1)
 
     t = _create_tensor(np.arange(10, dtype=np.int32))
-    self.assertIn("[0 ..., 9]", str(t))
-    self.assertIn("[0, ..., 9]", repr(t))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", str(t)))
+    self.assertTrue(re.match(r".*\[.*0.*\.\.\..*9.*\]", repr(t)))
 
     # Clean up: reset to previous printoptions.
     np.set_printoptions(threshold=orig_threshold, edgeitems=orig_edgeitems)
@@ -190,6 +214,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t_np = t.numpy()
     self.assertTrue(np.all(t_np == t_np_orig), "%s vs %s" % (t_np, t_np_orig))
 
+  def testIterateOverTensor(self):
+    l = [[1, 2], [3, 4]]
+    t = _create_tensor(l)
+    for list_element, tensor_element in zip(l, t):
+      self.assertAllEqual(list_element, tensor_element.numpy())
+
   def testStringTensorOnGPU(self):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
@@ -197,6 +227,97 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):
         _create_tensor("test string")
+
+
+class TFETensorUtilTest(test_util.TensorFlowTestCase):
+
+  def testListOfThree(self):
+    t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)
+    t2 = _create_tensor([[1, 2, 5], [3, 4, 5]], dtype=dtypes.int32)
+    t3 = _create_tensor([[1], [3], [5], [6]], dtype=dtypes.int32)
+
+    r = pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1, t2, t3], 0)
+    self.assertAllEqual(np.array([3, 2, 4]), r.numpy())
+
+    r = pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1, t2, t3], 1)
+    self.assertAllEqual(np.array([2, 3, 1]), r.numpy())
+
+  def testEmptyTensorList(self):
+    a = pywrap_tensorflow.TFE_Py_TensorShapeSlice([], 0)
+    self.assertTrue(isinstance(a, ops.EagerTensor))
+    self.assertEqual(0, a.numpy().size)
+
+  def testTensorListContainsNonTensors(self):
+    t1 = _create_tensor([1, 2], dtype=dtypes.int32)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Expected a list of EagerTensors but element 1 has type \"str\""):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1, "abc"], 0)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"Expected a list of EagerTensors but element 0 has type \"int\""):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([2, t1], 0)
+
+  def testTensorListNotList(self):
+    t1 = _create_tensor([1, 2], dtype=dtypes.int32)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"tensor_list argument must be a list. Got \"EagerTensor\""):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice(t1, -2)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"tensor_list argument must be a list. Got \"tuple\""):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice((t1,), -2)
+
+  def testNegativeSliceDim(self):
+    t1 = _create_tensor([1, 2], dtype=dtypes.int32)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Slice dimension must be non-negative. Got -2"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1], -2)
+
+  def testUnicode(self):
+    self.assertEqual(constant_op.constant(u"asdf").numpy(), b"asdf")
+
+  def testSliceDimOutOfRange(self):
+    t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)
+    t2 = _create_tensor([1, 2], dtype=dtypes.int32)
+    t3 = _create_tensor(2, dtype=dtypes.int32)
+
+    with self.assertRaisesRegexp(
+        IndexError,
+        r"Slice dimension \(2\) must be smaller than rank of all tensors, "
+        "but tensor at index 0 has rank 2"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1], 2)
+
+    with self.assertRaisesRegexp(
+        IndexError,
+        r"Slice dimension \(1\) must be smaller than rank of all tensors, "
+        "but tensor at index 0 has rank 1"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t2], 1)
+
+    with self.assertRaisesRegexp(
+        IndexError,
+        r"Slice dimension \(1\) must be smaller than rank of all tensors, "
+        "but tensor at index 1 has rank 1"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t1, t2], 1)
+
+    with self.assertRaisesRegexp(
+        IndexError,
+        r"Slice dimension \(0\) must be smaller than rank of all tensors, "
+        "but tensor at index 0 has rank 0"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t3], 0)
+
+    with self.assertRaisesRegexp(
+        IndexError,
+        r"Slice dimension \(0\) must be smaller than rank of all tensors, "
+        "but tensor at index 2 has rank 0"):
+      pywrap_tensorflow.TFE_Py_TensorShapeSlice([t2, t1, t3], 0)
 
 
 if __name__ == "__main__":

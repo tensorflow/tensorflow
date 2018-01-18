@@ -142,6 +142,10 @@ class XlaOpKernelContext {
   // SetConstantOutput where possible.
   void SetConstantOutput(int index, const Tensor& host_tensor);
 
+  // Sets output 'index' to an invalid value.
+  // Any subsequent attempt to consume this output will cause an error.
+  void SetInvalidOutput(int index);
+
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
@@ -174,7 +178,7 @@ class XlaOpKernelContext {
 
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return context_->call_frame(); }
+  CallFrameInterface* call_frame() const { return context_->call_frame(); }
 
   FunctionLibraryRuntime* function_library() const {
     return context_->function_library();
@@ -205,6 +209,11 @@ class XlaOpKernelContext {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
+
+  // Gets an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
 
  private:
   OpKernelContext* const context_;

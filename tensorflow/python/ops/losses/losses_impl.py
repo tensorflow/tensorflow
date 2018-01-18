@@ -157,6 +157,13 @@ def compute_weighted_loss(
     ValueError: If `weights` is `None` or the shape is not compatible with
       `losses`, or if the number of dimensions (rank) of either `losses` or
       `weights` is missing.
+
+  Note:
+    When calculating the gradient of a weighted loss contributions from
+    both `losses` and `weights` are considered. If your `weights` depend
+    on some model parameters but you do not want this to affect the loss
+    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    passing them to `compute_weighted_loss`.
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
@@ -485,7 +492,7 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
   """
   if labels is None:
@@ -652,7 +659,7 @@ def softmax_cross_entropy(
 
   Args:
     onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: [batch_size, num_classes] logits outputs of the network .
+    logits: `[batch_size, num_classes]` logits outputs of the network .
     weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
       broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
     label_smoothing: If greater than 0 then smooth the labels.

@@ -21,92 +21,201 @@ from __future__ import print_function
 import collections
 import six
 
-from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver
 
 
+class _VocabInfo(
+    collections.namedtuple("_VocabInfo", [
+        "new_vocab",
+        "new_vocab_size",
+        "num_oov_buckets",
+        "old_vocab",
+        "old_vocab_size",
+        "backup_initializer",
+    ])):
+  """Vocabulary information for _WarmStartSettings.
+
+  Attributes:
+    new_vocab: [Required] A path to the new vocabulary file (used with the
+      model to be trained).
+    new_vocab_size: [Required] An integer indicating how many entries of the new
+      vocabulary will used in training.
+    num_oov_buckets: [Required] An integer indicating how many OOV buckets are
+      associated with the vocabulary.
+    old_vocab: [Required] A path to the old vocabulary file (used with the
+      checkpoint to be warmstarted from).
+    old_vocab_size: [Optional] An integer indicating how many entries of the old
+      vocabulary were used in the creation of the checkpoint. If not provided,
+      the entire old vocabulary will be used.
+    backup_initializer: [Optional] A variable initializer used for variables
+      corresponding to new vocabulary entries and OOV. If not provided, these
+      entries will be zero-initialized.
+  """
+
+  def __new__(cls,
+              new_vocab,
+              new_vocab_size,
+              num_oov_buckets,
+              old_vocab,
+              old_vocab_size=-1,
+              backup_initializer=None):
+    return super(_VocabInfo, cls).__new__(
+        cls,
+        new_vocab,
+        new_vocab_size,
+        num_oov_buckets,
+        old_vocab,
+        old_vocab_size,
+        backup_initializer,)
+
+
 class _WarmStartSettings(
     collections.namedtuple("_WarmStartSettings", [
         "ckpt_to_initialize_from",
-        "col_to_prev_vocab",
-        "col_to_prev_tensor",
-        "exclude_columns",
+        "vars_to_warmstart",
+        "var_name_to_vocab_info",
+        "var_name_to_prev_var_name",
     ])):
-  """Settings for warm-starting input layer in models.
+  """Settings for warm-starting in Estimators.
 
   Attributes:
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    col_to_prev_vocab: [Optional] Dict of `FeatureColumn` to path of the
-      vocabulary used for the `FeatureColumn` in `ckpt_to_initialize_from`. If
-      not explicitly provided, the vocabularies are assumed to be same between
-      previous and present checkpoints.
-    col_to_prev_tensor: [Optional] Dict of `FeatureColumn` to name of the
-      variable (corresponding to the `FeatureColumn`) in
-      `ckpt_to_initialize_from`. If not explicitly provided, the name of the
-      variable is assumed to be same between previous and present checkpoints.
-    exclude_columns: [Optional] List of `FeatureColumn`s that should not be
-      warm-started from provided checkpoint.
+    vars_to_warmstart: [Optional] A regular expression that captures which
+      variables to warmstart (see tf.get_collection).  Defaults to '.*', which
+      warmstarts all variables.  If `None` is explicitly given, only variables
+      specified in `var_name_to_vocab_info` will be warmstarted.
+    var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
+      _VocabInfo. The variable names should be "full" variables, not the names
+      of the partitions.  If not explicitly provided, the variable is assumed to
+      have no vocabulary.
+    var_name_to_prev_var_name: [Optional] Dict of variable names (strings) to
+      name of the previously-trained variable in `ckpt_to_initialize_from`. If
+      not explicitly provided, the name of the variable is assumed to be same
+      between previous checkpoint and current model.
 
-  Example Uses:
+  Example Use with canned DNNEstimator:
 
   # Feature columns defining transformations on inputs.
-  sc_vocab_file = tf.feature_column.categorical_column_with_vocabulary_file(
-      "sc_vocab_file", "new_vocab.txt", vocab_size=100)
-  sc_vocab_list = tf.feature_column.cateogorical_column_with_vocabulary_list(
-      "sc_vocab_list", vocabulary_list=["a", "b"])
+  emb_vocab_file = tf.feature_column.embedding_column(
+      tf.feature_column.categorical_column_with_vocabulary_file(
+          "sc_vocab_file", "new_vocab.txt", vocab_size=100),
+      dimension=8)
+  emb_vocab_list = tf.feature_column.embedding_column(
+      tf.feature_column.categorical_column_with_vocabulary_list(
+          "sc_vocab_list", vocabulary_list=["a", "b"]),
+      dimension=8)
+  estimator = tf.estimator.DNNClassifier(
+    hidden_units=[128, 64], feature_columns=[emb_vocab_file, emb_vocab_list],
+    warmstart_from=ws)
 
-  # Warm-start all weights. The parameters corresponding to "sc_vocab_file" have
-  # the same name and same vocab as current checkpoint. The parameters
-  # corresponding to "sc_vocab_list" have the same name.
+  # where ws could be defined as:
+
+  # Warm-start all weights in the model (input layer and hidden weights).
+  # Either the directory or a specific checkpoint can be provided (in the case
+  # of the former, the latest checkpoint will be used).
   ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp")
+  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp/model-1000")
+
+  # Warm-start only the embeddings (input layer).
+  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
+                          vars_to_warmstart=".*input_layer.*")
+
+  # Warm-start all weights but the embedding parameters corresponding to
+  # "sc_vocab_file" have a different vocab from the one used in the current
+  # model.
+  vocab_info = ws_util._VocabInfo(
+      new_vocab=sc_vocab_file.vocabulary_file,
+      new_vocab_size=sc_vocab_file.vocabulary_size,
+      num_oov_buckets=sc_vocab_file.num_oov_buckets,
+      old_vocab="old_vocab.txt"
+  )
+  ws = _WarmStartSettings(
+      ckpt_to_initialize_from="/tmp",
+      var_name_to_vocab_info={
+          "input_layer/sc_vocab_file_embedding/embedding_weights": vocab_info
+      })
+
+  # Warm-start only "sc_vocab_file" embeddings (and no other variables), which
+  # have a different vocab from the one used in the current model.
+  vocab_info = ws_util._VocabInfo(
+      new_vocab=sc_vocab_file.vocabulary_file,
+      new_vocab_size=sc_vocab_file.vocabulary_size,
+      num_oov_buckets=sc_vocab_file.num_oov_buckets,
+      old_vocab="old_vocab.txt"
+  )
+  ws = _WarmStartSettings(
+      ckpt_to_initialize_from="/tmp",
+      vars_to_warmstart=None,
+      var_name_to_vocab_info={
+          "input_layer/sc_vocab_file_embedding/embedding_weights": vocab_info
+      })
 
   # Warm-start all weights but the parameters corresponding to "sc_vocab_file"
-  # have a different vocab from the one used in current checkpoint.
-  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
-                          col_to_prev_vocab={sc_vocab_file: "old_vocab.txt"})
+  # have a different vocab from the one used in current checkpoint, and only
+  # 100 of those entries were used.
+  vocab_info = ws_util._VocabInfo(
+      new_vocab=sc_vocab_file.vocabulary_file,
+      new_vocab_size=sc_vocab_file.vocabulary_size,
+      num_oov_buckets=sc_vocab_file.num_oov_buckets,
+      old_vocab="old_vocab.txt",
+      old_vocab_size=100
+  )
+  ws = _WarmStartSettings(
+      ckpt_to_initialize_from="/tmp",
+      var_name_to_vocab_info={
+          "input_layer/sc_vocab_file_embedding/embedding_weights": vocab_info
+      })
 
   # Warm-start all weights but the parameters corresponding to "sc_vocab_file"
   # have a different vocab from the one used in current checkpoint and the
   # parameters corresponding to "sc_vocab_list" have a different name from the
   # current checkpoint.
-  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
-                          col_to_prev_vocab={sc_vocab_file: "old_vocab.txt"},
-                          col_to_prev_tensor={sc_vocab_list: "old_tensor_name"})
-
-  # Warm-start all weights except those corrresponding to "sc_vocab_file".
-  ws = _WarmStartSettings(ckpt_to_initialize_from="/tmp",
-                          exclude_columns=[sc_vocab_file])
+  vocab_info = ws_util._VocabInfo(
+      new_vocab=sc_vocab_file.vocabulary_file,
+      new_vocab_size=sc_vocab_file.vocabulary_size,
+      num_oov_buckets=sc_vocab_file.num_oov_buckets,
+      old_vocab="old_vocab.txt",
+      old_vocab_size=100
+  )
+  ws = _WarmStartSettings(
+      ckpt_to_initialize_from="/tmp",
+      var_name_to_vocab_info={
+          "input_layer/sc_vocab_file_embedding/embedding_weights": vocab_info
+      },
+      var_name_to_prev_var_name={
+          "input_layer/sc_vocab_list_embedding/embedding_weights":
+              "old_tensor_name"
+      })
   """
 
   def __new__(cls,
               ckpt_to_initialize_from,
-              col_to_prev_vocab=None,
-              col_to_prev_tensor=None,
-              exclude_columns=None):
+              vars_to_warmstart=".*",
+              var_name_to_vocab_info=None,
+              var_name_to_prev_var_name=None):
     if not ckpt_to_initialize_from:
       raise ValueError(
           "`ckpt_to_initialize_from` MUST be set in _WarmStartSettings")
     return super(_WarmStartSettings, cls).__new__(
         cls,
         ckpt_to_initialize_from,
-        col_to_prev_vocab or {},
-        col_to_prev_tensor or {},
-        exclude_columns or [],)
+        vars_to_warmstart,
+        var_name_to_vocab_info or {},
+        var_name_to_prev_var_name or {},)
 
 
 def _is_variable(x):
-  return (isinstance(x, variables.Variable) or
+  return (isinstance(x, variables_lib.Variable) or
           isinstance(x, resource_variable_ops.ResourceVariable))
 
 
@@ -125,8 +234,9 @@ def _infer_var_name(var):
     Name of the `var`
   """
   name_to_var_dict = saver.BaseSaverBuilder.OpListToDict(var)
-  if len(name_to_var_dict.keys()) > 1:
-    raise TypeError("`var` passed as arg violates the constraints.")
+  if len(name_to_var_dict) > 1:
+    raise TypeError("`var` = %s passed as arg violates the constraints.  "
+                    "name_to_var_dict = %s" % (var, name_to_var_dict))
   return list(name_to_var_dict.keys())[0]
 
 
@@ -151,7 +261,7 @@ def _warmstart_var(var, prev_ckpt, prev_tensor_name=None):
     current_var_name = _infer_var_name([var])
   elif isinstance(var, list) and all(_is_variable(v) for v in var):
     current_var_name = _infer_var_name(var)
-  elif isinstance(var, variables.PartitionedVariable):
+  elif isinstance(var, variables_lib.PartitionedVariable):
     current_var_name = _infer_var_name([var])
     var = var._get_variable_list()  # pylint: disable=protected-access
   else:
@@ -172,8 +282,10 @@ def _warmstart_var_with_vocab(var,
                               current_vocab_size,
                               prev_ckpt,
                               prev_vocab_path,
+                              previous_vocab_size=-1,
                               current_oov_buckets=0,
-                              prev_tensor_name=None):
+                              prev_tensor_name=None,
+                              initializer=None):
   """Warm-starts given variable from `prev_tensor_name` tensor in `prev_ckpt`.
 
   Use this method when the `var` is backed by vocabulary. This method stitches
@@ -196,10 +308,14 @@ def _warmstart_var_with_vocab(var,
       to checkpoint. The given checkpoint must have tensor with name
       `prev_tensor_name` (if not None) or tensor with name same as given `var`.
     prev_vocab_path: Path to the vocab file used for the tensor in `prev_ckpt`.
+    previous_vocab_size: If provided, will constrain previous vocab to the first
+      `previous_vocab_size` entries.  -1 means use the entire previous vocab.
     current_oov_buckets: An `int` specifying the number of out-of-vocabulary
       buckets used for given `var`.
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
       None, we lookup tensor with same name as given `var`.
+    initializer: Variable initializer to be used for missing entries.  If None,
+      missing entries will be zero-initialized.
 
   Raises:
     ValueError: If required args are not provided.
@@ -212,7 +328,7 @@ def _warmstart_var_with_vocab(var,
     var = [var]
   elif isinstance(var, list) and all(_is_variable(v) for v in var):
     var = var
-  elif isinstance(var, variables.PartitionedVariable):
+  elif isinstance(var, variables_lib.PartitionedVariable):
     var = var._get_variable_list()
   else:
     raise TypeError(
@@ -232,106 +348,121 @@ def _warmstart_var_with_vocab(var,
           full_shape=slice_info.full_shape,
           var_offset=slice_info.var_offset)
 
-    # TODO(vihanjain): This is brittle. Can we instead infer actual initializer
-    # used originally for the variable or use a fixed initializer?
-    def _missing_ids_init(shape, dtype=None):
-      # pylint: disable=cell-var-from-loop
-      if dtype and dtype.base_dtype != v.dtype.base_dtype:
-        raise ValueError("Trying to initialize missing ids with a different "
-                         "dtype `{}` than variable's dtype `{}`".format(
-                             dtype, v.dtype))
-      return array_ops.slice(v.initial_value, [0, 0], shape)
-
-      # pylint: enable=cell-var-from-loop
-
     # TODO(vihanjain): Support _WarmstartSettings where class vocabularies need
     # remapping too.
     init = checkpoint_ops._load_and_remap_matrix_initializer(
-        ckpt_path=saver.latest_checkpoint(prev_ckpt),
+        ckpt_path=checkpoint_utils._get_checkpoint_filename(prev_ckpt),
         old_tensor_name=prev_tensor_name,
         new_row_vocab_size=current_vocab_size,
         new_col_vocab_size=v_shape[1],
+        old_row_vocab_size=previous_vocab_size,
         old_row_vocab_file=prev_vocab_path,
         new_row_vocab_file=current_vocab_path,
         old_col_vocab_file=None,
         new_col_vocab_file=None,
         num_row_oov_buckets=current_oov_buckets,
         num_col_oov_buckets=0,
-        initializer=_missing_ids_init)
+        initializer=initializer)
     new_init_val = ops.convert_to_tensor(
         init(shape=v_shape, partition_info=partition_info))
     v._initializer_op = state_ops.assign(v, new_init_val)
 # pylint: enable=protected-access
 
 
-def _warmstart_input_layer(cols_to_vars, warmstart_settings):
-  """Warm-starts input layer of a model using given settings.
+def _warmstart(warmstart_settings):
+  """Warmstarts a model using the given settings.
+
+  Currently, this is intended for use only in canned Estimators.  Once made
+  public, it can be used in any model_fn.
 
   Args:
-    cols_to_vars: Dict of feature columns to corresponding graph variables.
     warmstart_settings: An object of `_WarmStartSettings`.
 
-    Typical usage example:
-
-    ```python
-    tfcl = tf.contrib.layers
-    # Define features and transformations.
-    sc_vocab_list = tf.feature_column.categorical_column_with_vocabulary_list(
-        "sc_vocab_list", vocabulary_list=["a", "b"])
-    sc_vocab_file = tf.feature_column.categorical_column_with_vocabulary_file(
-        "sc_vocab_file", "new_vocab.txt", vocab_size=100)
-    cross = tf.feature_column.crossed_column(
-      [sc_vocab_list, sc_vocab_file], hash_bucket_size=5000)
-
-    all_cols = set(sc_vocab_list, sc_vocab_file, cross)
-    batch_features = tf.parse_example(
-        serialized=serialized_examples,
-        features=tf.contrib.layers.create_feature_spec_for_parsing(all_cols))
-
-    cols_to_vars = {}
-    tf.feature_column.linear_model(
-        features=batch_features,
-        feature_columns=all_cols,
-        units=1,
-        cols_to_vars=cols_to_vars)
-
-    # Warm-start entire input layer.
-    ws_settings = _WarmStartSettings(
-        "/tmp/prev_model_dir",
-        col_to_prev_vocab={sc_vocab_file: "old_vocab.txt"})
-    _warmstart_input_layer(cols_to_vars, ws_settings)
-    # Warm-start bias too.
-    _warmstart_var(cols_to_vars['bias'], ws_settings.ckpt_to_initialize_from)
-    ```
-
-    The above example effectively warm-starts full linear model.
+  Raises:
+    ValueError: If the WarmStartSettings contains prev_var_name or VocabInfo
+      configuration for variable names that are not used.  This is to ensure
+      a stronger check for variable configuration than relying on users to
+      examine the logs.
   """
-  for col, var in six.iteritems(cols_to_vars):
-    if not isinstance(col, feature_column._FeatureColumn):  # pylint: disable=protected-access
-      raise TypeError(
-          "Keys in dict `cols_to_vars` must be of type FeatureColumn. Found "
-          "key of type: {}".format(type(col)))
-    if col in warmstart_settings.exclude_columns:
-      logging.info("Skipping warm-starting column: {}".format(col.name))
-      continue
-
-    prev_tensor_name = warmstart_settings.col_to_prev_tensor.get(col)
-    if isinstance(col, feature_column._VocabularyFileCategoricalColumn):  # pylint: disable=protected-access
-      prev_vocab_path = warmstart_settings.col_to_prev_vocab.get(
-          col, col.vocabulary_file)
-      logging.info("Warm-starting column: {}; prev_vocab: {}; prev_tensor: {}".
-                   format(col.name, prev_vocab_path, (
-                       prev_tensor_name or "Unchanged")))
-      _warmstart_var_with_vocab(
-          var,
-          current_vocab_path=col.vocabulary_file,
-          current_vocab_size=col.vocabulary_size,
-          prev_ckpt=warmstart_settings.ckpt_to_initialize_from,
-          prev_vocab_path=prev_vocab_path,
-          current_oov_buckets=col.num_oov_buckets,
-          prev_tensor_name=prev_tensor_name)
+  # We have to deal with partitioned variables, since get_collection flattens
+  # out the list.
+  grouped_variables = {}
+  # Both warmstart_settings.vars_to_warmstart = '.*' and
+  # warmstart_settings.vars_to_warmstart = None will match everything here.
+  for v in ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
+                              scope=warmstart_settings.vars_to_warmstart):
+    if not isinstance(v, list):
+      var_name = _infer_var_name([v])
     else:
-      logging.info("Warm-starting column: {}; prev_tensor: {}".format(
-          col.name, prev_tensor_name or "Unchanged"))
-      _warmstart_var(var, warmstart_settings.ckpt_to_initialize_from,
-                     prev_tensor_name)
+      var_name = _infer_var_name(v)
+    grouped_variables.setdefault(var_name, []).append(v)
+
+  # Keep track of which var_names in var_name_to_prev_var_name and
+  # var_name_to_vocab_info have been used.  Err on the safer side by throwing an
+  # exception if any are unused by the end of the loop.  It is easy to misname
+  # a variable during this configuration, in which case without this check, we
+  # would fail to warmstart silently.
+  prev_var_name_used = set()
+  vocab_info_used = set()
+
+  for var_name, variable in six.iteritems(grouped_variables):
+    prev_var_name = warmstart_settings.var_name_to_prev_var_name.get(var_name)
+    if prev_var_name:
+      prev_var_name_used.add(var_name)
+    vocab_info = warmstart_settings.var_name_to_vocab_info.get(var_name)
+    if vocab_info:
+      vocab_info_used.add(var_name)
+      logging.info(
+          "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
+          " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
+          " initializer: {}".format(
+              var_name,
+              vocab_info.new_vocab,
+              vocab_info.new_vocab_size,
+              vocab_info.old_vocab,
+              (vocab_info.old_vocab_size if vocab_info.old_vocab_size > 0
+               else "All"),
+              vocab_info.num_oov_buckets,
+              prev_var_name or "Unchanged",
+              vocab_info.backup_initializer or "zero-initialized"))
+      _warmstart_var_with_vocab(
+          variable,
+          current_vocab_path=vocab_info.new_vocab,
+          current_vocab_size=vocab_info.new_vocab_size,
+          prev_ckpt=warmstart_settings.ckpt_to_initialize_from,
+          prev_vocab_path=vocab_info.old_vocab,
+          previous_vocab_size=vocab_info.old_vocab_size,
+          current_oov_buckets=vocab_info.num_oov_buckets,
+          prev_tensor_name=prev_var_name,
+          initializer=vocab_info.backup_initializer)
+    else:
+      # For the special value of warmstart_settings.vars_to_warmstart = None,
+      # we only warmstart variables with explicitly specified vocabularies.
+      if warmstart_settings.vars_to_warmstart:
+        logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
+            var_name, prev_var_name or "Unchanged"))
+        # Because we use a default empty list in grouped_variables, single
+        # unpartitioned variables will be lists here, which we rectify in order
+        # for init_from_checkpoint logic to work correctly.
+        if len(variable) == 1:
+          variable = variable[0]
+        _warmstart_var(variable, warmstart_settings.ckpt_to_initialize_from,
+                       prev_var_name)
+
+  prev_var_name_not_used = set(
+      warmstart_settings.var_name_to_prev_var_name.keys()) - prev_var_name_used
+  vocab_info_not_used = set(
+      warmstart_settings.var_name_to_vocab_info.keys()) - vocab_info_used
+
+  if prev_var_name_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_prev_var_name that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(prev_var_name_not_used, grouped_variables.keys()))
+  if vocab_info_not_used:
+    raise ValueError(
+        "You provided the following variables in "
+        "warmstart_settings.var_name_to_vocab_info that were not used: {0}. "
+        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "names: {1}".format(vocab_info_not_used, grouped_variables.keys()))

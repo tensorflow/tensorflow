@@ -19,7 +19,20 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+tf_cc_test(
+    name = "ffmpeg_lib_utility_test",
+    srcs = ["ffmpeg_lib_utility_test.cc"],
+    deps = [
+        ":ffmpeg_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -59,14 +59,14 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//third_party/tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 ```
 
 * When adding new BUILD file, add this line to `tensorflow/BUILD` file into `all_opensource_files` target.
 
 ```
-"//third_party/tensorflow/<directory>:all_files",
+"//tensorflow/<directory>:all_files",
 ```
 
 * For all Python BUILD targets (libraries and tests) add next line:
@@ -162,7 +162,7 @@ operation.
              it's present in the scope.
 
 * Layers that behave differently during training should take:
-  - `is_training`: `bool` indicator to conditionally choose different 
+  - `is_training`: `bool` indicator to conditionally choose different
                    computation paths (e.g. using `tf.cond`) during execution.
 
 Example:

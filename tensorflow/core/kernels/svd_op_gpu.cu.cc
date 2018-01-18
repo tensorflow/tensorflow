@@ -190,8 +190,8 @@ class SvdOpGpu : public AsyncOpKernel {
   // TODO: can the two cases (MgeqN and MlessN) be simplified,
   //   common boilerplate be reduced, or even combined in one method?
   void PerformSVD_MgeqN(OpKernelContext* context, DoneCallback done, int64 m,
-                        int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
-                        const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
+                        int64 n, int64 p, const Tensor& M, Tensor* S, Tensor* U,
+                        Tensor* V) {
     TensorShape shapeRaw = M.shape();
     shapeRaw.RemoveLastDims(2);
 
@@ -207,7 +207,7 @@ class SvdOpGpu : public AsyncOpKernel {
         solver->allocate_scoped_tensor(M.dtype(), input_shape, &input_copy),
         done);
     auto device = context->eigen_device<GPUDevice>();
-    OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, M, perm, &input_copy),
+    OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, M, &input_copy),
                          done);
 
     // I need to transpose U at the end
@@ -250,7 +250,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // Transpose U
     if (compute_uv_) {
-      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, u_copy, perm, U), done);
+      OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, u_copy, U), done);
     }
 
     // now check if the SVD operation succeeded or not
@@ -259,8 +259,8 @@ class SvdOpGpu : public AsyncOpKernel {
 
   // The SVD if m < n
   void PerformSVD_MlessN(OpKernelContext* context, DoneCallback done, int64 m,
-                         int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
-                         const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
+                         int64 n, int64 p, const Tensor& M, Tensor* S,
+                         Tensor* U, Tensor* V) {
     // Perform the SVD on M'
 
     // Reuse the input buffer or make a copy for the SVD depending on whether
@@ -325,7 +325,7 @@ class SvdOpGpu : public AsyncOpKernel {
     // Transpose V
     if (compute_uv_) {
       auto device = context->eigen_device<GPUDevice>();
-      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, v_copy, perm, V), done);
+      OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, v_copy, V), done);
     }
 
     // now check if the SVD operation succeeded or not
@@ -389,19 +389,12 @@ class SvdOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // Prepare permutation
-    std::vector<int32> perm;
-    for (size_t i = 0; i < ndims - 2; ++i) perm.push_back(i);
-    perm.push_back(ndims - 1);  // transpose last two dimensions
-    perm.push_back(ndims - 2);
-    gtl::ArraySlice<int32> permAS(perm);
-
     // call implementations
     if (m >= n) {
-      PerformSVD_MgeqN(context, done, m, n, p, permAS, input, outputS, outputU,
+      PerformSVD_MgeqN(context, done, m, n, p, input, outputS, outputU,
                        outputV);
     } else {
-      PerformSVD_MlessN(context, done, m, n, p, permAS, input, outputS, outputU,
+      PerformSVD_MlessN(context, done, m, n, p, input, outputS, outputU,
                         outputV);
     }
   }

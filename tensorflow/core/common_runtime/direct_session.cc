@@ -54,15 +54,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/platform/gpu_tracer.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -261,9 +259,10 @@ DirectSession::DirectSession(const SessionOptions& options,
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
-  if (options_.config.session_inter_op_thread_pool_size() > 0) {
-    for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
-         ++i) {
+  const int thread_pool_size = 
+    options_.config.session_inter_op_thread_pool_size();
+  if (thread_pool_size > 0) {
+    for (int i = 0; i < thread_pool_size; ++i) {
       thread::ThreadPool* pool = nullptr;
       bool owned = false;
       init_error_.Update(NewThreadPoolFromThreadPoolOptions(
@@ -523,9 +522,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = &step_cancellation_manager;
-  args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
-  };
+
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
@@ -548,21 +545,26 @@ Status DirectSession::Run(const RunOptions& run_options,
           ((measure_step_count + 1) % build_cost_model_every == 0);
     }
   }
-  if (do_trace || update_cost_model) {
+  if (do_trace || update_cost_model ||
+      run_options.report_tensor_allocations_upon_oom()) {
     run_state.collector.reset(
         new StepStatsCollector(run_metadata->mutable_step_stats()));
     args.stats_collector = run_state.collector.get();
   }
 
-#if GOOGLE_CUDA
-  std::unique_ptr<GPUTracer> tracer;
+  std::unique_ptr<DeviceTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer = CreateGPUTracer();
-    // tracer will be NULL on non-GPU platforms.
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    if (tracer) tracer->Start().IgnoreError();
+    tracer = CreateDeviceTracer();
+    // tracer may be NULL on platforms without accelerators.
+    if (tracer) {
+      Status s = tracer->Start();
+      if (!s.ok()) {
+        run_state.executors_done.Notify();
+        delete barrier;
+        return s;
+      }
+    }
   }
-#endif  // GOOGLE_CUDA
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
@@ -581,7 +583,23 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::Cancelled("Run call was cancelled");
   }
 
+  Executor::Args::Runner default_runner = [this,
+                                           pool](Executor::Args::Closure c) {
+    SchedClosure(pool, std::move(c));
+  };
   for (const auto& item : executors_and_keys->items) {
+    // TODO(zhengxq): support partial run.
+    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    //     less threads to the main compute pool by default.
+    thread::ThreadPool* device_thread_pool =
+        item.device->tensorflow_device_thread_pool();
+    if (!device_thread_pool) {
+      args.runner = default_runner;
+    } else {
+      args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
+        SchedClosure(device_thread_pool, std::move(c));
+      };
+    }
     item.executor->RunAsync(args, barrier->Get());
   }
 
@@ -597,13 +615,10 @@ Status DirectSession::Run(const RunOptions& run_options,
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-#if GOOGLE_CUDA
   if (tracer) {
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    tracer->Stop().IgnoreError();
-    tracer->Collect(args.stats_collector).IgnoreError();
+    TF_RETURN_IF_ERROR(tracer->Stop());
+    TF_RETURN_IF_ERROR(tracer->Collect(args.stats_collector));
   }
-#endif  // GOOGLE_CUDA
 
   {
     mutex_lock l(run_state.mu_);
@@ -1135,7 +1150,7 @@ Status DirectSession::GetOrCreateExecutors(
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
-    std::unordered_set<StringPiece, StringPiece::Hasher> names;
+    std::unordered_set<StringPiece, StringPieceHasher> names;
     for (const string& input : inputs) {
       TensorId id(ParseTensorName(input));
       names.emplace(id.first);
@@ -1186,8 +1201,14 @@ Status DirectSession::GetOrCreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
-      // Caches the kernel only if the node is stateful.
-      if (!lib->IsStateful(ndef.op())) {
+      // We do not share the kernel via the OpSegment if the node is
+      // stateless, or a function.
+      // NOTE(mrry): We must not share function kernels (implemented
+      // using `CallOp`) between subgraphs, because `CallOp::handle_`
+      // is tied to a particular subgraph. Even if the function itself
+      // is stateful, the `CallOp` that invokes it is not.
+      if (!lib->IsStateful(ndef.op()) ||
+          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -1222,6 +1243,7 @@ Status DirectSession::GetOrCreateExecutors(
     // NewLocalExecutor takes ownership of partition_graph.
     item->graph = partition_graph.get();
     item->executor = nullptr;
+    item->device = device;
     Executor* executor;
     TF_RETURN_IF_ERROR(
         NewLocalExecutor(params, partition_graph.release(), &executor));
@@ -1418,11 +1440,7 @@ Status DirectSession::CreateGraphs(
     Device* d;
     s = device_mgr_->LookupDevice(partition_name, &d);
     if (!s.ok()) break;
-    // TODO(pbar) The library is currently shared and immutable. There
-    // may be possible use cases where a device may want to modify
-    // function definitions - in which case the library would need to be
-    // replicated per device.
-    s = d->MaybeRewriteGraph(client_graph->flib_def->ToProto(), graph);
+    s = d->MaybeRewriteGraph(graph);
     if (!s.ok()) {
       break;
     }

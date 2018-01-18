@@ -184,6 +184,15 @@ def _SparseSegmentSumGrad(op, grad):
           None)
 
 
+@ops.RegisterGradient("SparseSegmentSumWithNumSegments")
+def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSumWithNumSegments."""
+  input_rows = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.unsorted_segment_sum(
+      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
+          None, None)
+
+
 @ops.RegisterGradient("SparseSegmentMean")
 def _SparseSegmentMeanGrad(op, grad):
   """Gradient for SparseSegmentMean."""
@@ -192,12 +201,28 @@ def _SparseSegmentMeanGrad(op, grad):
                                             dim0), None, None)
 
 
+@ops.RegisterGradient("SparseSegmentMeanWithNumSegments")
+def _SparseSegmentMeanWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentMeanWithNumSegments."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_mean_grad(grad, op.inputs[1], op.inputs[2],
+                                            dim0), None, None, None)
+
+
 @ops.RegisterGradient("SparseSegmentSqrtN")
 def _SparseSegmentSqrtNGrad(op, grad):
   """Gradient for SparseSegmentSqrtN."""
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None)
+
+
+@ops.RegisterGradient("SparseSegmentSqrtNWithNumSegments")
+def _SparseSegmentSqrtNWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSqrtNWithNumSegments."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
+                                              dim0), None, None, None)
 
 
 def _SegmentMinOrMaxGrad(op, grad, is_sorted):
@@ -700,10 +725,26 @@ def _AddNGrad(op, grad):
   return [grad] * len(op.inputs)
 
 
+def _ShapesFullySpecifiedAndEqual(x, y, grad):
+  # pylint: disable=protected-access
+  x_shape = x._shape_tuple()
+  y_shape = y._shape_tuple()
+  grad_shape = grad._shape_tuple()
+  # pylint: enable=protected-access
+  return (x_shape == y_shape and
+          x_shape == grad_shape and
+          x_shape is not None and
+          None not in x_shape)
+
+
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
+  """Gradient for Add."""
   x = op.inputs[0]
   y = op.inputs[1]
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   # pylint: disable=protected-access
@@ -731,10 +772,14 @@ def _MulGrad(op, grad):
   """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # pylint: disable=protected-access
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad) and
+      grad.dtype in (dtypes.int32, dtypes.float32)):
+    return gen_math_ops._mul(grad, y), gen_math_ops._mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  # pylint: disable=protected-access
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   # pylint: enable=protected-access
   x = math_ops.conj(x)

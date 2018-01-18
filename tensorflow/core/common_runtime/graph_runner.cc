@@ -109,6 +109,17 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
     return errors::NotFound("Cannot find a device for GraphRunner.");
   }
 
+  if (function_library && function_library->device() &&
+      function_library->device()->device_type() != cpu_device_->device_type()) {
+    // We are running on a CPU but the function library is for a non-CPU device,
+    // so just ignore the function_library.
+    // TODO(matthewmurray) Can we create a new FunctionLibraryRuntime that is
+    // identical to function_library except that it uses CPU?
+    VLOG(1) << "Cannot run on CPU device with a function library for a "
+            << function_library->device()->device_type() << " device.";
+    function_library = nullptr;
+  }
+
   // TODO(vrv): Instead of copying the entire graph, consider modifying
   // the existing graph, and then removing those removed edges.
   // prior to returning.

@@ -37,6 +37,7 @@ extern const char* const kEigenMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenMatMulF64";
 extern const char* const kEigenConvF32SymbolName =
     "__xla_cpu_runtime_EigenConvF32";
+extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName =
@@ -51,6 +52,9 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName =
     "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+extern const char* const kParallelForkJoinSymbolName =
+    "__xla_cpu_runtime_ParallelForkJoin";
+
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 }  // namespace runtime
 }  // namespace cpu

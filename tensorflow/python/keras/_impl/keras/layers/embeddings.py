@@ -129,7 +129,7 @@ class Embedding(Layer):
     else:
       return K.not_equal(inputs, 0)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.input_length is None:
       return tensor_shape.TensorShape(input_shape + [self.output_dim])

@@ -22,6 +22,7 @@ import abc
 
 import six
 
+from tensorflow.contrib.distributions.python.ops import onehot_categorical
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -42,25 +43,63 @@ class LossFunction(object):
   use this class.  It depends on the use case.
   """
 
-  def __init__(self, targets=None):
-    self._targets = targets
+  @abc.abstractproperty
+  def targets(self):
+    """The targets being predicted by the model.
+
+    Returns:
+      None or Tensor of appropriate shape for calling self._evaluate() on.
+    """
+    pass
 
   @abc.abstractproperty
   def inputs(self):
     """The inputs to the loss function (excluding the targets)."""
     pass
 
+  @property
+  def input_minibatches(self):
+    """A `list` of inputs to the loss function, separated by minibatch.
+
+    Typically there will be one minibatch per tower in a multi-tower setup.
+    Returns a list consisting of `self.inputs` by default; `LossFunction`s
+    supporting registering multiple minibatches should override this method.
+
+    Returns:
+      A `list` of `Tensor`s representing
+    """
+    return [self.inputs]
+
+  @property
+  def num_registered_minibatches(self):
+    """Number of minibatches registered for this LossFunction.
+
+    Typically equal to the number of towers in a multi-tower setup.
+
+    Returns:
+      An `int` representing the number of registered minibatches.
+    """
+    return len(self.input_minibatches)
+
   def evaluate(self):
-    """Evaluate the loss function."""
-    if self._targets is not None:
+    """Evaluate the loss function on the targets."""
+    if self.targets is not None:
       # We treat the targets as "constant".  It's only the inputs that get
       # "back-propped" through.
-      return self._evaluate(array_ops.stop_gradient(self._targets))
+      return self._evaluate(array_ops.stop_gradient(self.targets))
     else:
       raise Exception("Cannot evaluate losses with unspecified targets.")
 
   @abc.abstractmethod
   def _evaluate(self, targets):
+    """Evaluates the negative log probability of the targets.
+
+    Args:
+      targets: Tensor that distribution can calculate log_prob() of.
+
+    Returns:
+      negative log probability of each target, summed across all targets.
+    """
     pass
 
   @abc.abstractmethod
@@ -166,9 +205,9 @@ class LossFunction(object):
 class NegativeLogProbLoss(LossFunction):
   """Abstract base class for loss functions that are negative log probs."""
 
-  def __init__(self, targets=None, seed=None):
+  def __init__(self, seed=None):
     self._default_seed = seed
-    super(NegativeLogProbLoss, self).__init__(targets=targets)
+    super(NegativeLogProbLoss, self).__init__()
 
   @property
   def inputs(self):
@@ -176,6 +215,7 @@ class NegativeLogProbLoss(LossFunction):
 
   @abc.abstractproperty
   def params(self):
+    """Parameters to the underlying distribution."""
     pass
 
   @abc.abstractmethod
@@ -281,9 +321,18 @@ class NegativeLogProbLoss(LossFunction):
 
   @abc.abstractmethod
   def sample(self, seed):
+    """Sample 'targets' from the underlying distribution."""
     pass
 
   def evaluate_on_sample(self, seed=None):
+    """Evaluates the log probability on a random sample.
+
+    Args:
+      seed: int or None. Random seed for this draw from the distribution.
+
+    Returns:
+      Log probability of sampled targets, summed across examples.
+    """
     if seed is None:
       seed = self._default_seed
     # We treat the targets as "constant".  It's only the inputs that get
@@ -328,16 +377,19 @@ class NaturalParamsNegativeLogProbLoss(NegativeLogProbLoss):
 class DistributionNegativeLogProbLoss(NegativeLogProbLoss):
   """Base class for neg log prob losses that use the TF Distribution classes."""
 
-  def __init__(self, dist, targets=None, seed=None):
-    self._dist = dist
-    super(DistributionNegativeLogProbLoss, self).__init__(
-        targets=targets, seed=seed)
+  def __init__(self, seed=None):
+    super(DistributionNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @abc.abstractproperty
+  def dist(self):
+    """The underlying tf.distributions.Distribution."""
+    pass
 
   def _evaluate(self, targets):
-    return -math_ops.reduce_sum(self._dist.log_prob(targets))
+    return -math_ops.reduce_sum(self.dist.log_prob(targets))
 
   def sample(self, seed):
-    return self._dist.sample(seed=seed)
+    return self.dist.sample(seed=seed)
 
 
 class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
@@ -355,11 +407,18 @@ class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, mean, var=0.5, targets=None, seed=None):
-    dist = normal.Normal(loc=mean, scale=var**0.5)
     self._mean = mean
     self._var = var
-    super(NormalMeanNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+    self._targets = targets
+    super(NormalMeanNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return normal.Normal(loc=self._mean, scale=math_ops.sqrt(self._var))
 
   @property
   def params(self):
@@ -380,8 +439,8 @@ class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
         array_ops.ones(array_ops.shape(self._mean)[:1], dtype=self._mean.dtype),
         axis=-1)
     output_slice = self._var**-0.5 * ones_slice
-    return insert_slice_in_zeros(output_slice, 1,
-                                 int(self._mean.shape[1]), index[0])
+    return insert_slice_in_zeros(output_slice, 1, int(self._mean.shape[1]),
+                                 index[0])
 
   @property
   def fisher_factor_inner_shape(self):
@@ -416,10 +475,16 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
     self._mean = mean
     self._variance = variance
     self._scale = math_ops.sqrt(variance)
-    dist = normal.Normal(loc=self._mean, scale=self._scale)
-    super(NormalMeanVarianceNegativeLogProbLoss, self).__init__(dist,
-                                                                targets=targets,
-                                                                seed=seed)
+    self._targets = targets
+    super(NormalMeanVarianceNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return normal.Normal(loc=self._mean, scale=self._scale)
 
   @property
   def params(self):
@@ -433,24 +498,23 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
 
   @property
   def _fisher_mean(self):
-    return 1./self._variance
+    return 1. / self._variance
 
   @property
   def _fisher_mean_factor(self):
-    return 1./self._scale
+    return 1. / self._scale
 
   @property
   def _fisher_var(self):
-    return 1./(2*math_ops.square(self._variance))
+    return 1. / (2 * math_ops.square(self._variance))
 
   @property
   def _fisher_var_factor(self):
-    return 1./(math_ops.sqrt(2.)*self._variance)
+    return 1. / (math_ops.sqrt(2.) * self._variance)
 
   def multiply_fisher(self, vecs):
     mean_vec, var_vec = vecs
-    return (self._fisher_mean * mean_vec,
-            self._fisher_var * var_vec)
+    return (self._fisher_mean * mean_vec, self._fisher_var * var_vec)
 
   def multiply_fisher_factor(self, vecs):
     mean_vec, var_vec = self._split(vecs)
@@ -470,8 +534,8 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
       # Index corresponds to mean parameter.
       mean_slice = self._fisher_mean_factor[:, index]
       mean_slice = array_ops.expand_dims(mean_slice, axis=-1)
-      mean_output = insert_slice_in_zeros(mean_slice, 1,
-                                          int(self._mean.shape[1]), index)
+      mean_output = insert_slice_in_zeros(mean_slice, 1, int(
+          self._mean.shape[1]), index)
       var_output = array_ops.zeros_like(mean_output)
     else:
       index -= int(self._mean.shape[-1])
@@ -486,13 +550,17 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
 
   @property
   def fisher_factor_inner_shape(self):
-    return array_ops.concat([array_ops.shape(self._mean)[:-1],
-                             2*array_ops.shape(self._mean)[-1:]], axis=0)
+    return array_ops.concat(
+        [
+            array_ops.shape(self._mean)[:-1],
+            2 * array_ops.shape(self._mean)[-1:]
+        ],
+        axis=0)
 
   @property
   def fisher_factor_inner_static_shape(self):
     shape = self._mean.shape.as_list()
-    return tensor_shape.TensorShape(shape[-1:] + [2*shape[-1]])
+    return tensor_shape.TensorShape(shape[-1:] + [2 * shape[-1]])
 
   def multiply_hessian(self, vector):
     raise NotImplementedError()
@@ -534,12 +602,57 @@ class CategoricalLogitsNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, logits, targets=None, seed=None):
-    dist = categorical.Categorical(logits=logits)
-    self._logits = logits
-    self._probs = dist.probs
-    self._sqrt_probs = math_ops.sqrt(self._probs)
-    super(CategoricalLogitsNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+    """Instantiates a CategoricalLogitsNegativeLogProbLoss.
+
+    Args:
+      logits: Tensor of shape [batch_size, output_size]. Parameters for
+        underlying distribution.
+      targets: None or Tensor of shape [output_size]. Each elements contains an
+        index in [0, output_size).
+      seed: int or None. Default random seed when sampling.
+    """
+    self._logits_components = []
+    self._targets_components = []
+    self.register_additional_minibatch(logits, targets=targets)
+    super(CategoricalLogitsNegativeLogProbLoss, self).__init__(seed=seed)
+
+  def register_additional_minibatch(self, logits, targets=None):
+    """Register an additiona minibatch's worth of parameters.
+
+    Args:
+      logits: Tensor of shape [batch_size, output_size]. Parameters for
+        underlying distribution.
+      targets: None or Tensor of shape [batch_size, output_size].  Each row must
+        be a one-hot vector.
+    """
+    self._logits_components.append(logits)
+    self._targets_components.append(targets)
+
+  @property
+  def _logits(self):
+    return array_ops.concat(self._logits_components, axis=0)
+
+  @property
+  def input_minibatches(self):
+    return self._logits_components
+
+  @property
+  def targets(self):
+    if all(target is None for target in self._targets_components):
+      return None
+    return array_ops.concat(self._targets_components, axis=0)
+
+  @property
+  def dist(self):
+    return categorical.Categorical(logits=self._logits)
+
+  @property
+  def _probs(self):
+    return self.dist.probs
+
+  @property
+  def _sqrt_probs(self):
+    return math_ops.sqrt(self._probs)
 
   @property
   def params(self):
@@ -595,12 +708,21 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, logits, targets=None, seed=None):
-    dist = bernoulli.Bernoulli(logits=logits)
     self._logits = logits
-    self._probs = dist.probs
+    self._targets = targets
+    super(MultiBernoulliNegativeLogProbLoss, self).__init__(seed=seed)
 
-    super(MultiBernoulliNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return bernoulli.Bernoulli(logits=self._logits)
+
+  @property
+  def _probs(self):
+    return self.dist.probs
 
   @property
   def params(self):
@@ -619,8 +741,8 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
     assert len(index) == 1, "Length of index was {}".format(len(index))
     probs_slice = array_ops.expand_dims(self._probs[:, index[0]], -1)
     output_slice = math_ops.sqrt(probs_slice * (1 - probs_slice))
-    return insert_slice_in_zeros(output_slice, 1,
-                                 int(self._logits.shape[1]), index[0])
+    return insert_slice_in_zeros(output_slice, 1, int(self._logits.shape[1]),
+                                 index[0])
 
   @property
   def fisher_factor_inner_shape(self):
@@ -632,11 +754,12 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
 
 
 def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
-  """Inserts slice into a larger tensors of zeros.
+  """Inserts slice into a larger tensor of zeros.
 
-  Forms a new tensor that which is the same shape as slice_, except that
+  Forms a new tensor which is the same shape as slice_to_insert, except that
   the dimension given by 'dim' is expanded to the size given by 'dim_size'.
-  'position' determines the position (index) of the slice in that dimension.
+  'position' determines the position (index) at which to insert the slice within
+  that dimension.
 
   Assumes slice_to_insert.shape[dim] = 1.
 
@@ -644,7 +767,7 @@ def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
     slice_to_insert: The slice to insert.
     dim: The dimension which to expand with zeros.
     dim_size: The new size of the 'dim' dimension.
-    position: The position of 'slice_' in the new tensor.
+    position: The position of 'slice_to_insert' in the new tensor.
 
   Returns:
     The new tensor.
@@ -662,4 +785,17 @@ def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
   before[dim] = position
   after[dim] = dim_size - position - 1
 
-  return array_ops.pad(slice_to_insert, zip(before, after))
+  return array_ops.pad(slice_to_insert, list(zip(before, after)))
+
+
+class OnehotCategoricalLogitsNegativeLogProbLoss(
+    CategoricalLogitsNegativeLogProbLoss):
+  """Neg log prob loss for a categorical distribution with onehot targets.
+
+  Identical to CategoricalLogitsNegativeLogProbLoss except that the underlying
+  distribution is OneHotCategorical as opposed to Categorical.
+  """
+
+  @property
+  def dist(self):
+    return onehot_categorical.OneHotCategorical(logits=self._logits)

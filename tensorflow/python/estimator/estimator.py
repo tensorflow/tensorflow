@@ -26,9 +26,12 @@ import tempfile
 import numpy as np
 import six
 
+from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
@@ -52,7 +55,6 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 _VALID_MODEL_FN_ARGS = set(
@@ -88,6 +90,10 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -130,10 +136,15 @@ class Estimator(object):
               Keys are names of parameters, values are basic python types.
 
     Raises:
+      RuntimeError: If eager execution is enabled.
       ValueError: parameters of `model_fn` don't match `params`.
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Estimators are not supported when eager execution is enabled.')
+
     Estimator._assert_members_are_not_overridden(self)
 
     if config is None:
@@ -251,9 +262,19 @@ class Estimator(object):
     """Trains a model given training data input_fn.
 
     Args:
-      input_fn: Input function returning a tuple of:
-          features - `Tensor` or dictionary of string feature name to `Tensor`.
-          labels - `Tensor` or dictionary of `Tensor` with labels.
+      input_fn: A function that provides input data for training as minibatches.
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+            tuple (features, labels) with same constraints as below.
+          * A tuple (features, labels): Where features is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and labels is a
+            `Tensor` or a dictionary of string label name to `Tensor`. Both
+            features and labels are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
@@ -321,10 +342,19 @@ class Estimator(object):
     `StopIteration`).
 
     Args:
-      input_fn: Input function returning a tuple of:
-          features - Dictionary of string feature name to `Tensor` or
-            `SparseTensor`.
-          labels - `Tensor` or dictionary of `Tensor` with labels.
+      input_fn: A function that constructs the input data for evaluation.
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
+            tuple (features, labels) with same constraints as below.
+          * A tuple (features, labels): Where features is a `Tensor` or a
+            dictionary of string feature name to `Tensor` and labels is a
+            `Tensor` or a dictionary of string label name to `Tensor`. Both
+            features and labels are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
@@ -371,11 +401,20 @@ class Estimator(object):
     """Yields predictions for given features.
 
     Args:
-      input_fn: Input function returning features which is a dictionary of
-        string feature name to `Tensor` or `SparseTensor`. If it returns a
-        tuple, first item is extracted as features. Prediction continues until
-        `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+      input_fn: A function that constructs the features. Prediction continues
+        until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
         `StopIteration`).
+        See @{$get_started/premade_estimators#create_input_functions} for more
+        information. The function should construct and return one of
+        the following:
+
+          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must have
+            same constraints as below.
+          * features: A `Tensor` or a dictionary of string feature name to
+            `Tensor`. features are consumed by `model_fn`. They should satisfy
+            the expectation of `model_fn` from inputs.
+          * A tuple, in which case the first item is extracted as features.
+
       predict_keys: list of `str`, name of the keys to predict. It is used if
         the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
         then rest of the predictions will be filtered from the dictionary. If
@@ -406,7 +445,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       self._create_and_assert_global_step(g)
-      features = self._get_features_from_input_fn(
+      features, input_hooks = self._get_features_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.PREDICT)
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
@@ -416,7 +455,7 @@ class Estimator(object):
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=hooks) as mon_sess:
+          hooks=input_hooks + hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
           if not isinstance(predictions, dict):
@@ -450,8 +489,13 @@ class Estimator(object):
       self, export_dir_base, serving_input_receiver_fn,
       assets_extra=None,
       as_text=False,
-      checkpoint_path=None):
+      checkpoint_path=None,
+      strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
+
+    For a detailed guide, see
+    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
 
     This method builds a new graph by first calling the
     serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
@@ -471,7 +515,7 @@ class Estimator(object):
     `ExportOutput`s, and the inputs are always the input receivers provided by
     the serving_input_receiver_fn.
 
-    Extra assets may be written into the SavedModel via the extra_assets
+    Extra assets may be written into the SavedModel via the assets_extra
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
@@ -488,6 +532,9 @@ class Estimator(object):
       as_text: whether to write the SavedModel proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
@@ -496,6 +543,7 @@ class Estimator(object):
       ValueError: if no serving_input_receiver_fn is provided, no export_outputs
           are provided, or no checkpoint can be found.
     """
+    # pylint: enable=line-too-long
     if serving_input_receiver_fn is None:
       raise ValueError('serving_input_receiver_fn must be defined.')
 
@@ -527,7 +575,7 @@ class Estimator(object):
       temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
-      with tf_session.Session() as session:
+      with tf_session.Session(config=self._session_config) as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
             sharded=True)
@@ -547,7 +595,8 @@ class Estimator(object):
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=local_init_op)
+            legacy_init_op=local_init_op,
+            strip_default_attrs=strip_default_attrs)
         builder.save(as_text)
 
       # Add the extra assets
@@ -567,6 +616,11 @@ class Estimator(object):
   def _get_features_from_input_fn(self, input_fn, mode):
     """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       # Unconditionally drop the label (the second element of result).
       result = result[0]
@@ -575,16 +629,22 @@ class Estimator(object):
       logging.warning('Input graph does not use tf.data.Dataset or contain a '
                       'QueueRunner. That means predict yields forever. '
                       'This is probably a mistake.')
-    return result
+    return result, input_hooks
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` and labels from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
+    input_hooks = []
+    if isinstance(result, dataset_ops.Dataset):
+      iterator = result.make_initializable_iterator()
+      input_hooks.append(_DatasetInitializerHook(iterator))
+      result = iterator.get_next()
     if isinstance(result, (list, tuple)):
       if len(result) != 2:
         raise ValueError(
-            'input_fn should return (feautures, labels) as a len 2 tuple.')
-      return result
-    return result, None
+            'input_fn should return (features, labels) as a len 2 tuple.')
+      return result[0], result[1], input_hooks
+    return result, None, input_hooks
 
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
@@ -656,9 +716,10 @@ class Estimator(object):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
-    del mode  # unused
     input_fn_args = util.fn_args(input_fn)
     kwargs = {}
+    if 'mode' in input_fn_args:
+      kwargs['mode'] = mode
     if 'params' in input_fn_args:
       kwargs['params'] = self.params
     if 'config' in input_fn_args:
@@ -695,7 +756,10 @@ class Estimator(object):
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = config
+
+    logging.info('Calling model_fn.')
     model_fn_results = self._model_fn(features=features, **kwargs)
+    logging.info('Done calling model_fn.')
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
       raise ValueError('model_fn should return an EstimatorSpec.')
@@ -707,10 +771,11 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
-      with ops.control_dependencies([global_step_read_tensor]):
-        features, labels = self._get_features_and_labels_from_input_fn(
-            input_fn, model_fn_lib.ModeKeys.TRAIN)
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.TRAIN))
+      worker_hooks.extend(input_hooks)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
       # Check if the user created a loss summary, and add one if they didn't.
@@ -808,8 +873,9 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.EVAL)
+      features, labels, input_hooks = (
+          self._get_features_and_labels_from_input_fn(
+              input_fn, model_fn_lib.ModeKeys.EVAL))
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
 
@@ -830,7 +896,8 @@ class Estimator(object):
             'already defines a default metric with the same name.')
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
-      all_hooks = list(hooks or [])
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
       all_hooks.extend(list(estimator_spec.evaluation_hooks or []))
 
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
@@ -926,9 +993,6 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  if tf_inspect.ismethod(model_fn):
-    if 'self' in args:
-      args.remove('self')
   non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
@@ -993,20 +1057,27 @@ def _write_dict_to_summary(output_dir,
       continue
     if key == 'global_step':
       continue
-    value = summary_proto.value.add()
-    value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
-      value.simple_value = float(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=float(dictionary[key]))
     elif (isinstance(dictionary[key], np.int64) or
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
-      value.simple_value = int(dictionary[key])
+      summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
+    elif isinstance(dictionary[key], six.string_types):
+      try:
+        summ = summary_pb2.Summary.FromString(dictionary[key])
+        for i, _ in enumerate(summ.value):
+          summ.value[i].tag = key
+        summary_proto.value.extend(summ.value)
+      except message.DecodeError:
+        logging.warn('Skipping summary for %s, cannot parse string to Summary.',
+                     key)
+        continue
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int.',
-          key)
+          'np.int32 or int or a serialized string of Summary.', key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -1022,3 +1093,15 @@ def _has_dataset_or_queue_runner(maybe_tensor):
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
 
+
+class _DatasetInitializerHook(training.SessionRunHook):
+
+  def __init__(self, iterator):
+    self._iterator = iterator
+
+  def begin(self):
+    self._initializer = self._iterator.initializer
+
+  def after_create_session(self, session, coord):
+    del coord
+    session.run(self._initializer)

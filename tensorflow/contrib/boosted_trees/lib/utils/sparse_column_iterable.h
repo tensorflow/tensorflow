@@ -112,6 +112,8 @@ class SparseColumnIterable {
   int64 example_start() const { return example_start_; }
   int64 example_end() const { return example_end_; }
 
+  const TTypes<int64>::ConstMatrix& sparse_indices() const { return ix_; }
+
  private:
   // Sparse indices matrix.
   TTypes<int64>::ConstMatrix ix_;

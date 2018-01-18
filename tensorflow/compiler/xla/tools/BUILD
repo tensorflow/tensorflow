@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -206,6 +207,18 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_binary(
+    name = "hlo_proto_to_json",
+    srcs = ["hlo_proto_to_json.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
 )

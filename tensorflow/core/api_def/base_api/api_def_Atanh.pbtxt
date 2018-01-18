@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Atanh"
+  summary: "Computes inverse hyperbolic tangent of x element-wise."
+}

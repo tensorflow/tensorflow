@@ -62,7 +62,9 @@ class DatasetDataProvider(data_provider.DataProvider):
                seed=None,
                scope=None):
     """Creates a DatasetDataProvider.
-
+    Note: if `num_epochs` is not `None`,  local counter `epochs` will be created
+    by relevant function. Use `local_variables_initializer()` to initialize
+    local variables.
     Args:
       dataset: An instance of the Dataset class.
       num_readers: The number of parallel readers to use.
@@ -96,12 +98,12 @@ class DatasetDataProvider(data_provider.DataProvider):
     items = dataset.decoder.list_items()
     tensors = dataset.decoder.decode(data, items)
 
-    if record_key in items:
+    items_to_tensors = dict(zip(items, tensors))
+    if record_key in items_to_tensors:
       raise ValueError('The item name used for `record_key` cannot also be '
                        'used for a dataset item: %s', record_key)
-    items.append(record_key)
-    tensors.append(key)
+    items_to_tensors[record_key] = key
 
     super(DatasetDataProvider, self).__init__(
-        items_to_tensors=dict(zip(items, tensors)),
+        items_to_tensors=items_to_tensors,
         num_samples=dataset.num_samples)

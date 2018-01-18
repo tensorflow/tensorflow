@@ -22,6 +22,7 @@ import scipy.sparse
 
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -114,11 +115,18 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
 
   def test_learning_phase(self):
-    with self.test_session():
+    with self.test_session() as sess:
       keras.backend.set_learning_phase(1)
       self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
         keras.backend.set_learning_phase(2)
+
+      # Test running with a learning-phase-consuming layer
+      keras.backend.set_learning_phase(0)
+      x = keras.Input((3,))
+      y = keras.layers.BatchNormalization()(x)
+      sess.run(variables.global_variables_initializer())
+      sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_int_shape(self):
     x = keras.backend.placeholder(shape=(3, 4))
@@ -164,6 +172,55 @@ class BackendUtilsTest(test.TestCase):
     ys = keras.backend.stop_gradient(xs)
     for y in ys:
       self.assertEqual(y.op.name[:12], 'StopGradient')
+
+  def test_function_tf_fetches(self):
+    # Additional operations can be passed to tf.Session().run() via its
+    # `fetches` arguments. In contrast to `updates` argument of
+    # keras.backend.function() these do not have control dependency on `outputs`
+    # so they can run in parallel. Also they should not contribute to output of
+    # keras.backend.function().
+    with self.test_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                 outputs=[x_placeholder + y_placeholder],
+                                 updates=[(x, x_placeholder + 1.)],
+                                 fetches=[keras.backend.update(y, 5.)])
+      output = f([10., 20.])
+      assert output == [30.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [11., 5.]
+
+  def test_function_tf_feed_dict(self):
+    # Additional substitutions can be passed to `tf.Session().run()` via its
+    # `feed_dict` arguments. Note that the feed_dict is passed once in the
+    # constructor but we can modify the values in the dictionary. Through
+    # this feed_dict we can provide additional substitutions besides Keras
+    # inputs.
+    with self.test_session():
+      x = keras.backend.variable(0.)
+      y = keras.backend.variable(0.)
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      feed_dict = {y_placeholder: 3.}
+      fetches = [keras.backend.update(y, y_placeholder * 10.)]
+      f = keras.backend.function(inputs=[x_placeholder],
+                                 outputs=[x_placeholder + 1.],
+                                 updates=[(x, x_placeholder + 10.)],
+                                 feed_dict=feed_dict,
+                                 fetches=fetches)
+      output = f([10.])
+      assert output == [11.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [20., 30.]
+
+      # updated value in feed_dict will be modified within the K.function()
+      feed_dict[y_placeholder] = 4.
+      output = f([20.])
+      assert output == [21.]
+      assert keras.backend.get_session().run(fetches=[x, y]) == [30., 40.]
 
 
 class BackendVariableTest(test.TestCase):
@@ -853,44 +910,44 @@ class BackendNNOpsTest(test.TestCase):
         {'go_backwards': False, 'mask': mask},
         {'go_backwards': False, 'mask': mask, 'unroll': True},
     ]
+    with self.test_session():
+      for (i, kwargs) in enumerate(kwargs_list):
+        last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
+                                                             initial_states,
+                                                             **kwargs)
+        last_output_list[i].append(keras.backend.eval(last_output))
+        outputs_list[i].append(keras.backend.eval(outputs))
+        self.assertEqual(len(new_states), 1)
+        state_list[i].append(keras.backend.eval(new_states[0]))
 
-    for (i, kwargs) in enumerate(kwargs_list):
-      last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
-                                                           initial_states,
-                                                           **kwargs)
-      last_output_list[i].append(keras.backend.eval(last_output))
-      outputs_list[i].append(keras.backend.eval(outputs))
-      self.assertEqual(len(new_states), 1)
-      state_list[i].append(keras.backend.eval(new_states[0]))
+      def assert_list_pairwise(z_list, atol=1e-05):
+        for (z1, z2) in zip(z_list[1:], z_list[:-1]):
+          self.assertAllClose(z1, z2, atol=atol)
 
-    def assert_list_pairwise(z_list, atol=1e-05):
-      for (z1, z2) in zip(z_list[1:], z_list[:-1]):
-        self.assertAllClose(z1, z2, atol=atol)
+      assert_list_pairwise(last_output_list[0], atol=1e-04)
+      assert_list_pairwise(outputs_list[0], atol=1e-04)
+      assert_list_pairwise(state_list[0], atol=1e-04)
+      assert_list_pairwise(last_output_list[2], atol=1e-04)
+      assert_list_pairwise(outputs_list[2], atol=1e-04)
+      assert_list_pairwise(state_list[2], atol=1e-04)
 
-    assert_list_pairwise(last_output_list[0], atol=1e-04)
-    assert_list_pairwise(outputs_list[0], atol=1e-04)
-    assert_list_pairwise(state_list[0], atol=1e-04)
-    assert_list_pairwise(last_output_list[2], atol=1e-04)
-    assert_list_pairwise(outputs_list[2], atol=1e-04)
-    assert_list_pairwise(state_list[2], atol=1e-04)
+      for l, u_l in zip(last_output_list[0], last_output_list[1]):
+        self.assertAllClose(l, u_l, atol=1e-04)
 
-    for l, u_l in zip(last_output_list[0], last_output_list[1]):
-      self.assertAllClose(l, u_l, atol=1e-04)
+      for o, u_o in zip(outputs_list[0], outputs_list[1]):
+        self.assertAllClose(o, u_o, atol=1e-04)
 
-    for o, u_o in zip(outputs_list[0], outputs_list[1]):
-      self.assertAllClose(o, u_o, atol=1e-04)
+      for s, u_s in zip(state_list[0], state_list[1]):
+        self.assertAllClose(s, u_s, atol=1e-04)
 
-    for s, u_s in zip(state_list[0], state_list[1]):
-      self.assertAllClose(s, u_s, atol=1e-04)
+      for b_l, b_u_l in zip(last_output_list[2], last_output_list[3]):
+        self.assertAllClose(b_l, b_u_l, atol=1e-04)
 
-    for b_l, b_u_l in zip(last_output_list[2], last_output_list[3]):
-      self.assertAllClose(b_l, b_u_l, atol=1e-04)
+      for b_o, b_u_o in zip(outputs_list[2], outputs_list[3]):
+        self.assertAllClose(b_o, b_u_o, atol=1e-04)
 
-    for b_o, b_u_o in zip(outputs_list[2], outputs_list[3]):
-      self.assertAllClose(b_o, b_u_o, atol=1e-04)
-
-    for b_s, b_u_s in zip(state_list[2], state_list[3]):
-      self.assertAllClose(b_s, b_u_s, atol=1e-04)
+      for b_s, b_u_s in zip(state_list[2], state_list[3]):
+        self.assertAllClose(b_s, b_u_s, atol=1e-04)
 
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))

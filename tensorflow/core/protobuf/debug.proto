@@ -60,3 +60,25 @@ message DebugOptions {
   // step count.
   int64 global_step = 10;
 }
+
+message DebuggedSourceFile {
+  // The host name on which a source code file is located.
+  string host = 1;
+
+  // Path to the source code file.
+  string file_path = 2;
+
+  // The timestamp at which the source code file is last modified.
+  int64 last_modified = 3;
+
+  // Byte size of the file.
+  int64 bytes = 4;
+
+  // Line-by-line content of the source code file.
+  repeated string lines = 5;
+}
+
+message DebuggedSourceFiles {
+  // A collection of source code files.
+  repeated DebuggedSourceFile source_files = 1;
+}

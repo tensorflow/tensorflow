@@ -82,177 +82,127 @@ XLA_TEST_F(ConvolutionTest, ForwardPassConvolution_3x3x256_256_OutputZ_Iota) {
   ComputationBuilder builder(client_, TestName());
   auto lhs = builder.ConstantR4FromArray4D<float>(*alhs);
   auto rhs = builder.ConstantR4FromArray4D<float>(*arhs);
-  builder.Conv(lhs, rhs, {1, 1}, Padding::kValid);
+  auto conv = builder.Conv(lhs, rhs, {1, 1}, Padding::kValid);
 
-  std::unique_ptr<Array4D<float>> aexpected =
-      ReferenceUtil::ConvArray4D(*alhs, *arhs, {1, 1}, Padding::kValid);
-
-  ComputeAndCompareR4<float>(&builder, *aexpected, {}, error_spec_);
+  ComputeAndCompare(&builder, conv, {}, error_spec_);
 }
 
 TEST_F(ConvolutionTest, Convolve_1x1x1x2_1x1x1x2_Valid) {
   ComputationBuilder builder(client_, TestName());
-  {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kValid);
-  }
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
-  Array4D<float> input(1, 1, 1, 2);
-  input.FillWithYX(Array2D<float>({
+  Array4D<float> input_data(1, 1, 1, 2);
+  input_data.FillWithYX(Array2D<float>({
       {1, 2},
   }));
-  Array4D<float> filter(1, 1, 1, 2);
-  filter.FillWithYX(Array2D<float>({
+  Array4D<float> filter_data(1, 1, 1, 2);
+  filter_data.FillWithYX(Array2D<float>({
       {5, 6},
   }));
 
-  std::unique_ptr<Array4D<float>> aexpected =
-      ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kValid);
-
-  auto input_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
-          .ConsumeValueOrDie();
-  auto filter_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
-          .ConsumeValueOrDie();
-
-  ComputeAndCompareR4<float>(&builder, *aexpected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
+                    error_spec_);
 }
 
 // Tests valid padding for 2D convolution in raster space.
 TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Valid) {
   ComputationBuilder builder(client_, TestName());
-  {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kValid);
-  }
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 2, 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
 
-  Array4D<float> input(1, 1, 4, 4);
+  Array4D<float> input_data(1, 1, 4, 4);
   // clang-format off
-  input.FillWithYX(Array2D<float>({
+  input_data.FillWithYX(Array2D<float>({
     {1,  2,  3,  4 },
     {5,  6,  7,  8 },
     {9,  10, 11, 12},
     {13, 14, 15, 16},
   }));
   // clang-format on
-  Array4D<float> filter(1, 1, 2, 2);
+  Array4D<float> filter_data(1, 1, 2, 2);
   // clang-format off
-  filter.FillWithYX(Array2D<float>({
+  filter_data.FillWithYX(Array2D<float>({
     {5, 6},
     {7, 8},
   }));
   // clang-format on
-
-  std::unique_ptr<Array4D<float>> aexpected =
-      ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kValid);
-
-  auto input_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
-          .ConsumeValueOrDie();
-  auto filter_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
-          .ConsumeValueOrDie();
-
-  ComputeAndCompareR4<float>(&builder, *aexpected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
+                    error_spec_);
 }
 
 // Tests same padding for 2D convolution in raster space.
 TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Same) {
   ComputationBuilder builder(client_, TestName());
-  {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kSame);
-  }
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 2, 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
 
-  Array4D<float> input(1, 1, 4, 4);
+  Array4D<float> input_data(1, 1, 4, 4);
   // clang-format off
-  input.FillWithYX(Array2D<float>({
+  input_data.FillWithYX(Array2D<float>({
     {1,  2,  3,  4 },
     {5,  6,  7,  8 },
     {9,  10, 11, 12},
     {13, 14, 15, 16},
   }));
   // clang-format on
-  Array4D<float> filter(1, 1, 2, 2);
+  Array4D<float> filter_data(1, 1, 2, 2);
   // clang-format off
-  filter.FillWithYX(Array2D<float>({
+  filter_data.FillWithYX(Array2D<float>({
     {5, 6},
     {7, 8},
   }));
   // clang-format on
-
-  std::unique_ptr<Array4D<float>> aexpected =
-      ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kSame);
-
-  auto input_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
-          .ConsumeValueOrDie();
-  auto filter_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
-          .ConsumeValueOrDie();
-
-  ComputeAndCompareR4<float>(&builder, *aexpected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
+                    error_spec_);
 }
 
 // Tests same padding for 2D convolution in raster space with an odd sized
 // kernel.
 TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x3x3_Same) {
   ComputationBuilder builder(client_, TestName());
-  {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3, 3});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kSame);
-  }
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3, 3});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kSame);
 
-  Array4D<float> input(1, 1, 4, 4);
+  Array4D<float> input_data(1, 1, 4, 4);
   // clang-format off
-  input.FillWithYX(Array2D<float>({
+  input_data.FillWithYX(Array2D<float>({
     {1,  2,  3,  4 },
     {5,  6,  7,  8 },
     {9,  10, 11, 12},
     {13, 14, 15, 16},
   }));
   // clang-format on
-  Array4D<float> filter(1, 1, 3, 3);
+  Array4D<float> filter_data(1, 1, 3, 3);
   // clang-format off
-  filter.FillWithYX(Array2D<float>({
+  filter_data.FillWithYX(Array2D<float>({
     { 5,  6,  7},
     { 8,  9, 10},
     {11, 12, 13},
   }));
   // clang-format on
-
-  std::unique_ptr<Array4D<float>> aexpected =
-      ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kSame);
-
-  auto input_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
-          .ConsumeValueOrDie();
-  auto filter_literal =
-      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
-          .ConsumeValueOrDie();
-
-  ComputeAndCompareR4<float>(&builder, *aexpected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
+                    error_spec_);
 }
 
 XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
@@ -420,9 +370,12 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
-    dnums.add_spatial_dimensions(3);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(3);
+    dnums.add_output_spatial_dimensions(3);
     dnums.set_input_feature_dimension(4);
     dnums.set_output_feature_dimension(4);
     dnums.add_kernel_spatial_dimensions(0);
@@ -473,8 +426,10 @@ XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
     dnums.set_input_feature_dimension(3);
     dnums.set_output_feature_dimension(3);
     dnums.add_kernel_spatial_dimensions(0);
@@ -508,25 +463,88 @@ XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
                            error_spec_);
 }
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_Valid) {
+// Test fixture to run convolution tests with and without convolution
+// canonicalization enabled.
+class ConvolveWithAndWithoutCanonicalization
+    : public ConvolutionTest,
+      public ::testing::WithParamInterface<bool> {};
+
+XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
+           DISABLED_ON_GPU(Convolve2D_NoSpatialDims)) {
+  if (GetParam()) {
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "convolution-canonicalization");
+  }
   ComputationBuilder builder(client_, TestName());
-  int64 output_feature = 1;
-  int64 input_feature = 64;
-  int64 batch = 1;
-  int64 length = 1;
-  std::vector<int64> input_dims = {batch, 4 + length - 1, input_feature};
-  std::vector<int64> filter_dims = {4, input_feature, output_feature};
+  Shape input_shape = ShapeUtil::MakeShape(F32, {4, 29});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {4, 10});
+
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_feature_dimension(0);
+  dnums.set_input_batch_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  auto conv = builder.ConvWithGeneralDimensions(input, filter, {},
+                                                Padding::kValid, dnums);
+
+  Array2D<float> param0(4, 29);
+  param0.FillUnique();
+
+  Array2D<float> param1(4, 10);
+  param1.FillUnique();
+
+  Array2D<float> expected_result(29, 10);
+  expected_result.Fill(0);
+
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(param0)),
+                     std::move(*Literal::CreateFromArray(param1))},
+                    error_spec_);
+}
+
+INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
+                        ConvolveWithAndWithoutCanonicalization,
+                        ::testing::Values(true, false));
+
+struct Convolve1DTestParam {
+  int64 input_feature;
+  int64 output_feature;
+  int64 batch;
+  int64 window_size;
+  int64 num_windows;
+};
+
+class Convolve1D1WindowTest
+    : public ConvolutionTest,
+      public ::testing::WithParamInterface<Convolve1DTestParam> {};
+
+XLA_TEST_P(Convolve1D1WindowTest, Convolve1D1Window) {
+  ComputationBuilder builder(client_, TestName());
+  int64 input_feature = GetParam().input_feature;
+  int64 output_feature = GetParam().output_feature;
+  int64 batch = GetParam().batch;
+  int64 num_windows = GetParam().num_windows;
+  int64 window_size = GetParam().window_size;
+  std::vector<int64> input_dims = {batch, window_size + num_windows - 1,
+                                   input_feature};
+  std::vector<int64> filter_dims = {window_size, input_feature, output_feature};
   Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
   Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
   {
     auto input = builder.Parameter(0, input_shape, "input");
     auto filter = builder.Parameter(1, filter_shape, "filter");
 
-    // Tensorflow dimension numbers for 2D convolution.
+    // Tensorflow dimension numbers for 1D convolution.
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
     dnums.set_input_feature_dimension(2);
     dnums.set_output_feature_dimension(2);
     dnums.add_kernel_spatial_dimensions(0);
@@ -538,28 +556,57 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_Valid) {
   }
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape), 1.0);
-  // std::iota(input_elems.begin(), input_elems.end(), 1.0f);
   auto input_r1 = Literal::CreateR1<float>(input_elems);
-  auto input_r4 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
+  auto input_r3 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape), 1.0);
-  // std::iota(filter_elems.begin(), filter_elems.end(), 1.0f);
 
   auto filter_r1 = Literal::CreateR1<float>(filter_elems);
-  auto filter_r4 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
+  auto filter_r3 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
 
-  std::vector<float> expect_elems(batch * output_feature * length, 256);
+  std::vector<float> expect_elems(batch * output_feature * num_windows,
+                                  window_size * input_feature);
   auto expected_r1 = Literal::CreateR1<float>(expect_elems);
-  auto expected_r4 =
-      expected_r1->Reshape({batch, length, output_feature}).ConsumeValueOrDie();
+  auto expected_r3 = expected_r1->Reshape({batch, num_windows, output_feature})
+                         .ConsumeValueOrDie();
 
-  auto input_literal = client_->TransferToServer(*input_r4).ConsumeValueOrDie();
+  auto input_literal = client_->TransferToServer(*input_r3).ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*filter_r4).ConsumeValueOrDie();
-  ComputeAndCompareLiteral(&builder, *expected_r4,
+      client_->TransferToServer(*filter_r3).ConsumeValueOrDie();
+  ComputeAndCompareLiteral(&builder, *expected_r3,
                            {input_literal.get(), filter_literal.get()},
                            error_spec_);
 }
+
+INSTANTIATE_TEST_CASE_P(
+    Convolve1D1WindowTest_Instantiation, Convolve1D1WindowTest,
+    ::testing::Values(Convolve1DTestParam{1, 1, 1, 1, 2},
+                      Convolve1DTestParam{160, 1, 1, 5, 1},
+                      Convolve1DTestParam{24, 1, 1, 20, 1},
+                      Convolve1DTestParam{30, 1, 1, 20, 1},
+                      Convolve1DTestParam{23, 1, 1, 20, 20},
+                      Convolve1DTestParam{25, 1, 1, 20, 1},
+                      Convolve1DTestParam{24, 1, 1, 10, 5},
+                      Convolve1DTestParam{160, 1, 1, 10, 1},
+                      Convolve1DTestParam{255, 1, 1, 3, 1},
+                      Convolve1DTestParam{130, 1, 1, 1, 3},
+                      Convolve1DTestParam{64, 1, 1, 1, 1},
+                      Convolve1DTestParam{128, 1, 1, 1, 1},
+                      Convolve1DTestParam{139, 1, 1, 128, 1},
+                      Convolve1DTestParam{1, 10, 10, 1, 10},
+                      Convolve1DTestParam{1, 10, 130, 1, 2},
+                      Convolve1DTestParam{1, 10, 130, 1, 1},
+                      Convolve1DTestParam{1, 64, 64, 1, 10},
+                      Convolve1DTestParam{1, 65, 65, 1, 1},
+                      Convolve1DTestParam{1, 128, 128, 1, 1},
+                      Convolve1DTestParam{128, 128, 128, 128, 1},
+                      Convolve1DTestParam{1, 128, 128, 1, 1},
+                      Convolve1DTestParam{2, 2, 2, 2, 1},
+                      Convolve1DTestParam{161, 1, 1, 10, 1},
+                      Convolve1DTestParam{900, 1, 1, 10, 1},
+                      Convolve1DTestParam{640, 3, 3, 128, 1})
+
+);
 
 }  // namespace
 }  // namespace xla

@@ -91,13 +91,14 @@ class ConvParameters {
   using SpatialArray = gtl::InlinedVector<int64, 3>;
   ConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
                  int64 out_depths, const SpatialArray& filter,
-                 const SpatialArray& stride, const SpatialArray& padding,
-                 DataType dtype, int device_id)
+                 const SpatialArray& dilation, const SpatialArray& stride,
+                 const SpatialArray& padding, DataType dtype, int device_id)
       : batch_(batch),
         in_depths_(in_depths),
         out_depths_(out_depths),
         in_(in),
         filter_(filter),
+        dilation_(dilation),
         stride_(stride),
         padding_(padding),
         dtype_(dtype),
@@ -107,6 +108,7 @@ class ConvParameters {
     for (int64 val : in) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, out_depths);
     for (int64 val : filter) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64 val : dilation) hash_code_ = Hash64Combine(hash_code_, val);
     for (int64 val : stride) hash_code_ = Hash64Combine(hash_code_, val);
     for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, dtype);
@@ -128,6 +130,7 @@ class ConvParameters {
         "(", str_util::Join(in_, ", "), "), ",
         out_depths_, ", ",
         "(", str_util::Join(filter_, ", "), "), ",
+        "(", str_util::Join(dilation_, ", "), "), ",
         "(", str_util::Join(stride_, ", "), "), ",
         "(", str_util::Join(padding_, ", "), "), ",
         dtype_, ", ",
@@ -143,7 +146,7 @@ class ConvParameters {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
-    int64 threshold = 1L << 31;
+    int64 threshold = 1LL << 31;
     if (total_size >= threshold) {
       return false;
     } else {
@@ -154,11 +157,11 @@ class ConvParameters {
  protected:
   using ParameterDataType =
       std::tuple<int64, int64, SpatialArray, int64, SpatialArray, SpatialArray,
-                 SpatialArray, DataType, int>;
+                 SpatialArray, SpatialArray, DataType, int>;
 
   ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(batch_, in_depths_, in_, out_depths_, filter_,
-                           stride_, padding_, dtype_, device_id_);
+                           dilation_, stride_, padding_, dtype_, device_id_);
   }
 
   uint64 hash_code_;
@@ -169,6 +172,7 @@ class ConvParameters {
   int64 out_depths_;
   SpatialArray in_;
   SpatialArray filter_;
+  SpatialArray dilation_;
   SpatialArray stride_;
   SpatialArray padding_;
   DataType dtype_;

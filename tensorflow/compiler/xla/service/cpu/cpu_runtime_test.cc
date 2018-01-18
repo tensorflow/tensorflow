@@ -12,14 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#define EIGEN_USE_THREADS
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #include <memory>
 #include <string>
 #include <tuple>
-
-#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"

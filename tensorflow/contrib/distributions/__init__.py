@@ -24,14 +24,19 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.binomial import *
+from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
+from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import reduce_weighted_logsumexp
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+from tensorflow.contrib.distributions.python.ops.distribution_util import tridiag
 from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
+from tensorflow.contrib.distributions.python.ops.half_normal import *
 from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
@@ -80,6 +85,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'bijectors',
+    'Cauchy',
     'ConditionalDistribution',
     'ConditionalTransformedDistribution',
     'FULLY_REPARAMETERIZED',
@@ -102,6 +108,7 @@ _allowed_symbols = [
     'Gamma',
     'GammaWithSoftplusConcentrationRate',
     'Geometric',
+    'HalfNormal',
     'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
@@ -140,17 +147,22 @@ _allowed_symbols = [
     'RelaxedOneHotCategorical',
     'kl_divergence',
     'RegisterKL',
-    'matrix_diag_transform',
     'fill_triangular',
+    'matrix_diag_transform',
+    'reduce_weighted_logsumexp',
+    'softplus_inverse',
+    'tridiag',
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
-    'softplus_inverse',
     'percentile',
-    'reduce_weighted_logsumexp',
     'assign_moving_mean_variance',
     'assign_log_moving_mean_exp',
     'moving_mean_variance',
     'estimator_head_distribution_regression',
+    'quadrature_scheme_softmaxnormal_gauss_hermite',
+    'quadrature_scheme_softmaxnormal_quantiles',
+    'quadrature_scheme_lognormal_gauss_hermite',
+    'quadrature_scheme_lognormal_quantiles',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

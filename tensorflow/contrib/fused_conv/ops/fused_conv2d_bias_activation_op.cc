@@ -52,6 +52,7 @@ REGISTER_OP("FusedConv2DBiasActivation")
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Attr("filter_format: {'HWIO', 'OIHW', 'OIHW_VECT_I'} = 'HWIO'")
     .Attr("activation_mode: {'Relu'} = 'Relu'")
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
@@ -151,6 +152,11 @@ REGISTER_OP("FusedConv2DBiasActivation")
                      kernel_height, kernel_width, input_channels % 4 ]`
     activation_mode: The activation applied to the output.
         Currently must be "Relu".
+    dilations: 1-D tensor of length 4.  The dilation factor for each dimension
+        of `input`. If set to k > 1, there will be k-1 skipped cells between
+        each filter element on that dimension. The dimension order is determined
+        by the value of `data_format`, see above for details. Dilations in the
+        batch and depth dimensions must be 1.
 )doc");
 
 }  // namespace tensorflow

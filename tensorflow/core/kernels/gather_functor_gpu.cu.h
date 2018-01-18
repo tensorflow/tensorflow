@@ -72,10 +72,11 @@ __global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
 namespace functor {
 template <typename T, typename Index>
 struct GatherFunctor<GPUDevice, T, Index> {
-  int64 operator()(const GPUDevice& d,
+  int64 operator()(OpKernelContext* ctx,
                    typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out) {
+    const GPUDevice& d = ctx->eigen_gpu_device();
     const int64 out_size = out.size();
     if (out_size == 0) {
       // We need a check here since the CPU version does useful error checking

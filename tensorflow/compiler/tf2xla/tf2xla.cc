@@ -253,8 +253,7 @@ Status CreateXlaArgs(const Graph& graph,
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
 Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
-                         xla::Computation* computation,
-                         bool* requires_runtime_context) {
+                         xla::Computation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
@@ -277,7 +276,6 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
                                            "tfcompile", std::move(graph),
                                            xla_args, &result));
-  *requires_runtime_context = result.requires_runtime_context;
   *computation = std::move(*result.computation);
 
   int num_const_results = 0;
@@ -352,12 +350,10 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
 
 Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
-                            xla::Computation* computation,
-                            bool* requires_runtime_context) {
+                            xla::Computation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
-  TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), client, computation,
-                                       requires_runtime_context));
+  TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), client, computation));
   return Status::OK();
 }
 

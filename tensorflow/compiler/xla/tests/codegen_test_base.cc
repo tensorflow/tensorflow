@@ -19,8 +19,11 @@ namespace xla {
 
 StatusOr<std::unique_ptr<Executable>> CodegenTestBase::CompileToExecutable(
     std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->Compile(std::move(hlo_module),
-                                       backend().default_stream_executor());
+  TF_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
+                                      std::move(hlo_module),
+                                      backend().default_stream_executor()));
+  return backend().compiler()->RunBackend(std::move(hlo_module),
+                                          backend().default_stream_executor());
 }
 
 StatusOr<std::unique_ptr<AotCompilationResult>>

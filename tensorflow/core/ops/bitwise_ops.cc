@@ -23,58 +23,31 @@ namespace tensorflow {
 REGISTER_OP("Invert")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {int8, int16, int32, int64, uint8, uint16}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Flips all bits elementwise.
+    .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-The result will have exactly those bits set, that are not set in `x`. The
-computation is performed on the underlying representation of x.
-)doc");
-
-#define BINARY_BITWISE()                                     \
-  Input("x: T")                                              \
-      .Input("y: T")                                         \
-      .Output("z: T")                                        \
-      .SetIsCommutative()                                    \
-      .Attr("T: {int8, int16, int32, int64, uint8, uint16}") \
-      .SetShapeFn(shape_inference::UnchangedShape)
+#define BINARY_BITWISE()                                                     \
+  Input("x: T")                                                              \
+      .Input("y: T")                                                         \
+      .Output("z: T")                                                        \
+      .SetIsCommutative()                                                    \
+      .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}") \
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("PopulationCount")
     .Input("x: T")
     .Output("y: uint8")
-    .Attr("T: {int8, int16, int32, int64, uint8, uint16}")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
+    .Attr("T: {int8, int16, int32, int64, uint8, uint16, uint32, uint64}")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-For each entry in `x`, calculates the number of `1` (on) bits in the binary
-representation of that entry.
+REGISTER_OP("BitwiseAnd").BINARY_BITWISE();
 
-**NOTE**: It is more efficient to first `tf.bitcast` your tensors into
-`int32` or `int64` and perform the bitcount on the result, than to feed in
-8- or 16-bit inputs and then aggregate the resulting counts.
-)doc");
+REGISTER_OP("BitwiseOr").BINARY_BITWISE();
 
-REGISTER_OP("BitwiseAnd").BINARY_BITWISE().Doc(R"doc(
-Elementwise computes the bitwise AND of `x` and `y`.
+REGISTER_OP("BitwiseXor").BINARY_BITWISE();
 
-The result will have those bits set, that are set in both `x` and `y`. The
-computation is performed on the underlying representations of `x` and `y`.
-)doc");
+REGISTER_OP("LeftShift").BINARY_BITWISE();
 
-REGISTER_OP("BitwiseOr").BINARY_BITWISE().Doc(R"doc(
-Elementwise computes the bitwise OR of `x` and `y`.
-
-The result will have those bits set, that are set in `x`, `y` or both. The
-computation is performed on the underlying representations of `x` and `y`.
-)doc");
-
-REGISTER_OP("BitwiseXor").BINARY_BITWISE().Doc(R"doc(
-Elementwise computes the bitwise XOR of `x` and `y`.
-
-The result will have those bits set, that are different in `x` and `y`. The
-computation is performed on the underlying representations of `x` and `y`.
-)doc");
+REGISTER_OP("RightShift").BINARY_BITWISE();
 
 }  // namespace tensorflow

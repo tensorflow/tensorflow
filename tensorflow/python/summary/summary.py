@@ -48,6 +48,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 # pylint: enable=unused-import
 
+from tensorflow.python.eager import context as _context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
@@ -263,8 +264,20 @@ def merge(inputs, collections=None, name=None):
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer resulting from the merging.
+
+  Raises:
+    RuntimeError: If called with eager mode enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To write TensorBoard
+  summaries under eager execution, use `tf.contrib.summary` instead.
+  @end_compatbility
   """
   # pylint: enable=line-too-long
+  if _context.in_eager_mode():
+    raise RuntimeError(
+        'Merging tf.summary.* ops is not compatible with eager execution. '
+        'Use tf.contrib.summary instead.')
   name = _summary_op_util.clean_tag(name)
   with _ops.name_scope(name, 'Merge', inputs):
     # pylint: disable=protected-access
@@ -284,7 +297,19 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES):
     If no summaries were collected, returns None.  Otherwise returns a scalar
     `Tensor` of type `string` containing the serialized `Summary` protocol
     buffer resulting from the merging.
+
+  Raises:
+    RuntimeError: If called with eager execution enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To write TensorBoard
+  summaries under eager execution, use `tf.contrib.summary` instead.
+  @end_compatbility
   """
+  if _context.in_eager_mode():
+    raise RuntimeError(
+        'Merging tf.summary.* ops is not compatible with eager execution. '
+        'Use tf.contrib.summary instead.')
   summary_ops = _ops.get_collection(key)
   if not summary_ops:
     return None
@@ -306,6 +331,11 @@ def get_summary_description(node_def):
 
   Raises:
     ValueError: if the node is not a summary op.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To write TensorBoard
+  summaries under eager execution, use `tf.contrib.summary` instead.
+  @end_compatbility
   """
 
   if node_def.op != 'TensorSummary':
@@ -317,7 +347,7 @@ def get_summary_description(node_def):
 
 
 _allowed_symbols = [
-    'Summary', 'SummaryDescription', 'Event', 'TaggedRunMetadata', 'SessionLog'
+    'Summary', 'SummaryDescription', 'Event', 'TaggedRunMetadata', 'SessionLog',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

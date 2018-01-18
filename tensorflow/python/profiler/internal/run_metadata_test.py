@@ -169,7 +169,7 @@ class RunMetadataTest(test.TestCase):
       tfprof_node, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
-                          'rnn/while/rnn/basic_rnn_cell/MatMul')
+                          'rnn/while/basic_rnn_cell/MatMul')
       self.assertEqual(len(ret['cpu:0']), 4)
 
       total_cpu_execs = 0
@@ -178,7 +178,7 @@ class RunMetadataTest(test.TestCase):
 
       mm_node = lib.SearchTFProfNode(
           tfprof_node,
-          'rnn/while/rnn/basic_rnn_cell/MatMul')
+          'rnn/while/basic_rnn_cell/MatMul')
 
       self.assertEqual(mm_node.run_count, 4)
       self.assertEqual(mm_node.cpu_exec_micros, total_cpu_execs)
@@ -218,7 +218,7 @@ class RunMetadataTest(test.TestCase):
       tfprof_node, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
-                          'rnn/while/rnn/basic_rnn_cell/MatMul')
+                          'rnn/while/basic_rnn_cell/MatMul')
       self.assertEqual(len(ret['gpu:0']), 4, '%s' % run_meta)
 
       total_cpu_execs = 0

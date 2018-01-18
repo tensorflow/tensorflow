@@ -45,28 +45,6 @@ def _default_initializer(name, shape, dtype):
   return initializer[0]
 
 
-class _VariableFromResource(resource_variable_ops.ResourceVariable):
-  """Variable object from a preexisting resource.
-
-  Required because the ResourceVariable constructor creates the resource handle,
-  and here we want to use a preexisting one.
-  """
-
-  def __init__(self, resource, dtype, name, shape):
-    self._handle = resource
-    self._graph_shape = tensor_shape.as_shape(shape)
-    self._handle_device = resource.device
-    self._handle_name = name
-    self._cached_value = None
-    self._initializer_op = None
-    self._caching_device = None
-    self._dtype = dtype
-    self._constraint = None
-    self._in_graph_mode = context.in_graph_mode()
-    if self._in_graph_mode:
-      self._graph_element = self.read_value()
-
-
 class _CapturedVariable(object):
   """Variable captured by graph_callable.
 
@@ -137,17 +115,11 @@ class _VariableCapturingScope(object):
                        trainable=True, collections=None, caching_device=None,  # pylint: disable=redefined-outer-name
                        partitioner=None, validate_shape=True,
                        use_resource=None):
-      del getter, regularizer, partitioner, validate_shape, use_resource
-      del collections, initializer, trainable, reuse, caching_device
+      del getter, regularizer, partitioner, validate_shape, use_resource, dtype
+      del collections, initializer, trainable, reuse, caching_device, shape,
       assert name in self.variables
       v = self.variables[name]
-      v.placeholder = array_ops.placeholder(dtype=dtypes.resource, shape=shape)
-      # TODO(apassos) remove the need for this by correctly dealing with shape
-      # inference.
-      v.placeholder._handle_data = v.variable.handle._handle_data  # pylint: disable=protected-access
-      return _VariableFromResource(
-          v.placeholder, dtype=dtypes.as_dtype(dtype), name=name,
-          shape=v.shape)
+      return v.variable
 
     scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope(scope, custom_getter=_custom_getter):
@@ -181,51 +153,16 @@ class _VariableCapturingScope(object):
       v = _CapturedVariable(name, initializer, shape, dtype, trainable)
       self.variables[name] = v
 
-      graph_mode_resource = resource_variable_ops.var_handle_op(
-          shared_name=name, shape=shape, dtype=dtype)
+      graph_mode_resource = v.variable.handle
       if initializer is None:
         initializer = _default_initializer(name, shape, dtype)
-      resource_variable_ops.assign_variable_op(
-          graph_mode_resource, initializer(shape, dtype))
-      return _VariableFromResource(
-          graph_mode_resource, dtype, name, shape=v.shape)
+      resource_variable_ops.shape_safe_assign_variable_handle(
+          graph_mode_resource, v.variable.shape, initializer(shape, dtype))
+      return v.variable
 
     scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope(scope, custom_getter=_custom_getter):
       yield
-
-
-class _FunctionObject(function._GraphModeFunction):  # pylint: disable=protected-access
-  """Captured graph-mode function with read-only variables.
-
-  Calling this function object will read the current values of the variables and
-  pass them to the graph mode function, which will use them as constants.
-  """
-
-  def __init__(self, variables, placeholder_inputs, extra_inputs, fdef,
-               graph, operations, outputs, func_outputs_to_fdef_outputs,
-               output_shapes):
-    self._variables = variables
-    super(_FunctionObject, self).__init__(
-        placeholder_inputs,
-        extra_inputs,
-        fdef,
-        graph,
-        operations,
-        outputs,
-        func_outputs_to_fdef_outputs,
-        output_shapes)
-
-  @property
-  def variables(self):
-    return [x.variable for x in self._variables]
-
-  def __call__(self, *args, **kwds):
-    kwds.pop("want_gradients", False)
-    if kwds:
-      raise ValueError("graph_callable functions do not take keyword args")
-    values = [x.variable.handle for x in self._variables]
-    return super(_FunctionObject, self).__call__(*(values + list(args)))
 
 
 class _InitializingFunctionObject(object):
@@ -284,7 +221,9 @@ def _get_graph_callable_inputs(shape_and_dtypes):
       ret.append(_get_graph_callable_inputs(x))
     else:
       raise errors.InvalidArgumentError(
-          None, None, "shape_and_dtypes not ShapeAndDtype, type: %s " % type(x))
+          None, None, "Expected the argument to @graph_callable to be a "
+          "(possibly nested) list or tuple of ShapeAndDtype objects, "
+          "but got an object of type: %s" % type(x))
 
   return tuple(ret) if isinstance(shape_and_dtypes, tuple) else ret
 
@@ -304,7 +243,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   Args:
     func: The tfe Python function to compile.
-    shape_and_dtypes: A list of type ShapeAndDtype.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects.
 
   Raises:
     ValueError: If any one of func's outputs is not a Tensor.
@@ -312,11 +251,22 @@ def _graph_callable_internal(func, shape_and_dtypes):
   Returns:
     Callable graph object.
   """
+  container = tf_ops.get_default_graph()._container  # pylint: disable=protected-access
+  container_prefix = tf_ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
   with context.graph_mode():
     # This graph will store both the initialization and the call version of the
     # wrapped function. It will later be used by the backprop code to build the
     # backprop graph, if necessary.
-    tmp_graph = tf_ops.Graph()
+    captures = {}
+    tmp_graph = function.CapturingGraph(captures)
+    # Inherit the container from the original graph to create resources at user
+    # expected containers. Also inherits the container prefix, since this is
+    # used for error checking when isolating Eager execution (the container
+    # prefix at creation must match the container prefix when used, and
+    # variables returned from the graph callable will be used in the outside
+    # context).
+    tmp_graph._container = container  # pylint: disable=protected-access
+    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
     with tmp_graph.as_default():
       # Placeholders for the non-variable inputs.
       func_inputs = _get_graph_callable_inputs(shape_and_dtypes)
@@ -332,7 +282,6 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # variables. As a side-effect this will populate the variable capturing
       # scope's view of which variables exist.
       variable_captures = _VariableCapturingScope()
-      captures = {}
       with variable_captures.initializing_scope(), function.capture_tensors(
           captures):
         func_outputs = func(*func_inputs)
@@ -347,6 +296,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
       # Call the function again, now replacing usages of variables with
       # placeholders. This assumes the variable capturing scope created above
       # knows about all variables.
+      tmp_graph.clear_resource_control_flow_state()
       with variable_captures.capturing_scope(), function.capture_tensors(
           captures):
         captured_outputs = func(*func_inputs)
@@ -356,7 +306,6 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   sorted_variables = sorted(variable_captures.variables.values(),
                             key=lambda x: x.name)
-  variable_placeholders = [x.placeholder for x in sorted_variables]
   ids = list(sorted(captures.keys()))
   if ids:
     extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
@@ -367,50 +316,37 @@ def _graph_callable_internal(func, shape_and_dtypes):
   flat_inputs = [x for x in nest.flatten(func_inputs)
                  if isinstance(x, tf_ops.Tensor)]
   placeholder_inputs = flat_inputs+ list(extra_placeholders)
-  all_inputs = variable_placeholders + placeholder_inputs
 
   func_def_outputs = [x for x in outputs_list if isinstance(x, tf_ops.Tensor)]
-  initializer_function_def = function.make_function_def(
-      tmp_graph,
-      initializing_operations,
-      placeholder_inputs,
-      func_def_outputs)
+  initialization_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
   # Also, what about the gradient registry of these functions? Those need to be
   # addressed as well.
   for f in tmp_graph._functions.values():  # pylint: disable=protected-access
-    function._register_with_name(f.name, f.definition)  # pylint: disable=protected-access
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               initializer_function_def)
-  initializer_function = function._GraphModeFunction(  # pylint: disable=protected-access
+    function._register(f._c_func)  # pylint: disable=protected-access
+  initializer_function = function.GraphModeFunction(
+      initialization_name,
       placeholder_inputs,
       extra_inputs,
-      initializer_function_def,
       tmp_graph,
       initializing_operations,
+      func_def_outputs,
       func_outputs,
-      function._map_sequence_obj_to_idx(func_def_outputs),  # pylint: disable=protected-access
       output_shapes)
 
   capture_func_def_outputs = [
       x for x in captured_outlist if isinstance(x, tf_ops.Tensor)]
-  captured_function_def = function.make_function_def(
-      tmp_graph,
-      capturing_operations,
-      all_inputs,
-      capture_func_def_outputs)
-  function._register_with_name(function._inference_name(func.__name__),  # pylint: disable=protected-access
-                               captured_function_def)
-  captured_function = _FunctionObject(
-      sorted_variables,
-      all_inputs,
+  captured_function_name = function._inference_name(func.__name__)  # pylint: disable=protected-access
+  captured_function = function.GraphModeFunction(
+      captured_function_name,
+      placeholder_inputs,
       extra_inputs,
-      captured_function_def,
       tmp_graph,
       capturing_operations,
+      capture_func_def_outputs,
       captured_outputs,
-      function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
-      output_shapes)
+      output_shapes,
+      variables=[x.variable for x in sorted_variables])
 
   return _InitializingFunctionObject(captured_function, initializer_function,
                                      shape_and_dtypes)
@@ -459,9 +395,10 @@ def graph_callable(shape_and_dtypes):
   ret = foo(tfe.Tensor(2.0))  # `ret` here now is a Tensor with value 9.0.
   ```
   Args:
-    shape_and_dtypes: A list of type ShapeAndDtype that specifies shape and type
-      information for each of the callable's arguments. The length of this list
-      must be equal to the number of arguments accepted by the wrapped function.
+    shape_and_dtypes: A possibly nested list or tuple of ShapeAndDtype objects
+      that specifies shape and type information for each of the callable's
+      arguments. The length of this list must be equal to the number of
+      arguments accepted by the wrapped function.
 
   Returns:
     A callable graph object.

@@ -6,9 +6,11 @@ package(default_visibility = ["//visibility:private"])
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
+    "if_windows",
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -33,7 +35,9 @@ transitive_hdrs(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 py_binary(
@@ -85,6 +89,7 @@ py_binary(
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
         "//tensorflow/python/eager:eager_pip",
+        "//tensorflow/contrib/summary:summary_test_util",
         # These targets don't build on Windows yet. Exclude them for now.
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
@@ -152,20 +157,34 @@ sh_binary(
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+            "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
+            "//tensorflow/contrib/data/python/ops:prefetching_py",
+            "//tensorflow/contrib/eager/python/examples:examples_pip",
+            "//tensorflow/contrib/eager/python:checkpointable",
+            "//tensorflow/contrib/eager/python:evaluator",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
+            "//tensorflow/contrib/lite/toco:toco",
+            "//tensorflow/contrib/lite/toco/python:toco_wrapper",
+            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/py2tf:py2tf_internal",
+            "//tensorflow/contrib/py2tf/convert:convert",
+            "//tensorflow/contrib/py2tf/pyct:pyct",
+            "//tensorflow/contrib/py2tf/pyct/static_analysis:static_analysis",
             "//tensorflow/contrib/receptive_field:receptive_field_pip",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
             "//tensorflow/contrib/signal:signal_py",
+            "//tensorflow/contrib/signal:test_util",
             "//tensorflow/contrib/slim:slim",
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
             "//tensorflow/contrib/specs:specs",
+            "//tensorflow/contrib/summary:summary_test_util",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/contrib/timeseries:timeseries_pip",
@@ -183,4 +202,24 @@ sh_binary(
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+)
+
+# A genrule for generating a marker file for the pip package on Windows
+#
+# This only works on Windows, because :simple_console_for_windows is a
+# python zip file containing everything we need for building the pip package.
+# However, on other platforms, due to https://github.com/bazelbuild/bazel/issues/4223,
+# when C++ extensions change, this generule doesn't rebuild.
+genrule(
+    name = "win_pip_package_marker",
+    srcs = if_windows([
+        ":build_pip_package",
+        ":simple_console_for_windows",
+    ]),
+    outs = ["win_pip_package_marker_file"],
+    cmd = select({
+        "//conditions:default": "touch $@",
+        "//tensorflow:windows": "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
+    }),
+    visibility = ["//visibility:public"],
 )

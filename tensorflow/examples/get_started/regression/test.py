@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A simple smoke test that runs these examples for 1 training iteraton."""
+"""A simple smoke test that runs these examples for 1 training iteration."""
 
 from __future__ import absolute_import
 from __future__ import division

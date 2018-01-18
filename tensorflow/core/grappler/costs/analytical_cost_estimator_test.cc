@@ -102,8 +102,14 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   Costs summary;
   TF_ASSERT_OK(estimator.PredictCosts(item.graph, &cost_graph, &summary));
 
-  EXPECT_EQ(Costs::NanoSeconds(9156), summary.execution_time);
-  EXPECT_FALSE(summary.inaccurate);
+  EXPECT_EQ(Costs::NanoSeconds(9150), summary.execution_time);
+
+  // Make this estimate accurate:
+  // TODO(http://b/70031255): Accurate estimator for RandomUniform op needed
+  // TODO(http://b/70031363): Accurate estimator for Softmax needed
+  //
+  // Change to EXPECT_FALSE when the above TODOs are done:
+  EXPECT_TRUE(summary.inaccurate);
 }
 
 }  // end namespace grappler

@@ -162,10 +162,12 @@ class ConditionalAccumulatorBase : public ResourceBase {
  * function can get an indication that a failure has occurred.
 */
 #define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) {                \
-    (CTX)->CtxFailure((STATUS));              \
-    return false;                             \
-  }
+  do {                                        \
+    if (!TF_PREDICT_TRUE(EXP)) {              \
+      (CTX)->CtxFailure((STATUS));            \
+      return false;                           \
+    }                                         \
+  } while (0)
 
 #define OP_REQUIRES_OK_BOOLEAN(CTX, STATUS) \
   do {                                      \

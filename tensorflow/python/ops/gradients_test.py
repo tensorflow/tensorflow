@@ -23,6 +23,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -78,6 +79,7 @@ def _OpsBetween(graph, to_ops, from_ops):
   return between_ops
 
 
+@test_util.with_c_api
 class GradientsTest(test_util.TensorFlowTestCase):
 
   def _OpNames(self, op_list):
@@ -204,6 +206,23 @@ class GradientsTest(test_util.TensorFlowTestCase):
       gw2 = gradients.gradients(z, [w], colocate_gradients_with_ops=False)[0]
       self.assertTrue(w.op.colocation_groups() != gw2.op.colocation_groups())
 
+  def testColocateGradientsWithGateGradients(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+    with ops.Graph().as_default() as g:
+      with g.device("/device:CPU:0"):
+        x = constant(1.0, shape=[1, 1])
+        y = constant(1.0, shape=[1, 1])
+        s = x + y
+      with g.device("/device:GPU:0"):
+        z = math_ops.reduce_sum(s)
+
+      gz_x = gradients.gradients(z, [x], colocate_gradients_with_ops=True,
+                                 gate_gradients=True)[0]
+      with session.Session():
+        # Make sure the placer doesn't complain.
+        gz_x.eval()
+
   def testBoundaryStop(self):
     # Test that we don't differentiate 'x'. The gradient function for 'x' is
     # set explicitly to None so we will get an exception if the gradient code
@@ -264,6 +283,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testNoGradientForStringOutputs(self):
+    # This test can't be run twice because the TestStringOutput gradient can
+    # only be registered once. Just run with the C API enabled.
+    if not ops._USE_C_API: return
+
     with ops.Graph().as_default():
 
       def _TestOpGrad(_, float_grad, string_grad):
@@ -401,14 +424,15 @@ class GradientsTest(test_util.TensorFlowTestCase):
                           constants=constants, variables=variables_))
 
     # evaluate all tensors in one call to session.run for speed
-    with self.test_session() as session:
-      results = session.run([(case["grad1"], case["grad2"]) for case in cases])
+    with self.test_session() as sess:
+      results = sess.run([(case["grad1"], case["grad2"]) for case in cases])
 
     for (npgrad1, npgrad2), case in zip(results, cases):
       for a, b in zip(npgrad1, npgrad2):
         np.testing.assert_allclose(a, b)
 
 
+@test_util.with_c_api
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -498,6 +522,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         f.add_to_graph(ops.Graph())
 
 
+@test_util.with_c_api
 class StopGradientTest(test_util.TensorFlowTestCase):
 
   def testStopGradient(self):
@@ -508,6 +533,7 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     assert igrad is None
 
 
+@test_util.with_c_api
 class PreventGradientTest(test_util.TensorFlowTestCase):
 
   def testPreventGradient(self):
@@ -518,6 +544,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
         _ = gradients.gradients(out, inp)
 
 
+@test_util.with_c_api
 class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
   def testHessianVectorProduct(self):
@@ -546,6 +573,7 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
       self.assertAllClose(hess_v_value, hess_v_actual)
 
 
+@test_util.with_c_api
 class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessian1D(self):
@@ -593,7 +621,47 @@ class HessianTest(test_util.TensorFlowTestCase):
         with self.assertRaises(ValueError):
           gradients.hessians(x, x)
 
+  def testHessian2D_square_matrix(self):
+    # Manually compute the Hessian explicitly for a low-dimensional problem
+    # and check that `hessian` matches. Specifically, the Hessian of
+    # f(x) = 1/2 * x^T * x is H = constant (block identity matrix)
+    m = 3
+    rng = np.random.RandomState([1, 2, 3])
+    x_value = rng.randn(m, m).astype("float32")
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_value)
+      x_square = math_ops.reduce_sum(
+          math_ops.matmul(array_ops.transpose(x), x) * 0.5
+      )
+      hess = gradients.hessians(x_square, x)[0]
+      hess_actual = hess.eval()
+    hess_value = np.bmat([
+        [elem*np.ones((m, m)) for elem in vec]
+        for vec in np.eye(m)
+    ]).astype("float32")
+    self.assertAllEqual((m, m, m, m), hess_actual.shape)
+    self.assertAllClose(hess_value, hess_actual.reshape((m * m, m * m)))
 
+  def testHessian2D_non_square_matrix(self):
+    m = 3
+    n = 4
+    rng = np.random.RandomState([1, 2, 3])
+    x_value = rng.randn(m, n).astype("float32")
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_value)
+      x_square = math_ops.reduce_sum(
+          math_ops.matmul(array_ops.transpose(x), x) * 0.5
+      )
+      hess = gradients.hessians(x_square, x)[0]
+      hess_actual = hess.eval()
+    hess_value = np.bmat([
+        [elem*np.ones((n, n)) for elem in vec]
+        for vec in np.eye(m)
+    ]).astype("float32")
+    self.assertAllEqual((m, n, m, n), hess_actual.shape)
+    self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
+
+@test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesToTensor(self):
@@ -636,8 +704,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
   def testWarnings(self):
     # TODO(gunan) Reenable after this issue is fixed:
     # https://github.com/google/protobuf/issues/2812
-    if sys.version_info >= (3, 6):
-      self.skipTest("Skipped test for Python 3.6+")
+    if sys.version_info >= (3, 5):
+      self.skipTest("Skipped test for Python 3.5+")
 
     # Smaller than the threshold: no warning.
     c_sparse = ops.IndexedSlices(
@@ -651,6 +719,9 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     c_sparse = ops.IndexedSlices(
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32), constant([100, 100, 100, 100]))
+    # "always" filter prevents the warning from being suppressed if it was
+    # already triggered in a different test.
+    warnings.simplefilter("always")
     with warnings.catch_warnings(record=True) as w:
       math_ops.multiply(c_sparse, 1.0)
     self.assertEqual(1, len(w))
@@ -671,6 +742,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         str(w[0].message))
 
 
+@test_util.with_c_api
 class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
 
   def testRealOnly(self):

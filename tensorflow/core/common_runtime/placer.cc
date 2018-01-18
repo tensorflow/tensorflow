@@ -129,7 +129,7 @@ class ColocationGraph {
     // 'string' values stored in NodeDef attribute lists, as well as StringPiece
     // values that refer to 'string' values from NodeDef::name(), without
     // performing any string allocations.
-    std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>
+    std::unordered_map<StringPiece, const Node*, StringPieceHasher>
         colocation_group_root;
 
     for (Node* node : graph_->nodes()) {
@@ -171,7 +171,7 @@ class ColocationGraph {
   }
 
   Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPiece::Hasher>*
+      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
           colocation_group_root,
       Node* node, StringPiece colocation_group) {
     const Node*& root_node = (*colocation_group_root)[colocation_group];
@@ -369,7 +369,8 @@ class ColocationGraph {
                 "Could not satisfy explicit device specification '",
                 node->requested_device(), "' because no supported kernel for ",
                 specified_device_name.type, " devices is available.",
-                debug_info);
+                debug_info, "\nRegistered kernels:\n",
+                KernelsRegisteredForOp(node->type_string()));
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",

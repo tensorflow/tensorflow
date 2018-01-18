@@ -170,6 +170,7 @@ cc_library(
         ":computation",
         ":global_data",
         ":padding",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -182,6 +183,20 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "sharding_builder",
+    srcs = ["sharding_builder.cc"],
+    hdrs = ["sharding_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
     ],
 )
 

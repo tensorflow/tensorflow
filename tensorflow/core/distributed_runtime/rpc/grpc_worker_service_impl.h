@@ -110,6 +110,7 @@ namespace tensorflow {
 enum class GrpcWorkerMethod {
   kGetStatus,
   kCreateWorkerSession,
+  kDeleteWorkerSession,
   kRegisterGraph,
   kDeregisterGraph,
   kRunGraph,

@@ -143,6 +143,55 @@ class ReduceTest : public ClientLibraryTestBase {
     ComputeAndCompareR0<bool>(&builder, expected, {input_global_data.get()});
   }
 
+  // Reduce predicate tensor with dimension rows * cols to dimension cols, to
+  // test the implementation of atomic operations on misaligned small data
+  // types.
+  template <int64 cols>
+  void RunR2ToR1PredTest(bool and_reduce, int64 rows, int64 minor = 1,
+                         int64 major = 0) {
+    ComputationBuilder builder(client_, TestName());
+    const Shape input_shape = ShapeUtil::MakeShape(U8, {rows, cols});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto input_pred = builder.Eq(input, builder.ConstantR0<uint8>(1));
+
+    ComputationDataHandle init_value;
+    Computation reduce_op;
+    if (and_reduce) {
+      init_value = builder.ConstantR0<bool>(true);
+      reduce_op = CreateScalarAndComputation(&builder);
+    } else {
+      init_value = builder.ConstantR0<bool>(false);
+      reduce_op = CreateScalarOrComputation(&builder);
+    }
+
+    builder.Reduce(input_pred, init_value, reduce_op,
+                   /*dimensions_to_reduce=*/{0});
+
+    Array2D<uint8> input_data(rows, cols);
+    input_data.FillRandom(0, 1);
+    std::unique_ptr<Literal> input_literal =
+        Literal::CreateR2FromArray2D(input_data);
+    input_literal =
+        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+    std::unique_ptr<GlobalData> input_global_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+    std::array<bool, cols> expected;
+    for (int64 colno = 0; colno < cols; ++colno) {
+      bool column_sum = and_reduce ? true : false;
+      for (int64 rowno = 0; rowno < rows; ++rowno) {
+        if (and_reduce) {
+          column_sum = column_sum && input_data(rowno, colno);
+        } else {
+          column_sum = column_sum || input_data(rowno, colno);
+        }
+      }
+      expected[colno] = column_sum;
+    }
+
+    ComputeAndCompareR1<bool>(&builder, expected, {input_global_data.get()});
+  }
+
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
   void RunR2ToR0Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
     ComputationBuilder builder(client_, TestName());
@@ -352,15 +401,13 @@ XLA_TEST_F(ReduceTest, ReduceR2_111x50_01_To_R1) {
 XLA_TEST_F(ReduceTest, ReduceR2_1024x1024_To_R1) { RunR2ToR1Test(1024, 1024); }
 XLA_TEST_F(ReduceTest, ReduceR2_1000x1500_To_R1) { RunR2ToR1Test(1000, 1500); }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceAllOnesR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, AndReduceAllOnesR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count, 1);
   RunR1ToR0PredTest(/*and_reduce=*/true, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, AndReduceOnesAndZerosR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count);
   for (int i = 0; i < element_count; ++i) {
@@ -369,15 +416,13 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(AndReduceOnesAndZerosR1_10_Pred)) {
   RunR1ToR0PredTest(/*and_reduce=*/true, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceAllOnesR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, OrReduceAllOnesR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count, 1);
   RunR1ToR0PredTest(/*and_reduce=*/false, input);
 }
 
-// TODO(b/34969189): Invalid CAS generated on GPU.
-XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OrReduceOnesAndZerosR1_10_Pred)) {
+XLA_TEST_F(ReduceTest, OrReduceOnesAndZerosR1_10_Pred) {
   constexpr int element_count = 10;
   std::vector<int> input(element_count);
   for (int i = 0; i < element_count; ++i) {
@@ -457,7 +502,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
-  auto log_ = builder.Log(input);
+  auto log_ = builder.Tanh(input);
   auto reshape = builder.Reshape(log_, {rows, cols});
   builder.Reduce(reshape, zero, add_f32, /*dimensions_to_reduce=*/{0});
 
@@ -473,7 +518,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += log(input_data(rowno, major, colno));
+        column_sum += tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }
@@ -502,8 +547,8 @@ XLA_TEST_F(ReduceTest, AddReduce2DScalarToR0) {
   ComputationBuilder builder(client_, TestName());
   auto add = CreateScalarAddComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
-  auto broacasted = builder.Broadcast(scalar, {500, 500});
-  builder.Reduce(broacasted, builder.ConstantR0<float>(0.0f), add, {0, 1});
+  auto broadcasted = builder.Broadcast(scalar, {500, 500});
+  builder.Reduce(broadcasted, builder.ConstantR0<float>(0.0f), add, {0, 1});
 
   float expected = 42.0f * static_cast<float>(500 * 500);
   ComputeAndCompareR0<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -514,8 +559,8 @@ XLA_TEST_F(ReduceTest, MaxReduce2DScalarToR0) {
   ComputationBuilder builder(client_, TestName());
   auto max = CreateScalarMaxComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
-  auto broacasted = builder.Broadcast(scalar, {500, 500});
-  builder.Reduce(broacasted, builder.ConstantR0<float>(0.0f), max, {0, 1});
+  auto broadcasted = builder.Broadcast(scalar, {500, 500});
+  builder.Reduce(broadcasted, builder.ConstantR0<float>(0.0f), max, {0, 1});
 
   float expected = 42.0f;
   ComputeAndCompareR0<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -810,6 +855,13 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
   auto max = builder.Reduce(b, a2, max_f32, {0});
 
   ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
+}
+
+XLA_TEST_F(ReduceTest, ReduceAndPredR2_128x64_To_R1) {
+  RunR2ToR1PredTest</*cols=64*/ 64>(/*and_reduce=true*/ true, /*rows=128*/ 128);
+}
+XLA_TEST_F(ReduceTest, ReduceOrPredR2_64x32_To_R1) {
+  RunR2ToR1PredTest</*cols=32*/ 32>(/*and_reduce=false*/ false, /*rows=64*/ 64);
 }
 
 }  // namespace

@@ -53,11 +53,11 @@ class TransposeTest(test.TestCase):
       # Gradient check on CPU.
       xs = list(np.shape(x))
       ys = list(np.shape(tf_ans))
-      if x.dtype == np.float32:
+      if x.dtype in [np.float32, np.complex64]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-3, 1e-3)
-      elif x.dtype == np.float64:
+      elif x.dtype in [np.float64, np.complex128]:
         jacob_t, jacob_n = gradient_checker.compute_gradient(inx, xs, y, ys, x,
                                                              1e-2)
         self.assertAllClose(jacob_t, jacob_n, 1e-6, 1e-6)
@@ -316,6 +316,19 @@ class TransposeTest(test.TestCase):
     self._compareCpu(
         np.arange(0, 8).reshape([2, 4]).astype(np.float32),
         np.array([1, 0]).astype(np.int32))
+
+  def testPermType(self):
+    for perm_dtype in [np.int64, np.int32]:
+      x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
+      p = np.array([1, 0]).astype(perm_dtype)
+      np_ans = np.copy(x).transpose(p)
+      with self.test_session(use_gpu=True):
+        inx = ops.convert_to_tensor(x)
+        inp = constant_op.constant(p)
+        y = array_ops.transpose(inx, inp)
+        tf_ans = y.eval()
+        self.assertShapeEqual(np_ans, y)
+        self.assertAllEqual(np_ans, tf_ans)
 
   def testHalf(self):
     self._compare(np.arange(0, 21).reshape([3, 7]).astype(np.float16))

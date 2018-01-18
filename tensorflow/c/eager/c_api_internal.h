@@ -35,8 +35,15 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
+struct TFE_ContextOptions {
+  TF_SessionOptions session_options;
+  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_EXPLICIT};
+};
+
 struct TFE_Context {
   explicit TFE_Context(TF_Session* s) : session(s) {}
+
+  TFE_ContextDevicePlacementPolicy policy;
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
   TF_Session* session;
@@ -51,15 +58,21 @@ struct TFE_Context {
   // session->devices[i].
   std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
+  tensorflow::mutex cache_mu;
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
-      kernel_cache;
+      kernel_cache GUARDED_BY(cache_mu);
 
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
     return pflr->GetFLR(d->name());
   }
 
   const std::vector<tensorflow::Device*>& devices() { return session->devices; }
+
+  // Whether we should compute RunMetadata.
+  std::atomic<bool> should_store_metadata{false};
+  tensorflow::mutex metadata_mu;
+  tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
 };
 
 struct TFE_TensorHandle {

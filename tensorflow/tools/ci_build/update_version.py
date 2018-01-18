@@ -17,7 +17,7 @@
 # Automatically update TensorFlow version in source files
 #
 # Usage:
-#           ./tensorflow/tools/ci_build/update_version.py --version 1.4.0-rc0
+#           ./tensorflow/tools/ci_build/update_version.py --version 1.4.0-rc1
 #           ./tensorflow/tools/ci_build/update_version.py --nightly
 #
 """Update version of TensorFlow script."""

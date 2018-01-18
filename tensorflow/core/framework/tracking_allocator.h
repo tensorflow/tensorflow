@@ -68,6 +68,7 @@ class TrackingAllocator : public Allocator {
   size_t AllocatedSize(void* ptr) override;
   int64 AllocationId(void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes
@@ -85,6 +86,8 @@ class TrackingAllocator : public Allocator {
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
   gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
+  // Returns a copy of allocation records collected so far.
+  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}

@@ -25,13 +25,17 @@ namespace tensorflow {
 
 using CpuDevice = Eigen::ThreadPoolDevice;
 
-#define DEFINE_CPU_SPECS(T) \
-  template struct functor::MirrorPad<CpuDevice, T, CPU_PROVIDED_IXDIM>;
+#define DEFINE_CPU_SPECS(T)                                                    \
+  template struct functor::MirrorPad<CpuDevice, T, int32, CPU_PROVIDED_IXDIM>; \
+  template struct functor::MirrorPad<CpuDevice, T, int64, CPU_PROVIDED_IXDIM>;
 TF_CALL_POD_TYPES(DEFINE_CPU_SPECS);
 #undef DEFINE_CPU_SPECS
 
-#define DEFINE_CPU_SPECS(T) \
-  template struct functor::MirrorPadGrad<CpuDevice, T, CPU_PROVIDED_IXDIM>;
+#define DEFINE_CPU_SPECS(T)                                   \
+  template struct functor::MirrorPadGrad<CpuDevice, T, int32, \
+                                         CPU_PROVIDED_IXDIM>; \
+  template struct functor::MirrorPadGrad<CpuDevice, T, int64, \
+                                         CPU_PROVIDED_IXDIM>;
 TF_CALL_NUMBER_TYPES(DEFINE_CPU_SPECS);
 #undef DEFINE_CPU_SPECS
 

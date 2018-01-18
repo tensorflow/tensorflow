@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "output_classes"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "output_shapes"
     mtype: "<type \'property\'>"
   }
@@ -16,15 +20,15 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'iterator_resource\', \'initializer\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'iterator_resource\', \'initializer\', \'output_types\', \'output_shapes\', \'output_classes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string_handle"
-    argspec: "args=[\'string_handle\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'string_handle\', \'output_types\', \'output_shapes\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "from_structure"
-    argspec: "args=[\'output_types\', \'output_shapes\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'output_types\', \'output_shapes\', \'shared_name\', \'output_classes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_next"

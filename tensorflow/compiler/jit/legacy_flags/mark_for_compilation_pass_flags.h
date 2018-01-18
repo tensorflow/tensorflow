@@ -46,6 +46,8 @@ typedef struct {
   int32 tf_xla_max_cluster_size;  // Maximum number of operators in an XLA
                                   // compilation.
   bool tf_xla_clustering_debug;   // Dump graphs during XLA compilation.
+  bool tf_xla_cpu_global_jit;     // Enables global JIT compilation for CPU
+                                  // via SessionOptions.
 } MarkForCompilationPassFlags;
 
 // Return a pointer to the MarkForCompilationPassFlags struct;

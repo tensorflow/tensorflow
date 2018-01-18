@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for new version of accumulate_n op that will eventually go into 
+"""Tests for new version of accumulate_n op that will eventually go into
 `ops.math_ops`."""
 from __future__ import absolute_import
 from __future__ import division
@@ -102,21 +102,21 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         a = variables.Variable(np.array([0.1,0.2]))
         b = variables.Variable(np.array([[0.3],[0.4]]))
-        tf_val = av2.accumulate_n_v2([a,b]) 
+        tf_val = av2.accumulate_n_v2([a,b])
 
   def testWrongType(self):
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
-        tf_val = av2.accumulate_n_v2([a,b], tensor_dtype=np.int32) 
+        tf_val = av2.accumulate_n_v2([a,b], tensor_dtype=np.int32)
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
-        tf_val = av2.accumulate_n_v2([a], tensor_dtype=np.int32) 
+        tf_val = av2.accumulate_n_v2([a], tensor_dtype=np.int32)
 
 
 if __name__ == "__main__":

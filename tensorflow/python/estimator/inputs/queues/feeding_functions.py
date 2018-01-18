@@ -47,13 +47,13 @@ except ImportError:
 
 
 def _fill_array(arr, seq, fillvalue=0):
-  """ 
-  Recursively fills padded arr with elements from seq. 
+  """
+  Recursively fills padded arr with elements from seq.
   If length of seq is less than arr padded length, fillvalue used.
 
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
-    seq: Non-padded list of data sampels of shape 
+    seq: Non-padded list of data sampels of shape
       [batch_size, ..., padded_dim(None)]
     fillvalue: Default fillvalue to use.
   """
@@ -73,12 +73,12 @@ def _pad_if_needed(batch_key_item, fillvalue=0):
   """ Returns padded batch.
 
   Args:
-    batch_key_item: List of data samples of any type with shape 
+    batch_key_item: List of data samples of any type with shape
       [batch_size, ..., padded_dim(None)].
     fillvalue: Default fillvalue to use.
 
   Returns:
-    Padded with zeros tensor of same type and shape 
+    Padded with zeros tensor of same type and shape
       [batch_size, ..., max_padded_dim_len].
 
   Raises:
@@ -375,7 +375,7 @@ def _enqueue_data(data,
       arrays, a numpy `ndarray`, or a generator producing these.
     NotImplementedError: padding and shuffling data at the same time.
     NotImplementedError: padding usage with non generator data type.
-  """ 
+  """
   with ops.name_scope(name):
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]

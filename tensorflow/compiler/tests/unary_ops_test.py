@@ -33,6 +33,17 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
 
+def nhwc_to_format(x, data_format):
+  """Converts a numpy array from NHWC format to `data_format`."""
+  rank = len(x.shape)
+  if data_format == "NCHW":
+    return np.transpose(x, [0, rank - 1] + list(range(1, rank - 1)))
+  elif data_format == "NHWC":
+    return x
+  else:
+    raise ValueError("Unknown format {}".format(data_format))
+
+
 class UnaryOpsTest(XLATestCase):
   """Test cases for unary operators."""
 
@@ -56,7 +67,7 @@ class UnaryOpsTest(XLATestCase):
         output = op(pinp)
       result = session.run(output, {pinp: inp})
       if equality_test is None:
-        equality_test = self.assertAllClose
+        equality_test = self.assertAllCloseAccordingToType
       equality_test(result, expected, rtol=rtol, atol=atol)
 
   def ListsAreClose(self, result, expected, rtol, atol):
@@ -76,6 +87,12 @@ class UnaryOpsTest(XLATestCase):
           array_ops.diag_part,
           np.arange(36).reshape([2, 3, 2, 3]).astype(dtype),
           np.array([[0, 7, 14], [21, 28, 35]], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.diag, np.array([[1, 2], [3, 4]], dtype=dtype),
+          np.array(
+              [[[[1, 0], [0, 0]], [[0, 2], [0, 0]]], [[[0, 0], [3, 0]],
+                                                      [[0, 0], [0, 4]]]],
+              dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           array_ops.identity,
@@ -86,6 +103,21 @@ class UnaryOpsTest(XLATestCase):
           array_ops.matrix_diag,
           np.array([[1, 2], [3, 4]], dtype=dtype),
           np.array([[[1, 0], [0, 2]], [[3, 0], [0, 4]]], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.matrix_diag, np.array([1, 2, 3, 4], dtype=dtype),
+          np.array(
+              [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]],
+              dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          array_ops.matrix_diag,
+          np.array(
+              [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=dtype),
+          np.array(
+              [[[[1, 0, 0], [0, 2, 0], [0, 0, 3]],
+                [[4, 0, 0], [0, 5, 0], [0, 0, 6]]],
+               [[[7, 0, 0], [0, 8, 0], [0, 0, 9]],
+                [[10, 0, 0], [0, 11, 0], [0, 0, 12]]]],
+              dtype=dtype))
       self._assertOpOutputMatchesExpected(
           array_ops.matrix_diag_part,
           np.arange(3 * 2 * 4).reshape([3, 2, 4]).astype(dtype),
@@ -328,6 +360,141 @@ class UnaryOpsTest(XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1, -64.0 / 127, 0, 38.0 / 127], dtype=dtype))
 
+  def testComplexOps(self):
+    for dtype in self.complex_types:
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.acosh,
+          np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+          expected=np.arccosh(
+              np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.asinh,
+          np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+          expected=np.arcsinh(
+              np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.atanh,
+          np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype),
+          expected=np.arctanh(
+              np.array([0.1, 0.2j, 0.3 - 0.1j, 0.4 + 0.5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.cosh,
+          np.array([1j, 2 - 3j, 3, 4 + 2j], dtype=dtype),
+          expected=np.cosh(np.array([1j, 2 - 3j, 3, 4 + 2j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sinh,
+          np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+          expected=np.sinh(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.exp,
+          np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype),
+          expected=np.exp(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.expm1,
+          np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype),
+          expected=np.expm1(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.reciprocal,
+          np.array([[1, 2j, 2 + 3j]], dtype=dtype),
+          expected=1.0 / np.array([[1, 2j, 2 + 3j]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.log,
+          np.array([[5j, 3 - 2j]], dtype=dtype),
+          expected=np.log(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin,
+          np.array([[5j, 3 - 2j]], dtype=dtype),
+          expected=np.sin(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos,
+          np.array([[5j, 3 - 2j]], dtype=dtype),
+          expected=np.cos(np.array([[5j, 3 - 2j]], dtype=dtype)))
+
+      # TODO(b/34703906): improve log1p implementation and make tolerance
+      # tighter.
+      self._assertOpOutputMatchesExpected(
+          math_ops.log1p,
+          np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype),
+          expected=np.log1p(
+              np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype)))
+
+      val = np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.rsqrt, val, expected=1 / np.sqrt(val))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sigmoid, val, expected=1 / (1 + np.exp(-val)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.sqrt, val, expected=np.sqrt(val))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.tanh,
+          np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+          expected=np.tanh(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.tan,
+          np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
+          expected=np.tan(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
+
+      ctypes = {np.complex64: np.float32}
+      self._assertOpOutputMatchesExpected(
+          math_ops.abs,
+          np.array([[3 - 4j, -1j, np.inf]], dtype=dtype),
+          expected=np.array([[5, 1, np.inf]], dtype=ctypes[dtype]))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.negative,
+          np.array([[-1 + 2j, -3j]], dtype=dtype),
+          expected=np.array([[1 - 2j, 3j]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.square,
+          np.array([[-2 - 3j, 3 + 4j, 5j]], dtype=dtype),
+          expected=np.array([[-2 - 3j, 3 + 4j, 5j]], dtype=dtype)**2)
+
+      self._assertOpOutputMatchesExpected(
+          array_ops.zeros_like,
+          np.array([[4j, 3 - 2j], [2, -1j]], dtype=dtype),
+          expected=np.array([[0, 0], [0, 0]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          array_ops.ones_like,
+          np.array([[-4j, 3 + 2j], [2, -1j]], dtype=dtype),
+          expected=np.array([[1, 1], [1, 1]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.angle,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.angle(np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype)))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.conj,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([1 - 3j, -4 - 7j, 2.7, 3j], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.imag,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([3, 7, 0, -3], dtype=ctypes[dtype]))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.real,
+          np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
+          expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
+
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -399,11 +566,15 @@ class UnaryOpsTest(XLATestCase):
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = [dtypes.bool, dtypes.int32, dtypes.float32]
+    types = (set([dtypes.bool, dtypes.int32, dtypes.float32]) |
+             self.complex_tf_types)
     for shape in shapes:
       for src_type in types:
         for dst_type in types:
           src = np.arange(np.prod(shape)).astype(src_type.as_numpy_dtype)
+          if src_type in self.complex_tf_types:
+            src += (np.arange(np.prod(shape)) * 2j).astype(
+                src_type.as_numpy_dtype)
           src = src.reshape(shape)
 
           dst = src.astype(dst_type.as_numpy_dtype)
@@ -496,55 +667,88 @@ class UnaryOpsTest(XLATestCase):
         equality_test=self.ListsAreClose)
 
   def testDepthToSpace(self):
+    def make_op(data_format):
+      def op(x):
+        return array_ops.depth_to_space(x, block_size=2,
+                                        data_format=data_format)
+      return op
+
     for dtype in self.numeric_types:
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
-          expected=np.array([[[[1], [2]],
-                              [[3], [4]]]], dtype=dtype))
+      for data_format in ["NCHW", "NHWC"]:
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(np.array([[[[1], [2]],
+                                               [[3], [4]]]], dtype=dtype),
+                                    data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3], [4, 5, 6]],
-                              [[7, 8, 9], [10, 11, 12]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(
+                np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
+                         dtype=dtype),
+                data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]],
+                         dtype=dtype),
+                data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.depth_to_space(x, block_size=2),
-          np.array([[[[1, 2, 3, 4],
-                      [5, 6, 7, 8]],
-                     [[9, 10, 11, 12],
-                      [13, 14, 15, 16]]]], dtype=dtype),
-          expected=np.array([[[[1], [2], [5], [6]],
-                              [[3], [4], [7], [8]],
-                              [[9], [10], [13], [14]],
-                              [[11], [12], [15], [16]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(
+                np.array([[[[1, 2, 3, 4],
+                            [5, 6, 7, 8]],
+                           [[9, 10, 11, 12],
+                            [13, 14, 15, 16]]]], dtype=dtype),
+                data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1], [2], [5], [6]],
+                           [[3], [4], [7], [8]],
+                           [[9], [10], [13], [14]],
+                           [[11], [12], [15], [16]]]], dtype=dtype),
+                data_format))
 
   def testSpaceToDepth(self):
+    def make_op(data_format):
+      def op(x):
+        return array_ops.space_to_depth(x, block_size=2,
+                                        data_format=data_format)
+      return op
+
     for dtype in self.numeric_types:
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1], [2]],
-                     [[3], [4]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4]]]], dtype=dtype))
+      for data_format in ["NCHW", "NHWC"]:
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1], [2]],
+                                      [[3], [4]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
+                                    data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1, 2, 3], [4, 5, 6]],
-                     [[7, 8, 9], [10, 11, 12]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
-                            dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1, 2, 3], [4, 5, 6]],
+                                      [[7, 8, 9], [10, 11, 12]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
+                         dtype=dtype),
+                data_format))
 
-      self._assertOpOutputMatchesExpected(
-          lambda x: array_ops.space_to_depth(x, block_size=2),
-          np.array([[[[1], [2], [5], [6]],
-                     [[3], [4], [7], [8]],
-                     [[9], [10], [13], [14]],
-                     [[11], [12], [15], [16]]]], dtype=dtype),
-          expected=np.array([[[[1, 2, 3, 4],
-                               [5, 6, 7, 8]],
-                              [[9, 10, 11, 12],
-                               [13, 14, 15, 16]]]], dtype=dtype))
+        self._assertOpOutputMatchesExpected(
+            make_op(data_format),
+            nhwc_to_format(np.array([[[[1], [2], [5], [6]],
+                                      [[3], [4], [7], [8]],
+                                      [[9], [10], [13], [14]],
+                                      [[11], [12], [15], [16]]]], dtype=dtype),
+                           data_format),
+            expected=nhwc_to_format(
+                np.array([[[[1, 2, 3, 4],
+                            [5, 6, 7, 8]],
+                           [[9, 10, 11, 12],
+                            [13, 14, 15, 16]]]], dtype=dtype),
+                data_format))
 
   def _assertSoftplusMatchesExpected(self, features, dtype):
     features = np.array(features, dtype=dtype)

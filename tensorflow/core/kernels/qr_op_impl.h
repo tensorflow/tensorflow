@@ -40,6 +40,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #endif
@@ -190,12 +191,9 @@ class QrOpGpu : public AsyncOpKernel {
 
     // Transpose input, since cuSolver uses column-major, while TensorFlow uses
     // row-major storage.
-    std::vector<int> perm(ndims);
-    std::iota(perm.begin(), perm.end(), 0);
-    std::swap(perm[ndims - 2], perm[ndims - 1]);
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     OP_REQUIRES_OK_ASYNC(
-        context, DoTranspose(device, input, perm, &input_transposed), done);
+        context, DoMatrixTranspose(device, input, &input_transposed), done);
 
     // Compute QR decomposition in-place in input_transposed.
     std::vector<DeviceLapackInfo> dev_info;
@@ -218,7 +216,7 @@ class QrOpGpu : public AsyncOpKernel {
     // and copy it to the output buffer.
     if (full_matrices_ || m == n) {
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, input_transposed, perm, r), done);
+          context, DoMatrixTranspose(device, input_transposed, r), done);
     } else {
       const Scalar alpha(1);
       const Scalar beta(0);
@@ -280,7 +278,7 @@ class QrOpGpu : public AsyncOpKernel {
             done);
       }
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, input_transposed, perm, q), done);
+          context, DoMatrixTranspose(device, input_transposed, q), done);
     }
 
     // Asynchronously check return status from cuSolver kernels.

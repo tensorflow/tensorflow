@@ -47,6 +47,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
   int32 num_trees() const { return decision_tree_ensemble_->trees_size(); }
 
   bool InitFromSerialized(const string& serialized, const int64 stamp_token) {
+    CHECK_EQ(stamp(), -1) << "Must Reset before Init.";
     if (ParseProtoUnlimited(decision_tree_ensemble_, serialized)) {
       set_stamp(stamp_token);
       return true;
@@ -126,7 +127,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
 
   // Resets the resource and frees the protos in arena.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
+  virtual void Reset() {
     // Reset stamp.
     set_stamp(-1);
 

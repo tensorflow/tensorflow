@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:session_mgr",
+        "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//third_party/mpi",
     ],

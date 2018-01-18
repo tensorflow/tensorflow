@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -63,6 +62,15 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
                     export_dir);
 }
 
+string GetTagsAsString(const std::unordered_set<string>& tags) {
+  string tags_as_string = "{ ";
+  for (const string& tag : tags) {
+    tags_as_string = strings::StrCat(tags_as_string, tag, " ");
+  }
+  tags_as_string = strings::StrCat(tags_as_string, "}");
+  return tags_as_string;
+}
+
 Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
                               const std::unordered_set<string>& tags,
                               MetaGraphDef* meta_graph_def_to_load) {
@@ -78,14 +86,9 @@ Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
       return Status::OK();
     }
   }
-  string tags_as_string = "{ ";
-  for (const string& tag : tags) {
-    tags_as_string = strings::StrCat(tags_as_string, tag, " ");
-  }
-  tags_as_string = strings::StrCat(tags_as_string, "}");
   return Status(error::Code::NOT_FOUND,
                 "Could not find meta graph def matching supplied tags: " +
-                    tags_as_string +
+                    GetTagsAsString(tags) +
                     ". To inspect available tag-sets in the SavedModel, please "
                     "use the SavedModel CLI: `saved_model_cli`");
 }
@@ -225,18 +228,6 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
   return Status::OK();
 }
 
-// For forward compatibility, remove new default attributes from the graph def
-// that were not present in the consumer (e.g. If graph was exported using
-// code that's newer than the server and a new default attr was added).
-Status RemoveNewDefaultAttrsFromMetaGraphDef(MetaGraphDef* meta_graph_def) {
-  OpListOpRegistry producer_op_registry(
-      &meta_graph_def->meta_info_def().stripped_op_list());
-  OpRegistry* consumer_op_registry = OpRegistry::Global();
-  return RemoveNewDefaultAttrsFromGraphDef(meta_graph_def->mutable_graph_def(),
-                                           *consumer_op_registry,
-                                           producer_op_registry, nullptr);
-}
-
 Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
@@ -246,16 +237,14 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
     return Status(error::Code::NOT_FOUND,
                   "SavedModel not found in export directory: " + export_dir);
   }
-  LOG(INFO) << "Loading SavedModel from: " << export_dir;
+  LOG(INFO) << "Loading SavedModel with tags: " << GetTagsAsString(tags)
+            << "; from: " << export_dir;
 
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
 
   TF_RETURN_IF_ERROR(
       FindMetaGraphDefToLoad(saved_model_proto, tags, &bundle->meta_graph_def));
-
-  TF_RETURN_IF_ERROR(
-      RemoveNewDefaultAttrsFromMetaGraphDef(&bundle->meta_graph_def));
 
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));
@@ -297,7 +286,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
     return end_microseconds - start_microseconds;
   }();
   auto log_and_count = [&](const string& status_str) {
-    LOG(INFO) << "Loading SavedModel: " << status_str << ". Took "
+    LOG(INFO) << "SavedModel load for tags " << GetTagsAsString(tags)
+              << "; Status: " << status_str << ". Took "
               << load_latency_microsecs << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };

@@ -52,8 +52,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],

@@ -32,6 +32,7 @@ from tensorflow.python.keras._impl.keras.utils.io_utils import HDF5Matrix
 from tensorflow.python.keras._impl.keras.utils.layer_utils import convert_all_kernels_in_model
 from tensorflow.python.keras._impl.keras.utils.np_utils import normalize
 from tensorflow.python.keras._impl.keras.utils.np_utils import to_categorical
+from tensorflow.python.keras._impl.keras.utils.training_utils import multi_gpu_model
 from tensorflow.python.keras._impl.keras.utils.vis_utils import plot_model
 
 del absolute_import

@@ -73,7 +73,7 @@ The total padding applied along the height and width is computed as:
       pad_along_width = max(filter_width - strides[2], 0)
     else:
       pad_along_width = max(filter_width - (in_width % strides[2]), 0)
-    
+
 Finally, the padding on the top, bottom, left and right are:
 
     pad_top = pad_along_height // 2
@@ -226,6 +226,8 @@ TensorFlow provides several operations that help you perform classification.
 *   @{tf.nn.softmax}
 *   @{tf.nn.log_softmax}
 *   @{tf.nn.softmax_cross_entropy_with_logits}
+*   @{tf.nn.softmax_cross_entropy_with_logits_v2} - identical to the base
+    version, except it allows gradient propagation into the labels.
 *   @{tf.nn.sparse_softmax_cross_entropy_with_logits}
 *   @{tf.nn.weighted_cross_entropy_with_logits}
 
@@ -351,7 +353,7 @@ p_i = max(s\cdot (n_o - 1) + k - n_i, 0)
 \end{equation}
 
 Remember that, for `'SAME'` padding,
-\\(n_o = \left \lceil{\frac{n_i}{s}}\right \rceil\\), as mentioned above. 
+\\(n_o = \left \lceil{\frac{n_i}{s}}\right \rceil\\), as mentioned above.
 We need to analyze in detail two cases:
 
 - \\(n_i \text{ mod } s = 0\\)

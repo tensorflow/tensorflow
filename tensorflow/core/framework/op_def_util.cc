@@ -161,6 +161,15 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   return nullptr;
 }
 
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
+  for (int i = 0; i < op_def.input_arg_size(); ++i) {
+    if (op_def.input_arg(i).name() == name) {
+      return &op_def.input_arg(i);
+    }
+  }
+  return nullptr;
+}
+
 #define VALIDATE(EXPR, ...)                                          \
   do {                                                               \
     if (!(EXPR)) {                                                   \
@@ -323,7 +332,7 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
           ". ", dep.explanation(), ".");
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
-      static mutex mu;
+      static mutex mu(LINKER_INITIALIZED);
       static std::unordered_set<string> warned;
       bool warn;
       {
@@ -438,6 +447,11 @@ bool MoreRestrictive(const OpDef::AttrDef& old_attr,
 string AllowedStr(const OpDef::AttrDef& attr) {
   if (!attr.has_allowed_values()) return "no restriction";
   return SummarizeAttrValue(attr.allowed_values());
+}
+
+string DefaultAttrStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_default_value()) return "no default";
+  return SummarizeAttrValue(attr.default_value());
 }
 
 bool HigherMinimum(const OpDef::AttrDef& old_attr,
@@ -677,6 +691,32 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
           "Can't change default value for attr '", penultimate_attr.name(),
           "' from ", SummarizeAttrValue(penultimate_attr.default_value()),
           " in op: ", SummarizeOpDef(new_op));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
+  AttrMap new_attrs, old_attrs;
+  FillAttrMap(old_op, &old_attrs);
+  FillAttrMap(new_op, &new_attrs);
+
+  for (const auto& old_attr : old_op.attr()) {
+    const OpDef::AttrDef* new_attr =
+        gtl::FindPtrOrNull(new_attrs, old_attr.name());
+    if (new_attr == nullptr) continue;
+    if (old_attr.has_default_value() != new_attr->has_default_value()) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has added/removed it's default; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+    }
+    if (old_attr.has_default_value() &&
+        !AreAttrValuesEqual(old_attr.default_value(),
+                            new_attr->default_value())) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has changed it's default value; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
     }
   }
 

@@ -33,7 +33,19 @@ namespace tensorflow {
 namespace {
 
 string SummarizeString(const string& str) {
-  return strings::StrCat("\"", str_util::CEscape(str), "\"");
+  string escaped = str_util::CEscape(str);
+
+  // If the string is long, replace the middle with ellipses.
+  constexpr int kMaxStringSummarySize = 80;
+  if (escaped.size() >= kMaxStringSummarySize) {
+    StringPiece prefix(escaped);
+    StringPiece suffix = prefix;
+    prefix.remove_suffix(escaped.size() - 10);
+    suffix.remove_prefix(escaped.size() - 10);
+    return strings::StrCat("\"", prefix, "...", suffix, "\"");
+  } else {
+    return strings::StrCat("\"", escaped, "\"");
+  }
 }
 
 string SummarizeTensor(const TensorProto& tensor_proto) {
@@ -74,54 +86,47 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
-      string ret = "[";
+      std::vector<string> pieces;
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, SummarizeString(attr_value.list().s(i)));
+          pieces.push_back(SummarizeString(attr_value.list().s(i)));
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().i(i));
+          pieces.push_back(strings::StrCat(attr_value.list().i(i)));
         }
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().f(i));
+          pieces.push_back(strings::StrCat(attr_value.list().f(i)));
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().b(i) ? "true" : "false");
+          pieces.push_back(attr_value.list().b(i) ? "true" : "false");
         }
       } else if (attr_value.list().type_size() > 0) {
         for (int i = 0; i < attr_value.list().type_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             EnumName_DataType(attr_value.list().type(i)));
+          pieces.push_back(EnumName_DataType(attr_value.list().type(i)));
         }
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(
-              &ret, TensorShape::DebugString(attr_value.list().shape(i)));
+          pieces.push_back(
+              TensorShape::DebugString(attr_value.list().shape(i)));
         }
       } else if (attr_value.list().tensor_size() > 0) {
         for (int i = 0; i < attr_value.list().tensor_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             SummarizeTensor(attr_value.list().tensor(i)));
+          pieces.push_back(SummarizeTensor(attr_value.list().tensor(i)));
         }
       } else if (attr_value.list().func_size() > 0) {
         for (int i = 0; i < attr_value.list().func_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, SummarizeFunc(attr_value.list().func(i)));
+          pieces.push_back(SummarizeFunc(attr_value.list().func(i)));
         }
       }
-
-      strings::StrAppend(&ret, "]");
-      return ret;
+      constexpr int kMaxListSummarySize = 15;
+      if (pieces.size() >= kMaxListSummarySize) {
+        pieces.erase(pieces.begin() + 5, pieces.begin() + (pieces.size() - 6));
+        pieces[5] = "...";
+      }
+      return strings::StrCat("[", str_util::Join(pieces, ", "), "]");
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());

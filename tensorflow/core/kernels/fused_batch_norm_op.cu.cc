@@ -65,8 +65,15 @@ void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                               epsilon, sample_size, variance);
 }
 
+template <class T>
+void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
+                                  typename TTypes<T>::Flat out) {
+  To32Bit(out).device(d) = To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
+}
+
 template class VarianceToInvVariance<float>;
 template class InvVarianceToVariance<float>;
+template class SetNanFunctor<float>;
 }  // namespace functor
 }  // namespace tensorflow
 

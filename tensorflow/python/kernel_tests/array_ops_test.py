@@ -33,10 +33,13 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
@@ -107,21 +110,40 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.rng = np.random.RandomState(42)
 
-  def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None):
+  def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None, axis=None):
     """Check equivalence between boolean_mask and numpy masking."""
     if make_mask is None:
       make_mask = lambda shape: self.rng.randint(0, 2, size=shape).astype(bool)
     arr = np.random.rand(*arr_shape)
     mask = make_mask(arr_shape[:ndims_mask])
-    masked_arr = arr[mask]
+    if axis is not None:
+      mask = make_mask(arr_shape[axis:ndims_mask + axis])
+    if axis is None or axis == 0:
+      masked_arr = arr[mask]
+    elif axis == 1:
+      masked_arr = arr[:, mask]
+    elif axis == 2:
+      masked_arr = arr[:, :, mask]
     with self.test_session():
-      masked_tensor = array_ops.boolean_mask(arr, mask)
+      masked_tensor = array_ops.boolean_mask(arr, mask, axis=axis)
 
       # Leading dimension size of masked_tensor is always unknown until runtime
       # since we don't how many elements will be kept.
-      self.assertAllEqual(masked_tensor.get_shape()[1:], masked_arr.shape[1:])
+      leading = 1 if axis is None else axis + 1
+      self.assertAllEqual(masked_tensor.get_shape()[leading:],
+                          masked_arr.shape[leading:])
 
       self.assertAllClose(masked_arr, masked_tensor.eval())
+
+  def testMaskDim1ArrDim2Axis1(self):
+    ndims_mask = 1
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
+
+  def testMaskDim2ArrDim2Axis1(self):
+    ndims_mask = 2
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
 
   def testMaskDim1ArrDim1(self):
     ndims_mask = 1
@@ -255,26 +277,34 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     x_np = np.array([1, 200, 3, 40, 5], dtype=np_dtype)
 
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = array_ops.reverse_v2(x_np, [0]).eval()
-        self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
+      for axis_dtype in [dtypes.int32, dtypes.int64]:
+        with self.test_session(use_gpu=use_gpu):
+          x_tf = array_ops.reverse_v2(x_np,
+              constant_op.constant([0], dtype=axis_dtype)).eval()
+          self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
     x_np = np.array([[1, 200, 3], [4, 5, 60]], dtype=np_dtype)
 
     for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
       for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
-          x_tf_1 = reverse_f(x_np, [0]).eval()
-          x_tf_2 = reverse_f(x_np, [-2]).eval()
-          x_tf_3 = reverse_f(x_np, [1]).eval()
-          x_tf_4 = reverse_f(x_np, [-1]).eval()
-          x_tf_5 = reverse_f(x_np, [1, 0]).eval()
-          self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
-          self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
-          self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
-          self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
-          self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
+        for axis_dtype in [dtypes.int32, dtypes.int64]:
+          with self.test_session(use_gpu=use_gpu):
+            x_tf_1 = reverse_f(x_np,
+                constant_op.constant([0], dtype=axis_dtype)).eval()
+            x_tf_2 = reverse_f(x_np,
+                constant_op.constant([-2], dtype=axis_dtype)).eval()
+            x_tf_3 = reverse_f(x_np,
+                constant_op.constant([1], dtype=axis_dtype)).eval()
+            x_tf_4 = reverse_f(x_np,
+                constant_op.constant([-1], dtype=axis_dtype)).eval()
+            x_tf_5 = reverse_f(x_np,
+                constant_op.constant([1, 0], dtype=axis_dtype)).eval()
+            self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
+            self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
+            self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
+            self.assertAllEqual(x_tf_4, np.asarray(x_np)[:, ::-1])
+            self.assertAllEqual(x_tf_5, np.asarray(x_np)[::-1, ::-1])
 
   # This is the version of reverse that uses axis indices rather than
   # bool tensors
@@ -1058,6 +1088,59 @@ class PadTest(test_util.TensorFlowTestCase):
                            [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0],
                            [0, 0, 0, 0, 0, 0, 0]])
+
+
+class InvertPermutationTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
+        y = array_ops.invert_permutation(x)
+        self.assertAllEqual(y.get_shape(), [5])
+        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+
+
+class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
+
+  def testSimple(self):
+    with self.test_session():
+      a = array_ops.constant(10)
+      guarantee_a = array_ops.guarantee_const(a)
+      self.assertEqual(10, guarantee_a.eval())
+
+  def testVariables(self):
+    with self.test_session() as sess:
+      for use_resource in [False, True]:
+        a = variable_scope.get_variable(
+            "var_{}".format(use_resource), [],
+            initializer=init_ops.constant_initializer(10.0),
+            use_resource=use_resource)
+        guarantee_a = array_ops.guarantee_const(a)
+        sess.run(variables.global_variables_initializer())
+        self.assertEqual(10.0, guarantee_a.eval())
+
+  def testResourceRejection(self):
+    with self.test_session() as sess:
+      a = variable_scope.get_variable(
+          "resource_var", [],
+          initializer=init_ops.constant_initializer(10.0),
+          use_resource=True)
+      guarantee_a = array_ops.guarantee_const(a.handle)
+      sess.run(variables.global_variables_initializer())
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "cannot be a resource variable"):
+        guarantee_a.eval()
+
+
+class SnapshotOpTest(test_util.TensorFlowTestCase):
+
+  def testInvertPermutation(self):
+    for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
+        y = gen_array_ops._snapshot(x)
+        self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 
 if __name__ == "__main__":

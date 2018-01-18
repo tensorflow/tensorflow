@@ -20,8 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
+from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
 
 
@@ -43,6 +46,11 @@ class CoreLayersTest(test.TestCase):
           kwargs={'rate': 0.5,
                   'noise_shape': [3, 1]},
           input_shape=(3, 2))
+
+    # https://github.com/tensorflow/tensorflow/issues/14819
+    with self.test_session():
+      dropout = keras.layers.Dropout(0.5)
+      self.assertEqual(True, dropout.supports_masking)
 
     with self.test_session():
       testing_utils.layer_test(
@@ -107,6 +115,12 @@ class CoreLayersTest(test.TestCase):
           keras.layers.Reshape,
           kwargs={'target_shape': (1, -1)},
           input_shape=(3, 2, 4))
+
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.Reshape,
+          kwargs={'target_shape': (-1, 1)},
+          input_shape=(None, None, 2))
 
   def test_permute(self):
     with self.test_session():
@@ -198,6 +212,12 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_eager_dense(self):
+    with context.eager_mode():
+      l = keras.layers.Dense(units=3,
+                             kernel_initializer=init_ops.zeros_initializer())
+      self.assertAllEqual(l(constant_op.constant([[1.0]])), [[0., 0., 0.]])
+
   def test_activity_regularization(self):
     with self.test_session():
       layer = keras.layers.ActivityRegularization(l1=0.1)
@@ -205,6 +225,34 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(1, len(layer.losses))
       _ = layer.get_config()
 
+  def test_lambda_output_shape(self):
+    with self.test_session():
+      l = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+      l(keras.backend.variable(np.ones((1, 1))))
+      self.assertEqual((1, 1), l.get_config()['output_shape'])
+
+  def test_lambda_output_shape_function(self):
+    def get_output_shape(input_shape):
+      return 1 * input_shape
+
+    with self.test_session():
+      l = keras.layers.Lambda(lambda x: x + 1, output_shape=get_output_shape)
+      l(keras.backend.variable(np.ones((1, 1))))
+      self.assertEqual('lambda', l.get_config()['output_shape_type'])
+
+  def test_lambda_config_serialization(self):
+    with self.test_session():
+      # test serialization with output_shape and output_shape_type
+      layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+      layer(keras.backend.variable(np.ones((1, 1))))
+      config = layer.get_config()
+      layer = keras.layers.deserialize({
+          'class_name': 'Lambda',
+          'config': config
+      })
+
+      layer = keras.layers.Lambda.from_config(config)
 
 if __name__ == '__main__':
   test.main()
+

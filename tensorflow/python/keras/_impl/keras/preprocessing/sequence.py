@@ -169,7 +169,7 @@ def skipgrams(sequence,
           integers (eg. [0, 1, 1 .. ]),
           if True labels will be categorical eg. [[1,0],[0,1],[0,1] .. ]
       sampling_table: 1D array of size `vocabulary_size` where the entry i
-          encodes the probabibily to sample a word of rank i.
+          encodes the probability to sample a word of rank i.
       seed: Random seed.
 
   Returns:

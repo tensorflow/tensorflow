@@ -103,7 +103,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_col_oov_buckets=1)
 
     # [4 in vocab + 1 oov features, 4 in vocab + 1 oov classes].  The offset
-    # means we read
+    # means we read from the first line.
     expected_remapped_matrix = np.concatenate(
         [
             np.reshape([18, 34, 50, self.init_val, self.init_val], [5, 1]),
@@ -132,6 +132,9 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_col_oov_buckets=1,
         initializer=self.initializer))
 
+    # The new weight matrix is of size
+    # [5 feature vocab + 1 feature OOV, 4 class vocab + 1 class OOV].  Use a
+    # partitioned variable to confirm that the offset logic works.
     expected_remapped_matrix = np.concatenate(
         [
             np.reshape([2, 18, 34, 50, self.init_val, self.init_val], [6, 1]),
@@ -141,10 +144,6 @@ class LoadAndRemapWrappersTest(test.TestCase):
             np.reshape([self.init_val] * 6, [6, 1])
         ],
         axis=1)
-
-    # The new weight matrix is of size
-    # [5 feature vocab + 1 feature OOV, 4 class vocab + 1 class OOV].  Use a
-    # partitioned variable to confirm that the offset logic works.
     remapped_matrix = variable_scope.get_variable(
         name='linear/obtained_weight_matrix',
         shape=[6, 5],
@@ -168,6 +167,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_col_oov_buckets=1,
         initializer=self.initializer))
 
+    # The new weight matrix is of size
+    # [5-sized input layer, 4 class vocab + 1 class OOV].
     expected_remapped_matrix = np.concatenate(
         [
             np.reshape([2, 18, 34, 50, 66], [5, 1]),
@@ -177,9 +178,6 @@ class LoadAndRemapWrappersTest(test.TestCase):
             np.reshape([self.init_val] * 5, [5, 1])
         ],
         axis=1)
-
-    # The new weight matrix is of size
-    # [5-sized input layer, 4 class vocab + 1 class OOV].
     remapped_matrix = variable_scope.get_variable(
         name='dnn_output/obtained_weight_matrix',
         shape=[5, 5],
@@ -206,6 +204,9 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_col_oov_buckets=1,
         initializer=self.initializer))
 
+    # The new weight matrix is of size
+    # [5 feature vocab + 5 feature OOV, 4 class vocab + 1 class OOV].  The
+    # second partition has only OOV.
     expected_remapped_matrix = np.concatenate(
         [
             np.reshape([2, 18, 34, 50] + [self.init_val] * 6, [10, 1]),
@@ -215,10 +216,6 @@ class LoadAndRemapWrappersTest(test.TestCase):
             np.reshape([self.init_val] * 10, [10, 1]),
         ],
         axis=1)
-
-    # The new weight matrix is of size
-    # [5 feature vocab + 5 feature OOV, 4 class vocab + 1 class OOV].  The
-    # second partition has only OOV.
     remapped_matrix = variable_scope.get_variable(
         name='linear_all_oov/obtained_weight_matrix',
         shape=[10, 5],
@@ -244,6 +241,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_row_oov_buckets=1,
         num_col_oov_buckets=1))
 
+    # Same as test_initializer_with_oov_only_partition, but with zero
+    # initialization.
     expected_remapped_matrix = np.concatenate(
         [
             np.reshape([2, 18, 34, 50, 0, 0], [6, 1]),
@@ -253,7 +252,6 @@ class LoadAndRemapWrappersTest(test.TestCase):
             np.reshape([0] * 6, [6, 1])
         ],
         axis=1)
-
     remapped_matrix = variable_scope.get_variable(
         name='linear_init_fallback/obtained_weight_matrix',
         shape=[6, 5],
@@ -277,18 +275,17 @@ class LoadAndRemapWrappersTest(test.TestCase):
         num_oov_buckets=1,
         initializer=self.initializer))
 
+    # The new weight matrix is of size
+    # [5 feature vocab + 1 feature OOV, 16 (embedding dimension)], where the
+    # last vocab row (2nd last row) is newly initialized (wasn't found in
+    # previous vocab) and the actual last row is OOV and also newly initialized.
+    # Use a partitioned variable to confirm that the offset logic works.
     expected_remapped_embeddings = np.concatenate(
         [
             np.reshape(range(64), [4, 16]),
             np.reshape([self.init_val] * 32, [2, 16]),
         ],
         axis=0)
-
-    # The new weight matrix is of size
-    # [5 feature vocab + 1 feature OOV, 16 (embedding dimension)], where the
-    # last vocab row (2nd last row) is newly initialized (wasn't found in
-    # previous vocab) and the actual last row is OOV and also newly initialized.
-    # Use a partitioned variable to confirm that the offset logic works.
     remapped_embeddings = variable_scope.get_variable(
         name='embedding/obtained_embedding_matrix',
         shape=[6, 16],
@@ -300,6 +297,89 @@ class LoadAndRemapWrappersTest(test.TestCase):
       self.assertAllClose(expected_remapped_embeddings,
                           remapped_embeddings.as_tensor().eval())
 
+  def test_load_embedding_initializer_large_oov(self):
+    """Tests for the large OOV case for load_embedding_initializer wrapper."""
+    self.new_feature_vocab_file = os.path.join(
+        self.get_temp_dir(), 'new_feature_vocab.txt')
+    with open(self.new_feature_vocab_file, 'w') as f:
+      f.write('\n'.join(['one', 'zero', 'two', 'four']) + '\n')
+
+    # Checkpoint has 5 entries, 3 of which correspond to OOV.
+    self.old_feature_vocab_file = os.path.join(
+        self.get_temp_dir(), 'old_feature_vocab.txt')
+    with open(self.old_feature_vocab_file, 'w') as f:
+      f.write('\n'.join(['zero', 'one']) + '\n')
+
+    embedding_loading_initializer = (checkpoint_ops._load_embedding_initializer(
+        new_vocab_file=self.new_feature_vocab_file,
+        old_vocab_file=self.old_feature_vocab_file,
+        new_vocab_size=4,
+        embedding_dim=16,
+        embedding_tensor_name='some_scope/embeddings',
+        ckpt_path=[self.checkpoint_file],
+        num_oov_buckets=5,
+        initializer=self.initializer))
+
+    # The new weight matrix is of size
+    # [4 feature vocab + 5 feature OOV, 16 (embedding dimension)], where the
+    # 3rd and 4th rows are not found in the old vocabulary and therefore newly
+    # initialized.  The last five rows are OOV and also newly initialized.
+    # Use a partitioned variable to confirm that the offset logic works.
+    expected_remapped_embeddings = np.concatenate(
+        [
+            np.reshape(range(16, 32), [1, 16]),
+            np.reshape(range(16), [1, 16]),
+            np.reshape([self.init_val] * 112, [7, 16]),
+        ],
+        axis=0)
+    remapped_embeddings = variable_scope.get_variable(
+        name='embedding/obtained_embedding_matrix',
+        shape=[9, 16],
+        initializer=embedding_loading_initializer,
+        partitioner=partitioned_variables.fixed_size_partitioner(2))
+
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      self.assertAllClose(expected_remapped_embeddings,
+                          remapped_embeddings.as_tensor().eval())
+
+  def test_load_embedding_initializer_old_row_vocab(self):
+    """Tests for load_embedding_initializer where we constrain old vocab."""
+    embedding_loading_initializer = (
+        checkpoint_ops._load_embedding_initializer(
+            new_vocab_file=self.new_feature_vocab_file,
+            old_vocab_file=self.old_feature_vocab_file,
+            # Considered old vocabulary becomes ['zero', 'one', 'two'].  This
+            # means 'three' in the new vocabulary is newly initialized.
+            old_vocab_size=3,
+            new_vocab_size=5,
+            embedding_dim=16,
+            embedding_tensor_name='some_scope/embeddings',
+            ckpt_path=[self.checkpoint_file],
+            num_oov_buckets=1,
+            initializer=self.initializer))
+
+    # The new weight matrix is of size
+    # [5 feature vocab + 1 feature OOV, 16 (embedding dimension)], where the
+    # last vocab row (2nd last row) is newly initialized (wasn't found in
+    # previous vocab) and the actual last row is OOV and also newly initialized.
+    # Use a partitioned variable to confirm that the offset logic works.
+    expected_remapped_embeddings = np.concatenate(
+        [
+            np.reshape(range(48), [3, 16]),
+            np.reshape([self.init_val] * 48, [3, 16]),
+        ],
+        axis=0)
+    remapped_embeddings = variable_scope.get_variable(
+        name='embedding/obtained_embedding_matrix',
+        shape=[6, 16],
+        initializer=embedding_loading_initializer,
+        partitioner=partitioned_variables.fixed_size_partitioner(2))
+
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      self.assertAllClose(expected_remapped_embeddings,
+                          remapped_embeddings.as_tensor().eval())
 
 if __name__ == '__main__':
   test.main()

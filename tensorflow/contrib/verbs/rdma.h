@@ -36,7 +36,24 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+#define PKEY_DEFAULT 0
+#define QUEUE_DEPTH_DEFAULT 1024
+#define TIMEOUT_DEFAULT 14
+#define RETRY_CNT_DEFAULT 7
+#define SL_DEFAULT 0
+#define TRAFFIC_CLASS 0
 
+struct RdmaParams {
+  uint8_t port_num;
+  uint8_t sgid_index;
+  uint8_t pkey_index;
+  uint32_t queue_depth;
+  uint8_t timeout;
+  uint8_t retry_cnt;
+  uint8_t sl;
+  enum ibv_mtu mtu;
+  uint8_t traffic_class;
+};
 // structure to save the address of remote channels.
 struct RdmaAddress {
   uint32_t lid;
@@ -50,9 +67,20 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus { none, idle, busy };
-enum Location { local, remote };
-enum BufferType { ACK, MESSAGE, TENSOR };
+enum BufferStatus {
+  none,
+  idle,
+  busy
+};
+enum Location {
+  local,
+  remote
+};
+enum BufferType {
+  ACK,
+  MESSAGE,
+  TENSOR
+};
 enum RdmaMessageType {
   RDMA_MESSAGE_ACK,
   RDMA_MESSAGE_BUFFER_IDLE,
@@ -79,11 +107,14 @@ class RdmaAdapter {
   ~RdmaAdapter();
   // Adapter name, e.g. mlx5_0.
   string name() const;
+  void StartPolling();
   void Process_CQ();
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
   ibv_context* context_;
+  // RDMA configuration parameters
+  RdmaParams params_;
   // ibverbs protection domain
   ibv_pd* pd_;
   // Completion event channel, to wait for work completions
@@ -131,6 +162,15 @@ class RdmaChannel {
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;
+  static const int kPingRecvWrid = 0;
+
+ private:
+  static const int kPingBuffSize = 1024;
+  char ping_buff_[kPingBuffSize];
+  struct ibv_mr* mr_;
+  struct ibv_sge ping_sge_list_;
+  int PingPostRecv();
+  int PingPostSend();
 
  protected:
   const RdmaAdapter* adapter_;
@@ -183,7 +223,7 @@ class RdmaBuffer {
   }
   void FreeBuffer();
   void EnqueueItem(string Item);
-  virtual void SendNextItem(){};
+  virtual void SendNextItem() {};
   void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
   uint32_t LookupBufferIndex(const string& buffer_name) {

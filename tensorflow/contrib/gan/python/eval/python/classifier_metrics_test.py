@@ -68,7 +68,7 @@ def _expected_trace_sqrt_product(sigma, sigma_v):
 # A dummy GraphDef string with the minimum number of Ops.
 graphdef_string = """
 node {
-  name: "input"
+  name: "Mul"
   op: "Placeholder"
   attr {
     key: "dtype"
@@ -97,7 +97,7 @@ node {
   }
 }
 node {
-  name: "InceptionV3/Logits/SpatialSqueeze"
+  name: "logits"
   op: "Placeholder"
   attr {
     key: "dtype"
@@ -120,7 +120,7 @@ node {
   }
 }
 node {
-  name: "InceptionV3/Logits/AvgPool_1a_8x8/AvgPool"
+  name: "pool_3"
   op: "Placeholder"
   attr {
     key: "dtype"
@@ -182,9 +182,26 @@ class ClassifierMetricsTest(test.TestCase):
     img = array_ops.ones([batch_size, 299, 299, 3])
     pool = _run_with_mock(
         classifier_metrics.run_inception, img,
-        output_tensor=classifier_metrics.INCEPTION_V3_FINAL_POOL)
+        output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
 
     self.assertTrue(isinstance(pool, ops.Tensor))
+    pool.shape.assert_is_compatible_with([batch_size, 2048])
+
+    # Check that none of the model variables are trainable.
+    self.assertListEqual([], variables.trainable_variables())
+
+  def test_run_inception_multiple_outputs(self):
+    """Test `run_inception` graph construction with multiple outputs."""
+    batch_size = 3
+    img = array_ops.ones([batch_size, 299, 299, 3])
+    logits, pool = _run_with_mock(
+        classifier_metrics.run_inception, img,
+        output_tensor=[classifier_metrics.INCEPTION_OUTPUT,
+                       classifier_metrics.INCEPTION_FINAL_POOL])
+
+    self.assertTrue(isinstance(logits, ops.Tensor))
+    self.assertTrue(isinstance(pool, ops.Tensor))
+    logits.shape.assert_is_compatible_with([batch_size, 1001])
     pool.shape.assert_is_compatible_with([batch_size, 2048])
 
     # Check that none of the model variables are trainable.
@@ -277,7 +294,7 @@ class ClassifierMetricsTest(test.TestCase):
 
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
 
-    self.assertAllClose(expected_fid, actual_fid, 0.01)
+    self.assertAllClose(expected_fid, actual_fid, 0.0001)
 
   def test_trace_sqrt_product_value(self):
     """Test that `trace_sqrt_product` gives the correct value."""
@@ -306,7 +323,7 @@ class ClassifierMetricsTest(test.TestCase):
     """Test `preprocess_image` graph construction."""
     incorrectly_sized_image = array_ops.zeros([520, 240, 3])
     correct_image = classifier_metrics.preprocess_image(
-        image=incorrectly_sized_image)
+        images=incorrectly_sized_image)
     _run_with_mock(classifier_metrics.run_inception,
                    array_ops.expand_dims(correct_image, 0))
 

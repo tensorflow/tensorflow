@@ -43,6 +43,23 @@ limitations under the License.
 
 namespace xla {
 
+// Sets the use_bfloat16 on a container of test cases according to the values in
+// use_bfloat16_params. Generates one set of test cases for each values in
+// use_bfloat16_params with that value. Returns the result.
+template <typename TestCase>
+std::vector<TestCase> ExpandUseBfloat16(
+    tensorflow::gtl::ArraySlice<bool> use_bfloat16_params,
+    tensorflow::gtl::ArraySlice<TestCase> specs) {
+  std::vector<TestCase> expanded;
+  for (bool use_bfloat16 : use_bfloat16_params) {
+    for (const auto& spec : specs) {
+      expanded.push_back(spec);
+      expanded.back().use_bfloat16 = use_bfloat16;
+    }
+  }
+  return expanded;
+}
+
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
@@ -194,7 +211,17 @@ class ClientLibraryTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   void ComputeAndCompareTuple(
       ComputationBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec abs_error);
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
+
+  // Convenience method for running a built computation and comparing the result
+  // with the HloEvaluator.
+  void ComputeAndCompare(ComputationBuilder* builder,
+                         const ComputationDataHandle& operand,
+                         tensorflow::gtl::ArraySlice<Literal> arguments);
+  void ComputeAndCompare(ComputationBuilder* builder,
+                         const ComputationDataHandle& operand,
+                         tensorflow::gtl::ArraySlice<Literal> arguments,
+                         ErrorSpec error);
 
   // Create scalar operations for use in reductions.
   Computation CreateScalarRelu();
@@ -235,50 +262,123 @@ class ClientLibraryTestBase : public ::testing::Test {
       const int rows, const int cols, const int rows_padded,
       const int cols_padded);
 
-  // Create a parameter instruction that wraps a given value and then stores
+  // Creates a parameter instruction, transfers the literal for the parameter to
+  // server, then stores into "data_handle" the global handle for that
+  // parameter. When the use_bfloat16 flag is set but the literal has F32
+  // elements, the literal will be converted to BF16 before being transferred.
+  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+      int64 parameter_number, const Literal& literal, const string& name,
+      ComputationBuilder* builder, ComputationDataHandle* data_handle);
+
+  // As above, but the caller can specify the device that the literal is
+  // transferred to. If device_handle is nullptr, the literal will be
+  // transferred to the default device.
+  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+      int64 parameter_number, const Literal& literal, const string& name,
+      const DeviceHandle* device_handle, ComputationBuilder* builder,
+      ComputationDataHandle* data_handle);
+
+  // Creates a parameter instruction and sets the value that will be passed to
+  // the computation as specified. This function must be used for all parameters
+  // or none and no parameters must be passed when invoking the computation if
+  // using this mechanism. If using this mechanism, then each parameter must be
+  // set exactly once. The first added parameter gets index 0, then 1 and so on.
+  ComputationDataHandle AddParam(const Literal& argument,
+                                 ComputationBuilder* builder);
+
+  template <class T>
+  ComputationDataHandle AddParam(const Array<T>& argument,
+                                 ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+
+  // Creates a constant instruction with the given literal. When the
+  // use_bfloat16 flag is set but the literal has F32 elements, the elements
+  // will be converted to BF16s.
+  ComputationDataHandle CreateConstantFromLiteral(const Literal& literal,
+                                                  ComputationBuilder* builder);
+
+  // Creates a constant instruction with the given array. When the use_bfloat16
+  // flag is set but the array has float elements, the elements will be
+  // converted to bfloat16s.
+  template <typename NativeT>
+  ComputationDataHandle CreateConstantFromArray(const Array<NativeT>& array,
+                                                ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
+  }
+
+  // Same as CreateConstantFromArray, but for scalars.
+  template <typename NativeT>
+  ComputationDataHandle CreateConstantFromScalar(NativeT value,
+                                                 ComputationBuilder* builder) {
+    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+                                     builder);
+  }
+
+  // Creates a parameter instruction that wraps a given value and then stores
   // into "data_handle" the global handle for that parameter.
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR0Parameter(
       NativeT value, int64 parameter_number, const string& name,
       ComputationBuilder* builder, ComputationDataHandle* data_handle);
 
-  // Create a parameter instruction that wraps the given values and then stores
+  // Creates a parameter instruction that wraps the given values and then stores
   // into "data_handle" the global handle for that parameter.
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR1Parameter(
       tensorflow::gtl::ArraySlice<NativeT> values, int64 parameter_number,
       const string& name, ComputationBuilder* builder,
       ComputationDataHandle* data_handle);
 
-  // Create a parameter instruction that wraps the given constant array
+  // Creates a parameter instruction that wraps the given constant array
   // "array_2d" and then stores to "data_handle" the global handle for that
   // parameter.
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR2Parameter(
       const Array2D<NativeT>& array_2d, int64 parameter_number,
       const string& name, ComputationBuilder* builder,
       ComputationDataHandle* data_handle);
 
-  // Create a parameter instruction that wraps the given constant array
+  // Creates a parameter instruction that wraps the given constant array
   // "array_3d" and then stores to "data_handle" the global handle for that
   // parameter.
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR3Parameter(
       const Array3D<NativeT>& array_3d, int64 parameter_number,
       const string& name, ComputationBuilder* builder,
       ComputationDataHandle* data_handle);
+
+  // Getter and setter for the use_bfloat16 flag, which indicates whether to run
+  // tests with all float-type input/output converted to bfloat16.
+  bool use_bfloat16() const { return use_bfloat16_; }
+  void set_use_bfloat16(bool value) { use_bfloat16_ = value; }
+
+  // The float type used in this test, BF16 or F32 according to use_bfloat16.
+  PrimitiveType FloatType() const { return use_bfloat16_ ? BF16 : F32; }
 
   Client* client_;
   ExecutionOptions execution_options_;
@@ -298,6 +398,20 @@ class ClientLibraryTestBase : public ::testing::Test {
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
+
+  // Executes the computation and calculates the expected reference value using
+  // the HloEvaluator. Returns two literal in the order of (expected, actual).
+  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+  ComputeValueAndReference(ComputationBuilder* builder,
+                           const ComputationDataHandle& operand,
+                           tensorflow::gtl::ArraySlice<Literal> arguments);
+
+  // Whether to run tests with all float-type input/output converted to
+  // bfloat16.
+  bool use_bfloat16_ = false;
+
+  // Arguments to be passed to the computation when it runs.
+  std::vector<std::unique_ptr<GlobalData>> arguments_;
 };
 
 template <typename NativeT>
@@ -315,8 +429,10 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
     ComputationBuilder* builder, NativeT expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -338,8 +454,10 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -361,8 +479,10 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
     ComputationBuilder* builder, const Array2D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -384,8 +504,10 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
     ComputationBuilder* builder, const Array3D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -407,8 +529,10 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
     ComputationBuilder* builder, const Array4D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -420,6 +544,9 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
     NativeT value, int64 parameter_number, const string& name,
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR0(value);
+  if (use_bfloat16_ && literal->shape().element_type() == F32) {
+    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+  }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -432,6 +559,9 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR1(values);
+  if (use_bfloat16_ && literal->shape().element_type() == F32) {
+    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+  }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -444,6 +574,9 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR2FromArray2D(array_2d);
+  if (use_bfloat16_ && literal->shape().element_type() == F32) {
+    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+  }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -456,6 +589,9 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
   std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(array_3d);
+  if (use_bfloat16_ && literal->shape().element_type() == F32) {
+    literal = LiteralTestUtil::ConvertF32ToBF16(*literal);
+  }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -466,8 +602,7 @@ template <typename NativeT>
 std::vector<NativeT> ClientLibraryTestBase::CreatePseudorandomR1(
     const int width, NativeT min_value, NativeT max_value, uint32 seed) {
   std::vector<NativeT> result(width);
-  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
-                                                       seed);
+  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int i = 0; i < width; ++i) {
     result[i] = generator.get();
   }
@@ -479,8 +614,7 @@ std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32 seed) {
   auto result = MakeUnique<Array2D<NativeT>>(rows, cols);
-  test_utils::PseudorandomGenerator<NativeT> generator(min_value, max_value,
-                                                       seed);
+  PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {
       (*result)(y, x) = generator.get();

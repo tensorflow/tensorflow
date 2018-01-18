@@ -93,10 +93,6 @@ class LocalClientTestBase : public ::testing::Test {
   std::unique_ptr<Literal> ShapedBufferToLiteral(
       const ShapedBuffer& shaped_buffer);
 
-  // Helper for converting a ShapedBuffer into a literal.
-  void CopyShapedBufferToLiteral(const ShapedBuffer& shaped_buffer,
-                                 ShapeIndex* index, Literal* literal);
-
   // Execute the given computation on the local client. With and without
   // options.
   StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteLocally(
@@ -128,8 +124,8 @@ class LocalClientTestBase : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  // The allocator must live as long as the service which lives until the end of
-  // the process, so make the allocator static.
+  // The allocator must live as long as the service, which lives until the end
+  // of the process. So make the allocator static.
   static TestAllocator* allocator_;
 
   perftools::gputools::StreamExecutor* stream_executor_;

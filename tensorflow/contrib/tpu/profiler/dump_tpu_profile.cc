@@ -42,11 +42,11 @@ using ::tensorflow::io::JoinPath;
 using ::tensorflow::protobuf::util::JsonOptions;
 using ::tensorflow::protobuf::util::MessageToJsonString;
 
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kJsonOpProfileFileName[] = "op_profile.json";
-constexpr char kProtoTraceFileName[] = "trace";
-constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
+constexpr char kJsonOpProfileFileName[] = "op_profile.json";
+constexpr char kJsonTraceFileName[] = "trace.json.gz";
+constexpr char kProfilePluginDirectory[] = "plugins/profile/";
+constexpr char kProtoTraceFileName[] = "trace";
 
 Status WriteGzippedDataToFile(const string& filename, const string& data) {
   std::unique_ptr<WritableFile> file;
@@ -94,6 +94,15 @@ Status DumpOpProfileToLogDirectory(StringPiece run_dir,
   }
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, json));
   *os << "Dumped json op profile data to " << path << std::endl;
+  return Status::OK();
+}
+
+Status DumpToolDataToLogDirectory(StringPiece run_dir,
+                                  const tensorflow::ProfileToolData& tool,
+                                  std::ostream* os) {
+  string path = JoinPath(run_dir, tool.name());
+  TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
+  *os << "Dumped tool data for " << tool.name() << " to " << path << std::endl;
   return Status::OK();
 }
 
@@ -154,7 +163,12 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
     TF_RETURN_IF_ERROR(DumpOpProfileToLogDirectory(profile_run_dir,
                                                    response.op_profile(), os));
   }
-
+  if (!response.tool_data().empty()) {
+    for (const auto& tool_data : response.tool_data()) {
+      TF_RETURN_IF_ERROR(
+          DumpToolDataToLogDirectory(profile_run_dir, tool_data, os));
+    }
+  }
   TF_RETURN_IF_ERROR(DumpGraphEvents(logdir, run, response, os));
 
   return Status::OK();
