@@ -140,19 +140,10 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-
-        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
-                                                                   name) {
-          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-        });
-        opts.step_container = &step_container;
-        opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
-        Status s = dataset()->captured_func_->Run(ctx, opts, std::move(args),
-                                                  out_tensors);
+        Status s =
+            dataset()->captured_func_->Run(ctx, std::move(args), out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
