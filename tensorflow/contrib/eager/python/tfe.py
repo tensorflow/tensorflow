@@ -52,6 +52,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@EagerVariableStore
 
 @@Network
+@@Sequential
 @@save_network_checkpoint
 @@restore_network_checkpoint
 
@@ -76,6 +77,7 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.network import Sequential
 from tensorflow.contrib.eager.python.network import save_network_checkpoint
 from tensorflow.contrib.eager.python.network import restore_network_checkpoint
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables

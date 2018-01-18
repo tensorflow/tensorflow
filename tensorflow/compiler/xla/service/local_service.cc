@@ -84,15 +84,30 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape->parameters_size()) {
     return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %zu",
+        "Invalid number of arguments for computation: expected %d, got %zu.",
         program_shape->parameters_size(), argument_layouts.size());
   }
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& argument_shape = *argument_layouts[i];
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape->parameters(i))) {
+      tensorflow::gtl::optional<const OpMetadata*> metadata =
+          user_computation->ParameterMetadata(i);
+      auto metadata_string = [&metadata]() -> string {
+        if (!metadata.has_value()) {
+          return "";
+        }
+        CHECK(metadata.value() != nullptr);
+        const OpMetadata& m = *metadata.value();
+        if (!m.source_file().empty()) {
+          return tensorflow::strings::Printf(
+              " (%s:%d)", m.source_file().c_str(), m.source_line());
+        }
+        return "";
+      };
       return InvalidArgument(
-          "invalid argument shape for argument %d, expected %s, got %s", i,
+          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
+          metadata_string().c_str(),
           ShapeUtil::HumanString(program_shape->parameters(i)).c_str(),
           ShapeUtil::HumanString(argument_shape).c_str());
     }

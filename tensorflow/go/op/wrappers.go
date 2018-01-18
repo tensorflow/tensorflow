@@ -12517,6 +12517,34 @@ func Neg(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Writes a `Summary` protocol buffer with a histogram.
+//
+// The generated
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// has one summary value containing a histogram for `values`.
+//
+// This op reports an `InvalidArgument` error if any value is not finite.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	step: The step to write the summary for.
+//	tag: Scalar.  Tag to use for the `Summary.Value`.
+//	values: Any shape. Values to use to build the histogram.
+//
+// Returns the created operation.
+func WriteHistogramSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteHistogramSummary",
+		Input: []tf.Input{
+			writer, step, tag, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Adds two `SparseTensor` objects to produce another `SparseTensor`.
 //
 // The input `SparseTensor` objects' indices are assumed ordered in standard
@@ -17278,6 +17306,75 @@ func MatrixExponential(scope *Scope, input tf.Output) (output tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// QueueDequeueUpToV2Attr is an optional argument to QueueDequeueUpToV2.
+type QueueDequeueUpToV2Attr func(optionalAttr)
+
+// QueueDequeueUpToV2TimeoutMs sets the optional timeout_ms attribute to value.
+//
+// value: If the queue has fewer than n elements, this operation
+// will block for up to timeout_ms milliseconds.
+// Note: This option is not supported yet.
+// If not specified, defaults to -1
+func QueueDequeueUpToV2TimeoutMs(value int64) QueueDequeueUpToV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_ms"] = value
+	}
+}
+
+// Dequeues `n` tuples of one or more tensors from the given queue.
+//
+// This operation is not supported by all queues.  If a queue does not support
+// DequeueUpTo, then an Unimplemented error is returned.
+//
+// If the queue is closed and there are more than 0 but less than `n`
+// elements remaining, then instead of returning an OutOfRange error like
+// QueueDequeueMany, less than `n` elements are returned immediately.  If
+// the queue is closed and there are 0 elements left in the queue, then
+// an OutOfRange error is returned just like in QueueDequeueMany.
+// Otherwise the behavior is identical to QueueDequeueMany:
+//
+// This operation concatenates queue-element component tensors along the
+// 0th dimension to make a single component tensor.  All of the components
+// in the dequeued tuple will have size n in the 0th dimension.
+//
+// This operation has `k` outputs, where `k` is the number of components in
+// the tuples stored in the given queue, and output `i` is the ith
+// component of the dequeued tuple.
+//
+// Arguments:
+//	handle: The handle to a queue.
+//	n: The number of tuples to dequeue.
+//	component_types: The type of each component in a tuple.
+//
+// Returns One or more tensors that were dequeued as a tuple.
+func QueueDequeueUpToV2(scope *Scope, handle tf.Output, n tf.Output, component_types []tf.DataType, optional ...QueueDequeueUpToV2Attr) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"component_types": component_types}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueDequeueUpToV2",
+		Input: []tf.Input{
+			handle, n,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("QueueDequeueUpToV2", err)
+		return
+	}
+	return components
 }
 
 // Computes the Cholesky decomposition of one or more square matrices.
@@ -22179,75 +22276,6 @@ func TensorArrayCloseV2(scope *Scope, handle tf.Output) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
-// QueueDequeueUpToV2Attr is an optional argument to QueueDequeueUpToV2.
-type QueueDequeueUpToV2Attr func(optionalAttr)
-
-// QueueDequeueUpToV2TimeoutMs sets the optional timeout_ms attribute to value.
-//
-// value: If the queue has fewer than n elements, this operation
-// will block for up to timeout_ms milliseconds.
-// Note: This option is not supported yet.
-// If not specified, defaults to -1
-func QueueDequeueUpToV2TimeoutMs(value int64) QueueDequeueUpToV2Attr {
-	return func(m optionalAttr) {
-		m["timeout_ms"] = value
-	}
-}
-
-// Dequeues `n` tuples of one or more tensors from the given queue.
-//
-// This operation is not supported by all queues.  If a queue does not support
-// DequeueUpTo, then an Unimplemented error is returned.
-//
-// If the queue is closed and there are more than 0 but less than `n`
-// elements remaining, then instead of returning an OutOfRange error like
-// QueueDequeueMany, less than `n` elements are returned immediately.  If
-// the queue is closed and there are 0 elements left in the queue, then
-// an OutOfRange error is returned just like in QueueDequeueMany.
-// Otherwise the behavior is identical to QueueDequeueMany:
-//
-// This operation concatenates queue-element component tensors along the
-// 0th dimension to make a single component tensor.  All of the components
-// in the dequeued tuple will have size n in the 0th dimension.
-//
-// This operation has `k` outputs, where `k` is the number of components in
-// the tuples stored in the given queue, and output `i` is the ith
-// component of the dequeued tuple.
-//
-// Arguments:
-//	handle: The handle to a queue.
-//	n: The number of tuples to dequeue.
-//	component_types: The type of each component in a tuple.
-//
-// Returns One or more tensors that were dequeued as a tuple.
-func QueueDequeueUpToV2(scope *Scope, handle tf.Output, n tf.Output, component_types []tf.DataType, optional ...QueueDequeueUpToV2Attr) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"component_types": component_types}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueDequeueUpToV2",
-		Input: []tf.Input{
-			handle, n,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("QueueDequeueUpToV2", err)
-		return
-	}
-	return components
-}
-
 // Computes inverse hyperbolic tangent of x element-wise.
 func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
@@ -25592,34 +25620,6 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Writes a `Summary` protocol buffer with a histogram.
-//
-// The generated
-// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-// has one summary value containing a histogram for `values`.
-//
-// This op reports an `InvalidArgument` error if any value is not finite.
-//
-// Arguments:
-//	writer: A handle to a summary writer.
-//	step: The step to write the summary for.
-//	tag: Scalar.  Tag to use for the `Summary.Value`.
-//	values: Any shape. Values to use to build the histogram.
-//
-// Returns the created operation.
-func WriteHistogramSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "WriteHistogramSummary",
-		Input: []tf.Input{
-			writer, step, tag, values,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Compute the lower regularized incomplete Gamma function `Q(a, x)`.

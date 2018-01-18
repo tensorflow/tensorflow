@@ -220,7 +220,12 @@ class _TPUContext(object):
 
   @property
   def global_batch_size(self):
-    return self._train_batch_size
+    mode = self._assert_mode()
+    if mode == model_fn_lib.ModeKeys.EVAL and self._eval_batch_size is None:
+      raise RuntimeError('Internal error, EVAL on TPU is not enabled, but '
+                         '`global_batch_size` is called.')
+    return (self._train_batch_size
+            if mode == model_fn_lib.ModeKeys.TRAIN else self._eval_batch_size)
 
   @property
   def batch_size_for_input_fn(self):
@@ -1663,10 +1668,12 @@ class TPUEstimator(estimator_lib.Estimator):
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
           hooks = [
               TPUInfeedOutfeedSessionHook(ctx, enqueue_ops),
-              ExamplesPerSecondHook(self._ctx.global_batch_size),
+              ExamplesPerSecondHook(ctx.global_batch_size),
               training.LoggingTensorHook(
-                  {'loss': array_ops.identity(loss),
-                   'step': training.get_global_step()},
+                  {
+                      'loss': array_ops.identity(loss),
+                      'step': training.get_global_step()
+                  },
                   every_n_secs=30)
           ]
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
@@ -1871,5 +1878,3 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
 
   def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
     self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
-
-

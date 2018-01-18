@@ -2153,6 +2153,17 @@ UserComputation::LookUpRequestForErrorReporting(
   return LookUpRequest(handle);
 }
 
+tensorflow::gtl::optional<const OpMetadata*> UserComputation::ParameterMetadata(
+    int parameter_number) const {
+  tensorflow::mutex_lock lock(mutex_);
+  auto it = parameters_.find(parameter_number);
+  if (it == parameters_.end()) {
+    return tensorflow::gtl::nullopt;
+  }
+  OperationRequest* op = it->second;
+  return &op->request().metadata();
+}
+
 Status UserComputation::RemapEmbeddedComputations(
     const std::map<int64, ComputationHandle>& old_to_new) {
   auto update = [&old_to_new](ComputationHandle* to_update) -> Status {

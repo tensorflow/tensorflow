@@ -330,6 +330,14 @@ class UserComputation {
   StatusOr<const OperationRequest*> LookUpRequestForErrorReporting(
       const ComputationDataHandle& handle) const;
 
+  // Retrieves the parameter metadata for the given parameter number.
+  //
+  // If the parameter number is invalid for this computation, nullopt is
+  // returned. When the return value has_value(), nullptr will never be
+  // the held value.
+  tensorflow::gtl::optional<const OpMetadata*> ParameterMetadata(
+      int parameter_number) const;
+
  private:
   // Warning: dangerous mutating operation that doesn't respect versioning.
   // This is only used at initialization time when constructing from a
