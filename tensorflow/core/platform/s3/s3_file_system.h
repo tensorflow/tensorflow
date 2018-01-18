@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 #define TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 
+#include <aws/s3/S3Client.h>
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
 class S3FileSystem : public FileSystem {
+ private:
+  std::shared_ptr<Aws::S3::S3Client> s3Client_;
  public:
   S3FileSystem();
   ~S3FileSystem();

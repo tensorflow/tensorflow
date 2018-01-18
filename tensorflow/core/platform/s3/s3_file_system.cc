@@ -41,62 +41,58 @@ static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
 
-Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
-  static mutex cfg_lock(LINKER_INITIALIZED);
-  static bool init(false);
-  static Aws::Client::ClientConfiguration cfg;
+Aws::Client::ClientConfiguration GetDefaultClientConfig() {
+  Aws::Client::ClientConfiguration cfg;
 
-  std::lock_guard<mutex> lock(cfg_lock);
-
-  if (!init) {
-    const char* endpoint = getenv("S3_ENDPOINT");
-    if (endpoint) {
-      cfg.endpointOverride = Aws::String(endpoint);
-    }
-    const char* region = getenv("AWS_REGION");
+  const char* endpoint = getenv("S3_ENDPOINT");
+  if (endpoint) {
+    cfg.endpointOverride = Aws::String(endpoint);
+  }
+  const char* region = getenv("AWS_REGION");
+  if (region) {
+    cfg.region = Aws::String(region);
+  } else {
+    // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
+    const char* region = getenv("S3_REGION");
     if (region) {
       cfg.region = Aws::String(region);
+    }
+  }
+  const char* use_https = getenv("S3_USE_HTTPS");
+  if (use_https) {
+    if (use_https[0] == '0') {
+      cfg.scheme = Aws::Http::Scheme::HTTP;
     } else {
-      // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
-      const char* region = getenv("S3_REGION");
-      if (region) {
-        cfg.region = Aws::String(region);
-      }
+      cfg.scheme = Aws::Http::Scheme::HTTPS;
     }
-    const char* use_https = getenv("S3_USE_HTTPS");
-    if (use_https) {
-      if (use_https[0] == '0') {
-        cfg.scheme = Aws::Http::Scheme::HTTP;
-      } else {
-        cfg.scheme = Aws::Http::Scheme::HTTPS;
-      }
+  }
+  const char* verify_ssl = getenv("S3_VERIFY_SSL");
+  if (verify_ssl) {
+    if (verify_ssl[0] == '0') {
+      cfg.verifySSL = false;
+    } else {
+      cfg.verifySSL = true;
     }
-    const char* verify_ssl = getenv("S3_VERIFY_SSL");
-    if (verify_ssl) {
-      if (verify_ssl[0] == '0') {
-        cfg.verifySSL = false;
-      } else {
-        cfg.verifySSL = true;
-      }
-    }
-    const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
-    if (connect_timeout) {
-      int64 timeout;
+  }
+  const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
+  if (connect_timeout) {
+    int64 timeout;
 
-      if (strings::safe_strto64(connect_timeout, &timeout)) {
-        cfg.connectTimeoutMs = timeout;
-      }
+    if (strings::safe_strto64(connect_timeout, &timeout)) {
+      cfg.connectTimeoutMs = timeout;
     }
-    const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
-    if (request_timeout) {
-      int64 timeout;
+  }
+  const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
+  if (request_timeout) {
+    int64 timeout;
 
-      if (strings::safe_strto64(request_timeout, &timeout)) {
-        cfg.requestTimeoutMs = timeout;
-      }
+    if (strings::safe_strto64(request_timeout, &timeout)) {
+      cfg.requestTimeoutMs = timeout;
     }
-
-    init = true;
+  } else {
+    // Use a request default for S3 I/O. This helps ensure large file transfers
+    // will succeed.
+    cfg.requestTimeoutMs = 600000; // 10 minutes.
   }
 
   return cfg;
@@ -129,12 +125,12 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
 
 class S3RandomAccessFile : public RandomAccessFile {
  public:
-  S3RandomAccessFile(const string& bucket, const string& object)
-      : bucket_(bucket), object_(object) {}
+  S3RandomAccessFile(const string& bucket, const string& object,
+      std::shared_ptr<Aws::S3::S3Client> s3Client)
+      : bucket_(bucket), object_(object), s3Client_(s3Client) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     string bytes = strings::StrCat("bytes=", offset, "-", offset + n - 1);
@@ -142,7 +138,7 @@ class S3RandomAccessFile : public RandomAccessFile {
     getObjectRequest.SetResponseStreamFactory([]() {
       return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag);
     });
-    auto getObjectOutcome = s3Client.GetObject(getObjectRequest);
+    auto getObjectOutcome = this->s3Client_->GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
       n = 0;
       *result = StringPiece(scratch, n);
@@ -160,13 +156,16 @@ class S3RandomAccessFile : public RandomAccessFile {
  private:
   string bucket_;
   string object_;
+  std::shared_ptr<Aws::S3::S3Client> s3Client_;
 };
 
 class S3WritableFile : public WritableFile {
  public:
-  S3WritableFile(const string& bucket, const string& object)
+  S3WritableFile(const string& bucket, const string& object,
+      std::shared_ptr<Aws::S3::S3Client> s3Client)
       : bucket_(bucket),
         object_(object),
+        s3Client_(s3Client),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
             kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
@@ -205,17 +204,13 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
-    Aws::Client::ClientConfiguration clientConfig = GetDefaultClientConfig();
-    clientConfig.connectTimeoutMs = 300000;
-    clientConfig.requestTimeoutMs = 600000;
-    Aws::S3::S3Client s3Client(clientConfig);
     Aws::S3::Model::PutObjectRequest putObjectRequest;
     putObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     long offset = outfile_->tellp();
     outfile_->seekg(0);
     putObjectRequest.SetBody(outfile_);
     putObjectRequest.SetContentLength(offset);
-    auto putObjectOutcome = s3Client.PutObject(putObjectRequest);
+    auto putObjectOutcome = this->s3Client_->PutObject(putObjectRequest);
     outfile_->clear();
     outfile_->seekp(offset);
     if (!putObjectOutcome.IsSuccess()) {
@@ -230,6 +225,7 @@ class S3WritableFile : public WritableFile {
  private:
   string bucket_;
   string object_;
+  std::shared_ptr<Aws::S3::S3Client> s3Client_;
   bool sync_needed_;
   std::shared_ptr<Aws::Utils::TempFile> outfile_;
 };
@@ -259,6 +255,9 @@ S3FileSystem::S3FileSystem() {
     return Aws::MakeShared<S3SHA256HmacFactory>(S3CryptoAllocationTag);
   };
   Aws::InitAPI(options);
+
+  this->s3Client_ = std::shared_ptr<Aws::S3::S3Client>(
+      new Aws::S3::S3Client(GetDefaultClientConfig()));
 }
 
 S3FileSystem::~S3FileSystem() {
@@ -272,7 +271,7 @@ Status S3FileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3RandomAccessFile(bucket, object));
+  result->reset(new S3RandomAccessFile(bucket, object, this->s3Client_));
   return Status::OK();
 }
 
@@ -280,7 +279,7 @@ Status S3FileSystem::NewWritableFile(const string& fname,
                                      std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object));
+  result->reset(new S3WritableFile(bucket, object, this->s3Client_));
   return Status::OK();
 }
 
@@ -295,7 +294,7 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
 
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object));
+  result->reset(new S3WritableFile(bucket, object, this->s3Client_));
 
   while (true) {
     status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
@@ -346,7 +345,6 @@ Status S3FileSystem::GetChildren(const string& dir,
     prefix.push_back('/');
   }
 
-  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
   Aws::S3::Model::ListObjectsRequest listObjectsRequest;
   listObjectsRequest.WithBucket(bucket.c_str())
       .WithPrefix(prefix.c_str())
@@ -357,7 +355,7 @@ Status S3FileSystem::GetChildren(const string& dir,
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
-    auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+    auto listObjectsOutcome = this->s3Client_->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
       string error = strings::StrCat(
           listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -391,11 +389,10 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
 
-  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
   if (object.empty()) {
     Aws::S3::Model::HeadBucketRequest headBucketRequest;
     headBucketRequest.WithBucket(bucket.c_str());
-    auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
+    auto headBucketOutcome = this->s3Client_->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
       string error = strings::StrCat(
           headBucketOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -413,7 +410,7 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
   headObjectRequest.SetResponseStreamFactory(
       []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto headObjectOutcome = s3Client.HeadObject(headObjectRequest);
+  auto headObjectOutcome = this->s3Client_->HeadObject(headObjectRequest);
   if (headObjectOutcome.IsSuccess()) {
     stats->length = headObjectOutcome.GetResult().GetContentLength();
     stats->is_directory = 0;
@@ -431,7 +428,7 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
       .WithMaxKeys(1);
   listObjectsRequest.SetResponseStreamFactory(
       []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+  auto listObjectsOutcome = this->s3Client_->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
       stats->length = 0;
@@ -449,11 +446,11 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
-  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
   Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
   deleteObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
 
-  auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
+  auto deleteObjectOutcome =
+    this->s3Client_->DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
     string error = strings::StrCat(
         deleteObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -468,10 +465,9 @@ Status S3FileSystem::CreateDir(const string& dirname) {
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
 
   if (object.empty()) {
-    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::HeadBucketRequest headBucketRequest;
     headBucketRequest.WithBucket(bucket.c_str());
-    auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
+    auto headBucketOutcome = this->s3Client_->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
       return errors::NotFound("The bucket ", bucket, " was not found.");
     }
@@ -491,7 +487,6 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
 
-  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
   string prefix = object;
   if (prefix.back() != '/') {
     prefix.push_back('/');
@@ -502,7 +497,7 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
       .WithMaxKeys(2);
   listObjectsRequest.SetResponseStreamFactory(
       []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
-  auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+  auto listObjectsOutcome = this->s3Client_->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
     if (contents.size() > 1 ||
@@ -542,8 +537,6 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
     }
   }
 
-  Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-
   Aws::S3::Model::CopyObjectRequest copyObjectRequest;
   Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
 
@@ -556,7 +549,7 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
 
   Aws::S3::Model::ListObjectsResult listObjectsResult;
   do {
-    auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+    auto listObjectsOutcome = this->s3Client_->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
       string error = strings::StrCat(
           listObjectsOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -575,7 +568,7 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       copyObjectRequest.SetKey(target_key);
       copyObjectRequest.SetCopySource(source);
 
-      auto copyObjectOutcome = s3Client.CopyObject(copyObjectRequest);
+      auto copyObjectOutcome = this->s3Client_->CopyObject(copyObjectRequest);
       if (!copyObjectOutcome.IsSuccess()) {
         string error = strings::StrCat(
             copyObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
@@ -586,7 +579,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       deleteObjectRequest.SetBucket(src_bucket.c_str());
       deleteObjectRequest.SetKey(src_key.c_str());
 
-      auto deleteObjectOutcome = s3Client.DeleteObject(deleteObjectRequest);
+      auto deleteObjectOutcome =
+          this->s3Client_->DeleteObject(deleteObjectRequest);
       if (!deleteObjectOutcome.IsSuccess()) {
         string error = strings::StrCat(
             deleteObjectOutcome.GetError().GetExceptionName().c_str(), ": ",
