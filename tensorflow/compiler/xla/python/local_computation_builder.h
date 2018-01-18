@@ -133,6 +133,10 @@ class LocalComputationBuilder {
       const ComputationDataHandle& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  ComputationDataHandle Pad(const ComputationDataHandle& operand,
+                            const ComputationDataHandle& padding_value,
+                            const PaddingConfig& padding_config);
+
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> dimensions,
                                 tensorflow::gtl::ArraySlice<int64> new_sizes);

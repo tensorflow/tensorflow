@@ -31,6 +31,7 @@ limitations under the License.
 //  std::vector<Shape>                 <-  sequence of shape information pairs
 //  PrimitiveType                      <-  int
 //  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
+//  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
@@ -460,6 +461,48 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+// PaddingConfig
+
+%typemap(in) const PaddingConfig&
+    (PaddingConfig padding_config) {
+  PyObject* dimensions = PyObject_GetAttrString($input, "dimensions");
+  if (!dimensions) {
+    return NULL;
+  }
+
+  int length = PySequence_Size(dimensions);
+  if (length == -1) {
+    Py_DECREF(dimensions);
+    return NULL;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(dimensions, i);
+    if (!item) {
+      Py_DECREF(dimensions);
+      return NULL;
+    }
+    int64 edge_padding_low, edge_padding_high, interior_padding;
+    if (!GetIntAttr(item, "edge_padding_low", &edge_padding_low)
+        || !GetIntAttr(item, "edge_padding_high", &edge_padding_high)
+        || !GetIntAttr(item, "interior_padding", &interior_padding)) {
+      Py_DECREF(item);
+      Py_DECREF(dimensions);
+      return NULL;
+    }
+    Py_DECREF(item);
+
+    PaddingConfig::PaddingConfigDimension* dimension =
+        padding_config.add_dimensions();
+    dimension->set_edge_padding_low(edge_padding_low);
+    dimension->set_edge_padding_high(edge_padding_high);
+    dimension->set_interior_padding(interior_padding);
+  }
+  Py_DECREF(dimensions);
+
+  $1 = &padding_config;
+}
+
 // ConvolutionDimensionNumbers
 
 %typemap(in) const ConvolutionDimensionNumbers&
@@ -608,6 +651,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;
 %unignore xla::swig::LocalComputationBuilder::ConstantR0;
 %unignore xla::swig::LocalComputationBuilder::Broadcast;
+%unignore xla::swig::LocalComputationBuilder::Pad;
 %unignore xla::swig::LocalComputationBuilder::Reshape;
 %unignore xla::swig::LocalComputationBuilder::Collapse;
 %unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;

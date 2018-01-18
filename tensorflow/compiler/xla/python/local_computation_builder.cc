@@ -298,6 +298,13 @@ ComputationDataHandle LocalComputationBuilder::Broadcast(
   return builder_.Broadcast(operand, broadcast_sizes);
 }
 
+ComputationDataHandle LocalComputationBuilder::Pad(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& padding_value,
+    const PaddingConfig& padding_config) {
+  return builder_.Pad(operand, padding_value, padding_config);
+}
+
 ComputationDataHandle LocalComputationBuilder::Reshape(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> dimensions,
