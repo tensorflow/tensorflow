@@ -45,7 +45,7 @@ def _parse_bazel_version(bazel_version):
   version = _extract_version_number(bazel_version)
   return tuple([int(n) for n in version.split(".")])
 
-def _check_bazel_version_at_least(minimum_bazel_version):
+def check_bazel_version_at_least(minimum_bazel_version):
   if "bazel_version" not in dir(native):
     fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % minimum_bazel_version)
   elif not native.bazel_version:
@@ -64,7 +64,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  _check_bazel_version_at_least("0.5.4")
+  check_bazel_version_at_least("0.5.4")
   cuda_configure(name="local_config_cuda")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
