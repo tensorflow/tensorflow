@@ -103,6 +103,7 @@ fi;
 TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=6 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--config=rpi3"
 BAZEL_CUDA_FLAGS="--config=cuda"
+BAZEL_EXTRA_FLAGS="--copt=-fvisibility=hidden"
 
 ### Define build targets that we will re-ues in sourcing scripts.
 BUILD_TARGET_PIP="//tensorflow/tools/pip_package:build_pip_package"
