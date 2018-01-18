@@ -128,6 +128,10 @@ message GrowingMetadata {
   // Number of layers that we have attempted to build. After pruning, these
   // layers might have been removed.
   int64 num_layers_attempted = 2;
+
+  // Sorted list of column handlers that have been used in at least one split
+  // so far.
+  repeated int64 used_handler_ids = 3;
 }
 
 // DecisionTreeEnsembleConfig describes an ensemble of decision trees.
