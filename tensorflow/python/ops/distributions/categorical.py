@@ -263,11 +263,12 @@ class Categorical(distribution.Distribution):
       logits_2d = self.logits
     else:
       logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
-    draws = random_ops.multinomial(logits_2d, n, seed=seed)
+    draws = random_ops.multinomial(
+        logits_2d, n, seed=seed, output_dtype=self.dtype)
     draws = array_ops.reshape(
         array_ops.transpose(draws),
         array_ops.concat([[n], self.batch_shape_tensor()], 0))
-    return math_ops.cast(draws, self.dtype)
+    return draws
 
   def _cdf(self, k):
     k = ops.convert_to_tensor(k, name="k")
