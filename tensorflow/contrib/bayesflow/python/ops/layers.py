@@ -24,7 +24,7 @@ from __future__ import print_function
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.contrib.bayesflow.python.ops.layers_conv_variational import *
-from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational_impl import *
+from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational import *
 from tensorflow.contrib.bayesflow.python.ops.layers_util import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented

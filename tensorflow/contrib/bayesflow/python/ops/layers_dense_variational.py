@@ -13,13 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Dense Bayesian layer using KL-divergence based variational inference.
-
-@@DenseReparameterization
-@@DenseLocalReparameterization
-@@DenseFlipout
-@@dense_reparameterization
-@@dense_local_reparameterization
-@@dense_flipout
 """
 
 from __future__ import absolute_import
@@ -38,16 +31,6 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops.distributions import kullback_leibler as kl_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.ops.distributions import util as distribution_util
-
-
-__all__ = [
-    "DenseReparameterization",
-    "DenseLocalReparameterization",
-    "DenseFlipout",
-    "dense_reparameterization",
-    "dense_local_reparameterization",
-    "dense_flipout",
-]
 
 
 class _DenseVariational(layers_lib.Layer):
