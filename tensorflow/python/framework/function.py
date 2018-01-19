@@ -682,7 +682,7 @@ class _FuncGraph(ops.Graph):
 
   def create_op(self, op_type, inputs, data_types, **kwargs):
     for i, x in enumerate(inputs):
-      if x.graph is not self:
+      if isinstance(x, ops.EagerTensor) or x.graph is not self:
         # Referring to a tensor from other graph.
         if x in self._captured:
           # Captured already.

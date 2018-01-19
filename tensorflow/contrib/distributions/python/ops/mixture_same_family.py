@@ -248,7 +248,7 @@ class MixtureSameFamily(distribution.Distribution):
       x = self._pad_sample_dims(x)
       log_prob_x = self.components_distribution.log_prob(x)  # [S, B, k]
       log_mix_prob = nn_ops.log_softmax(
-          self.mixture_distribution.logits, dim=-1)          # [B, k]
+          self.mixture_distribution.logits, axis=-1)         # [B, k]
       return math_ops.reduce_logsumexp(
           log_prob_x + log_mix_prob, axis=-1)                # [S, B]
 
@@ -264,7 +264,7 @@ class MixtureSameFamily(distribution.Distribution):
     x = self._pad_sample_dims(x)
     log_cdf_x = self.components_distribution.log_cdf(x)      # [S, B, k]
     log_mix_prob = nn_ops.log_softmax(
-        self.mixture_distribution.logits, dim=-1)            # [B, k]
+        self.mixture_distribution.logits, axis=-1)           # [B, k]
     return math_ops.reduce_logsumexp(
         log_cdf_x + log_mix_prob, axis=-1)                   # [S, B]
 
