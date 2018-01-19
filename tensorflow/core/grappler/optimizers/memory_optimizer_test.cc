@@ -271,14 +271,15 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
 TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"),
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
                            {128, 128, 8}, DT_FLOAT);
-  Output b = ops::Identity(s.WithOpName("b").WithDevice("/gpu:0"), {a});
-  Output c = ops::Identity(s.WithOpName("c").WithDevice("/gpu:0"), {a});
-  Output d = ops::Identity(s.WithOpName("d").WithDevice("/gpu:0"), {a});
+  Output a = ops::Identity(s.WithOpName("a").WithDevice("/gpu:0"), v);
+  Output b = ops::Square(s.WithOpName("b").WithDevice("/gpu:0"), v);
+  Output c = ops::Sqrt(s.WithOpName("c").WithDevice("/gpu:0"), a);
+  Output d = ops::Identity(s.WithOpName("d").WithDevice("/gpu:0"), b);
   Output axis = ops::Const(s.WithOpName("axis"), 0);
   Output e =
-      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);
+      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {a, b, c, d}, axis);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -300,21 +301,22 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
       for (int64 input_id : val.list().i()) {
         inputs_to_swap.insert(input_id);
       }
-      EXPECT_EQ(std::set<int>({0, 1, 2}), inputs_to_swap);
+      EXPECT_EQ(std::set<int>({1, 2, 3}), inputs_to_swap);
     }
   }
 }
 
 TEST_F(MemoryOptimizerTest, UnswappableInputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"),
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
                            {128, 128, 8}, DT_FLOAT);
+  Output a = ops::Square(s.WithOpName("a").WithDevice("/gpu:0"), v);
   Output b = ops::Identity(s.WithOpName("b").WithDevice("/gpu:0"), {a});
   Output c = ops::Identity(s.WithOpName("c").WithDevice("/gpu:0"), {a});
   Output index = ops::Const(s.WithOpName("index"), {0});
   Output indices = ops::Tile(s.WithOpName("indices"), index, {128});
   Output d =
-      ops::ScatterAdd(s.WithOpName("d").WithDevice("/gpu:0"), a, indices, c);
+      ops::ScatterAdd(s.WithOpName("d").WithDevice("/gpu:0"), v, indices, c);
   Output axis = ops::Const(s.WithOpName("axis"), 0);
   Output e =
       ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);

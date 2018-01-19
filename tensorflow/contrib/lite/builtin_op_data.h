@@ -83,6 +83,11 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteRNNParams;
 
+typedef struct {
+  bool time_major;
+  TfLiteFusedActivation activation;
+} TfLiteSequenceRNNParams;
+
 typedef struct { TfLiteFusedActivation activation; } TfLiteFullyConnectedParams;
 
 typedef enum {
