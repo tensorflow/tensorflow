@@ -775,8 +775,10 @@ static const NodeDef* FindSwapInTrigger(
   return nullptr;
 }
 
-static bool IsSwappable(GraphView::OutputPort output) {
+static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
   const NodeDef& node = *output.node;
+  // There is no point in swapping out persistent tensors, since the tensor will
+  // continue to use memory.
   if (IsPersistent(node)) {
     return false;
   }
@@ -785,13 +787,29 @@ static bool IsSwappable(GraphView::OutputPort output) {
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     return false;
   }
-
   DataType dtype;
   if (!OutputTypeForNode(node, *op_def, output.port_id, &dtype).ok()) {
     return false;
   }
+  // References can only refer to persistent memory: therefore the node isn't
+  // swappable.
+  if (IsRefType(dtype)) {
+    return false;
+  }
 
-  return !IsRefType(dtype);
+  if (output.node->op() == "Identity" || output.node->op() == "Reshape") {
+    // If placed on the same device, these nodes are just forwarding references
+    // to their input. Therefore they are swappable iff their fanin is swappable
+    // or it resides on a different device.
+    GraphView::InputPort input;
+    input.node = output.node;
+    input.port_id = 0;
+    GraphView::OutputPort fanin = graph.GetRegularFanin(input);
+    if (fanin.node->device() == node.device()) {
+      return IsSwappable(graph, fanin);
+    }
+  }
+  return true;
 }
 
 static NodeDef* FindSwapOutTrigger(
@@ -898,10 +916,9 @@ static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
         // Don't bother with small tensors.
         continue;
       }
-      // Don't try to swap out persistent data
       GraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
-      if (!IsSwappable(port)) {
+      if (!IsSwappable(graph, port)) {
         continue;
       }
       Costs::NanoSeconds execution_time(-1);

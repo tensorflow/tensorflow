@@ -1075,7 +1075,7 @@ class Distribution(_BaseDistribution):
 
     Denote this distribution (`self`) by `p` and the `other` distribution by
     `q`. Assuming `p, q` are absolutely continuous with respect to reference
-    measure `r`, (Shanon) cross entropy is defined as:
+    measure `r`, the KL divergence is defined as:
 
     ```none
     KL[p, q] = E_p[log(p(X)/q(X))]
