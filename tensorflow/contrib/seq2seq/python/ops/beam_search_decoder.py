@@ -299,7 +299,7 @@ class BeamSearchDecoder(decoder.Decoder):
     """
     finished, start_inputs = self._finished, self._start_inputs
 
-    log_prob = array_ops.one_hot(  # shape(batch_sz, beam_sz)
+    log_probs = array_ops.one_hot(  # shape(batch_sz, beam_sz)
         array_ops.zeros([self._batch_size], dtype=dtypes.int32),
         depth=self._beam_width, on_value=0.0,
         off_value=-np.Inf, dtype=dtypes.float32)
