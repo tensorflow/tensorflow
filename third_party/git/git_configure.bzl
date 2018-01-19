@@ -5,7 +5,6 @@
   * `PYTHON_BIN_PATH`: location of python binary.
 """
 
-_TF_CONFIG_TIME = "TF_CONFIG_TIME"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 def _fail(msg):
@@ -39,6 +38,11 @@ def _git_conf_impl(repository_ctx):
       Label("@org_tensorflow//tensorflow/tools/git:gen_git_source.py"))
   generated_files_path = repository_ctx.path("gen")
 
+  r = repository_ctx.execute(
+      ["test", "-f", "%s/.git/logs/HEAD" % tensorflow_root_path])
+  if r.return_code == 0:
+    unused_var = repository_ctx.path(Label("//:.git/HEAD")) # pylint: disable=unused-variable
+
   result = repository_ctx.execute([
       _get_python_bin(repository_ctx),
       python_script_path, "--configure", tensorflow_root_path,
@@ -51,7 +55,6 @@ def _git_conf_impl(repository_ctx):
 git_configure = repository_rule(
     implementation = _git_conf_impl,
     environ = [
-        _TF_CONFIG_TIME,
         _PYTHON_BIN_PATH,
     ],
 )
