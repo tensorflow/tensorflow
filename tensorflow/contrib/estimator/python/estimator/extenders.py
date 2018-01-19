@@ -100,7 +100,7 @@ def add_metrics(estimator, metric_fn):
 
 
 def clip_gradients_by_norm(optimizer, clip_norm):
-  """Returns an optimizer which clips gradients before appliying them.
+  """Returns an optimizer which clips gradients before applying them.
 
   Example:
 
