@@ -1057,12 +1057,15 @@ def main(_):
            model_info['input_height'], model_info['input_depth'],
            model_info['input_mean'], model_info['input_std'])
     else:
-      # We'll make sure we've calculated the 'bottleneck' image summaries and
-      # cached them on disk.
-      cache_bottlenecks(sess, image_lists, FLAGS.image_dir,
-                        FLAGS.bottleneck_dir, jpeg_data_tensor,
-                        decoded_image_tensor, resized_image_tensor,
-                        bottleneck_tensor, FLAGS.architecture)
+      if FLAGS.bottleneck_rescan_skip:
+        tf.logging.info('Skipping rescan bottlenecks')
+      else:
+        # We'll make sure we've calculated the 'bottleneck' image summaries and
+        # cached them on disk.
+        cache_bottlenecks(sess, image_lists, FLAGS.image_dir,
+                          FLAGS.bottleneck_dir, jpeg_data_tensor,
+                          decoded_image_tensor, resized_image_tensor,
+                          bottleneck_tensor, FLAGS.architecture)
 
     # Add the new layer that we'll be training.
     (train_step, cross_entropy, bottleneck_input, ground_truth_input,
@@ -1304,6 +1307,16 @@ if __name__ == '__main__':
       type=str,
       default='/tmp/bottleneck',
       help='Path to cache bottleneck layer values as files.'
+  )
+  parser.add_argument(
+      '--bottleneck_rescan_skip',
+      default=False,
+      help="""\
+      Completely rescan images for bottlenecks. Set param 'False' to skip \
+      rescaning and start train immediately, if you already scanned them.\
+      Please do not skip rescan if you changed input images data.\
+      """,
+      action='store_true'
   )
   parser.add_argument(
       '--final_tensor_name',
