@@ -33,9 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as layers_lib
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops.distributions import kullback_leibler as kl_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
@@ -285,6 +283,10 @@ class DenseReparameterization(_DenseVariational):
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
 
+  It uses the reparameterization estimator [1], which performs a Monte Carlo
+  approximation of the distribution integrating over the `kernel` and
+  `bias`.
+
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
   distributions.
@@ -372,6 +374,10 @@ class DenseReparameterization(_DenseVariational):
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Auto-Encoding Variational Bayes."
+        Diederik P. Kingma, Max Welling.
+        International Conference on Learning Representations, 2014.
   """
 
   def __init__(
@@ -444,6 +450,10 @@ def dense_reparameterization(
   kernel, bias ~ posterior
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
+
+  It uses the reparameterization estimator [1], which performs a Monte Carlo
+  approximation of the distribution integrating over the `kernel` and
+  `bias`.
 
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
@@ -524,6 +534,10 @@ def dense_reparameterization(
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Auto-Encoding Variational Bayes."
+        Diederik P. Kingma, Max Welling.
+        International Conference on Learning Representations, 2014.
   """
   layer = DenseReparameterization(
       units,
@@ -557,6 +571,10 @@ class DenseLocalReparameterization(_DenseVariational):
   kernel, bias ~ posterior
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
+
+  It uses the local reparameterization estimator [1], which performs a
+  Monte Carlo approximation of the distribution on the hidden units
+  induced by the `kernel` and `bias`.
 
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
@@ -645,6 +663,10 @@ class DenseLocalReparameterization(_DenseVariational):
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Variational Dropout and the Local Reparameterization Trick."
+        Diederik P. Kingma, Tim Salimans, Max Welling.
+        Neural Information Processing Systems, 2015.
   """
 
   def __init__(
@@ -688,7 +710,7 @@ class DenseLocalReparameterization(_DenseVariational):
           "`DenseLocalReparameterization` requires "
           "`kernel_posterior_fn` produce an instance of "
           "`tf.distributions.Independent(tf.distributions.Normal)` "
-          "(saw: \"{}\").".format(type(self.kernel_posterior).__name__))
+          "(saw: \"{}\").".format(self.kernel_posterior.name))
     self.kernel_posterior_affine = normal_lib.Normal(
         loc=self._matmul(inputs, self.kernel_posterior.distribution.loc),
         scale=standard_ops.sqrt(self._matmul(
@@ -729,6 +751,10 @@ def dense_local_reparameterization(
   kernel, bias ~ posterior
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
+
+  It uses the local reparameterization estimator [1], which performs a
+  Monte Carlo approximation of the distribution on the hidden units
+  induced by the `kernel` and `bias`.
 
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
@@ -809,6 +835,10 @@ def dense_local_reparameterization(
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Variational Dropout and the Local Reparameterization Trick."
+        Diederik P. Kingma, Tim Salimans, Max Welling.
+        Neural Information Processing Systems, 2015.
   """
   layer = DenseLocalReparameterization(
       units,
@@ -842,6 +872,12 @@ class DenseFlipout(_DenseVariational):
   kernel, bias ~ posterior
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
+
+  It uses the Flipout estimator [1], which performs a Monte Carlo
+  approximation of the distribution integrating over the `kernel` and
+  `bias`. Flipout uses roughly twice as many floating point operations
+  as the reparameterization estimator but has the advantage of
+  significantly lower variance.
 
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
@@ -933,6 +969,11 @@ class DenseFlipout(_DenseVariational):
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
+        Mini-Batches."
+        Anonymous. OpenReview, 2017.
+        https://openreview.net/forum?id=rJnpifWAb
   """
 
   def __init__(
@@ -978,7 +1019,7 @@ class DenseFlipout(_DenseVariational):
           "`DenseFlipout` requires "
           "`kernel_posterior_fn` produce an instance of "
           "`tf.distributions.Independent(tf.distributions.Normal)` "
-          "(saw: \"{}\").".format(type(self.kernel_posterior).__name__))
+          "(saw: \"{}\").".format(self.kernel_posterior.name))
     self.kernel_posterior_affine = normal_lib.Normal(
         loc=array_ops.zeros_like(self.kernel_posterior.distribution.loc),
         scale=self.kernel_posterior.distribution.scale)
@@ -989,8 +1030,11 @@ class DenseFlipout(_DenseVariational):
     input_shape = array_ops.shape(inputs)
     batch_shape = input_shape[:-1]
 
-    sign_input = random_sign(input_shape, dtype=inputs.dtype, seed=self.seed)
-    sign_output = random_sign(
+    sign_input = layers_util.random_sign(
+        input_shape,
+        dtype=inputs.dtype,
+        seed=self.seed)
+    sign_output = layers_util.random_sign(
         array_ops.concat([batch_shape,
                           array_ops.expand_dims(self.units, 0)], 0),
         dtype=inputs.dtype,
@@ -1034,6 +1078,12 @@ def dense_flipout(
   kernel, bias ~ posterior
   outputs = activation(matmul(inputs, kernel) + bias)
   ```
+
+  It uses the Flipout estimator [1], which performs a Monte Carlo
+  approximation of the distribution integrating over the `kernel` and
+  `bias`. Flipout uses roughly twice as many floating point operations
+  as the reparameterization estimator but has the advantage of
+  significantly lower variance.
 
   The arguments permit separate specification of the surrogate posterior
   (`q(W|x)`), prior (`p(W)`), and divergence for both the `kernel` and `bias`
@@ -1116,6 +1166,11 @@ def dense_flipout(
   the expected negative log-likelihood, which we approximate via
   Monte Carlo; and the KL divergence, which is added via regularizer
   terms which are arguments to the layer.
+
+  [1]: "Flipout: Efficient Pseudo-Independent Weight Perturbations on
+        Mini-Batches."
+        Anonymous. OpenReview, 2017.
+        https://openreview.net/forum?id=rJnpifWAb
   """
   layer = DenseFlipout(
       units,
@@ -1136,11 +1191,3 @@ def dense_flipout(
       _scope=name,
       _reuse=reuse)
   return layer.apply(inputs)
-
-
-def random_sign(shape, dtype=dtypes.float32, seed=None):
-  """Draw values from {-1, 1} uniformly, i.e., Rademacher distribution."""
-  random_bernoulli = random_ops.random_uniform(shape, minval=0, maxval=2,
-                                               dtype=dtypes.int32,
-                                               seed=seed)
-  return math_ops.cast(2 * random_bernoulli - 1, dtype)
