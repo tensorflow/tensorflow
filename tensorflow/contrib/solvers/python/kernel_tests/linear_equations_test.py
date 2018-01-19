@@ -47,22 +47,27 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
     a_np = np.dot(a_np.T, a_np)
     rhs_np = np.random.uniform(
         low=-1.0, high=1.0, size=shape_[0]).astype(dtype_)
+    x_np = np.zeros_like(rhs_np)
     tol = 1e-6 if dtype_ == np.float64 else 1e-3
     max_iter = 20
     with self.test_session() as sess:
       if use_static_shape_:
         a = constant_op.constant(a_np)
         rhs = constant_op.constant(rhs_np)
+        x = constant_op.constant(x_np)
       else:
         a = array_ops.placeholder(dtype_)
         rhs = array_ops.placeholder(dtype_)
+        x = array_ops.placeholder(dtype_)
       operator = util.create_operator(a)
+      preconditioner = util.identity_operator(a)
       cg_graph = linear_equations.conjugate_gradient(
-          operator, rhs, tol=tol, max_iter=max_iter)
+          operator, rhs, preconditioner=preconditioner,
+          x=x, tol=tol, max_iter=max_iter)
       if use_static_shape_:
         cg_val = sess.run(cg_graph)
       else:
-        cg_val = sess.run(cg_graph, feed_dict={a: a_np, rhs: rhs_np})
+        cg_val = sess.run(cg_graph, feed_dict={a: a_np, rhs: rhs_np, x: x_np})
       norm_r0 = np.linalg.norm(rhs_np)
       norm_r = np.sqrt(cg_val.gamma)
       self.assertLessEqual(norm_r, tol * norm_r0)
