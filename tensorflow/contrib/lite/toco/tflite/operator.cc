@@ -584,6 +584,27 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
   }
 };
 
+class Squeeze
+    : public BuiltinOperator<SqueezeOperator, ::tflite::SqueezeOptions,
+                             ::tflite::BuiltinOptions_SqueezeOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto squeeze_dims = builder->CreateVector(op.squeeze_dims);
+    return ::tflite::CreateSqueezeOptions(*builder, squeeze_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->squeeze_dims.insert(op->squeeze_dims.end(),
+                            options.squeeze_dims()->begin(),
+                            options.squeeze_dims()->end());
+  }
+};
+
 class Split : public CustomOperator<TensorFlowSplitOperator> {
  public:
   using CustomOperator::CustomOperator;
@@ -754,6 +775,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                  OperatorType::kTranspose));
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
+  ops.emplace_back(
+      new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));

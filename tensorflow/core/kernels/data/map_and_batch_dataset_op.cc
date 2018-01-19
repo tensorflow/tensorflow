@@ -279,31 +279,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // Call `captured_func_(input_element)`, store the result in
         // `result->return_values`, and notify `batch_result->counter`
         // to unblock a consumer.
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
-        ScopedStepContainer* step_container = new ScopedStepContainer(
-            opts.step_id, [resource_mgr](const string& name) {
-              resource_mgr->Cleanup(name).IgnoreError();
-            });
-        opts.step_container = step_container;
-        std::function<void(std::function<void()>)>* runner =
-            new std::function<void(std::function<void()>)>(*ctx->runner());
-        opts.runner = runner;
-        FunctionLibraryRuntime* lib = ctx->lib();
-        FunctionLibraryRuntime::InstantiateOptions inst_opts;
-        inst_opts.overlay_lib = ctx->function_library().get();
-
         (*ctx->runner())(std::bind(
-            [this, lib, inst_opts, opts, result, step_container, runner,
-             batch_result, offset](std::vector<Tensor> input_element) {
+            [this, result, batch_result, offset](
+                IteratorContext* ctx, std::vector<Tensor> input_element) {
               dataset()->captured_func_->RunAsync(
-                  lib, inst_opts, opts, std::move(input_element),
-                  &result->return_values,
-                  [this, step_container, runner, result, batch_result,
-                   offset](Status ret_status) {
-                    delete step_container;
-                    delete runner;
+                  ctx, std::move(input_element), &result->return_values,
+                  [this, ctx, result, batch_result, offset](Status ret_status) {
+                    delete ctx;
                     result->status.Update(ret_status);
                     if (ret_status.ok()) {
                       EnsureOutputAllocated(batch_result,
@@ -345,7 +327,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     batch_result->counter->DecrementCount();
                   });
             },
-            std::move(input_element)));
+            new IteratorContext(*ctx), std::move(input_element)));
       }
 
       void StartInvocationBatch(IteratorContext* ctx, int64 batch_index)

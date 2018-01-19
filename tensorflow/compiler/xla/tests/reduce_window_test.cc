@@ -473,6 +473,23 @@ XLA_TEST_P(ReduceWindowTest, Add128In128Stride128) {
                            DefaultErrorSpec());
 }
 
+XLA_TEST_P(ReduceWindowTest, Add128In128) {
+  std::vector<float> input_vector{
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  const auto input = CreateConstantFromLiteral(
+      *Literal::CreateR1<float>(input_vector), &builder_);
+  ReduceWindowAdd(input, {128}, {1}, Padding::kValid);
+  ComputeAndCompareLiteral(&builder_, *Literal::CreateR1<float>({1088}), {},
+                           DefaultErrorSpec());
+}
+
 // Regression test for a bug that appeared in Inception (b/34784899).
 TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
   Array2D<float> input_array(14, 14, 1.0f);
@@ -1138,5 +1155,61 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(kR1TestCases),
                        ::testing::ValuesIn(use_bfloat16_params)),
     R1ReduceWindowTestDataToString);
+
+// Test class for text-based test cases. Note that this compares with the
+// results on the interpreter backend.
+class ReduceWindowTextTest : public HloTestBase {};
+
+TEST_F(ReduceWindowTextTest, R2General256x384) {
+  const string& hlo_string = R"(
+HloModule R2Window
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R2Window {
+  operand = f32[256,384]{1,0} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[256,384]{1,0} reduce-window(operand, constant), window={size=2x3 pad=0_1x1_1}, to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
+TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
+  const string& hlo_string = R"(
+HloModule R2Window
+mul {
+lhs = f32[] parameter(0)
+rhs = f32[] parameter(1)
+ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R2Window {
+operand = f32[256,384]{0,1} parameter(0)
+constant = f32[] constant(1)
+ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window={size=2x3 pad=0_1x1_1}, to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
+TEST_F(ReduceWindowTextTest, R2General2x5) {
+  const string& hlo_string = R"(
+HloModule R2Window
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R2Window {
+  operand = f32[2,5]{1,0} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[3,5]{1,0} reduce-window(operand, constant), window={size=2x1 pad=0_2x0_0}, to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
+}
+
 }  // namespace
 }  // namespace xla

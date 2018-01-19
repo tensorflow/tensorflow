@@ -56,6 +56,7 @@ TfLiteRegistration* Register_SPACE_TO_DEPTH();
 TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_TRANSPOSE();
 TfLiteRegistration* Register_MEAN();
+TfLiteRegistration* Register_SQUEEZE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -98,6 +99,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB());
+  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

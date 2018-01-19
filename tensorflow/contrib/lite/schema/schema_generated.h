@@ -114,6 +114,9 @@ struct TransposeOptionsT;
 struct MeanOptions;
 struct MeanOptionsT;
 
+struct SqueezeOptions;
+struct SqueezeOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -199,11 +202,12 @@ enum BuiltinOperator {
   BuiltinOperator_MEAN = 40,
   BuiltinOperator_SUB = 41,
   BuiltinOperator_DIV = 42,
+  BuiltinOperator_SQUEEZE = 43,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_DIV
+  BuiltinOperator_MAX = BuiltinOperator_SQUEEZE
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[40] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[41] {
   static BuiltinOperator values[] = {
       BuiltinOperator_ADD,
       BuiltinOperator_AVERAGE_POOL_2D,
@@ -244,7 +248,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[40] {
       BuiltinOperator_TRANSPOSE,
       BuiltinOperator_MEAN,
       BuiltinOperator_SUB,
-      BuiltinOperator_DIV};
+      BuiltinOperator_DIV,
+      BuiltinOperator_SQUEEZE};
   return values;
 }
 
@@ -292,6 +297,7 @@ inline const char **EnumNamesBuiltinOperator() {
                                 "MEAN",
                                 "SUB",
                                 "DIV",
+                                "SQUEEZE",
                                 nullptr};
   return names;
 }
@@ -332,11 +338,12 @@ enum BuiltinOptions {
   BuiltinOptions_MeanOptions = 27,
   BuiltinOptions_SubOptions = 28,
   BuiltinOptions_DivOptions = 29,
+  BuiltinOptions_SqueezeOptions = 30,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_DivOptions
+  BuiltinOptions_MAX = BuiltinOptions_SqueezeOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[30] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[31] {
   static BuiltinOptions values[] = {
       BuiltinOptions_NONE,
       BuiltinOptions_Conv2DOptions,
@@ -367,7 +374,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[30] {
       BuiltinOptions_TransposeOptions,
       BuiltinOptions_MeanOptions,
       BuiltinOptions_SubOptions,
-      BuiltinOptions_DivOptions};
+      BuiltinOptions_DivOptions,
+      BuiltinOptions_SqueezeOptions};
   return values;
 }
 
@@ -402,6 +410,7 @@ inline const char **EnumNamesBuiltinOptions() {
                                 "MeanOptions",
                                 "SubOptions",
                                 "DivOptions",
+                                "SqueezeOptions",
                                 nullptr};
   return names;
 }
@@ -563,6 +572,11 @@ struct BuiltinOptionsTraits<SubOptions> {
 template <>
 struct BuiltinOptionsTraits<DivOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DivOptions;
+};
+
+template <>
+struct BuiltinOptionsTraits<SqueezeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SqueezeOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -900,6 +914,16 @@ struct BuiltinOptionsUnion {
   const DivOptionsT *AsDivOptions() const {
     return type == BuiltinOptions_DivOptions
                ? reinterpret_cast<const DivOptionsT *>(value)
+               : nullptr;
+  }
+  SqueezeOptionsT *AsSqueezeOptions() {
+    return type == BuiltinOptions_SqueezeOptions
+               ? reinterpret_cast<SqueezeOptionsT *>(value)
+               : nullptr;
+  }
+  const SqueezeOptionsT *AsSqueezeOptions() const {
+    return type == BuiltinOptions_SqueezeOptions
+               ? reinterpret_cast<const SqueezeOptionsT *>(value)
                : nullptr;
   }
 };
@@ -3348,6 +3372,71 @@ flatbuffers::Offset<MeanOptions> CreateMeanOptions(
     flatbuffers::FlatBufferBuilder &_fbb, const MeanOptionsT *_o,
     const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SqueezeOptionsT : public flatbuffers::NativeTable {
+  typedef SqueezeOptions TableType;
+  std::vector<int32_t> squeeze_dims;
+  SqueezeOptionsT() {}
+};
+
+struct SqueezeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SqueezeOptionsT NativeTableType;
+  enum { VT_SQUEEZE_DIMS = 4 };
+  const flatbuffers::Vector<int32_t> *squeeze_dims() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SQUEEZE_DIMS);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_SQUEEZE_DIMS) &&
+           verifier.Verify(squeeze_dims()) && verifier.EndTable();
+  }
+  SqueezeOptionsT *UnPack(
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(
+      SqueezeOptionsT *_o,
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SqueezeOptions> Pack(
+      flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o,
+      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SqueezeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_squeeze_dims(
+      flatbuffers::Offset<flatbuffers::Vector<int32_t>> squeeze_dims) {
+    fbb_.AddOffset(SqueezeOptions::VT_SQUEEZE_DIMS, squeeze_dims);
+  }
+  explicit SqueezeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SqueezeOptionsBuilder &operator=(const SqueezeOptionsBuilder &);
+  flatbuffers::Offset<SqueezeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SqueezeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> squeeze_dims = 0) {
+  SqueezeOptionsBuilder builder_(_fbb);
+  builder_.add_squeeze_dims(squeeze_dims);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptionsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<int32_t> *squeeze_dims = nullptr) {
+  return tflite::CreateSqueezeOptions(
+      _fbb, squeeze_dims ? _fbb.CreateVector<int32_t>(*squeeze_dims) : 0);
+}
+
+flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -3622,6 +3711,11 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
                ? static_cast<const DivOptions *>(builtin_options())
                : nullptr;
   }
+  const SqueezeOptions *builtin_options_as_SqueezeOptions() const {
+    return builtin_options_type() == BuiltinOptions_SqueezeOptions
+               ? static_cast<const SqueezeOptions *>(builtin_options())
+               : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -3815,6 +3909,12 @@ inline const SubOptions *Operator::builtin_options_as<SubOptions>() const {
 template <>
 inline const DivOptions *Operator::builtin_options_as<DivOptions>() const {
   return builtin_options_as_DivOptions();
+}
+
+template <>
+inline const SqueezeOptions *Operator::builtin_options_as<SqueezeOptions>()
+    const {
+  return builtin_options_as_SqueezeOptions();
 }
 
 struct OperatorBuilder {
@@ -5744,6 +5844,51 @@ inline flatbuffers::Offset<MeanOptions> CreateMeanOptions(
   return tflite::CreateMeanOptions(_fbb, _axis, _keep_dims);
 }
 
+inline SqueezeOptionsT *SqueezeOptions::UnPack(
+    const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SqueezeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SqueezeOptions::UnPackTo(
+    SqueezeOptionsT *_o,
+    const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  {
+    auto _e = squeeze_dims();
+    if (_e) {
+      _o->squeeze_dims.resize(_e->size());
+      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
+        _o->squeeze_dims[_i] = _e->Get(_i);
+      }
+    }
+  };
+}
+
+inline flatbuffers::Offset<SqueezeOptions> SqueezeOptions::Pack(
+    flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSqueezeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs {
+    flatbuffers::FlatBufferBuilder *__fbb;
+    const SqueezeOptionsT *__o;
+    const flatbuffers::rehasher_function_t *__rehasher;
+  } _va = {&_fbb, _o, _rehasher};
+  (void)_va;
+  auto _squeeze_dims =
+      _o->squeeze_dims.size() ? _fbb.CreateVector(_o->squeeze_dims) : 0;
+  return tflite::CreateSqueezeOptions(_fbb, _squeeze_dims);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(
     const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
@@ -6248,6 +6393,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier,
       auto ptr = reinterpret_cast<const DivOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SqueezeOptions: {
+      auto ptr = reinterpret_cast<const SqueezeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default:
       return false;
   }
@@ -6388,6 +6537,10 @@ inline void *BuiltinOptionsUnion::UnPack(
       auto ptr = reinterpret_cast<const DivOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SqueezeOptions: {
+      auto ptr = reinterpret_cast<const SqueezeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default:
       return nullptr;
   }
@@ -6514,6 +6667,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(
     case BuiltinOptions_DivOptions: {
       auto ptr = reinterpret_cast<const DivOptionsT *>(value);
       return CreateDivOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_SqueezeOptions: {
+      auto ptr = reinterpret_cast<const SqueezeOptionsT *>(value);
+      return CreateSqueezeOptions(_fbb, ptr, _rehasher).Union();
     }
     default:
       return 0;
@@ -6653,6 +6810,11 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u)
     }
     case BuiltinOptions_DivOptions: {
       value = new DivOptionsT(*reinterpret_cast<DivOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SqueezeOptions: {
+      value =
+          new SqueezeOptionsT(*reinterpret_cast<SqueezeOptionsT *>(u.value));
       break;
     }
     default:
@@ -6804,6 +6966,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_DivOptions: {
       auto ptr = reinterpret_cast<DivOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SqueezeOptions: {
+      auto ptr = reinterpret_cast<SqueezeOptionsT *>(value);
       delete ptr;
       break;
     }

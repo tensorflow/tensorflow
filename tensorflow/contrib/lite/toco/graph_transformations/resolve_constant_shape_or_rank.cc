@@ -56,6 +56,8 @@ bool ResolveConstantShapeOrRank::Run(Model* model, std::size_t op_index) {
     output_buffer.data.resize(1);
     output_buffer.data[0] = input_array.shape().dimensions_count();
   }
+  output_array.mutable_shape()->ReplaceDims(
+      {static_cast<int>(output_buffer.data.size())});
 
   // Delete the input array if no longer used
   if (IsDiscardableArray(*model, op->inputs[0]) &&

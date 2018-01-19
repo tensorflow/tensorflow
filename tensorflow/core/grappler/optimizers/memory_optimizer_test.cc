@@ -259,6 +259,10 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
   EXPECT_EQ("^c", swap_in.input(1));
 
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  EXPECT_EQ("^swap_out_e_0", new_c.input(1));
+
   // Run the optimizer a second time to ensure it's idempotent.
   item.graph.Swap(&output);
   status = optimizer.Optimize(cluster.get(), item, &output);

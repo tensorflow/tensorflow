@@ -74,7 +74,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
-  transformations->Add(new ResolveTensorFlowSqueeze);
+  transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);

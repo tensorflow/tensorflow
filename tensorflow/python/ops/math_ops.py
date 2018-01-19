@@ -2004,7 +2004,7 @@ def matmul(a,
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
-      return sparse_matmul(
+      ret = sparse_matmul(
           a,
           b,
           transpose_a=transpose_a,
@@ -2012,6 +2012,12 @@ def matmul(a,
           a_is_sparse=a_is_sparse,
           b_is_sparse=b_is_sparse,
           name=name)
+      # sparse_matmul always returns float32, even with
+      # bfloat16 inputs. This prevents us from configuring bfloat16 training.
+      # casting to bfloat16 also matches non-sparse matmul behavior better.
+      if a.dtype == dtypes.bfloat16 and b.dtype == dtypes.bfloat16:
+        ret = cast(ret, dtypes.bfloat16)
+      return ret
     else:
       return gen_math_ops._mat_mul(
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)

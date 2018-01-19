@@ -170,19 +170,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         std::copy(next_element.begin(), next_element.end(),
                   std::back_inserter(args));
 
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
-                                                                   name) {
-          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-        });
-        opts.step_container = &step_container;
-        opts.runner = ctx->runner();
         std::vector<Tensor> state_and_output;
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
 
-        Status s = dataset()->captured_func_->Run(ctx, opts, std::move(args),
+        Status s = dataset()->captured_func_->Run(ctx, std::move(args),
                                                   &state_and_output);
         if (s.ok()) {
           state_.clear();

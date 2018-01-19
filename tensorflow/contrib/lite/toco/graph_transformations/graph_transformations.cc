@@ -147,6 +147,21 @@ bool GraphTransformationsPass(int increment, Model* model,
       CHECK(!changed_now);
       CHECK(transformation->Messages().empty());
       changed_now = transformation->Run(model, op_index);
+      const char* made_a_change_msg =
+          changed_now ? "made a change" : "did NOT make a change";
+      const int log_level =
+          changed_now ? kLogLevelModelChanged : kLogLevelModelUnchanged;
+      if (transformation->Messages().empty()) {
+        VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
+                        << " at op_index=" << op_index << "/"
+                        << model->operators.size() - 1;
+      }
+      for (const string& message : transformation->Messages()) {
+        VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
+                        << " at op_index=" << op_index << "/"
+                        << model->operators.size() - 1 << ": " << message;
+      }
+      transformation->ClearMessages();
       if (changed_now) {
         DumpGraphvizVideoFrame(*model);
         if (model->operators.empty()) return true;
@@ -154,16 +169,6 @@ bool GraphTransformationsPass(int increment, Model* model,
         // Uncomment for debugging
         // CheckInvariants(*model);
       }
-      const char* made_a_change_msg =
-          changed_now ? "made a change" : "did NOT make a change";
-      const int log_level =
-          changed_now ? kLogLevelModelChanged : kLogLevelModelUnchanged;
-      for (const string& message : transformation->Messages()) {
-        VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
-                        << " at op_index=" << op_index << "/"
-                        << model->operators.size() - 1 << ": " << message;
-      }
-      transformation->ClearMessages();
       if (changed_now) {
         break;
       }

@@ -143,30 +143,14 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          FunctionLibraryRuntime::Options opts;
-          opts.step_id = CapturedFunction::generate_step_id();
-          ScopedStepContainer step_container(opts.step_id,
-                                             [ctx](const string& name) {
-                                               ctx->lib()
-                                                   ->device()
-                                                   ->resource_manager()
-                                                   ->Cleanup(name)
-                                                   .IgnoreError();
-                                             });
-          opts.step_container = &step_container;
-          opts.runner = ctx->runner();
           // TODO(mrry): Avoid blocking a threadpool thread. We will need to
           // stack-rip the iterators and use async kernels.
-          Notification n;
-          Status ret;
           std::vector<Tensor> result;
-          ret = dataset()->captured_func_->RunWithBorrowedArgs(
-              ctx, opts, *out_tensors, &result);
+          TF_RETURN_IF_ERROR(dataset()->captured_func_->RunWithBorrowedArgs(
+              ctx, *out_tensors, &result));
 
-          if (!ret.ok()) {
-            return ret;
-          } else if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
-                     result[0].NumElements() != 1) {
+          if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
+              result[0].NumElements() != 1) {
             return errors::InvalidArgument(
                 "Filter predicate `f` must return a scalar bool.");
           }

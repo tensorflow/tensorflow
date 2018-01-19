@@ -751,20 +751,6 @@ tf_py_test(
 )
 
 py_test(
-    name = "numpy_io_test",
-    size = "small",
-    srcs = ["python/learn/learn_io/numpy_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "pandas_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/pandas_io_test.py"],
