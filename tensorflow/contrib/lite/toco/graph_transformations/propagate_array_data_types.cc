@@ -38,7 +38,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
 
   // If the data type of some input is unknown, we need to yield.
   for (const auto& input : op->inputs) {
-    if (model->arrays[input]->data_type == ArrayDataType::kNone) {
+    if (!model->IsOptionalArray(input) &&
+        model->arrays[input]->data_type == ArrayDataType::kNone) {
       return false;
     }
   }
