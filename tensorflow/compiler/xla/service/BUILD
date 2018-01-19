@@ -454,6 +454,7 @@ cc_library(
         ":hlo_evaluator",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":hlo_proto_util",
         ":platform_util",
         ":session_proto",
         ":transfer_manager",
