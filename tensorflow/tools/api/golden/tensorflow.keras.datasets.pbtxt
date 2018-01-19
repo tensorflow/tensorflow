@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "fashion_mnist"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "imdb"
     mtype: "<type \'module\'>"
   }

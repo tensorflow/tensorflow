@@ -49,7 +49,8 @@ std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
           "-nostdin",             // No interactive commands accepted.
           "-f", input_format_id,  // eg: "mp3"
           "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
-          "-loglevel", "info",  // Enable verbose logging to support debugging.
+          "-loglevel", "error",   // Print errors only.
+          "-hide_banner",         // Skip printing build options, version, etc.
           "-map_metadata", "-1",  // Copy global metadata from input to output.
           "-vn",                  // No video recording.
           "-ac:a:0", StrCat(channel_count), "-ar:a:0",
@@ -72,7 +73,8 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
           "-probesize",
           StrCat(kDefaultProbeSize),
           "-loglevel",
-          "info",  // Enable verbose logging to support debugging.
+          "error",  // Print errors only.
+          "-hide_banner",  // Skip printing build options, version, etc.
           "-vcodec",
           "rawvideo",
           "-pix_fmt",
@@ -220,7 +222,8 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
 Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
                     uint32* frames) {
   string data;
-  ReadFileToString(Env::Default(), filename, &data);
+  TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &data))
+      << "Could not read FFmpeg file: " << filename;
   bool in_output = false;
   bool in_mapping = false;
   uint32 frames_value = 0;
@@ -377,7 +380,7 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
         open(stderr_filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
     if (fd < 0) {
       const int error = errno;
-      LOG(ERROR) << "FFmpeg stderr file coule not be created: "
+      LOG(ERROR) << "FFmpeg stderr file could not be created: "
                  << strerror(error);
       ::_exit(error);
     }

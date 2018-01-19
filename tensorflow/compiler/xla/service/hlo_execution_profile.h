@@ -29,18 +29,18 @@ namespace xla {
 
 class HloInstruction;
 
-// Maps all HloInstructions and HloComputions in an HloModule to integers.
-// These integers form the contiguous range [0, GetTotalCount()).
-class HloToProfileIndex {
+// Maps all HloInstructions and HloComputations in an HloModule to integers.
+// These integers form the contiguous range [0, total_count()).
+class HloProfileIndexMap {
  public:
-  // Scans `module` to populate this instance of HloToProfileIndex.
-  explicit HloToProfileIndex(const HloModule& module);
+  // Scans `module` to populate this instance of HloProfileIndexMap.
+  explicit HloProfileIndexMap(const HloModule& module);
 
-  HloToProfileIndex(const HloToProfileIndex&) = default;
-  HloToProfileIndex(HloToProfileIndex&&) = default;
+  HloProfileIndexMap(const HloProfileIndexMap&) = default;
+  HloProfileIndexMap(HloProfileIndexMap&&) = default;
 
-  HloToProfileIndex& operator=(const HloToProfileIndex&) = default;
-  HloToProfileIndex& operator=(HloToProfileIndex&&) = default;
+  HloProfileIndexMap& operator=(const HloProfileIndexMap&) = default;
+  HloProfileIndexMap& operator=(HloProfileIndexMap&&) = default;
 
   size_t GetProfileIndexFor(const HloInstruction& instruction) const {
     return FindOrDie(instruction_to_profile_idx(), &instruction);
@@ -77,6 +77,11 @@ class HloToProfileIndex {
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx_;
 };
 
+// Create an instance of `HloProfilePrinter` that owns its memory.
+std::unique_ptr<HloProfilePrinter> CreateHloProfilePrinter(
+    const HloProfileIndexMap& hlo_profile_index_map,
+    const HloCostAnalysis& cost_analysis);
+
 // Describes how much time each HLO operation took.
 //
 // Each HloComputation takes a certain number of cycles.  This class helps break
@@ -85,8 +90,8 @@ class HloExecutionProfile {
  public:
   using DeviceDescription = perftools::gputools::DeviceDescription;
 
-  HloExecutionProfile(const HloModule& module,
-                      const HloCostAnalysis& cost_analysis);
+  HloExecutionProfile(const HloProfilePrinter* hlo_profile_printer,
+                      const HloProfileIndexMap* hlo_profile_index_map);
 
   // Record how many cycles this HLO took to execute.
   void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
@@ -97,14 +102,14 @@ class HloExecutionProfile {
 
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {
-    return profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(
+    return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(
         computation)];
   }
 
   // Record how many cycles a computation took to execute.
   void set_total_cycles_executed(const HloComputation& computation,
                                  uint64 total_cycles_executed) {
-    profile_counters_[hlo_to_profile_index_.GetProfileIndexFor(computation)] =
+    profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(computation)] =
         total_cycles_executed;
   }
 
@@ -114,15 +119,19 @@ class HloExecutionProfile {
   // for the operations in a given computation. Returns an empty string if it
   // wasn't possible to generate a printable version. cost_analysis should be a
   // clean analysis that can be used to visit the computation.
-  string ToString(const DeviceDescription& device_description) const;
+  string ToString(const DeviceDescription& device_description) const {
+    return hlo_profile_printer_.ToString(profile_counters_.data(),
+                                         device_description.clock_rate_ghz());
+  }
+
+  std::vector<int64>* mutable_profile_counters() { return &profile_counters_; }
+  const std::vector<int64>& profile_counters() const {
+    return profile_counters_;
+  }
 
  private:
-  // hlo_to_profile_index_ maps an Hlo entity (computation or instruction) to an
-  // index in profile_counters_.
-  HloToProfileIndex hlo_to_profile_index_;
-
-  // Used to print profile_counters_ in a human readable form.
-  HloProfilePrinter hlo_profile_printer_;
+  const HloProfilePrinter& hlo_profile_printer_;
+  const HloProfileIndexMap& hlo_profile_index_map_;
 
   // Stores per-Hlo profile counters.  This is the only thing that changes when
   // we execute an XLA computation.

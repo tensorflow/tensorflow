@@ -1149,6 +1149,60 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] /
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
+inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] -
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,
@@ -2183,10 +2237,11 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
     for (int out_h = 0; out_h < output_height; ++out_h) {
       for (int out_w = 0; out_w < output_width; ++out_w) {
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_b);
-        if (out_h * block_shape_height < padding_top ||
-            out_h * block_shape_height >= padding_top + input_height ||
-            out_w * block_shape_width < padding_left ||
-            out_w * block_shape_width >= padding_left + input_width) {
+        if (out_h * block_shape_height + shift_h < padding_top ||
+            out_h * block_shape_height + shift_h >=
+                padding_top + input_height ||
+            out_w * block_shape_width + shift_w < padding_left ||
+            out_w * block_shape_width + shift_w >= padding_left + input_width) {
           memset(out, 0, depth * sizeof(T));
         } else {
           const T* in =
@@ -2336,6 +2391,64 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
+                 T* output_data, const int* output_dims,
+                 const int output_num_dims, const int* axis,
+                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
+                 int* resolved_axis) {
+  // resets output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    num_outputs *= static_cast<size_t>(output_dims[idx]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = 0;
+  }
+  // resets temp index.
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    temp_index[idx] = 0;
+  }
+  // resolves axis.
+  int num_resolved_axis = 0;
+  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
+    int current = axis[idx];
+    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
+    if (current < 0) {
+      current += input_num_dims;
+    }
+    bool is_dup = false;
+    for (int j = 0; j < num_resolved_axis; ++j) {
+      if (resolved_axis[j] == current) {
+        is_dup = true;
+        break;
+      }
+    }
+    if (!is_dup) {
+      resolved_axis[num_resolved_axis++] = current;
+    }
+  }
+  // iterates through input_data.
+  for (bool has_next = true; has_next;
+       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
+    size_t output_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
+                            num_resolved_axis, resolved_axis);
+    output_data[output_offset] += input_data[input_offset];
+  }
+  // takes average by num of elements added to get mean.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                      num_elements_in_axis);
+  }
+}
+
+template <typename T>
 inline void Mean(const T* input_data, const Dims<4>& input_dims,
                  const std::vector<int>& reduction_indices, T* output_data,
                  const Dims<4>& output_dims) {
@@ -2443,6 +2556,69 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
           int offset = Offset(input1_dims, c, x, y, b);
           output_data[offset] =
               input1_data[offset] < max_value ? max_value : input1_data[offset];
+        }
+      }
+    }
+  }
+}
+
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+            T2* output_data, const Dims<4>& output_dims) {
+  // The current ArgMax implemention can only determine the index of the maximum
+  // value in the last dimension. So the axis argument is ignored.
+  TFLITE_DCHECK_EQ(axis[0], 3);
+
+  // For ArgMax, the number of output dimensions = (number of input dimensions -
+  // 1). For the sake of simplicity, the output dimensions are equal to the
+  // input dimensions here. We enforce the constraint that the last dimension
+  // must always be 1.
+  TFLITE_DCHECK_EQ(ArraySize(output_dims, 0), 1);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = ArraySize(input_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        auto max_value = input_data[Offset(input_dims, 0, x, y, b)];
+        int max_index = 0;
+        for (int d = 1; d < depth; ++d) {
+          const auto& curr_value = input_data[Offset(input_dims, d, x, y, b)];
+          if (curr_value > max_value) {
+            max_value = curr_value;
+            max_index = d;
+          }
+        }
+        output_data[Offset(output_dims, 0, x, y, b)] = max_index;
+      }
+    }
+  }
+}
+
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, int* permuted_axes) {
+  int out_sizes[4];
+  // Compute the inverse permutation array so we can do an output centered
+  // transpose. Also, check to make sure output_dims is matching input_dims.
+  for (int k = 0; k < 4; k++) {
+    out_sizes[k] =
+        MatchingArraySize(input_dims, permuted_axes[k], output_dims, k);
+  }
+
+  // Naive transpose loop (iterate on output index and compute input index).
+  int o[4];  // loop index (on output).
+  int i[4];
+  for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
+    i[permuted_axes[3]] = o[3];
+    for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
+      i[permuted_axes[2]] = o[2];
+      for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
+        i[permuted_axes[1]] = o[1];
+        for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
+          i[permuted_axes[0]] = o[0];
+          output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
         }
       }
     }

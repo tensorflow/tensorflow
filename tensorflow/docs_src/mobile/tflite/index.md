@@ -40,7 +40,7 @@ TensorFlow Lite provides an interface to leverage hardware acceleration, if
 available on the device. It does so via the Android Neural Networks library,
 released as part of Android O-MR1.
 
-## Why do we need a new mobile-specific library? 
+## Why do we need a new mobile-specific library?
 
 Machine Learning is changing the computing paradigm, and we see an emerging
 trend of new use cases on mobile and embedded devices. Consumer expectations are
@@ -67,7 +67,7 @@ There are several factors which are fueling interest in this domain:
   connected to a network.
 
 We believe the next wave of machine learning applications will have significant
-processing on mobile and embedded devices. 
+processing on mobile and embedded devices.
 
 ## TensorFlow Lite developer preview highlights
 
@@ -95,7 +95,7 @@ following:
 
     All of the following models are guaranteed to work out of the box:
 
-    - Inception V3, a popular model for detecting the the dominant objects
+    - Inception V3, a popular model for detecting the dominant objects
       present in an image.
 
     - [MobileNets](https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md),
@@ -155,7 +155,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src = "/images/tflite-architecture.jpg">
+![tensorflow lite architecture](https://www.tensorflow.org/images/tflite-architecture.jpg)
 
 Starting with a trained TensorFlow model on disk, you'll convert that model to
 the TensorFlow Lite file format (`.tflite`) using the TensorFlow Lite

@@ -152,7 +152,7 @@ def truncated_normal(shape,
     mean: A 0-D Tensor or Python value of type `dtype`. The mean of the
       truncated normal distribution.
     stddev: A 0-D Tensor or Python value of type `dtype`. The standard deviation
-      of the truncated normal distribution.
+      of the normal distribution, before truncation.
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
@@ -220,8 +220,8 @@ def random_uniform(shape,
     ValueError: If `dtype` is integral and `maxval` is not specified.
   """
   dtype = dtypes.as_dtype(dtype)
-  if dtype not in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-                   dtypes.int64):
+  if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                   dtypes.float64, dtypes.int32, dtypes.int64):
     raise ValueError("Invalid dtype %r" % dtype)
   if maxval is None:
     if dtype.is_integer:
@@ -316,7 +316,7 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
-def multinomial(logits, num_samples, seed=None, name=None):
+def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 
   Example:
@@ -336,6 +336,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
       @{tf.set_random_seed}
       for behavior.
     name: Optional name for the operation.
+    output_dtype: integer type to use for the output. Defaults to int64.
 
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
@@ -344,7 +345,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
     return gen_random_ops.multinomial(
-        logits, num_samples, seed=seed1, seed2=seed2)
+        logits, num_samples, seed=seed1, seed2=seed2, output_dtype=output_dtype)
 
 
 ops.NotDifferentiable("Multinomial")

@@ -44,8 +44,9 @@ source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
 
 run_configure_for_cpu_build
 
-clean_output_base
-
+# --define=override_eigen_strong_inline=true speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
+# by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
+BUILD_OPTS="--define=override_eigen_strong_inline=true"
 bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
 # Create a python test directory to avoid package name conflict
@@ -60,11 +61,8 @@ reinstall_tensorflow_pip ${PIP_NAME}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# TODO(pcloudy): Remove TF_SAVER_LENIENT_NAMES after
-# https://github.com/tensorflow/tensorflow/issues/12844 is fixed.
 bazel test -c opt $BUILD_OPTS -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows \
-  --build_tag_filters=-no_pip,-no_windows --build_tests_only \
-  --test_env=TF_SAVER_LENIENT_NAMES=True \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
   //${PY_TEST_DIR}/tensorflow/python/...

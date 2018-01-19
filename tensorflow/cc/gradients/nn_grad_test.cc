@@ -23,9 +23,21 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::BiasAdd;
+using ops::Conv2D;
+using ops::Elu;
+using ops::L2Loss;
+using ops::LogSoftmax;
+using ops::LRN;
+using ops::MaxPool;
+using ops::MaxPoolV2;
+using ops::Placeholder;
+using ops::Relu;
+using ops::Relu6;
+using ops::Selu;
+using ops::Softmax;
 
 class NNGradTest : public ::testing::Test {
  protected:
@@ -189,6 +201,13 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
   Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
   SetRandomValuesWithBumpedMax<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NNGradTest, LRN){
+  TensorShape x_shape({1, 1, 2, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = LRN(scope_, x);
+  RunTest(x, x_shape, y, x_shape);
 }
 
 }  // namespace

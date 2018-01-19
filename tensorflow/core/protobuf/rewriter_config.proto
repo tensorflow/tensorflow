@@ -30,11 +30,13 @@ message RewriterConfig {
   }
 
   // Optimize tensor layouts
-  bool optimize_tensor_layout = 1;
+  Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
   Toggle constant_folding = 3;
   // Arithmetic optimizations (default is ON)
   Toggle arithmetic_optimization = 7;
+  // Control dependency optimizations (default is ON).
+  Toggle dependency_optimization = 8;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
 
@@ -51,6 +53,7 @@ message RewriterConfig {
     // selected automatically.
     SWAPPING_HEURISTICS = 4;
     RECOMPUTATION_HEURISTICS = 5;
+    SCHEDULING_HEURISTICS = 6;
     // Use any combination of swapping and recomputation heuristics.
     HEURISTICS = 3;
   }

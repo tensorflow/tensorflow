@@ -53,6 +53,7 @@ cc_library(
     hdrs = ["topological_sort.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:op_types",

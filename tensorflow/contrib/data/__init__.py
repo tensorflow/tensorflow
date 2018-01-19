@@ -12,28 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`tf.contrib.data.Dataset` API for input pipelines.
+"""`tf.contrib.data` API for input pipelines.
+
+This module contains the experimental (less stable) counterpart to the
+`tf.data` API. See @{tf.data.Dataset} and @{tf.data.Iterator} for the
+stable classes.
 
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Dataset
+@@Counter
 @@Iterator
 @@TFRecordDataset
 @@FixedLengthRecordDataset
 @@TextLineDataset
 
 @@batch_and_drop_remainder
-@@padded_batch_and_drop_remainder
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@group_by_window
 @@ignore_errors
 @@make_saveable_from_iterator
-@@read_batch_features
-@@unbatch
+@@map_and_batch
+@@padded_batch_and_drop_remainder
 @@parallel_interleave
+@@read_batch_features
 @@rejection_resample
+@@scan
+@@shuffle_and_repeat
 @@sloppy_interleave
+@@unbatch
 
 @@get_single_element
 """
@@ -46,8 +54,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
+from tensorflow.contrib.data.python.ops.batching import map_and_batch
 from tensorflow.contrib.data.python.ops.batching import padded_batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import unbatch
+from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
 from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
@@ -62,6 +72,8 @@ from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.readers import TextLineDataset
 from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
+from tensorflow.contrib.data.python.ops.scan_ops import scan
+from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 

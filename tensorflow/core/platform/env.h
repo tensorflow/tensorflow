@@ -68,9 +68,12 @@ class Env {
   /// \brief Returns the file system schemes registered for this Env.
   virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
 
-  // \brief Register a file system for a scheme.
+  /// \brief Register a file system for a scheme.
   virtual Status RegisterFileSystem(const string& scheme,
                                     FileSystemRegistry::Factory factory);
+
+  /// \brief Flush filesystem caches for all registered filesystems.
+  Status FlushFileSystemCaches();
 
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
@@ -217,6 +220,10 @@ class Env {
 
   /// Creates a local unique temporary file name. Returns true if success.
   bool LocalTempFilename(string* filename);
+
+  /// Creates a local unique file name that starts with |prefix| and ends with
+  /// |suffix|. Returns true if success.
+  bool CreateUniqueFileName(string* prefix, const string& suffix);
 
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or

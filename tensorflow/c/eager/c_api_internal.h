@@ -58,15 +58,21 @@ struct TFE_Context {
   // session->devices[i].
   std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
 
+  tensorflow::mutex cache_mu;
   std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
                      tensorflow::Fprint128Hasher>
-      kernel_cache;
+      kernel_cache GUARDED_BY(cache_mu);
 
   tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
     return pflr->GetFLR(d->name());
   }
 
   const std::vector<tensorflow::Device*>& devices() { return session->devices; }
+
+  // Whether we should compute RunMetadata.
+  std::atomic<bool> should_store_metadata{false};
+  tensorflow::mutex metadata_mu;
+  tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
 };
 
 struct TFE_TensorHandle {

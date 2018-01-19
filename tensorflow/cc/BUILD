@@ -421,6 +421,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
+    api_def_srcs = ["//tensorflow/core:base_api_def"],
     op_lib_names = [
         "array_ops",
         "audio_ops",
@@ -447,7 +448,6 @@ tf_gen_op_wrappers_cc(
         "ops/const_op.h",
         "ops/standard_ops.h",
     ],
-    override_file = "ops/op_gen_overrides.pbtxt",
     pkg = "//tensorflow/core",
 )
 
@@ -525,14 +525,35 @@ cc_library_with_android_deps(
         "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
+    data = [
+        "//tensorflow/core:base_api_def",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cc_op_gen_test",
+    srcs = [
+        "framework/cc_op_gen.cc",
+        "framework/cc_op_gen.h",
+        "framework/cc_op_gen_test.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

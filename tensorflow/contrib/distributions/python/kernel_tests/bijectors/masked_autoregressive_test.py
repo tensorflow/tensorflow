@@ -22,9 +22,9 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import test_util
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import Invert
+from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import _gen_mask
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import masked_autoregressive_default_template
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import MaskedAutoregressiveFlow
-from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive_impl import _gen_mask
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables

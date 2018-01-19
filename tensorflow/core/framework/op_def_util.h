@@ -43,6 +43,10 @@ Status ValidateAttrValue(const AttrValue& attr_value,
 const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def);
 OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
 
+// Searches op_def for input argument with the indicated name.
+// Returns nullptr if no such attr is found.
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
+
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
 string SummarizeOpDef(const OpDef& op_def);
@@ -58,6 +62,10 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op);
 Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
+
+// Returns an error if the default value for any attr is added/removed/modified
+// in new_op compared to old_op.
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
 
 // Remove all docs from *op_def / *op_list.
 void RemoveDescriptionsFromOpDef(OpDef* op_def);

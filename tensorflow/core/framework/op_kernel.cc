@@ -112,7 +112,7 @@ const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -124,7 +124,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
 
 Status OpKernel::OutputRange(StringPiece output_name, int* start,
                              int* stop) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -192,6 +192,10 @@ OpKernelConstruction::OpKernelConstruction(
       graph_def_version_(graph_def_version),
       status_(status) {}
 
+bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+  return HasNodeAttr(def(), attr_name);
+}
+
 void OpKernelConstruction::SetStatus(const Status& status) {
   status_->Update(status);
 }
@@ -248,10 +252,8 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params),
       outputs_(num_outputs),
-      host_temp_memory_size_(0),
-      device_temp_memory_size_(0),
-      host_persistent_memory_allocated_(0),
-      device_persistent_memory_allocated_(0) {
+      temp_memory_size_(0),
+      persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
@@ -664,11 +666,7 @@ Status OpKernelContext::allocate_temp(
     if (a->TracksAllocationSizes()) {
       int64 alloc_size =
           a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
-      if (allocate_on_host(allocator_attr)) {
-        record_host_temp_memory_size(alloc_size);
-      } else {
-        record_device_temp_memory_size(alloc_size);
-      }
+      record_temp_memory_size(alloc_size);
     }
   }
   return s;
@@ -791,26 +789,15 @@ bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
   return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
 }
 
-void OpKernelContext::record_host_persistent_memory_allocation(int64 size,
-                                                               int64 alloc_id) {
-  host_persistent_memory_allocated_ += size;
-  host_persistent_alloc_ids_.push_back(alloc_id);
+void OpKernelContext::record_persistent_memory_allocation(int64 size,
+                                                          int64 alloc_id) {
+  persistent_memory_allocated_ += size;
+  persistent_alloc_ids_.push_back(alloc_id);
 }
 
-void OpKernelContext::record_device_persistent_memory_allocation(
-    int64 size, int64 alloc_id) {
-  device_persistent_memory_allocated_ += size;
-  device_persistent_alloc_ids_.push_back(alloc_id);
-}
-
-std::vector<int64> OpKernelContext::host_persistent_alloc_ids() const {
-  return std::vector<int64>(host_persistent_alloc_ids_.begin(),
-                            host_persistent_alloc_ids_.end());
-}
-
-std::vector<int64> OpKernelContext::device_persistent_alloc_ids() const {
-  return std::vector<int64>(device_persistent_alloc_ids_.begin(),
-                            device_persistent_alloc_ids_.end());
+std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+  return std::vector<int64>(persistent_alloc_ids_.begin(),
+                            persistent_alloc_ids_.end());
 }
 
 // OpKernel registration ------------------------------------------------------

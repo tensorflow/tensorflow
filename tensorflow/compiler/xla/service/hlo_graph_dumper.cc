@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -508,8 +509,17 @@ stylesheet="
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64 from_node_id = node_ids_.at(from_node);
-    int64 to_node_id = to_node ? node_ids_.at(to_node) : root_node_id_;
+    int64 from_node_id =
+        tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
+    if (from_node_id == -1) {
+      LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
+    }
+    int64 to_node_id =
+        to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
+                : root_node_id_;
+    if (to_node != nullptr && to_node_id == -1) {
+      LOG(FATAL) << to_node->name() << " was added to edges but not to nodes";
+    }
 
     add_hover_css_rule("node", from_node_id, kBlue);
     add_hover_css_rule("node", to_node_id, kRed);
@@ -653,11 +663,14 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
 
 string HloDotDumper::DumpRootTag() {
   const HloInstruction* from = GetNodeForEdge(computation_->root_instruction());
-  auto from_id = InstructionId(from);
 
-  if (!filter_.Show(from)) {
+  // We didn't display constants as separate nodes; so if the root is a
+  // constant, we don't add root tag or edge for it.
+  if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
     return "";
   }
+
+  auto from_id = InstructionId(from);
 
   // The ID of the root computation is otherwise unused, so it makes a good ID
   // to use for the root-tag node.  However, the edge_ids_ map requires a
@@ -784,7 +797,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
+    if (tensorflow::StringPiece(constant->name()).starts_with("constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
@@ -864,9 +877,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // (eg, parameter).
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kComplex:
@@ -882,18 +896,19 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
+    case HloOpcode::kRng:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -903,7 +918,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kRng:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
       // uninteresting.
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
@@ -911,9 +925,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kYellow;
     case HloOpcode::kBitcast:
-    case HloOpcode::kTuple:
-    case HloOpcode::kTrace:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
       // De-emphasize nodes which broadcast a scalar within a fusion node --
@@ -947,32 +961,34 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kFft:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;
     case HloOpcode::kParameter:
       return kParameterColor;
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
-    case HloOpcode::kSelectAndScatter:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
       return kPurple;
-    case HloOpcode::kMap:
     case HloOpcode::kFusion:
+    case HloOpcode::kMap:
       return kGray;
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
+    case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
       return kBrown;
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
-    case HloOpcode::kCall:
       return kDarkGreen;
     case HloOpcode::kConstant:
       LOG(FATAL) << "Constants don't get their own nodes in the graph.";
@@ -998,12 +1014,12 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
   if (tensorflow::StringPiece(instr->name())
-          .starts_with(StrCat("%", HloOpcodeString(instr->opcode())))) {
+          .starts_with(HloOpcodeString(instr->opcode()))) {
     return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
       StrCat(HloOpcodeString(instr->opcode()),
-             instr->opcode() == HloOpcode::kFusion
+             instr->opcode() != HloOpcode::kFusion
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
@@ -1034,50 +1050,15 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
-  string opcode_specific_info = [&]() -> string {
-    switch (instr->opcode()) {
-      case HloOpcode::kRng:
-        return RandomDistribution_Name(instr->random_distribution());
-      case HloOpcode::kConvolution:
-        return StrCat(
-            HtmlLikeStringSanitize(
-                instr->ConvolutionDimensionNumbersToString()),
-            "<br/>",
-            HtmlLikeStringSanitize(window_util::ToString(instr->window())));
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kTranspose:
-      case HloOpcode::kReduce:
-        return Printf("dims={%s}", Join(instr->dimensions(), ","));
-      case HloOpcode::kGetTupleElement:
-        return Printf("index=%lld", instr->tuple_index());
-      case HloOpcode::kBatchNormTraining:
-      case HloOpcode::kBatchNormGrad:
-        return Printf("feature_index=%lld", instr->feature_index());
-      case HloOpcode::kCustomCall:
-        return Printf("custom_call_target=%s", instr->custom_call_target());
-      case HloOpcode::kSlice:
-        return std::all_of(instr->slice_strides().begin(),
-                           instr->slice_strides().end(),
-                           [](int64 stride) { return stride == 1; })
-                   ? ""
-                   : StrCat("stride=", VectorString(instr->slice_strides()));
-      case HloOpcode::kSend:
-      case HloOpcode::kSendDone:
-      case HloOpcode::kRecv:
-      case HloOpcode::kRecvDone:
-        return StrCat("channel_id=", instr->channel_id());
-      default:
-        return "";
-    }
-  }();
-
   std::vector<string> lines;
-  if (!opcode_specific_info.empty()) {
-    lines.push_back(opcode_specific_info);
+
+  // Get the instruction's extra attributes excluding the names of its
+  // subcomputations, since those are drawn explicitly in the graph.
+  for (const auto& line : instr->ExtraAttributesToString(
+           HloPrintOptions().set_print_subcomputation_references(false))) {
+    lines.push_back(HtmlLikeStringSanitize(line));
   }
-  if (instr->has_sharding()) {
-    lines.push_back(StrCat("sharding=", instr->sharding().ToString()));
-  }
+
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
@@ -1089,7 +1070,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         instr->shape().dimensions_size() > 1 &&
         !ShapeUtil::IsTuple(instr->shape())) {
       StrAppend(&instr_shape, "{",
-                Join(instr->shape().layout().minor_to_major(), ","), "}");
+                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
@@ -1351,19 +1332,16 @@ string SaveGraph(const string& graph,
       file_extension = ".pbtxt";
       break;
   }
-  string path = JoinPath(
-      dest_path, StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+  string path = JoinPath(dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
-  int fd = mkstemps(&path[0], file_extension.length());
-  if (fd < 0) {
+  auto env = tensorflow::Env::Default();
+  if (!env->CreateUniqueFileName(&path, file_extension)) {
     status =
         Status(tensorflow::error::Code::UNKNOWN,
                StrCat("Failed to create temporary file to dump HLO graph: ",
                       strerror(errno)));
   } else {
-    status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
-    close(fd);
+    status = tensorflow::WriteStringToFile(env, path, graph);
   }
   if (!status.ok()) {
     LOG(WARNING) << "Saving HLO graph failed: " << status;
@@ -1436,7 +1414,8 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(
-      env, path, module.ToString(/*include_large_constants=*/true)));
+      env, path,
+      module.ToString(HloPrintOptions().set_print_large_constants(true))));
   LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
 }
 

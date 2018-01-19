@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/contrib/lite/toco/types.pb.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -278,6 +279,9 @@ void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
 void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
                   AxesOrder output_axes_order, const Shape& output_shape,
                   const float* input_data, float* output_data);
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const uint8* input_data, uint8* output_data);
 
 // Returns true if it may be OK for any graph transformation to ever discard
 // that array. The idea is that we can't ever discard arrays that are either
@@ -286,6 +290,8 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
 bool IsDiscardableArray(const Model& model, const string& array_name);
 
 void CheckFinalDataTypesSatisfied(const Model& model);
+
+ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 }  // namespace toco
 

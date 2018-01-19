@@ -40,7 +40,7 @@ class Conv1DTest(test.TestCase):
     filters = array_ops.expand_dims(filters, 2)  # out_channels
     # Filters is 2x1x1
     for stride in [1, 2]:
-      with self.test_session():
+      with self.test_session(use_gpu=test.is_gpu_available()):
         c = nn_ops.conv1d(x, filters, stride, padding="VALID")
         reduced = array_ops.squeeze(c)
         output = reduced.eval()
@@ -51,7 +51,6 @@ class Conv1DTest(test.TestCase):
         else:
           self.assertEqual(len(output), 2)
           self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
-
 
   def testConv1DTranspose(self):
     with self.test_session():
@@ -92,6 +91,7 @@ class Conv1DTest(test.TestCase):
           cache_values[n, -1, k] = cache_values[n, -2, k]
 
     self.assertAllClose(cache_values, value)
+
 
 if __name__ == "__main__":
   test.main()

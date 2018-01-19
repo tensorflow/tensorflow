@@ -359,19 +359,38 @@ class RNNTest(test.TestCase):
     layer.build((None, None, 5))
 
     # Test regularization losses
-    assert len(layer.losses) == 1
+    self.assertEqual(len(layer.losses), 1)
 
     # Test weights
-    assert len(layer.trainable_weights) == 6
+    self.assertEqual(len(layer.trainable_weights), 6)
     cells[0].trainable = False
-    assert len(layer.trainable_weights) == 3
-    assert len(layer.non_trainable_weights) == 3
+    self.assertEqual(len(layer.trainable_weights), 3)
+    self.assertEqual(len(layer.non_trainable_weights), 3)
 
     # Test `get_losses_for`
     x = keras.Input((None, 5))
     y = keras.backend.sum(x)
     cells[0].add_loss(y, inputs=x)
-    assert layer.get_losses_for(x) == [y]
+    self.assertEqual(layer.get_losses_for(x), [y])
+
+  def test_rnn_dynamic_trainability(self):
+    layer_class = keras.layers.SimpleRNN
+    embedding_dim = 4
+    units = 3
+
+    layer = layer_class(units)
+    layer.build((None, None, embedding_dim))
+    self.assertEqual(len(layer.weights), 3)
+    self.assertEqual(len(layer.trainable_weights), 3)
+    self.assertEqual(len(layer.non_trainable_weights), 0)
+    layer.trainable = False
+    self.assertEqual(len(layer.weights), 3)
+    self.assertEqual(len(layer.trainable_weights), 0)
+    self.assertEqual(len(layer.non_trainable_weights), 3)
+    layer.trainable = True
+    self.assertEqual(len(layer.weights), 3)
+    self.assertEqual(len(layer.trainable_weights), 3)
+    self.assertEqual(len(layer.non_trainable_weights), 0)
 
 
 if __name__ == '__main__':

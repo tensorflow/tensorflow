@@ -42,7 +42,7 @@ const float kEMADecay = 0.999;
 
 // Node types to rewrite. Insert quantize_and_dequantize op for their inputs.
 const auto* nodes_to_rewrite =
-    new std::unordered_set<string, StringPiece::Hasher>{"MatMul", "Conv2D"};
+    new std::unordered_set<string, StringPieceHasher>{"MatMul", "Conv2D"};
 
 // Contains necessary parameters to convert an edge.
 struct EdgeToConvert {
@@ -563,7 +563,7 @@ Status ProcessTargetEdges(Graph* graph, const string& quant_op_type,
                           const std::vector<EdgeToConvert>& target_edges) {
   // Remember previously converted ops to avoid duplicated conversion on the
   // same input.
-  std::unordered_map<string, Node*, StringPiece::Hasher> name_index;
+  std::unordered_map<string, Node*, StringPieceHasher> name_index;
   std::vector<Node*> added_variables;
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;

@@ -33,6 +33,10 @@ _allowed_symbols = [
     'ConvKFCBasicFB',
     'ConvDiagonalFB',
     'set_global_constants',
+    'compute_pi_tracenorm',
+    'compute_pi_adjusted_damping',
+    'num_conv_locations',
+    'normalize_damping'
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

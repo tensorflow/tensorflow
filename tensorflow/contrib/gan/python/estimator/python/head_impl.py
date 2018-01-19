@@ -71,7 +71,7 @@ class GANHead(head._Head):  # pylint: disable=protected-access
   def __init__(self, generator_loss_fn, discriminator_loss_fn,
                generator_optimizer, discriminator_optimizer,
                use_loss_summaries=True,
-               get_hooks_fn=tfgan_train.get_sequential_train_hooks(),
+               get_hooks_fn=None,
                name=None):
     """`Head` for GAN training.
 
@@ -86,10 +86,12 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
       get_hooks_fn: A function that takes a GANTrainOps tuple and returns a list
-        of hooks.
+        of hooks. Defaults to `train.get_sequential_train_hooks()`
       name: name of the head. If provided, summary and metrics keys will be
         suffixed by `"/" + name`.
     """
+    if get_hooks_fn is None:
+      get_hooks_fn = tfgan_train.get_sequential_train_hooks()
     # TODO(joelshor): Validate inputs.
 
     if use_loss_summaries in [True, False]:

@@ -88,14 +88,20 @@ def group_by_window(key_func,
 class _VariantDataset(dataset_ops.Dataset):
   """A Dataset wrapper for a tf.variant-typed function argument."""
 
-  def __init__(self, dataset_variant, output_types, output_shapes):
+  def __init__(self, dataset_variant, output_types, output_shapes,
+               output_classes):
     super(_VariantDataset, self).__init__()
     self._dataset_variant = dataset_variant
     self._output_types = output_types
     self._output_shapes = output_shapes
+    self._output_classes = output_classes
 
   def _as_variant_tensor(self):
     return self._dataset_variant
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_shapes(self):
@@ -138,17 +144,21 @@ class GroupByWindowDataset(dataset_ops.Dataset):
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
 
-    @function.Defun(
-        *nest.flatten(sparse.unwrap_sparse_types(input_dataset.output_types)))
+    @function.Defun(*nest.flatten(
+        sparse.as_dense_types(input_dataset.output_types,
+                              input_dataset.output_classes)))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       # Pass in shape information from the input_dataset.
-      for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
+      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
+                                            input_dataset.output_classes)
+      for arg, shape in zip(args, nest.flatten(dense_shapes)):
         arg.set_shape(shape)
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
       nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types)
+          nested_args, input_dataset.output_types, input_dataset.output_shapes,
+          input_dataset.output_classes)
       # pylint: disable=protected-access
       if dataset_ops._should_unpack_args(nested_args):
         ret = key_func(*nested_args)
@@ -170,20 +180,25 @@ class GroupByWindowDataset(dataset_ops.Dataset):
     def tf_reduce_func(key, window_dataset_variant):
       """A wrapper for Defun that facilitates shape inference."""
       key.set_shape([])
-      window_dataset = _VariantDataset(window_dataset_variant,
-                                       input_dataset.output_types,
-                                       input_dataset.output_shapes)
+      window_dataset = _VariantDataset(
+          window_dataset_variant, input_dataset.output_types,
+          input_dataset.output_shapes, input_dataset.output_classes)
       if not isinstance(window_dataset, dataset_ops.Dataset):
         raise TypeError("`window_dataset` must return a `Dataset` object.")
       output_dataset = reduce_func(key, window_dataset)
       if not isinstance(output_dataset, dataset_ops.Dataset):
         raise TypeError("`reduce_func` must return a `Dataset` object.")
+      self._output_classes = output_dataset.output_classes
       self._output_types = output_dataset.output_types
       self._output_shapes = output_dataset.output_shapes
       return output_dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._reduce_func = tf_reduce_func
     self._reduce_func.add_to_graph(ops.get_default_graph())
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
   @property
   def output_shapes(self):
@@ -203,5 +218,6 @@ class GroupByWindowDataset(dataset_ops.Dataset):
         reduce_func=self._reduce_func,
         window_size_func=self._window_size_func,
         output_types=nest.flatten(
-            sparse.unwrap_sparse_types(self.output_types)),
-        output_shapes=nest.flatten(self.output_shapes))
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))

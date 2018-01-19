@@ -17,6 +17,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
 
@@ -111,7 +112,7 @@ TEST(StringUtil, TestEmptyList) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

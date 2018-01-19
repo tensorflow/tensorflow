@@ -26,24 +26,28 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace Eigen {
-namespace internal {
+namespace numext {
+#if GOOGLE_CUDA
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<float> exp(
+    const std::complex<float>& x) {
+  auto com = ::expf(x.real());
+  auto res_real = com * ::cosf(x.imag());
+  auto res_imag = com * ::sinf(x.imag());
+  return std::complex<float>(res_real, res_imag);
+}
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE std::complex<double> exp(
+    const std::complex<double>& x) {
+  auto com = ::exp(x.real());
+  auto res_real = com * ::cos(x.imag());
+  auto res_imag = com * ::sin(x.imag());
+  return std::complex<double>(res_real, res_imag);
+}
+#endif
+}  // namespace numext
 
-// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
-template <typename T>
-struct scalar_fmod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return std::fmod(a, b);
-  }
-};
-template <typename T>
-struct functor_traits<scalar_fmod2_op<T>> {
-  enum {
-    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
-    PacketAccess = false,
-  };
-};
+namespace internal {
 
 template <typename T>
 struct scalar_asinh_op {
@@ -702,7 +706,7 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
-struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T>> {};
+struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};

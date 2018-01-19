@@ -41,33 +41,48 @@ def _Conv2DBackpropInputGrad(op, grad):
   Returns:
     the gradients w.r.t. the input and the filter
   """
-  return [None,
-          nn_ops.conv2d_backprop_filter(grad, array_ops.shape(op.inputs[1]),
-                                        op.inputs[2], op.get_attr("strides"),
-                                        op.get_attr("padding"),
-                                        op.get_attr("use_cudnn_on_gpu"),
-                                        op.get_attr("data_format")),
-          nn_ops.conv2d(grad, op.inputs[1], op.get_attr("strides"),
-                        op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
-                        op.get_attr("data_format"))]
+  return [
+      None,
+      nn_ops.conv2d_backprop_filter(
+          grad,
+          array_ops.shape(op.inputs[1]),
+          op.inputs[2],
+          dilations=op.get_attr("dilations"),
+          strides=op.get_attr("strides"),
+          padding=op.get_attr("padding"),
+          use_cudnn_on_gpu=op.get_attr("use_cudnn_on_gpu"),
+          data_format=op.get_attr("data_format")),
+      nn_ops.conv2d(
+          grad,
+          op.inputs[1],
+          dilations=op.get_attr("dilations"),
+          strides=op.get_attr("strides"),
+          padding=op.get_attr("padding"),
+          use_cudnn_on_gpu=op.get_attr("use_cudnn_on_gpu"),
+          data_format=op.get_attr("data_format"))
+  ]
 
 
 @ops.RegisterGradient("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterGrad(op, grad):
   return [
       nn_ops.conv2d_backprop_input(
-          array_ops.shape(op.inputs[0]), grad, op.inputs[2],
-          op.get_attr("strides"),
-          op.get_attr("padding"),
-          op.get_attr("use_cudnn_on_gpu"),
-          op.get_attr("data_format")),
-      None,
+          array_ops.shape(op.inputs[0]),
+          grad,
+          op.inputs[2],
+          dilations=op.get_attr("dilations"),
+          strides=op.get_attr("strides"),
+          padding=op.get_attr("padding"),
+          use_cudnn_on_gpu=op.get_attr("use_cudnn_on_gpu"),
+          data_format=op.get_attr("data_format")), None,
       nn_ops.conv2d(
-          op.inputs[0], grad,
-          op.get_attr("strides"),
-          op.get_attr("padding"),
-          op.get_attr("use_cudnn_on_gpu"),
-          op.get_attr("data_format"))
+          op.inputs[0],
+          grad,
+          dilations=op.get_attr("dilations"),
+          strides=op.get_attr("strides"),
+          padding=op.get_attr("padding"),
+          use_cudnn_on_gpu=op.get_attr("use_cudnn_on_gpu"),
+          data_format=op.get_attr("data_format"))
   ]
 
 
@@ -466,25 +481,32 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
 
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
+  dilations = op.get_attr("dilations")
   strides = op.get_attr("strides")
   padding = op.get_attr("padding")
   use_cudnn_on_gpu = op.get_attr("use_cudnn_on_gpu")
   data_format = op.get_attr("data_format")
   shape_0, shape_1 = array_ops.shape_n([op.inputs[0], op.inputs[1]])
-  return [nn_ops.conv2d_backprop_input(shape_0,
-                                       op.inputs[1],
-                                       grad,
-                                       strides,
-                                       padding,
-                                       use_cudnn_on_gpu,
-                                       data_format),
-          nn_ops.conv2d_backprop_filter(op.inputs[0],
-                                        shape_1,
-                                        grad,
-                                        strides,
-                                        padding,
-                                        use_cudnn_on_gpu,
-                                        data_format)]
+  return [
+      nn_ops.conv2d_backprop_input(
+          shape_0,
+          op.inputs[1],
+          grad,
+          dilations=dilations,
+          strides=strides,
+          padding=padding,
+          use_cudnn_on_gpu=use_cudnn_on_gpu,
+          data_format=data_format),
+      nn_ops.conv2d_backprop_filter(
+          op.inputs[0],
+          shape_1,
+          grad,
+          dilations=dilations,
+          strides=strides,
+          padding=padding,
+          use_cudnn_on_gpu=use_cudnn_on_gpu,
+          data_format=data_format)
+  ]
 
 
 @ops.RegisterGradient("DepthwiseConv2dNative")

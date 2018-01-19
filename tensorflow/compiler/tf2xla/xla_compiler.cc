@@ -268,7 +268,8 @@ Status BuildArguments(const Graph& graph,
                       XlaContext* context, std::vector<int>* arg_cores,
                       std::vector<XlaExpression>* arg_expressions,
                       std::vector<int>* input_mapping,
-                      std::vector<xla::Shape>* input_shapes) {
+                      std::vector<xla::Shape>* input_shapes,
+                      bool is_entry_computation) {
   arg_expressions->resize(args.size());
   *arg_cores = std::vector<int>(args.size(), -1);
 
@@ -292,7 +293,7 @@ Status BuildArguments(const Graph& graph,
         TF_RETURN_IF_ERROR(
             context->CreateResource(arg.resource_kind, i, arg.name, arg.type,
                                     xla::ComputationDataHandle(), &resource));
-        resource->tensor_array_size = arg.tensor_array_size;
+        resource->set_tensor_array_size(arg.tensor_array_size);
         arg_expression.set_resource(resource);
         if (arg.initialized) {
           resources.push_back(i);
@@ -316,13 +317,20 @@ Status BuildArguments(const Graph& graph,
     return Status::OK();
   }
 
-  input_shapes->resize(parameters.size());
+  std::vector<xla::Shape> arg_shapes;
+  arg_shapes.reserve(parameters.size());
   input_mapping->resize(parameters.size());
   for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     // Computes the shapes of non-constant arguments.
-    (*input_shapes)[i] = arg.shape;
+    arg_shapes.push_back(arg.shape);
     (*input_mapping)[i] = parameters[i];
+  }
+
+  if (use_tuple_arg) {
+    input_shapes->push_back(xla::ShapeUtil::MakeTupleShape(arg_shapes));
+  } else {
+    *input_shapes = arg_shapes;
   }
 
   // Use the _Arg nodes in the graph to resolve core assignments.
@@ -348,14 +356,28 @@ Status BuildArguments(const Graph& graph,
   // Build parameter handles for non-constant arguments.
   std::vector<xla::ComputationDataHandle> arg_handles(parameters.size());
   if (use_tuple_arg) {
-    xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(*input_shapes);
-    xla::ComputationDataHandle tuple =
-        builder->Parameter(0, tuple_shape, "arg_tuple");
+    xla::ComputationDataHandle tuple;
+    if (is_entry_computation) {
+      xla::OpSharding tuple_sharding;
+      tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
+      for (int64 parameter : parameters) {
+        const int core = (*arg_cores)[parameter];
+        const int root_device = 0;
+        *tuple_sharding.add_tuple_shardings() =
+            core == -1 ? xla::sharding_builder::AssignDevice(root_device)
+                       : xla::sharding_builder::AssignDevice(core);
+      }
+      xla::ScopedShardingAssignment assign_tuple_sharding(builder,
+                                                          tuple_sharding);
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    } else {
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    }
     for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
       const int core = (*arg_cores)[parameters[i]];
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::ShardingBuilder::AssignDevice(core));
+                              : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] = builder->GetTupleElement(tuple, i);
     }
   } else {
@@ -363,7 +385,7 @@ Status BuildArguments(const Graph& graph,
       const int core = (*arg_cores)[parameters[i]];
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::ShardingBuilder::AssignDevice(core));
+                              : xla::sharding_builder::AssignDevice(core));
       arg_handles[i] =
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
@@ -374,21 +396,18 @@ Status BuildArguments(const Graph& graph,
   for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     VLOG(2) << "  XLA arg " << i
-            << " shape: " << xla::ShapeUtil::HumanString((*input_shapes)[i])
+            << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
             << " name: " << arg.name << " TF arg " << parameters[i];
     XlaExpression& arg_expression = (*arg_expressions)[parameters[i]];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);
         XlaResource* resource = arg_expression.resource();
-        TF_RETURN_IF_ERROR(resource->SetFromPack(arg.tensor_array_gradients,
-                                                 arg_handles[i], builder));
+        TF_RETURN_IF_ERROR(
+            resource->SetFromPack(arg.tensor_array_gradients, arg_handles[i],
+                                  /*reset_initial_values=*/true, builder));
         VLOG(2) << "    resource: num_gradients: "
                 << arg.tensor_array_gradients.size();
-        resource->initial_value = resource->value;
-        for (const auto& gradient : resource->tensor_array_gradients) {
-          gradient.second->initial_value = gradient.second->value;
-        }
         break;
       }
       case XlaCompiler::Argument::kParameter:
@@ -439,43 +458,43 @@ Status BuildComputation(
   std::vector<const XlaResource*> arg_resources;
   arg_resources.reserve(resources.size());
   for (const auto& resource : resources) {
-    if (resource->arg_num >= 0) {
+    if (resource->arg_num() >= 0) {
       arg_resources.push_back(resource.get());
     }
   }
   std::sort(arg_resources.begin(), arg_resources.end(),
             [](const XlaResource* a, const XlaResource* b) {
-              return a->arg_num < b->arg_num;
+              return a->arg_num() < b->arg_num();
             });
 
   for (const XlaResource* resource : arg_resources) {
-    const XlaCompiler::Argument& arg = args[resource->arg_num];
-    const int core = arg_cores[resource->arg_num];
-    DCHECK_LT(resource->arg_num, arg_cores.size());
+    const XlaCompiler::Argument& arg = args[resource->arg_num()];
+    const int core = arg_cores[resource->arg_num()];
+    DCHECK_LT(resource->arg_num(), arg_cores.size());
     bool modified =
-        resource->value.handle() != resource->initial_value.handle();
+        resource->value().handle() != resource->initial_value().handle();
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
-    for (const auto& grad : resource->tensor_array_gradients) {
-      modified =
-          modified ||
-          grad.second->value.handle() != grad.second->initial_value.handle() ||
-          arg.tensor_array_gradients.count(grad.first) == 0;
+    for (const auto& grad : resource->tensor_array_gradients()) {
+      modified = modified ||
+                 grad.second->value().handle() !=
+                     grad.second->initial_value().handle() ||
+                 arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
-      update.input_index = resource->arg_num;
-      update.type = resource->type;
+      update.input_index = resource->arg_num();
+      update.type = resource->type();
       update.modified = modified;
-      for (const auto& grad : resource->tensor_array_gradients) {
+      for (const auto& grad : resource->tensor_array_gradients()) {
         update.tensor_array_gradients_accessed.insert(grad.first);
       }
 
       // Request that the value be returned on a specific core.
       xla::ScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::ShardingBuilder::AssignDevice(core));
+                              : xla::sharding_builder::AssignDevice(core));
 
       xla::ComputationDataHandle handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
@@ -500,18 +519,6 @@ Status BuildComputation(
   }
   *computation = computation_status.ConsumeValueOrDie();
   return Status::OK();
-}
-
-void AssignMajorToMinorLayout(xla::Shape* shape) {
-  if (xla::ShapeUtil::IsTuple(*shape)) {
-    for (xla::Shape& elem_shape : *shape->mutable_tuple_shapes()) {
-      AssignMajorToMinorLayout(&elem_shape);
-    }
-  } else {
-    auto& minor_to_major = *shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major.Resize(xla::ShapeUtil::Rank(*shape), 0);
-    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
-  }
 }
 
 }  // namespace
@@ -543,13 +550,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                      options.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
-  result->tuple_arg = options.use_tuple_arg;
-
   std::vector<XlaExpression> arg_expressions;
   std::vector<int> arg_cores;
-  TF_RETURN_IF_ERROR(BuildArguments(
-      *graph, args, options.use_tuple_arg, &builder, context, &arg_cores,
-      &arg_expressions, &result->input_mapping, &result->xla_input_shapes));
+  TF_RETURN_IF_ERROR(
+      BuildArguments(*graph, args, options.use_tuple_arg, &builder, context,
+                     &arg_cores, &arg_expressions, &result->input_mapping,
+                     &result->xla_input_shapes, options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
@@ -563,11 +569,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       options.return_updated_values_for_all_resources, &builder,
       result->computation.get(), &num_computation_outputs,
       &num_nonconst_outputs, &result->resource_updates));
-
-  result->requires_runtime_context = context->has_context_parameter();
-
-  // Tuple arguments and runtime context parameters are incompatible.
-  TF_RET_CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
@@ -596,7 +597,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
           << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
   // Tensorflow expects a major-to-minor order of results.
-  AssignMajorToMinorLayout(&result->xla_output_shape);
+  xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;

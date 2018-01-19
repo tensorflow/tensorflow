@@ -52,12 +52,14 @@ namespace xla {
   V(kBatchNormInference, "batch-norm-inference")             \
   V(kBatchNormTraining, "batch-norm-training")               \
   V(kBitcast, "bitcast")                                     \
+  V(kBitcastConvert, "bitcast-convert")                      \
   V(kBroadcast, "broadcast")                                 \
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
+  V(kConditional, "conditional")                             \
   V(kConstant, "constant")                                   \
   V(kConvert, "convert")                                     \
   V(kConvolution, "convolution")                             \
@@ -71,6 +73,7 @@ namespace xla {
   V(kDynamicUpdateSlice, "dynamic-update-slice")             \
   V(kEq, "equal-to", kHloOpcodeIsComparison)                 \
   V(kExp, "exponential")                                     \
+  V(kFft, "fft")                                             \
   V(kFloor, "floor")                                         \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \

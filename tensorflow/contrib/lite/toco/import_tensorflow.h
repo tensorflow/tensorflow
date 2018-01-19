@@ -23,11 +23,19 @@ limitations under the License.
 
 namespace toco {
 
-std::unique_ptr<Model> ImportTensorFlowGraphDef(
-    const ModelFlags& model_flags, const tensorflow::GraphDef& graph_def);
+struct TensorFlowImportFlags {
+  // If true, control dependencies will be dropped immediately
+  // during the import of the TensorFlow GraphDef.
+  bool drop_control_dependency = false;
+};
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
-    const ModelFlags& model_flags, const string& input_file_contents);
+    const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
+    const tensorflow::GraphDef& graph_def);
+
+std::unique_ptr<Model> ImportTensorFlowGraphDef(
+    const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
+    const string& input_file_contents);
 
 }  // namespace toco
 

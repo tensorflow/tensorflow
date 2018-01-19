@@ -72,7 +72,11 @@ TEST_F(HloExecutionProfileTest, Basic) {
   };
 
   HloCostAnalysis cost_analysis(shape_size_function);
-  HloExecutionProfile execution_profile(*hlo_module, cost_analysis);
+  HloProfileIndexMap profile_index_map(*hlo_module);
+  std::unique_ptr<HloProfilePrinter> profile_printer =
+      CreateHloProfilePrinter(profile_index_map, cost_analysis);
+  HloExecutionProfile execution_profile(profile_printer.get(),
+                                        &profile_index_map);
 
   const int64 add_cycles = 1000;
   const int64 dot_cycles = 4000;
@@ -90,10 +94,10 @@ TEST_F(HloExecutionProfileTest, Basic) {
   const std::vector<string>& line_3 = lines_and_words[3];
 
   EXPECT_EQ(line_2[kInstructionCyclesIndex], std::to_string(dot_cycles));
-  EXPECT_EQ(line_2[kInstructionNameIndex], dot_instruction->name());
+  EXPECT_EQ(line_2[kInstructionNameIndex], '%' + dot_instruction->name());
 
   EXPECT_EQ(line_3[kInstructionCyclesIndex], std::to_string(add_cycles));
-  EXPECT_EQ(line_3[kInstructionNameIndex], add_instruction->name());
+  EXPECT_EQ(line_3[kInstructionNameIndex], '%' + add_instruction->name());
 }
 }  // namespace
 }  // namespace xla

@@ -196,6 +196,18 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
+Status LRNGradHelper(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs){
+  internal::LRNGrad::Attrs grad_attrs;
+
+  auto dx = internal::LRNGrad(scope, grad_inputs[0], op.input(0), op.output(0),
+                              grad_attrs);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("LRN", LRNGradHelper);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

@@ -41,7 +41,7 @@ class LinearModel(tfe.Network):
   For those familiar with TensorFlow graphs, notice the absence of
   `tf.Session`. The `forward()` method here immediately executes and
   returns output values. The `loss()` method immediately compares the
-  output of `forward()` with the target adn returns the MSE loss value.
+  output of `forward()` with the target and returns the MSE loss value.
   The `fit()` performs gradient-descent training on the model's weights
   and bias.
   """
@@ -85,7 +85,7 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
   if logdir:
     # Support for TensorBoard summaries. Once training has started, use:
     #   tensorboard --logdir=<logdir>
-    summary_writer = tf.contrib.summary.create_summary_file_writer(logdir)
+    summary_writer = tf.contrib.summary.create_file_writer(logdir)
 
   # Training loop.
   for i, (xs, ys) in enumerate(tfe.Iterator(dataset)):

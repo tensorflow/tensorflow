@@ -23,6 +23,7 @@ import collections as collections_lib
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
+import sys
 import traceback
 
 import six
@@ -843,6 +844,7 @@ class _VariableStore(object):
     Raises:
       ValueError: When giving unsupported dtype.
     """
+    del shape
     # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
     if dtype.is_floating:
       initializer = init_ops.glorot_uniform_initializer()
@@ -850,9 +852,8 @@ class _VariableStore(object):
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
     elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-      initializer = init_ops.zeros_initializer()(
-          shape=shape, dtype=dtype.base_dtype)
-      initializing_from_value = True
+      initializer = init_ops.zeros_initializer()
+      initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
@@ -1217,19 +1218,33 @@ class EagerVariableStore(object):
   ```
   """
 
-  def __init__(self):
-    self._store = _VariableStore()
+  def __init__(self, store=None):
+    if store is not None:
+      if not store._store_eager_variables:  # pylint: disable=protected-access
+        raise ValueError("Cannot construct EagerVariableStore from a "
+                         "VariableStore object that does not hold eager "
+                         "variables.")
+      self._store = store
+    else:
+      self._store = _VariableStore()
     self._store._store_eager_variables = True  # pylint: disable=protected-access
 
   def as_default(self):
     return with_variable_store(self._store)
 
   def variables(self):
-    return self._store._vars.values()  # pylint: disable=protected-access
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
 
   def trainable_variables(self):
     # pylint: disable=protected-access
-    return [x for x in self._store._vars.values() if x._trainable]
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+  def non_trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if not x._trainable],
+                  key=lambda x: x.name)
     # pylint: enable=protected-access
 
 
@@ -1577,6 +1592,10 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           else self._name_or_scope)
       self._reuse = (self._reuse
                      or self._old.reuse)  # Re-using is inherited by sub-scopes.
+      if self._old_name_scope is None:
+        name_scope = self._name_or_scope
+      else:
+        name_scope = self._old_name_scope
       variable_scope_object = VariableScope(
           self._reuse,
           name=self._new_name,
@@ -1587,7 +1606,7 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._old.dtype,
           use_resource=self._old.use_resource,
           custom_getter=self._old.custom_getter,
-          name_scope=self._old_name_scope or self._name_or_scope,
+          name_scope=name_scope,
           constraint=self._constraint)
       if self._initializer is not None:
         variable_scope_object.set_initializer(self._initializer)
@@ -1690,7 +1709,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1756,7 +1775,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
                reuse=None,
                dtype=None,
                use_resource=None,
-               constraint=None):
+               constraint=None,
+               auxiliary_name_scope=True):
     """Initialize the context manager.
 
     Args:
@@ -1788,6 +1808,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      auxiliary_name_scope: If `True`, we create an auxiliary name scope with
+        the scope. If `False`, we don't touch name scope.
 
     Returns:
       A scope that can be captured and reused.
@@ -1825,18 +1847,62 @@ class variable_scope(object):  # pylint: disable=invalid-name
       self._graph = ops._get_graph_from_inputs(self._values)  # pylint: disable=protected-access
     self._cached_pure_variable_scope = None
     self._current_name_scope = None
+    if not isinstance(auxiliary_name_scope, bool):
+      raise TypeError("The auxiliary_name_scope must be `True` or `False`, "
+                      "while get {}".format(auxiliary_name_scope))
+    self._auxiliary_name_scope = auxiliary_name_scope
 
   def __enter__(self):
-    if self._in_graph_mode:
+    # If the default graph is building a function, then we should not replace it
+    # with the cached graph.
+    if ops.get_default_graph().building_function:
+      self._building_function = True
+    else:
+      self._building_function = False
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager = self._graph.as_default()
       self._graph_context_manager.__enter__()
     if self._cached_pure_variable_scope is not None:
       # Fast path for re-entering variable_scopes. We've held on to the pure
-      # variable scope from a previous __enter__, so we avoid some overhead by
-      # re-using that object.
+      # variable scope from a previous successful __enter__, so we avoid some
+      # overhead by re-using that object.
       if self._current_name_scope is not None:
         self._current_name_scope.__enter__()
       return self._cached_pure_variable_scope.__enter__()
+
+    try:
+      return self._enter_scope_uncached()
+    except:
+      if self._graph_context_manager is not None:
+        self._graph_context_manager.__exit__(*sys.exc_info())
+      raise
+
+  def _enter_scope_uncached(self):
+    """Enters the context manager when there is no cached scope yet.
+
+    Returns:
+      The entered variable scope.
+
+    Raises:
+      TypeError: A wrong type is passed as `scope` at __init__().
+      ValueError: `reuse` is incorrectly set at __init__().
+    """
+    if self._auxiliary_name_scope:
+      # Create a new name scope later
+      current_name_scope = None
+    else:
+      # Reenter the current name scope
+      name_scope = ops.get_name_scope()
+      if name_scope:
+        # Hack to reenter
+        name_scope += "/"
+        current_name_scope = ops.name_scope(name_scope)
+      else:
+        # Root scope
+        current_name_scope = ops.name_scope(name_scope)
+
+    # IMPORTANT: Only assign to self._cached_pure_variable_scope and
+    # self._current_name_scope after successful __enter__() calls.
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
                         (VariableScope,) + six.string_types):
@@ -1846,14 +1912,19 @@ class variable_scope(object):  # pylint: disable=invalid-name
         name_scope = self._name_or_scope
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
-      if name_scope:
-        self._current_name_scope = ops.name_scope(name_scope)
-        current_name_scope_name = self._current_name_scope.__enter__()
+      if name_scope or current_name_scope:
+        current_name_scope = current_name_scope or ops.name_scope(name_scope)
+        try:
+          current_name_scope_name = current_name_scope.__enter__()
+        except:
+          current_name_scope.__exit__(*sys.exc_info())
+          raise
+        self._current_name_scope = current_name_scope
         if isinstance(self._name_or_scope, six.string_types):
           old_name_scope = current_name_scope_name
         else:
           old_name_scope = self._name_or_scope.original_name_scope
-        self._cached_pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1865,11 +1936,17 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._cached_pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
       else:
         self._current_name_scope = None
         # This can only happen if someone is entering the root variable scope.
-        self._cached_pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1880,15 +1957,27 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._cached_pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
 
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if self._reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
-      self._current_name_scope = ops.name_scope(self._default_name)
-      current_name_scope_name = self._current_name_scope.__enter__()
+      current_name_scope = current_name_scope or ops.name_scope(
+          self._default_name)
+      try:
+        current_name_scope_name = current_name_scope.__enter__()
+      except:
+        current_name_scope.__exit__(*sys.exc_info())
+        raise
+      self._current_name_scope = current_name_scope
       unique_default_name = _get_unique_variable_scope(self._default_name)
-      self._cached_pure_variable_scope = _pure_variable_scope(
+      pure_variable_scope = _pure_variable_scope(
           unique_default_name,
           initializer=self._initializer,
           regularizer=self._regularizer,
@@ -1899,14 +1988,20 @@ class variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._dtype,
           use_resource=self._use_resource,
           constraint=self._constraint)
-      return self._cached_pure_variable_scope.__enter__()
+      try:
+        entered_pure_variable_scope = pure_variable_scope.__enter__()
+      except:
+        pure_variable_scope.__exit__(*sys.exc_info())
+        raise
+      self._cached_pure_variable_scope = pure_variable_scope
+      return entered_pure_variable_scope
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     self._cached_pure_variable_scope.__exit__(
         type_arg, value_arg, traceback_arg)
     if self._current_name_scope:
       self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode:
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
 
 
@@ -1978,8 +2073,10 @@ def variable(initial_value=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  use_resource = get_variable_scope().use_resource
+             dtype=None,
+             use_resource=None):
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,

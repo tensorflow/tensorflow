@@ -30,7 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
-def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
+def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Execute a TensorFlow operation.
 
   Args:
@@ -64,22 +64,20 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
     else:
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
-
-  # TODO(alive, cais): Use the execution callback mechanism.
-  if core.active_trace() is not None:
-    for t in tensors:
-      core.active_trace().record_tensor(op_name,
-                                        ops.tensor_id(t),
-                                        t.device,
-                                        t.shape.num_elements())
   # pylint: enable=protected-access
+  return tensors
 
-  # TODO(cais): Optimize this, perhaps by replacing this execute function with
-  # a different one when there are execution callback(s).
+
+def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
+  """Monkey-patch to execute to enable execution callbacks."""
+  tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
   for callback in ctx.post_execution_callbacks:
     callback(op_name, name, attrs, inputs, tensors)
 
   return tensors
+
+
+execute = quick_execute
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
@@ -168,8 +166,11 @@ def make_tensor(v, arg_name):
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
-  if all(isinstance(x, EagerTensor) for x in l):
-    return l[0].dtype, l
+  for x in l:
+    if not isinstance(x, EagerTensor):
+      break
+  else:  # note: intentional for-else
+    return l[0]._datatype_enum(), l  # pylint: disable=protected-access
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
 
@@ -193,7 +194,7 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
   else:
     ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
-  return dtype, ret
+  return dtype.as_datatype_enum, ret
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
@@ -202,7 +203,7 @@ def convert_to_mixed_eager_tensors(values, ctx):
           t, context=ctx._handle, device=ctx.device_name)  # pylint: disable=protected-access
       for t in values
   ]
-  types = [t.dtype for t in v]
+  types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
 
@@ -240,5 +241,5 @@ def args_to_mixed_eager_tensors(lists, ctx):
       for j in range(len(lists)):
         lists_ret[j].append(
             ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
-    types.append(dtype)
+    types.append(dtype.as_datatype_enum)
   return types, lists_ret

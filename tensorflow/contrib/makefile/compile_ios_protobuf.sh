@@ -270,7 +270,7 @@ case "$1" in
         echo "Unknown ARCH"
         exit 1
         ;;
-esac 
+esac
 }
 
 for build_element in "${build_targets[@]}"

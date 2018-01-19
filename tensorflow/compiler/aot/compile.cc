@@ -94,9 +94,8 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
   xla::Computation computation;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToXla(graph_def, config, client,
-                                          &computation,
-                                          &compile_result->has_context_arg));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToXla(graph_def, config, client, &computation));
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,
                         computation.Snapshot());

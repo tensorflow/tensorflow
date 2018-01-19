@@ -66,7 +66,8 @@ class XlaCompilationCache : public ResourceBase {
                  const std::vector<OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** compilation_result,
-                 xla::LocalExecutable** executable);
+                 xla::LocalExecutable** executable,
+                 const XlaCompiler::CompileOptions* compile_options);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }

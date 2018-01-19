@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for new version of accumulate_n op that will eventually go into 
+"""Tests for new version of accumulate_n op that will eventually go into
 `ops.math_ops`.
 
-These test cases spefically exercise the `eager` APIs. They need to be in a 
+These test cases spefically exercise the `eager` APIs. They need to be in a
 separate file from the remaining tests because eager mode is currently something
 you can turn on but can't turn off for the lifetime of the current process."""
 from __future__ import absolute_import
@@ -64,7 +64,7 @@ class AccumulateNV2EagerTest(test_util.TensorFlowTestCase):
     np.random.seed(42)
     num_inputs = 3
     input_vars = [
-        resource_variable_ops.ResourceVariable(10.0 * np.random.random(), 
+        resource_variable_ops.ResourceVariable(10.0 * np.random.random(),
                                                name="t%d" % i)
         for i in range(0, num_inputs)
     ]
@@ -72,7 +72,7 @@ class AccumulateNV2EagerTest(test_util.TensorFlowTestCase):
     def fn(first, second, third):
       return av2.accumulate_n_v2([first, second, third])
 
-    grad_fn = backprop.gradients_function(fn)      
+    grad_fn = backprop.gradients_function(fn)
     grad = grad_fn(input_vars[0], input_vars[1], input_vars[2])
     self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
                         [elem.numpy() for elem in grad])

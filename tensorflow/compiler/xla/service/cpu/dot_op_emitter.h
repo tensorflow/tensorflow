@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -30,6 +31,18 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo);
+
+// Returns the index for an operand to `hlo` that should ideally be column
+// major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
+// or a fusion containing a dot.
+tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+    const HloInstruction& hlo);
+
+// Returns true to indicate that we can generate a tiled LLVM IR implementation
+// for |dot|.
+bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot);
+
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
  public:
@@ -37,21 +50,29 @@ class DotOpEmitter {
   // place the result in target_array. IR is emitted at current insert point of
   // the builder. Upon completion of the method, the insert point is set to the
   // end of all instructions emitted for this operation.
+  //
+  // If `addend_array` is not nullptr then it must be an array of the same
+  // dimensions as the result, and the result is computed as `addend_array` +
+  // dot(`lhs_array`, `rhs_array`).  A non-null `addend_array` is only supported
+  // for Matrix-vector products.
   static tensorflow::Status EmitDotOperation(
       const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
       const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
-      const llvm_ir::IrArray& rhs_array,
+      const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
       llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
-      const HloModuleConfig& hlo_module_config);
+      const HloModuleConfig& hlo_module_config,
+      const TargetMachineFeatures& target_machine_features);
 
  private:
   DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
                bool transpose_rhs, const llvm_ir::IrArray& target_array,
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
+               const llvm_ir::IrArray* addend_array,
                llvm::Value* executable_run_options_value,
                llvm::IRBuilder<>* ir_builder,
-               const HloModuleConfig& hlo_module_config);
+               const HloModuleConfig& hlo_module_config,
+               const TargetMachineFeatures& target_machine_features);
 
   // Emits the IR to perform the dot operation.
   tensorflow::Status Emit();
@@ -120,9 +141,11 @@ class DotOpEmitter {
   const llvm_ir::IrArray& target_array_;
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;
+  const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
   llvm::IRBuilder<>* ir_builder_;
   const HloModuleConfig& hlo_module_config_;
+  const TargetMachineFeatures& target_machine_features_;
 };
 
 }  // namespace cpu

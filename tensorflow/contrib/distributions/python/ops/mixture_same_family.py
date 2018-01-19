@@ -43,15 +43,14 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  import matplotlib.pyplot as plt
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
-  gm = ds.MixtureSameFamily(
-      mixture_distribution=ds.Categorical(
+  gm = tfd.MixtureSameFamily(
+      mixture_distribution=tfd.Categorical(
           probs=[0.3, 0.7]),
-      components_distribution=ds.Normal(
+      components_distribution=tfd.Normal(
         loc=[-1., 1],       # One for each component.
         scale=[0.1, 0.5]))  # And same here.
 
@@ -63,14 +62,15 @@ class MixtureSameFamily(distribution.Distribution):
 
   # Plot PDF.
   x = np.linspace(-2., 3., int(1e4), dtype=np.float32)
+  import matplotlib.pyplot as plt
   plt.plot(x, gm.prob(x).eval());
 
   ### Create a mixture of two Bivariate Gaussians:
 
-  gm = ds.MixtureSameFamily(
-      mixture_distribution=ds.Categorical(
+  gm = tfd.MixtureSameFamily(
+      mixture_distribution=tfd.Categorical(
           probs=[0.3, 0.7]),
-      components_distribution=ds.MultivariateNormalDiag(
+      components_distribution=tfd.MultivariateNormalDiag(
           loc=[[-1., 1],  # component 1
                [1, -1]],  # component 2
           scale_identity_multiplier=[.3, .6]))
@@ -320,13 +320,14 @@ class MixtureSameFamily(distribution.Distribution):
         return array_ops.shape(d.batch_shape_tensor())[0]
       dist_batch_ndims = _get_ndims(self)
       cat_batch_ndims = _get_ndims(self.mixture_distribution)
-      bnd = distribution_util.pick_vector(
+      pad_ndims = array_ops.where(
           self.mixture_distribution.is_scalar_batch(),
-          [dist_batch_ndims], [cat_batch_ndims])[0]
+          dist_batch_ndims,
+          dist_batch_ndims - cat_batch_ndims)
       s = array_ops.shape(x)
       x = array_ops.reshape(x, shape=array_ops.concat([
           s[:-1],
-          array_ops.ones([bnd], dtype=dtypes.int32),
+          array_ops.ones([pad_ndims], dtype=dtypes.int32),
           s[-1:],
           array_ops.ones([self._event_ndims], dtype=dtypes.int32),
       ], axis=0))

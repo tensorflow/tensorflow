@@ -120,7 +120,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
     layer_id = str(id(layer))
     for i, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
       node_key = layer.name + '_ib-' + str(i)
-      if node_key in model.container_nodes:
+      if node_key in model._network_nodes:  # pylint: disable=protected-access
         for inbound_layer in node.inbound_layers:
           inbound_layer_id = str(id(inbound_layer))
           layer_id = str(id(layer))

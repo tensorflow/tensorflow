@@ -63,7 +63,7 @@ class SparseFloatFeatureColumn {
  public:
   void Reserve(const int32 size) {
     if (!single_dimensional_) {
-      mutlidimensional_values.Reserve(size);
+      multidimensional_values.Reserve(size);
     }
   }
 
@@ -76,7 +76,7 @@ class SparseFloatFeatureColumn {
       DCHECK_EQ(0, feature_idx);
       single_value_ = value;
     } else {
-      mutlidimensional_values.Add(feature_idx, value);
+      multidimensional_values.Add(feature_idx, value);
     }
     initialized_ = true;
   }
@@ -84,7 +84,7 @@ class SparseFloatFeatureColumn {
   void Clear() {
     single_dimensional_ = false;
     initialized_ = false;
-    mutlidimensional_values.Clear();
+    multidimensional_values.Clear();
   }
 
   OptionalValue<T> operator[](int feature_idx) const {
@@ -94,7 +94,7 @@ class SparseFloatFeatureColumn {
     if (single_dimensional_) {
       return OptionalValue<T>(single_value_);
     } else {
-      return mutlidimensional_values[feature_idx];
+      return multidimensional_values[feature_idx];
     }
   }
 
@@ -102,7 +102,7 @@ class SparseFloatFeatureColumn {
   bool single_dimensional_;
   bool initialized_;
   T single_value_;
-  SparseMultidimensionalValues<T> mutlidimensional_values;
+  SparseMultidimensionalValues<T> multidimensional_values;
 };
 
 // Holds data for one example and enables lookup by feature column.

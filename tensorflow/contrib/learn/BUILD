@@ -10,7 +10,7 @@ package(default_visibility = [
     "//tensorflow:internal",
 ])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 py_library(
     name = "learn",
@@ -154,12 +154,11 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "experiment_test",
     size = "medium",
     srcs = ["python/learn/experiment_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/core:protos_all_py",
@@ -170,6 +169,17 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
+    ],
+)
+
+py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["python/learn/export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -346,6 +356,7 @@ py_test(
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # flaky b/70524820
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -461,6 +472,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -715,12 +727,11 @@ py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "graph_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":learn",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -736,20 +747,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-)
-
-py_test(
-    name = "numpy_io_test",
-    size = "small",
-    srcs = ["python/learn/learn_io/numpy_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
+    grpc_enabled = True,
 )
 
 py_test(

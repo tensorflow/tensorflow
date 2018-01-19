@@ -14,6 +14,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 py_library(
     name = "dataset_ops",
     srcs = [
+        "counter.py",
         "dataset_ops.py",
     ],
     srcs_version = "PY2AND3",
@@ -40,6 +41,25 @@ py_library(
 )
 
 py_library(
+    name = "random_ops",
+    srcs = [
+        "random_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
     name = "readers",
     srcs = [
         "readers.py",
@@ -62,6 +82,19 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_ops",
+    srcs = [
+        "shuffle_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":random_ops",
+        ":transformation_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "transformation_ops",
     srcs = [
         "batching.py",
@@ -71,6 +104,8 @@ py_library(
         "interleave_ops.py",
         "resampling.py",
         "scan_ops.py",
+        "stats_ops.py",
+        "unique.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -87,6 +122,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",

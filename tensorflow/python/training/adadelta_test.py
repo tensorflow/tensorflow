@@ -112,17 +112,16 @@ class AdadeltaOptimizerTest(test.TestCase):
               # Check that the accumulators have been updated
               for slot_idx in range(2):
                 self.assertAllCloseAccordingToType(
-                    np.array(
-                        [accum, accum], dtype=dtype.as_numpy_dtype()),
+                    np.array([accum, accum], dtype=dtype.as_numpy_dtype()),
                     slot[slot_idx].eval(),
-                    rtol=1e-3)
+                    rtol=1e-5)
 
                 self.assertAllCloseAccordingToType(
                     np.array(
                         [accum_update, accum_update],
                         dtype=dtype.as_numpy_dtype()),
                     slot_update[slot_idx].eval(),
-                    rtol=1e-3)
+                    rtol=1e-5)
 
               # Check that the parameters have been updated
               self.assertAllCloseAccordingToType(
@@ -130,14 +129,14 @@ class AdadeltaOptimizerTest(test.TestCase):
                       [var0_init[0] - tot_update, var0_init[1] - tot_update],
                       dtype=dtype.as_numpy_dtype()),
                   var0.eval(),
-                  rtol=1e-3)
+                  rtol=1e-5)
 
               self.assertAllCloseAccordingToType(
                   np.array(
                       [var1_init[0] - tot_update, var1_init[1] - tot_update],
                       dtype=dtype.as_numpy_dtype()),
                   var1.eval(),
-                  rtol=1e-3)
+                  rtol=1e-5)
 
   def testBasic(self):
     self.doTestBasic(use_resource=False)

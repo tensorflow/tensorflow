@@ -62,7 +62,7 @@ class DimensionHandle {
  private:
   DimensionHandle(const Dimension* dim) { ptr_ = dim; }
 
-  const Dimension* operator->() { return ptr_; }
+  const Dimension* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Dimension* ptr_ = nullptr;
@@ -104,7 +104,7 @@ class ShapeHandle {
 
  private:
   ShapeHandle(const Shape* shape) { ptr_ = shape; }
-  const Shape* operator->() { return ptr_; }
+  const Shape* operator->() const { return ptr_; }
   bool IsSet() const { return ptr_ != nullptr; }
 
   const Shape* ptr_ = nullptr;
@@ -678,14 +678,17 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
-  // Relaxes <d0> and <d1> and returns the relaxed dimension in <*out>. If <d0>
-  // and <d1> have incompatible values, returns an error.
+  // Relaxes an existing value <d_old> with a new value <d_new> and returns the
+  // relaxed dimension in <*out>. If <d_old> and <d_new> have incompatible
+  // values, returns an error.
   //
-  // Note that <*out> may be set to <d0> or <d1>.
-  void Relax(DimensionHandle d0, DimensionHandle d1, DimensionHandle* out);
-  // Relaxes <s0> and <s1> and returns the relaxed shape in <*out>. See
-  // 'RelaxInput' function for full details and examples.
-  void Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out);
+  // Note that <*out> may be set to <d_old> or <d_new>.
+  void Relax(DimensionHandle d_old, DimensionHandle d_new,
+             DimensionHandle* out);
+  // Relaxes an existing shape <s_old> with a new shape <s_new> and returns the
+  // relaxed shape in <*out>. See 'RelaxInput' function for full details and
+  // examples.
+  void Relax(ShapeHandle s_old, ShapeHandle s_new, ShapeHandle* out);
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
@@ -697,6 +700,12 @@ class InferenceContext {
   bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
       std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+
+  // Forget all the previous merged shapes and dims.
+  void ForgetMerges() {
+    merged_shapes_.clear();
+    merged_dims_.clear();
+  }
 
   ShapeManager shape_manager_;
 

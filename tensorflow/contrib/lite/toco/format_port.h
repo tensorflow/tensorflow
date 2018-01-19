@@ -36,7 +36,7 @@ inline const char* IdentityOrConvertStringToRaw(const std::string& foo) {
   return foo.c_str();
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) && defined(HAS_GLOBAL_STRING)
 // Overloaded case where we return string.
 inline const char* IdentityOrConvertStringToRaw(const string& foo) {
   return foo.c_str();

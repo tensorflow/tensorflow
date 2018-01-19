@@ -42,6 +42,7 @@ BLACKLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
+    "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
@@ -60,6 +61,7 @@ BLACKLIST = [
     "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/py2tf:py2tf_internal",
     "//tensorflow/contrib/timeseries/examples:predict",
     "//tensorflow/contrib/timeseries/examples:multivariate",
     "//tensorflow/contrib/timeseries/examples:known_anomaly",

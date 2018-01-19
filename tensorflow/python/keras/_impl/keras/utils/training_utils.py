@@ -77,8 +77,11 @@ def multi_gpu_model(model, gpus):
       width = 224
       num_classes = 1000
 
-      # Instantiate the base model
-      # (here, we do it on CPU, for better efficiency).
+      # Instantiate the base model (or "template" model).
+      # We recommend doing this with under a CPU device scope,
+      # so that the model's weights are hosted on CPU memory.
+      # Otherwise they may end up hosted on a GPU, which would
+      # complicate weight sharing.
       with tf.device('/cpu:0'):
           model = Xception(weights=None,
                            input_shape=(height, width, 3),
@@ -97,6 +100,9 @@ def multi_gpu_model(model, gpus):
       # This `fit` call will be distributed on 8 GPUs.
       # Since the batch size is 256, each GPU will process 32 samples.
       parallel_model.fit(x, y, epochs=20, batch_size=256)
+
+      # Save model via the template model (which shares the same weights):
+      model.save('my_model.h5')
   ```
 
   Raises:
@@ -106,12 +112,22 @@ def multi_gpu_model(model, gpus):
   from tensorflow.python.keras._impl.keras.layers.core import Lambda
   from tensorflow.python.keras._impl.keras.layers.merge import concatenate
 
-  if gpus <= 1:
-    raise ValueError('For multi-gpu usage to be effective, '
-                     'call `multi_gpu_model` with `gpus >= 2`. '
-                     'Received: `gpus=%d`' % gpus)
+  if isinstance(gpus, (list, tuple)):
+    if len(gpus) <= 1:
+      raise ValueError('For multi-gpu usage to be effective, '
+                       'call `multi_gpu_model` with `len(gpus) >= 2`. '
+                       'Received: `gpus=%s`' % gpus)
+    num_gpus = len(gpus)
+    target_gpu_ids = gpus
+  else:
+    if gpus <= 1:
+      raise ValueError('For multi-gpu usage to be effective, '
+                       'call `multi_gpu_model` with `gpus >= 2`. '
+                       'Received: `gpus=%d`' % gpus)
+    num_gpus = gpus
+    target_gpu_ids = range(num_gpus)
 
-  target_devices = ['/cpu:0'] + ['/gpu:%d' % i for i in range(gpus)]
+  target_devices = ['/cpu:0'] + ['/gpu:%d' % i for i in target_gpu_ids]
   available_devices = _get_available_devices()
   available_devices = [
       _normalize_device_name(name) for name in available_devices
@@ -139,7 +155,7 @@ def multi_gpu_model(model, gpus):
     batch_size = shape[:1]
     input_shape = shape[1:]
     step = batch_size // parts
-    if i == gpus - 1:
+    if i == num_gpus - 1:
       size = batch_size - step * i
     else:
       size = step
@@ -154,9 +170,9 @@ def multi_gpu_model(model, gpus):
 
   # Place a copy of the model on each GPU,
   # each getting a slice of the inputs.
-  for i in range(gpus):
-    with ops.device('/gpu:%d' % i):
-      with ops.name_scope('replica_%d' % i):
+  for i, gpu_id in enumerate(target_gpu_ids):
+    with ops.device('/gpu:%d' % gpu_id):
+      with ops.name_scope('replica_%d' % gpu_id):
         inputs = []
         # Retrieve a slice of the input.
         for x in model.inputs:
@@ -166,8 +182,9 @@ def multi_gpu_model(model, gpus):
               output_shape=input_shape,
               arguments={
                   'i': i,
-                  'parts': gpus
-              })(x)
+                  'parts': num_gpus
+              })(
+                  x)
           inputs.append(slice_i)
 
         # Apply model on slice
@@ -183,6 +200,7 @@ def multi_gpu_model(model, gpus):
   # Merge outputs on CPU.
   with ops.device('/cpu:0'):
     merged = []
-    for outputs in all_outputs:
-      merged.append(concatenate(outputs, axis=0))
+    for name, outputs in zip(model.output_names, all_outputs):
+      merged.append(concatenate(outputs, axis=0, name=name))
     return Model(model.inputs, merged)
+

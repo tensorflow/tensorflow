@@ -108,11 +108,13 @@ void RunGraphTransformations(Model* model, const string& message,
   class GTName : public GraphTransformation {              \
    public:                                                 \
     bool Run(Model* model, std::size_t op_index) override; \
-    const char* Name() const { return #GTName; }           \
+    const char* Name() const override { return #GTName; }  \
   };
 
 // List of all graph transformations
+DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
+DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTransposeToReshape)
 DECLARE_GRAPH_TRANSFORMATION(EnsureBiasVectors)
 DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
@@ -144,18 +146,25 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowConcat)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMatMul)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMerge)
-DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSqueeze)
+DECLARE_GRAPH_TRANSFORMATION(ResolveSqueezeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSwitch)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowTile)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(DropFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(UnfuseActivationFunctions)
+DECLARE_GRAPH_TRANSFORMATION(ResolveSpaceToBatchNDAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveBatchToSpaceNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolvePadAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveMeanAttributes)
-DECLARE_GRAPH_TRANSFORMATION(ResolveConstantTensorFlowShape)
+DECLARE_GRAPH_TRANSFORMATION(ResolveTransposeAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantRange)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantShapeOrRank)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStack)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStridedSlice)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFill)
 DECLARE_GRAPH_TRANSFORMATION(Dequantize)
 
 class ResolveReshapeAttributes : public GraphTransformation {

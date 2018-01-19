@@ -28,6 +28,25 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+string OptimizedName(const string& name) {
+  return AddPrefixToNodeName(name, kArithmeticOptimizer);
+}
+
+void VerifyGraphsMatch(const GraphDef& original_graph,
+                       const GraphDef& optimized_graph, int line) {
+  EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << line;
+  for (int i = 0; i < original_graph.node_size(); ++i) {
+    const NodeDef& original = original_graph.node(i);
+    const NodeDef& optimized = optimized_graph.node(i);
+    EXPECT_EQ(original.name(), optimized.name()) << line;
+    EXPECT_EQ(original.op(), optimized.op()) << line;
+    EXPECT_EQ(original.input_size(), optimized.input_size()) << line;
+    for (int j = 0; j < original.input_size(); ++j) {
+      EXPECT_EQ(original.input(j), optimized.input(j)) << line;
+    }
+  }
+}
+
 class ArithmeticOptimizerTest : public ::testing::Test {};
 
 TEST_F(ArithmeticOptimizerTest, NoOp) {
@@ -40,27 +59,17 @@ TEST_F(ArithmeticOptimizerTest, NoOp) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-
-  EXPECT_EQ(item.graph.node_size(), output.node_size());
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    const NodeDef& original = item.graph.node(i);
-    const NodeDef& optimized = output.node(i);
-    EXPECT_EQ(original.name(), optimized.name());
-    EXPECT_EQ(original.op(), optimized.op());
-    EXPECT_EQ(original.input_size(), optimized.input_size());
-    for (int j = 0; j < original.input_size(); ++j) {
-      EXPECT_EQ(original.input(j), optimized.input(j));
-    }
-  }
+  VerifyGraphsMatch(item.graph, output, __LINE__);
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c1 = ops::Const(s.WithOpName("c1"), {3.14, 2.7}, {1, 2});
   Output c2 = ops::Const(s.WithOpName("c2"), {3.14, 2.7}, {1, 2});
-  Output mul = ops::Mul(s.WithOpName("mul"), c1, c2);
+  Output div = ops::Div(s.WithOpName("div"), c1, c2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
@@ -74,11 +83,44 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, output.node_size());
   const NodeDef& new_c1 = output.node(0);
   EXPECT_EQ("c1", new_c1.name());
-  const NodeDef& new_mul = output.node(1);
-  EXPECT_EQ("mul", new_mul.name());
-  EXPECT_EQ(2, new_mul.input_size());
-  EXPECT_EQ("c1", new_mul.input(0));
-  EXPECT_EQ("c1", new_mul.input(1));
+  const NodeDef& new_div = output.node(1);
+  EXPECT_EQ("div", new_div.name());
+  EXPECT_EQ(2, new_div.input_size());
+  EXPECT_EQ("c1", new_div.input(0));
+  EXPECT_EQ("c1", new_div.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output p = ops::Placeholder(s, DT_BOOL, ops::Placeholder::Shape({}));
+  Output c = ops::Const(s.WithOpName("c"), {3.14, 2.7}, {1, 2});
+  auto check1 = ops::CheckNumerics(s.WithOpName("check1"), c, "foo");
+  auto check2 = ops::CheckNumerics(s.WithOpName("check2"), c, "foo");
+  auto assert1 = ops::Assert(s.WithOpName("assert1"), p, {c});
+  auto assert2 = ops::Assert(s.WithOpName("assert2"), p, {c});
+  Output div = ops::Div(s.WithOpName("div").WithControlDependencies(
+                            {assert1.operation, assert2.operation}),
+                        check1, check2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  const NodeDef& new_div = output.node(3);
+  EXPECT_EQ(4, new_div.input_size());
+  EXPECT_EQ("check1", new_div.input(0));
+  EXPECT_EQ("check1", new_div.input(1));
+  EXPECT_EQ("^assert1", new_div.input(2));
+  EXPECT_EQ("^assert1", new_div.input(3));
 }
 
 TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
@@ -87,9 +129,10 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   Output c2 = ops::Const(s.WithOpName("c2"), {3.0f, 4.0f}, {1, 2});
   Output mul1 = ops::Mul(s.WithOpName("mul1"), c1, c2);
   Output mul2 = ops::Mul(s.WithOpName("mul2"), c2, c1);
-  Output mul3 = ops::Mul(s.WithOpName("mul3"), mul1, mul2);
+  Output div1 = ops::Div(s.WithOpName("div1"), mul1, mul2);
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"div"};
 
   ArithmeticOptimizer optimizer;
   GraphDef output;
@@ -110,11 +153,35 @@ TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
   EXPECT_EQ(2, new_mul1.input_size());
   EXPECT_EQ("c1", new_mul1.input(0));
   EXPECT_EQ("c2", new_mul1.input(1));
-  const NodeDef& new_mul3 = output.node(3);
-  EXPECT_EQ("mul3", new_mul3.name());
-  EXPECT_EQ(2, new_mul3.input_size());
-  EXPECT_EQ("mul1", new_mul3.input(0));
-  EXPECT_EQ("mul1", new_mul3.input(1));
+  const NodeDef& new_div1 = output.node(3);
+  EXPECT_EQ("div1", new_div1.name());
+  EXPECT_EQ(2, new_div1.input_size());
+  EXPECT_EQ("mul1", new_div1.input(0));
+  EXPECT_EQ("mul1", new_div1.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, MulToSquare) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output d = ops::Const(s.WithOpName("d"), {3.0f, 4.0f}, {1, 2});
+  Output mul = ops::Mul(s.WithControlDependencies(d).WithOpName("mul"), c, c);
+  Output id = ops::Identity(s.WithOpName("id"), mul);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ("id", output.node(3).name());
+  EXPECT_EQ(OptimizedName("mul_square"), output.node(3).input(0));
+  EXPECT_EQ("Square", output.node(4).op());
+  EXPECT_EQ(OptimizedName("mul_square"), output.node(4).name());
+  EXPECT_EQ(2, output.node(4).input_size());
+  EXPECT_EQ("c", output.node(4).input(0));
+  EXPECT_EQ("^d", output.node(4).input(1));
 }
 
 TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {
@@ -164,6 +231,37 @@ TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithChain) {
   EXPECT_EQ("c", output.node(2).input(0));
 }
 
+TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsWithControlChain) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), c);
+  Output id1 = ops::Identity(s.WithOpName("id1"), recip1);
+  Output squeeze = ops::Squeeze(s.WithOpName("squeeze"), id1);
+  Output recip2 = ops::Reciprocal(
+      s.WithOpName("recip2").WithControlDependencies(squeeze), c);
+  Output id2 = ops::Identity(s.WithOpName("id2"), recip2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // The optimizer should be a noop.
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    const NodeDef& original = item.graph.node(i);
+    const NodeDef& optimized = output.node(i);
+    EXPECT_EQ(original.name(), optimized.name());
+    EXPECT_EQ(original.op(), optimized.op());
+    EXPECT_EQ(original.input_size(), optimized.input_size());
+    for (int j = 0; j < original.input_size(); ++j) {
+      EXPECT_EQ(original.input(j), optimized.input(j));
+    }
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
@@ -184,14 +282,52 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
 
   EXPECT_EQ(5, output.node_size());
   const NodeDef& new_const = output.node(3);
-  EXPECT_EQ("add_const", new_const.name());
+  EXPECT_EQ(OptimizedName("add_const"), new_const.name());
+  EXPECT_EQ("^x", new_const.input(0));
+  EXPECT_EQ(std::string("\0\0\0@", 4),
+            new_const.attr().at("value").tensor().tensor_content());
   const NodeDef& new_mul = output.node(4);
-  EXPECT_EQ("add_mul", new_mul.name());
-  EXPECT_EQ("add_const", new_mul.input(0));
+  EXPECT_EQ(OptimizedName("add_mul"), new_mul.name());
+  EXPECT_EQ(OptimizedName("add_const"), new_mul.input(0));
   EXPECT_EQ("x", new_mul.input(1));
   const NodeDef& new_id = output.node(2);
   EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("add_mul", new_id.input(0));
+  EXPECT_EQ(OptimizedName("add_mul"), new_id.input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output y = ops::Const(s.WithOpName("y"), {1.0f, 2.0f}, {1, 2});
+  Output x = ops::Const(s.WithOpName("x"), {3.0f, 4.0f}, {1, 2});
+  Output add = ops::Add(s.WithOpName("add").WithControlDependencies(y), x, x);
+  Output id = ops::Identity(s.WithOpName("id"), add);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  const NodeDef& new_const = output.node(4);
+  EXPECT_EQ(OptimizedName("add_const"), new_const.name());
+  EXPECT_EQ("^x", new_const.input(0));
+  EXPECT_EQ(std::string("\0\0\0@", 4),
+            new_const.attr().at("value").tensor().tensor_content());
+  const NodeDef& new_mul = output.node(5);
+  EXPECT_EQ(OptimizedName("add_mul"), new_mul.name());
+  EXPECT_EQ(OptimizedName("add_const"), new_mul.input(0));
+  EXPECT_EQ("x", new_mul.input(1));
+  EXPECT_EQ("^y", new_mul.input(2));
+  const NodeDef& new_id = output.node(3);
+  EXPECT_EQ("id", new_id.name());
+  EXPECT_EQ(OptimizedName("add_mul"), new_id.input(0));
 }
 
 TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
@@ -207,6 +343,13 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const std::vector<string> devices{
+      "/device:CPU:0", "/device:GPU:0", "/device:CPU:0", "/device:GPU:1",
+      "/device:CPU:0", "/device:CPU:0", "/device:CPU:0",
+  };
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device(devices[i]);
+  }
   ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -216,72 +359,97 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(11, output.node_size());
-  const NodeDef& new_id = output.node(4);
-  EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("Add_6_mul", new_id.input(0));
-
-  // Add4 and add5 get deduped, and we rewrite each of the 3 remaining add nodes
-  // of the form Add(x,x) into Mul(Const(2), x).
-  const NodeDef& new_add_4_const = output.node(5);
-  EXPECT_EQ("Add_4_const", new_add_4_const.name());
-  EXPECT_EQ("^Add", new_add_4_const.input(0));
-  const NodeDef& new_add_4_mul = output.node(6);
-  EXPECT_EQ("Add_4_mul", new_add_4_mul.name());
-  EXPECT_EQ("Add_4_const", new_add_4_mul.input(0));
-  EXPECT_EQ("Add_mul", new_add_4_mul.input(1));
-
-  const NodeDef& new_add_6_const = output.node(7);
-  EXPECT_EQ("Add_6_const", new_add_6_const.name());
-  EXPECT_EQ("^Add_4_mul", new_add_6_const.input(0));
-  const NodeDef& new_add_6_mul = output.node(8);
-  EXPECT_EQ("Add_6_mul", new_add_6_mul.name());
-  EXPECT_EQ("Add_6_const", new_add_6_mul.input(0));
-  EXPECT_EQ("Add_4_mul", new_add_6_mul.input(1));
-
-  const NodeDef& new_add_const = output.node(9);
-  EXPECT_EQ("Add_const", new_add_const.name());
-  EXPECT_EQ("^Placeholder", new_add_const.input(0));
-  const NodeDef& new_add_mul = output.node(10);
-  EXPECT_EQ("Add_mul", new_add_mul.name());
-  EXPECT_EQ("Add_const", new_add_mul.input(0));
-  EXPECT_EQ("Placeholder", new_add_mul.input(1));
+  EXPECT_EQ(17, output.node_size());
+  // The graph gets optimized to
+  // Mul(p,
+  //     Add(Add(Const(2), Const(2)),
+  //         Add(Const(2), Const(2))))
+  EXPECT_EQ(17, output.node_size());
+  for (const auto& node : output.node()) {
+    if ("id" == node.name()) {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ(OptimizedName("Add_6_hoist_mul"), node.input(0));
+    } else if (OptimizedName("Add_6_hoist_mul") == node.name()) {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("Placeholder", node.input(0));
+      EXPECT_EQ(OptimizedName("Add_6_hoist_add"), node.input(1));
+    } else if (OptimizedName("Add_6_hoist_add") == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(OptimizedName("Add_4_hoist_add"), node.input(0));
+      EXPECT_EQ(OptimizedName("Add_5_hoist_add"), node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if (OptimizedName("Add_4_hoist_add") == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(OptimizedName("Add_const"), node.input(0));
+      EXPECT_EQ(OptimizedName("Add_1_const"), node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if (OptimizedName("Add_5_hoist_add") == node.name()) {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(OptimizedName("Add_const"), node.input(0));
+      EXPECT_EQ(OptimizedName("Add_1_const"), node.input(1));
+      EXPECT_EQ("^Placeholder", node.input(2));
+    } else if (OptimizedName("Add_const") == node.name()) {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^Placeholder", node.input(0));
+    } else if (OptimizedName("Add_1_const") == node.name()) {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^Placeholder", node.input(0));
+    }
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, HoistFactor) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
-  Output y1 = ops::Const(s.WithOpName("y1"), {3.0f, 4.0f}, {1, 2});
-  Output y2 = ops::Const(s.WithOpName("y2"), {5.0f, 6.0f}, {1, 2});
-  Output mul1 = ops::Mul(s.WithOpName("mul1"), x, y1);
-  Output mul2 = ops::Mul(s.WithOpName("mul2"), y2, x);
-  Output add = ops::Add(s.WithOpName("add"), mul1, mul2);
-  Output id = ops::Identity(s.WithOpName("id"), add);
+  for (bool matching_shapes : {true, false}) {
+    for (bool use_addn : {true, false}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+      Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+      Output y1 = ops::Const(s.WithOpName("y1"), {3.0f, 4.0f}, {1, 2});
+      Output y2 = matching_shapes
+                      ? ops::Const(s.WithOpName("y2"), {5.0f, 6.0f}, {1, 2})
+                      : ops::Const(s.WithOpName("y2"), {5.0f}, {1, 1});
+      Output mul1 = ops::Mul(s.WithOpName("mul1"), x, y1);
+      Output mul2 = ops::Mul(s.WithOpName("mul2"), y2, x);
+      Output id =
+          use_addn ? ops::Identity(s.WithOpName("id"),
+                                   ops::AddN(s.WithOpName("add"), {mul1, mul2}))
+                   : ops::Identity(s.WithOpName("id"),
+                                   ops::Add(s.WithOpName("add"), mul1, mul2));
 
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+      GrapplerItem item;
+      TF_CHECK_OK(s.ToGraphDef(&item.graph));
+      ArithmeticOptimizer optimizer;
+      GraphDef output;
+      Status status = optimizer.Optimize(nullptr, item, &output);
+      TF_EXPECT_OK(status);
+      // Run the optimizer twice to make sure the rewrite is idempotent.
+      item.graph.Swap(&output);
+      status = optimizer.Optimize(nullptr, item, &output);
+      TF_EXPECT_OK(status);
 
-  ArithmeticOptimizer optimizer;
-  GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-  // Run the optimizer twice to make sure the rewrite is idempotent.
-  item.graph.Swap(&output);
-  status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  EXPECT_EQ(9, output.node_size());
-  const NodeDef& new_add = output.node(8);
-  EXPECT_EQ("add_hoist", new_add.name());
-  EXPECT_EQ("y1", new_add.input(0));
-  EXPECT_EQ("y2", new_add.input(1));
-  const NodeDef& new_mul = output.node(7);
-  EXPECT_EQ("mul1_hoist", new_mul.name());
-  EXPECT_EQ("x", new_mul.input(0));
-  EXPECT_EQ("add_hoist", new_mul.input(1));
-  const NodeDef& new_id = output.node(6);
-  EXPECT_EQ("id", new_id.name());
-  EXPECT_EQ("mul1_hoist", new_id.input(0));
+      if (use_addn && !matching_shapes) {
+        VerifyGraphsMatch(item.graph, output, __LINE__);
+      } else {
+        EXPECT_EQ(9, output.node_size());
+        const NodeDef& new_add = output.node(8);
+        EXPECT_EQ(OptimizedName("add_hoist_add"), new_add.name());
+        EXPECT_EQ("y1", new_add.input(0));
+        EXPECT_EQ("y2", new_add.input(1));
+        const NodeDef& new_mul = output.node(7);
+        EXPECT_EQ(OptimizedName("add_hoist_mul"), new_mul.name());
+        EXPECT_EQ("x", new_mul.input(0));
+        EXPECT_EQ(OptimizedName("add_hoist_add"), new_mul.input(1));
+        const NodeDef& new_id = output.node(6);
+        EXPECT_EQ("id", new_id.name());
+        EXPECT_EQ(OptimizedName("add_hoist_mul"), new_id.input(0));
+      }
+    }
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
@@ -305,7 +473,7 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndTranspose) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
-  EXPECT_EQ("trans_fused", output.node(6).name());
+  EXPECT_EQ(OptimizedName("trans_fused"), output.node(6).name());
   EXPECT_EQ("ConjugateTranspose", output.node(6).op());
   EXPECT_EQ("z", output.node(6).input(0));
   EXPECT_EQ("perm", output.node(6).input(1));
@@ -329,7 +497,7 @@ TEST_F(ArithmeticOptimizerTest, FuseConjAndConjugateTranspose) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
-  EXPECT_EQ("conjugate_trans_fused", output.node(6).name());
+  EXPECT_EQ(OptimizedName("conjugate_trans_fused"), output.node(6).name());
   EXPECT_EQ("Transpose", output.node(6).op());
   EXPECT_EQ("z", output.node(6).input(0));
   EXPECT_EQ("perm", output.node(6).input(1));
@@ -356,7 +524,7 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
-  EXPECT_EQ("conj_fused", output.node(6).name());
+  EXPECT_EQ(OptimizedName("conj_fused"), output.node(6).name());
   EXPECT_EQ("ConjugateTranspose", output.node(6).op());
   EXPECT_EQ("z", output.node(6).input(0));
   EXPECT_EQ("perm", output.node(6).input(1));
@@ -392,7 +560,7 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
     TF_EXPECT_OK(status);
 
     EXPECT_EQ(7, output.node_size());
-    EXPECT_EQ("matmul_fused", output.node(6).name());
+    EXPECT_EQ(OptimizedName("matmul_fused"), output.node(6).name());
     EXPECT_EQ("a", output.node(6).input(0));
     EXPECT_EQ("b", output.node(6).input(1));
     if (matmul_type == "BatchMatMul") {
@@ -430,7 +598,7 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(11, output.node_size());
-  EXPECT_EQ("matmul_fused", output.node(10).name());
+  EXPECT_EQ(OptimizedName("matmul_fused"), output.node(10).name());
   EXPECT_EQ("a", output.node(10).input(0));
   EXPECT_EQ("b", output.node(10).input(1));
   EXPECT_TRUE(output.node(10).attr().at("adj_x").b());
@@ -457,15 +625,10 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
-
-  for (const auto& node : output.node()) {
-    LOG(INFO) << node.DebugString();
-  }
 
   EXPECT_EQ(0, std::count_if(
                    output.node().begin(), output.node().end(),
@@ -486,15 +649,10 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
-
-  for (const auto& node : output.node()) {
-    LOG(INFO) << node.DebugString();
-  }
 
   EXPECT_EQ(1, std::count_if(
                    output.node().begin(), output.node().end(),
@@ -513,8 +671,7 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
   item.graph = output;
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
@@ -884,10 +1041,11 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   NodeMap node_map(&output);
   const NodeDef* inputs_node = CHECK_NOTNULL(node_map.GetNode("Placeholder"));
   const NodeDef* transpose_node =
-      CHECK_NOTNULL(node_map.GetNode("Transpose_uint8"));
-  const NodeDef* cast_node = CHECK_NOTNULL(node_map.GetNode("Cast_new"));
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Transpose_uint8")));
+  const NodeDef* cast_node =
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Cast_new")));
   const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D"));
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
   const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
 
   EXPECT_EQ(output.node_size(), 7);
@@ -931,11 +1089,11 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
 
   NodeMap node_map(&output);
   const NodeDef* weights_node =
-      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D"));
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
   const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
 
   const NodeDef* weights_node_1 =
-      CHECK_NOTNULL(node_map.GetNode("weights_scaled_Conv2D_1"));
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D_1")));
   const NodeDef* conv_node_1 = CHECK_NOTNULL(node_map.GetNode("Conv2D_1"));
   EXPECT_EQ(conv_node->input(1), weights_node->name());
   EXPECT_EQ(conv_node_1->input(1), weights_node_1->name());

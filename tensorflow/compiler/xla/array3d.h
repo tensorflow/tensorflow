@@ -36,6 +36,8 @@ namespace xla {
 template <typename T>
 class Array3D : public Array<T> {
  public:
+  Array3D() : Array<T>(std::vector<int64>{0, 0, 0}) {}
+
   // Creates an array of dimensions n1 x n2 x n3, uninitialized values.
   Array3D(const int64 n1, const int64 n2, const int64 n3)
       : Array<T>(std::vector<int64>{n1, n2, n3}) {}

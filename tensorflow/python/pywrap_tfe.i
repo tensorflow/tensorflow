@@ -18,19 +18,28 @@ limitations under the License.
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
+%rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextEnableRunMetadata;
+%rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextExportRunMetadata;
+%rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;
 %rename("%s") TFE_Py_UID;
-%rename("%s") TFE_Py_NewTape;
-%rename("%s") TFE_Py_TapeShouldRecord;
-%rename("%s") TFE_Py_TapeWatch;
-%rename("%s") TFE_Py_TapeDeleteTrace;
-%rename("%s") TFE_Py_TapeRecordOperation;
+%rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetRemove;
+%rename("%s") TFE_Py_TapeSetStopOnThread;
+%rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsEmpty;
+%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetWatch;
+%rename("%s") TFE_Py_TapeSetDeleteTrace;
+%rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetWatchVariable;
 %rename("%s") TFE_Py_TapeGradient;
-%rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
@@ -146,7 +155,7 @@ limitations under the License.
   }
   $1 = &temp;
   $1->resize(PyInt_AsLong($input), nullptr);
-}
+} 
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {

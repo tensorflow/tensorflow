@@ -86,6 +86,9 @@ class DfsHloVisitorBase {
   virtual Status HandleConvert(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleBitcastConvert(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleCopy(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -100,6 +103,7 @@ class DfsHloVisitorBase {
     return HandleElementwiseBinary(hlo);
   }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
+  virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
@@ -208,6 +212,7 @@ class DfsHloVisitorBase {
   virtual Status HandleReduceWindow(HloInstructionPtr hlo) = 0;
   virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
+  virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
@@ -242,6 +247,10 @@ class DfsHloVisitorBase {
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
   void ReserveVisitStates(int num) { visit_state_.Reserve(num); }
+
+  // Useful when we want to visit the same computation more than once with the
+  // same visitor.
+  void ResetVisitStates() { visit_state_.Reset(); }
 
   void SetVisitState(int id, VisitState state) {
     visit_state_.SetState(id, state);
@@ -322,6 +331,7 @@ class DfsHloVisitorBase {
       *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
       DCHECK_EQ(GetState(id), state);
     }
+    void Reset() { states_.clear(); }
 
    private:
     static const uint32 kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;

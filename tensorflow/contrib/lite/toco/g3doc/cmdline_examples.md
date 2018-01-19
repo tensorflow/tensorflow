@@ -26,7 +26,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=FLOAT \
   --inference_type=FLOAT \
   --input_shape=1,128,128,3 \
   --input_array=input \
@@ -58,19 +57,9 @@ To explain each of these flags:
     allowing to defer the specification of the input shape until runtime. The
     format of `input_shape` is always a comma-separated list of dimensions,
     always in TensorFlow convention.
-*   `--input_type` specifies what should be the type of the input arrays in the
-    **output** file. `--input_type` does not describe a property of the input
-    file: the type of input arrays is already encoded in the input graph.
-    Rather, `--input_type` is how you specify what should be the type of the
-    inputs to be provided to the output converted graph. This only affects
-    arrays of real numbers: this flag allows to quantized/dequantize
-    real-numbers inputs, switching between floating-point and quantized forms.
-    This flag has no incidence on all other types of input arrays, such as plain
-    integers or strings.
 *   `--inference_type` specifies what type of arithmetic the output file should
     be relying on. It implies in particular the choice of type of the output
-    arrays in the output file. Like `--input_type`, `--inference_type` does not
-    describe a property of the input file.
+    arrays in the output file.
 
 ## Just optimize a TensorFlow GraphDef
 
@@ -94,11 +83,11 @@ bazel run --config=opt \
   --output_array=MobilenetV1/Predictions/Reshape_1
 ```
 
-Here we did not pass `--input_type` and `--inference_type` because they are
-considered not applicable to the TensorFlow GraphDef format (as far as we are
-concerned, TensorFlow GraphDefs are technically always float, and the only
-flavor of "quantized" GraphDef that the converter deals with is "FakeQuantized"
-graphs that are still technically float graphs).
+Here we did not pass `--inference_type` because it is not considered applicable
+to the TensorFlow GraphDef format (as far as we are concerned, TensorFlow
+GraphDefs are technically always float, and the only flavor of "quantized"
+GraphDef that the converter deals with is "FakeQuantized" graphs that are still
+technically float graphs).
 
 Below in the section about passing arbitrary input/output arrays we give another
 example, using the converter to extract just a sub-graph from a TensorFlow
@@ -144,7 +133,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=QUANTIZED_UINT8 \
   --inference_type=QUANTIZED_UINT8 \
   --input_shape=1,128,128,3 \
   --input_array=input \
@@ -156,11 +144,9 @@ bazel run --config=opt \
 Here, besides changing `--input_file` to point to a (fake-)quantized GraphDef,
 the only other changes are:
 
-*   To change `--input_type` and `--inference_type` to `QUANTIZED_UINT8`. This
-    effectively tells the converter to generate an output file that can take a
-    quantized uint8 array as input (`--input_type=QUANTIZED_UINT8`), and have
-    quantized uint8 internal and output arrays as well
-    (`--inference_type=QUANTIZED_UINT8`).
+*   To change `--inference_type` to `QUANTIZED_UINT8`. This effectively tells
+    the converter to generate an output file that performs quantized inference
+    on a quantized input.
 *   To pass `--mean_value` and `--std_value` flags to describe how the quantized
     uint8 input array values are to be interpreted as the mathematical real
     numbers that the graph is concerned with (keep in mind that even a
@@ -195,7 +181,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.cc \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=QUANTIZED_UINT8 \
   --inference_type=QUANTIZED_UINT8 \
   --input_shape=1,128,128,3 \
   --input_array=input \
@@ -225,7 +210,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=FLOAT \
   --inference_type=FLOAT \
   --input_shape=1,224,224,3 \
   --input_array=input \
@@ -254,7 +238,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=FLOAT \
   --inference_type=FLOAT \
   --input_shapes=1,28,28,96:1,28,28,16:1,28,28,192:1,28,28,64 \
   --input_arrays=InceptionV1/InceptionV1/Mixed_3b/Branch_1/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_2/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_3/MaxPool_0a_3x3/MaxPool,InceptionV1/InceptionV1/Mixed_3b/Branch_0/Conv2d_0a_1x1/Relu \
@@ -328,7 +311,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=FLOAT \
   --inference_type=FLOAT \
   --input_shape=1,128,128,3 \
   --input_array=input \
@@ -436,7 +418,6 @@ bazel run --config=opt \
   --output_file=/tmp/foo.lite \
   --input_format=TENSORFLOW_GRAPHDEF \
   --output_format=TFLITE \
-  --input_type=FLOAT \
   --inference_type=FLOAT \
   --input_shape=1,128,128,3 \
   --input_array=input \

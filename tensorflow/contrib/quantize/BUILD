@@ -88,16 +88,22 @@ py_test(
     srcs = ["python/fold_batch_norms_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":copy_graph",
         ":fold_batch_norms",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
     ],
 )
 

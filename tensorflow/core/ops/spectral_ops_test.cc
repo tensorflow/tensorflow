@@ -22,7 +22,7 @@ namespace tensorflow {
 TEST(MathOpsTest, FFT_ShapeFn) {
   for (const auto* op_name : {"FFT", "IFFT"}) {
     ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
+    INFER_OK(op, "?", "in0");
     INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
     INFER_OK(op, "[?]", "in0");
     INFER_OK(op, "[1]", "in0");
@@ -31,7 +31,7 @@ TEST(MathOpsTest, FFT_ShapeFn) {
 
   for (const auto* op_name : {"FFT2D", "IFFT2D"}) {
     ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
+    INFER_OK(op, "?", "in0");
     INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
     INFER_OK(op, "[?,1]", "in0");
     INFER_OK(op, "[1,2]", "in0");
@@ -40,7 +40,7 @@ TEST(MathOpsTest, FFT_ShapeFn) {
 
   for (const auto* op_name : {"FFT3D", "IFFT3D"}) {
     ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
+    INFER_OK(op, "?", "in0");
     INFER_ERROR("Shape must be at least rank 3 but is rank 2", op, "[1,2]");
     INFER_OK(op, "[?,1,?]", "in0");
     INFER_OK(op, "[1,2,3]", "in0");

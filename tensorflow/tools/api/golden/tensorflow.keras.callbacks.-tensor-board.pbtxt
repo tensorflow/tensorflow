@@ -29,7 +29,7 @@ tf_class {
   }
   member_method {
     name: "on_train_end"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_model"

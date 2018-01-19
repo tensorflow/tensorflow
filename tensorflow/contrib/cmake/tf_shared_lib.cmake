@@ -45,7 +45,7 @@ if(WIN32)
       $<TARGET_FILE:tensorflow_static>
       $<TARGET_FILE:tf_protos_cc>
   )
-    
+
   set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
@@ -95,10 +95,18 @@ if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
 
-install(TARGETS tensorflow
+target_include_directories(tensorflow PUBLIC 
+    $<INSTALL_INTERFACE:include/>
+    $<INSTALL_INTERFACE:include/external/nsync/public>)
+
+install(TARGETS tensorflow EXPORT tensorflow_export
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+        
+install(EXPORT tensorflow_export
+        FILE TensorflowConfig.cmake
+        DESTINATION lib/cmake)
 
 # install necessary headers
 # tensorflow headers

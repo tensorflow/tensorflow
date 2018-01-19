@@ -33,10 +33,11 @@ class DecodeBmpOp : public OpKernel {
  public:
   explicit DecodeBmpOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
-                             channels_ == 4,
-                errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
-                                        channels_));
+    OP_REQUIRES(
+        context,
+        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
+        errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
+                                channels_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -47,6 +48,12 @@ class DecodeBmpOp : public OpKernel {
 
     // Start decoding image to get shape details
     const StringPiece input = contents.scalar<string>()();
+
+    OP_REQUIRES(context, (32 <= input.size()),
+                errors::InvalidArgument("Incomplete bmp content, requires at "
+                                        "least 32 bytes to find the header "
+                                        "size, width, height, and bpp, got ",
+                                        input.size(), " bytes"));
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
     const int32 header_size = internal::SubtleMustCopy(
@@ -73,6 +80,22 @@ class DecodeBmpOp : public OpKernel {
                 errors::InvalidArgument(
                     "Number of channels must be 1, 3 or 4, was ", channels_));
 
+    // there may be padding bytes when the width is not a multiple of 4 bytes
+    // 8 * channels == bits per pixel
+    const int row_size = (8 * channels_ * width + 31) / 32 * 4;
+
+    const int last_pixel_offset =
+        header_size + (abs(height) - 1) * row_size + (width - 1) * channels_;
+
+    // [expected file size] = [last pixel offset] + [last pixel size=channels]
+    const int expected_file_size = last_pixel_offset + channels_;
+
+    OP_REQUIRES(
+        context, (expected_file_size <= input.size()),
+        errors::InvalidArgument("Incomplete bmp content, requires at least ",
+                                expected_file_size, " bytes, got ",
+                                input.size(), " bytes"));
+
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
     bool top_down = (height < 0);
@@ -85,25 +108,23 @@ class DecodeBmpOp : public OpKernel {
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
-    Decode(bmp_pixels, output->flat<uint8>().data(), width, abs(height),
-           channels_, top_down);
+    Decode(bmp_pixels, row_size, output->flat<uint8>().data(), width,
+           abs(height), channels_, top_down);
   }
 
-  uint8* Decode(const uint8* input, uint8* const output, const int width,
-                const int height, const int channles, bool top_down);
+  uint8* Decode(const uint8* input, const int row_size, uint8* const output,
+                const int width, const int height, const int channles,
+                bool top_down);
 
  private:
   int channels_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeBmpOp);
 
-uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
-                           const int width, const int height,
-                           const int channels, bool top_down) {
-  // there may be padding bytes when the width is not a multiple of 4 bytes
-  // 8 * channels == bits per pixel
-  int row_size = (8 * channels * width + 31) / 32 * 4;
-
+uint8* DecodeBmpOp::Decode(const uint8* input, const int row_size,
+                           uint8* const output, const int width,
+                           const int height, const int channels,
+                           bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;

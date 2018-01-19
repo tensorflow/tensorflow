@@ -73,7 +73,7 @@ class ResNet50GraphTest(tf.test.TestCase):
       tf.train.get_or_create_global_step()
       logdir = tempfile.mkdtemp()
       with tf.contrib.summary.always_record_summaries():
-        with tf.contrib.summary.create_summary_file_writer(
+        with tf.contrib.summary.create_file_writer(
             logdir, max_queue=0,
             name='t0').as_default():
           model = resnet50.ResNet50(data_format())
@@ -95,7 +95,7 @@ class ResNet50GraphTest(tf.test.TestCase):
         sess.run([train_op, tf.contrib.summary.all_summary_ops()],
                  feed_dict={images: np_images, labels: np_labels})
 
-      events = summary_test_util.events_from_file(logdir)
+      events = summary_test_util.events_from_logdir(logdir)
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'loss')
 

@@ -87,22 +87,39 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
-PyObject* TFE_Py_NewTape();
-PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors);
-void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id);
-void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id);
+// Creates a new tape and adds it to the active set. `persistent` must be a
+// PyBool_Type, i.e either Py_True or Py_False
+PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
 
-// Records an operation in the gradient tape. `tape` should point to an object
-// returned by TFE_Py_NewTape. op_type is a string for the operation type, used
-// in the backprop code. output_tensors should be a list of python ops.Tensor
-// objects. input_tensor_ids should be a list of python integers with the ids of
-// the input tensors of the recorded operation. backward_function should be the
-// function to be called during backprop to, given the gradients of the output
-// tensors, produce the gradients of the input tensors.
-void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
-                                PyObject* output_tensors,
-                                PyObject* input_tensor_ids,
-                                PyObject* backward_function);
+// Removes the passed tape from the set of active tapes.
+void TFE_Py_TapeSetRemove(PyObject* tape);
+
+// Returns true if the tape stack is empty.
+PyObject* TFE_Py_TapeSetIsEmpty();
+
+PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+void TFE_Py_TapeSetWatch(PyObject* tensor);
+void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
+
+// Stops any gradient recording on the current thread.
+void TFE_Py_TapeSetStopOnThread();
+
+// Restarts gradient recording on the current thread.
+void TFE_Py_TapeSetRestartOnThread();
+
+// Records an operation in the gradient tape stack.type is a string for the
+// operation type, used in the backprop code. output_tensors should be a list of
+// python ops.Tensor objects. input_tensor_ids should be a list of python
+// integers with the ids of the input tensors of the recorded
+// operation. backward_function should be the function to be called during
+// backprop to, given the gradients of the output tensors, produce the gradients
+// of the input tensors.
+void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
+                                   PyObject* input_tensor_ids,
+                                   PyObject* backward_function);
+
+// Watches the given variable object on the given tape.
+void TFE_Py_TapeSetWatchVariable(PyObject* variable);
 
 // Computes a gradient based on information recorded on the tape.`tape` must
 // have been produced by TFE_Py_NewTape. `vspace` must be a
@@ -113,9 +130,6 @@ void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status);
-
-// Watches the given variable object on the given tape.
-void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);

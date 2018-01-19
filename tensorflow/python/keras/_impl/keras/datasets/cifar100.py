@@ -43,7 +43,7 @@ def load_data(label_mode='fine'):
     raise ValueError('label_mode must be one of "fine" "coarse".')
 
   dirname = 'cifar-100-python'
-  origin = 'http://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz'
+  origin = 'https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz'
   path = get_file(dirname, origin=origin, untar=True)
 
   fpath = os.path.join(path, 'train')

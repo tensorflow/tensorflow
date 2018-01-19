@@ -35,8 +35,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
+using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
+using tensorflow::DT_INT64;
+using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::TensorProto;
 
@@ -777,13 +780,12 @@ void ConvertConcatenationOperator(const Model& model,
   auto* dc_op = tensorflow_graph->add_node();
   dc_op->set_op("ConcatV2");
   dc_op->set_name(src_op.outputs[0]);
-  const string dummy_concat_dim = src_op.outputs[0] + "/concat_dim";
-  CreateDummyConcatDimTensorConst(dummy_concat_dim, src_op.concat_dim,
-                                  tensorflow_graph);
+  const string dummy_axis = src_op.outputs[0] + "/axis";
+  CreateDummyConcatDimTensorConst(dummy_axis, src_op.axis, tensorflow_graph);
   for (const auto& input : src_op.inputs) {
     *dc_op->add_input() = input;
   }
-  *dc_op->add_input() = dummy_concat_dim;
+  *dc_op->add_input() = dummy_axis;
   (*dc_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*dc_op->mutable_attr())["Tidx"].set_type(DT_INT32);
   (*dc_op->mutable_attr())["N"].set_i(src_op.inputs.size());
@@ -800,8 +802,10 @@ void ConvertTensorFlowReshapeOperator(const Model& model,
   *reshape_op->add_input() = src_op.inputs[1];
   (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
   const auto& shape_array = model.GetArray(src_op.inputs[1]);
-  CHECK(shape_array.data_type == ArrayDataType::kInt32);
-  CHECK(shape_array.buffer != nullptr);
+  QCHECK(shape_array.data_type == ArrayDataType::kInt32)
+      << "Only int32 shape is supported.";
+  QCHECK(shape_array.buffer != nullptr)
+      << "Shape inferred at runtime is not supported.";
   const auto& shape_data = shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   CreateReshapeShapeTensorConst(src_op.inputs[1], shape_data, tensorflow_graph);
 }
@@ -897,13 +901,15 @@ tensorflow::DataType GetTensorFlowDataType(const Model& model,
                                            const string& array_name) {
   auto& dtype = model.GetArray(array_name).data_type;
   CHECK(dtype == ArrayDataType::kFloat || dtype == ArrayDataType::kInt32 ||
-        dtype == ArrayDataType::kUint8);
+        dtype == ArrayDataType::kUint8 || dtype == ArrayDataType::kInt64);
   if (dtype == ArrayDataType::kFloat) {
     return tensorflow::DT_FLOAT;
   } else if (dtype == ArrayDataType::kInt32) {
     return tensorflow::DT_INT32;
   } else if (dtype == ArrayDataType::kUint8) {
     return tensorflow::DT_UINT8;
+  } else if (dtype == ArrayDataType::kInt64) {
+    return tensorflow::DT_INT64;
   } else {
     LOG(FATAL) << "Wrong data type";
   }
@@ -945,6 +951,22 @@ void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
   (*gather_op->mutable_attr())["Tindices"].set_type(DT_INT32);
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*gather_op->mutable_attr())["Tparams"].set_type(params_type);
+}
+
+void ConvertArgMaxOperator(const Model& model, const ArgMaxOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* argmax_op = tensorflow_graph->add_node();
+  argmax_op->set_op("ArgMax");
+  argmax_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *argmax_op->add_input() = src_op.inputs[0];
+  *argmax_op->add_input() = src_op.inputs[1];
+  (*argmax_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*argmax_op->mutable_attr())["Tidx"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+  (*argmax_op->mutable_attr())["output_type"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
 void ConvertResizeBilinearOperator(const Model& model,
@@ -990,22 +1012,21 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   const string concat_output = base + "basic_lstm_cell/concat";
   // Op names have been chosen to match the tf.slim LSTM naming
   // as closely as possible.
-  const int concat_dim =
+  const int axis =
       model.arrays.at(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
           ->shape()
           .dimensions_count() -
       1;
   // Note that DATA_INPUT may have extra size 1 dimensions, but TF concat
   // works the same since the tensor has the same underlying data layout.
-  const string concat_dim_output = concat_output + "/concat_dim";
-  CreateDummyConcatDimTensorConst(concat_dim_output, concat_dim,
-                                  tensorflow_graph);
+  const string axis_output = concat_output + "/axis";
+  CreateDummyConcatDimTensorConst(axis_output, axis, tensorflow_graph);
   auto* concat_op = tensorflow_graph->add_node();
   concat_op->set_op("ConcatV2");
   concat_op->set_name(concat_output);
   *concat_op->add_input() = src_op.inputs[LstmCellOperator::DATA_INPUT];
   *concat_op->add_input() = src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT];
-  *concat_op->add_input() = concat_dim_output;
+  *concat_op->add_input() = axis_output;
   (*concat_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*concat_op->mutable_attr())["Tidx"].set_type(DT_INT32);
   (*concat_op->mutable_attr())["N"].set_i(2);  // Number of inputs
@@ -1066,8 +1087,7 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Split
   string split_dim_output = base + "split/split_dim";
   // The dimension is the same as the concatenation dimension
-  CreateDummyConcatDimTensorConst(split_dim_output, concat_dim,
-                                  tensorflow_graph);
+  CreateDummyConcatDimTensorConst(split_dim_output, axis, tensorflow_graph);
   string split_output = base + "split";
   auto* split_op = tensorflow_graph->add_node();
   split_op->set_op("Split");
@@ -1283,6 +1303,10 @@ void ConvertMeanOperator(const Model& model, const MeanOperator& src_op,
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(params_type);
 
+  if (src_op.keep_dims) {
+    (*new_op->mutable_attr())["keep_dims"].set_b(true);
+  }
+
   // Create the params tensor.
   auto* params_op = tensorflow_graph->add_node();
   params_op->set_op("Const");
@@ -1291,11 +1315,11 @@ void ConvertMeanOperator(const Model& model, const MeanOperator& src_op,
   auto* tensor = (*params_op->mutable_attr())["value"].mutable_tensor();
   tensor->set_dtype(DT_INT32);
 
-  for (int i = 0; i < src_op.reduction_indices.size(); ++i) {
-    tensor->add_int_val(src_op.reduction_indices[i]);
+  for (int i = 0; i < src_op.axis.size(); ++i) {
+    tensor->add_int_val(src_op.axis[i]);
   }
   auto* shape = tensor->mutable_tensor_shape();
-  shape->add_dim()->set_size(src_op.reduction_indices.size());
+  shape->add_dim()->set_size(src_op.axis.size());
 }
 
 void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
@@ -1491,15 +1515,37 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kSlice) {
     ConvertSliceOperator(model, static_cast<const SliceOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kArgMax) {
+    ConvertArgMaxOperator(model, static_cast<const ArgMaxOperator&>(src_op),
+                          tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }
 }
 
-void AddPlaceholder(const string& name, GraphDef* tensorflow_graph) {
+void AddPlaceholder(const string& name, ArrayDataType type,
+                    GraphDef* tensorflow_graph) {
   auto* placeholder = tensorflow_graph->add_node();
   placeholder->set_op("Placeholder");
-  (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
+  switch (type) {
+    case ArrayDataType::kBool:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_BOOL);
+      break;
+    case ArrayDataType::kFloat:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
+      break;
+    case ArrayDataType::kUint8:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_UINT8);
+      break;
+    case ArrayDataType::kInt32:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT32);
+      break;
+    case ArrayDataType::kInt64:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
+      break;
+    default:
+      LOG(FATAL) << "Unexpected data type in array \"" << name << "\"";
+  }
   placeholder->set_name(name);
 }
 
@@ -1527,7 +1573,9 @@ void AddPlaceholderForRNNState(const Model& model, const string& name, int size,
 void ExportTensorFlowGraphDefImplementation(const Model& model,
                                             GraphDef* tensorflow_graph) {
   for (const auto& input_array : model.flags.input_arrays()) {
-    AddPlaceholder(input_array.name(), tensorflow_graph);
+    AddPlaceholder(input_array.name(),
+                   model.arrays.at(input_array.name())->data_type,
+                   tensorflow_graph);
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     AddPlaceholderForRNNState(model, rnn_state.state_array(), rnn_state.size(),

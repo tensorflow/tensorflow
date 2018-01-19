@@ -50,13 +50,43 @@ using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
+//
+// By default, the timing traces are only printed at VLOG(1) and above:
+//
+//   XLA_SCOPED_LOGGING_TIMER("fooing bar");  // nop if !VLOG_IS_ON(1).
+//
+// but you can control this via:
+//
+//   XLA_SCOPED_LOGGING_TIMER_LEVEL("fooing bar", 2);  // nop if !VLOG_IS_ON(2)
+//
+#define XLA_SCOPED_LOGGING_TIMER(label) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__)
+#define XLA_SCOPED_LOGGING_TIMER_LEVEL(label, level) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__)
+
+// Helper for implementing macros above.  Do not use directly.
+//
+// Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
+
+// Helper for macros above.  Don't use directly.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
+      label, VLOG_IS_ON(level))
+
+// RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
+// macros above.  Recommended usage is via the macros so you don't have to give
+// the timer a name or worry about calling VLOG_IS_ON yourself.
 struct ScopedLoggingTimer {
-  explicit ScopedLoggingTimer(const string& label, int32 vlog_level = 1);
+  // The timer does nothing if enabled is false.  This lets you pass in your
+  // file's VLOG_IS_ON value.
+  ScopedLoggingTimer(const string& label, bool enabled);
   ~ScopedLoggingTimer();
 
-  uint64 start_micros;
+  bool enabled;
   string label;
-  int32 vlog_level;
+  uint64 start_micros;
 };
 
 // Given a vector<T>, returns a MutableArraySlice<char> that points at its
@@ -209,11 +239,14 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
 
 // Override of the above that works around compile failures with gcc 7.1.1.
 // For details see https://github.com/tensorflow/tensorflow/issues/10843
+// Hide this workaround from MSVC as it causes ambiguous error.
+#ifndef _MSC_VER
 template <typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        const std::vector<T>& input) {
   return Permute<std::vector, T>(permutation, input);
 }
+#endif
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
@@ -364,6 +397,31 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
+
+// Simple wrapper around std::all_of.
+template <typename Container, typename Predicate>
+bool c_all_of(Container container, Predicate predicate) {
+  return std::all_of(std::begin(container), std::end(container), predicate);
+}
+
+// Simple wrapper around std::transform.
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(InputContainer input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator, unary_op);
+}
+
+// Simple wrapper around std::copy_if.
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(InputContainer input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, predicate);
+}
 
 }  // namespace xla
 

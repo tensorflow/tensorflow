@@ -150,7 +150,7 @@ void StepStatsCollector::BuildCostModel(
     const DeviceStepStats* hardware_stats;
   };
 
-  std::unordered_map<StringPiece, DeviceStats, StringPiece::Hasher>
+  std::unordered_map<StringPiece, DeviceStats, StringPieceHasher>
       per_device_stats;
   std::unordered_map<int, const DeviceStepStats*> gpu_hardware_stats;
 
@@ -190,7 +190,7 @@ void StepStatsCollector::BuildCostModel(
     CostModel* cm = cost_model_manager->FindOrCreateCostModel(graph);
     cm->IncrementUpdateTimes();
 
-    std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node;
+    std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node;
     for (Node* n : graph->nodes()) {
       name_to_node.emplace(n->name(), n);
     }

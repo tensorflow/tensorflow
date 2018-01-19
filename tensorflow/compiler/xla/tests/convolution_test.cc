@@ -105,8 +105,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x1x2_1x1x1x2_Valid) {
   }));
 
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -136,8 +136,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Valid) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -167,8 +167,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Same) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -200,8 +200,8 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x3x3_Same) {
   }));
   // clang-format on
   ComputeAndCompare(&builder, conv,
-                    {*Literal::CreateFromArray(input_data),
-                     *Literal::CreateFromArray(filter_data)},
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
                     error_spec_);
 }
 
@@ -370,9 +370,12 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
-    dnums.add_spatial_dimensions(3);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(3);
+    dnums.add_output_spatial_dimensions(3);
     dnums.set_input_feature_dimension(4);
     dnums.set_output_feature_dimension(4);
     dnums.add_kernel_spatial_dimensions(0);
@@ -423,8 +426,10 @@ XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
-    dnums.add_spatial_dimensions(2);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(2);
+    dnums.add_output_spatial_dimensions(2);
     dnums.set_input_feature_dimension(3);
     dnums.set_output_feature_dimension(3);
     dnums.add_kernel_spatial_dimensions(0);
@@ -458,6 +463,54 @@ XLA_TEST_F(ConvolutionTest, Convolve2D_1x3x3x5_3x3x5x5_Valid) {
                            error_spec_);
 }
 
+// Test fixture to run convolution tests with and without convolution
+// canonicalization enabled.
+class ConvolveWithAndWithoutCanonicalization
+    : public ConvolutionTest,
+      public ::testing::WithParamInterface<bool> {};
+
+XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
+           DISABLED_ON_GPU(Convolve2D_NoSpatialDims)) {
+  if (GetParam()) {
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "convolution-canonicalization");
+  }
+  ComputationBuilder builder(client_, TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {4, 29});
+  Shape filter_shape = ShapeUtil::MakeShape(F32, {4, 10});
+
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_feature_dimension(0);
+  dnums.set_input_batch_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  auto conv = builder.ConvWithGeneralDimensions(input, filter, {},
+                                                Padding::kValid, dnums);
+
+  Array2D<float> param0(4, 29);
+  param0.FillUnique();
+
+  Array2D<float> param1(4, 10);
+  param1.FillUnique();
+
+  Array2D<float> expected_result(29, 10);
+  expected_result.Fill(0);
+
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(param0)),
+                     std::move(*Literal::CreateFromArray(param1))},
+                    error_spec_);
+}
+
+INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
+                        ConvolveWithAndWithoutCanonicalization,
+                        ::testing::Values(true, false));
+
 struct Convolve1DTestParam {
   int64 input_feature;
   int64 output_feature;
@@ -490,7 +543,8 @@ XLA_TEST_P(Convolve1D1WindowTest, Convolve1D1Window) {
     ConvolutionDimensionNumbers dnums;
     dnums.set_input_batch_dimension(0);
     dnums.set_output_batch_dimension(0);
-    dnums.add_spatial_dimensions(1);
+    dnums.add_input_spatial_dimensions(1);
+    dnums.add_output_spatial_dimensions(1);
     dnums.set_input_feature_dimension(2);
     dnums.set_output_feature_dimension(2);
     dnums.add_kernel_spatial_dimensions(0);

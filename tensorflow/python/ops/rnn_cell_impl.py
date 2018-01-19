@@ -238,7 +238,8 @@ class RNNCell(base_layer.Layer):
     # Try to use the last cached zero_state. This is done to avoid recreating
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
-    if hasattr(self, "_last_zero_state"):
+    is_eager = context.in_eager_mode()
+    if is_eager and hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
       if (last_batch_size == batch_size and
@@ -247,7 +248,8 @@ class RNNCell(base_layer.Layer):
         return last_output
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       output = _zero_state_tensors(state_size, batch_size, dtype)
-    self._last_zero_state = (state_size, batch_size, dtype, output)
+    if is_eager:
+      self._last_zero_state = (state_size, batch_size, dtype, output)
     return output
 
 
@@ -265,7 +267,7 @@ class _LayerRNNCell(RNNCell):
   `call` methods do not access Variables `tf.get_variable`.
   """
 
-  def __call__(self, inputs, state, scope=None):
+  def __call__(self, inputs, state, scope=None, *args, **kwargs):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
@@ -274,8 +276,9 @@ class _LayerRNNCell(RNNCell):
         with shape `[batch_size, self.state_size]`.  Otherwise, if
         `self.state_size` is a tuple of integers, this should be a tuple
         with shapes `[batch_size, s] for s in self.state_size`.
-      scope: `VariableScope` for the created subgraph; if not provided,
-        defaults to standard `tf.layers.Layer` behavior.
+      scope: optional cell scope.
+      *args: Additional positional arguments.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       A pair containing:
@@ -287,7 +290,8 @@ class _LayerRNNCell(RNNCell):
     # Bypass RNNCell's variable capturing semantics for LayerRNNCell.
     # Instead, it is up to subclasses to provide a proper build
     # method.  See the class docstring for more details.
-    return base_layer.Layer.__call__(self, inputs, state, scope=scope)
+    return base_layer.Layer.__call__(self, inputs, state, scope=scope,
+                                     *args, **kwargs)
 
 
 class BasicRNNCell(_LayerRNNCell):
@@ -1037,7 +1041,7 @@ class DropoutWrapper(RNNCell):
       inputs = self._dropout(inputs, "input",
                              self._recurrent_input_noise,
                              self._input_keep_prob)
-    output, new_state = self._cell(inputs, state, scope)
+    output, new_state = self._cell(inputs, state, scope=scope)
     if _should_dropout(self._state_keep_prob):
       # Identify which subsets of the state to perform dropout on and
       # which ones to keep.

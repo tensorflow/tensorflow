@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN is a lightweight library for training and evaluating GANs.
+
+In addition to providing the infrastructure for easily training and evaluating
+GANS, this library contains modules for a TFGAN-backed Estimator,
+evaluation metrics, features (such as virtual batch normalization), and losses.
+Please see README.md for details and usage.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

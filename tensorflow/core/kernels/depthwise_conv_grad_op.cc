@@ -231,7 +231,8 @@ static void CopyOutputBackpropRegion(const DepthwiseArgs& args,
       }
       // Pad to vector-register width (if needed).
       for (int64 d = 0; d < pad_size; ++d) {
-        buffer[buf_base + vectorized_size + scalar_size + d] = static_cast<T>(0);
+        buffer[buf_base + vectorized_size + scalar_size + d] =
+            static_cast<T>(0);
       }
     }
   }
@@ -510,7 +511,8 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
+                                                          Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
@@ -885,7 +887,8 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
-extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, Eigen::half>;
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
+                                                           Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 

@@ -118,11 +118,9 @@ class GraphTest : public ::testing::Test {
     LOG(FATAL) << name;
   }
 
-  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src,
-                                         const Node* dst) {
-    for (const Edge *e : dst->in_edges()) {
-      if (e->IsControlEdge() &&
-          e->src() == src &&
+  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src, const Node* dst) {
+    for (const Edge* e : dst->in_edges()) {
+      if (e->IsControlEdge() && e->src() == src &&
           e->src_output() == Graph::kControlSlot &&
           e->dst_input() == Graph::kControlSlot) {
         return true;

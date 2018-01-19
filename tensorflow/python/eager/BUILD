@@ -61,7 +61,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":memory_trace",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -88,12 +87,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
 )
 
-py_library(
-    name = "memory_trace",
-    srcs = ["memory_trace.py"],
-    srcs_version = "PY2AND3",
-)
-
 cuda_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
@@ -117,6 +110,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
@@ -151,6 +145,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )
 
@@ -222,6 +217,7 @@ cc_library(
         ":python_eager_op_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -421,6 +417,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],

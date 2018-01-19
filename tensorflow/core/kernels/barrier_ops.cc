@@ -161,9 +161,11 @@ class Barrier : public ResourceBase {
         component_shape.InsertDim(0, insertion_size);
         Tensor component(ready_tuples[0][i].dtype(), component_shape);
         for (int b = 0; b < insertion_size; ++b) {
-          OP_REQUIRES_OK_ASYNC(ctx, QueueBase::CopyElementToSlice(
-                                        ready_tuples[b][i], &component, b),
-                               callback);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              batch_util::CopyElementToSlice(std::move(ready_tuples[b][i]),
+                                             &component, b),
+              callback);
         }
         insert_tuple.push_back(component);
       }

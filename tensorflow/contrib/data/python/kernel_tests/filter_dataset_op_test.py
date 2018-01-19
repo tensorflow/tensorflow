@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -131,9 +132,12 @@ class FilterDatasetTest(test.TestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
+
     def _map_fn(i):
-      return sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1])), i
 
     def _filter_fn(_, i):
       return math_ops.equal(i % 2, 0)
@@ -148,12 +152,47 @@ class FilterDatasetTest(test.TestCase):
       sess.run(init_op)
       for i in range(5):
         actual = sess.run(get_next)
-        expected = sparse_tensor.SparseTensor(
-            indices=[[0, 0]], values=[i*2], dense_shape=[1, 1])
         self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
-        self.assertSparseValuesEqual(actual, expected.eval())
+        self.assertSparseValuesEqual(actual, _map_fn(i * 2)[0])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+
+class FilterDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_filter_range_graph(self, div):
+    return dataset_ops.Dataset.range(100).filter(
+        lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
+
+  def testFilterCore(self):
+    div = 3
+    num_outputs = np.sum([x % 3 is not 2 for x in range(100)])
+    self.run_core_tests(lambda: self._build_filter_range_graph(div),
+                        lambda: self._build_filter_range_graph(div * 2),
+                        num_outputs)
+
+  def _build_filter_dict_graph(self):
+    return dataset_ops.Dataset.range(10).map(
+        lambda x: {"foo": x * 2, "bar": x ** 2}).filter(
+            lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
+                lambda d: d["foo"] + d["bar"])
+
+  def testFilterDictCore(self):
+    num_outputs = np.sum([(x**2) % 2 == 0 for x in range(10)])
+    self.run_core_tests(self._build_filter_dict_graph, None, num_outputs)
+
+  def _build_sparse_filter(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    def _filter_fn(_, i):
+      return math_ops.equal(i % 2, 0)
+
+    return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
+        lambda x, i: x)
 
 
 if __name__ == "__main__":

@@ -169,6 +169,11 @@ TfLiteStatus FeedExample(tflite::Interpreter* interpreter,
       for (size_t idx = 0; idx < example.inputs[i].flat_data.size(); idx++) {
         data[idx] = example.inputs[i].flat_data[idx];
       }
+    } else if (int64_t* data =
+                   interpreter->typed_tensor<int64_t>(input_index)) {
+      for (size_t idx = 0; idx < example.inputs[i].flat_data.size(); idx++) {
+        data[idx] = example.inputs[i].flat_data[idx];
+      }
     } else {
       fprintf(stderr, "input[%zu] was not float or int data\n", i);
       return kTfLiteError;
@@ -219,6 +224,19 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
         }
       }
       fprintf(stderr, "\n");
+    } else if (const int64_t* data =
+                   interpreter->typed_tensor<int64_t>(output_index)) {
+      for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
+        int64_t computed = data[idx];
+        int64_t reference = example.outputs[0].flat_data[idx];
+        if (std::abs(computed - reference) > 0) {
+          fprintf(stderr,
+                  "output[%zu][%zu] did not match %ld vs reference %f\n", i,
+                  idx, data[idx], example.outputs[0].flat_data[idx]);
+          return kTfLiteError;
+        }
+      }
+      fprintf(stderr, "\n");
     } else {
       fprintf(stderr, "output[%zu] was not float or int data\n", i);
       return kTfLiteError;
@@ -232,7 +250,7 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
 //   invoke {
 //     id: xyz
 //     input: 1,2,1,1,1,2,3,4
-//     ouput: 4,5,6
+//     output: 4,5,6
 //   }
 class Invoke : public Message {
  public:

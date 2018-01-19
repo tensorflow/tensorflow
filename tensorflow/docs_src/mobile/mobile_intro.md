@@ -82,7 +82,7 @@ new object enters or leaves the scene. We have some sample code for this
 available for Android [on
 Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android),
 and also a [more general object detection
-model](https://github.com/tensorflow/models/tree/master/object_detection/README.md)
+model](https://github.com/tensorflow/models/tree/master/research/object_detection/README.md)
 available as well.
 
 ### Gesture Recognition
@@ -134,7 +134,7 @@ that covers everything from sentiment analysis to topic discovery. You’re like
 to have your own categories or labels that you want to apply, so the best place
 to start is with an example
 like
-[Skip-Thoughts](https://github.com/tensorflow/models/tree/master/skip_thoughts/),
+[Skip-Thoughts](https://github.com/tensorflow/models/tree/master/research/skip_thoughts/),
 and then train on your own examples.
 
 ### Voice Synthesis
@@ -156,7 +156,7 @@ easy cases on device.
 Doing on-device computation can also signal when it's time to switch to working
 on the cloud. A good example of this is hotword detection in speech. Since
 devices are able to constantly listen out for the keywords, this then triggers a
-lot of traffic to cloud-based speech recognition once one is recognised. Without
+lot of traffic to cloud-based speech recognition once one is recognized. Without
 the on-device component, the whole application wouldn’t be feasible, and this
 pattern exists across several other applications as well. Recognizing that some
 sensor input is interesting enough for further processing makes a lot of

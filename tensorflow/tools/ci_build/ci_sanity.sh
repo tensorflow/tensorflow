@@ -99,7 +99,8 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
-"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition"
+"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -110,9 +111,9 @@ do_pylint() {
   fi
 
   if [[ $1 == "PYTHON2" ]]; then
-    PYLINT_BIN="python /usr/local/lib/python2.7/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python -m pylint"
   elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 /usr/local/lib/python3.4/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python3 -m pylint"
   else
     echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
     return 1

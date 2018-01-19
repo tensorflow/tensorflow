@@ -553,16 +553,30 @@ class SparseSegmentReductionOpBase : public OpKernel {
  public:
   explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
                                         bool is_mean, bool is_sqrtn,
-                                        T default_value)
+                                        bool has_num_segments, T default_value)
       : OpKernel(context),
         is_mean_(is_mean),
         is_sqrtn_(is_sqrtn),
+        has_num_segments_(has_num_segments),
         default_value_(default_value) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
+
+    Index output_rows = -1;
+    if (has_num_segments_) {
+      const Tensor& num_segments = context->input(3);
+
+      OP_REQUIRES(
+          context, num_segments.shape().dims() == 0,
+          errors::InvalidArgument("num_segments should be a scalar, not shape ",
+                                  num_segments.shape().DebugString()));
+      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
+      OP_REQUIRES(context, output_rows >= 0,
+                  errors::InvalidArgument("segment ids must be >= 0"));
+    }
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices should be a vector."));
@@ -581,10 +595,17 @@ class SparseSegmentReductionOpBase : public OpKernel {
     const auto segment_vec = segment_ids.vec<OutputRow>();
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
-    const OutputRow output_rows =
+    const OutputRow last_segment_id_plus_one =
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
+    if (has_num_segments_) {
+      OP_REQUIRES(
+          context, output_rows >= last_segment_id_plus_one,
+          errors::InvalidArgument("segment ids must be < num_segments"));
+    } else {
+      output_rows = last_segment_id_plus_one;
+    }
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
@@ -646,11 +667,20 @@ class SparseSegmentReductionOpBase : public OpKernel {
                       indices_vec(start + bad_offset), " out of range [0, ",
                       input_flat.dimension(0), ")"));
 
-      if (end >= num_indices) break;
       start = end;
       ++end;
       uninitialized_index = out_index + 1;
       out_index = next_index;
+      if (end > num_indices) break;
+    }
+
+    // Fill the gap at the end with the default value.
+    if (uninitialized_index < output_rows) {
+      Eigen::DSizes<Eigen::DenseIndex, 2> gap_slice_shape(
+          output_rows - uninitialized_index, num_col);
+      Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>, Eigen::Unaligned>
+          gap_slice(&output_flat(uninitialized_index, 0), gap_slice_shape);
+      gap_slice.setConstant(default_value_);
     }
   }
 
@@ -786,6 +816,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
   const bool is_mean_;
   const bool is_sqrtn_;
+  const bool has_num_segments_;
   const T default_value_;
 };
 
@@ -794,9 +825,20 @@ class SparseSegmentReductionMeanOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionMeanOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, true /*is_mean*/,
-                                                false /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, true /*is_mean*/, false /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
+};
+
+template <typename Device, class T>
+class SparseSegmentReductionMeanWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionMeanWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, true /*is_mean*/, false /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -804,9 +846,20 @@ class SparseSegmentReductionSqrtNOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionSqrtNOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                true /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, true /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
+};
+
+template <typename Device, class T>
+class SparseSegmentReductionSqrtNWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionSqrtNWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, true /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -814,37 +867,65 @@ class SparseSegmentReductionSumOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionSumOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                false /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, false /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSum")            \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionSumOp<CPUDevice, type>);
+template <typename Device, class T>
+class SparseSegmentReductionSumWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionSumWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, false /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
+};
 
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSum")                       \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int32>("Tidx"),            \
+                          SparseSegmentReductionSumOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("SparseSegmentSumWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int32>("Tidx"),                                \
+      SparseSegmentReductionSumWithNumSegmentsOp<CPUDevice, type>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_SPARSE_KERNELS);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentMean")           \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionMeanOp<CPUDevice, type>);
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentMean")                       \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<type>("T")                  \
+                              .TypeConstraint<int32>("Tidx"),             \
+                          SparseSegmentReductionMeanOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("SparseSegmentMeanWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int32>("Tidx"),                                 \
+      SparseSegmentReductionMeanWithNumSegmentsOp<CPUDevice, type>);
 REGISTER_CPU_SPARSE_KERNELS(float);
 REGISTER_CPU_SPARSE_KERNELS(double);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSqrtN")          \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionSqrtNOp<CPUDevice, type>);
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                  \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSqrtN")                       \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<type>("T")                   \
+                              .TypeConstraint<int32>("Tidx"),              \
+                          SparseSegmentReductionSqrtNOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("SparseSegmentSqrtNWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                              \
+          .TypeConstraint<type>("T")                                       \
+          .TypeConstraint<int32>("Tidx"),                                  \
+      SparseSegmentReductionSqrtNWithNumSegmentsOp<CPUDevice, type>);
 REGISTER_CPU_SPARSE_KERNELS(float);
 REGISTER_CPU_SPARSE_KERNELS(double);
 #undef REGISTER_CPU_SPARSE_KERNELS
@@ -889,9 +970,10 @@ class SparseSegmentGradOpBase : public OpKernel {
 
     // Note that similar to SparseSegmentMean, we assume that segment_vec is
     // already sorted and has non-negative values.
-    const SegmentId num_segments =
+    const SegmentId num_segments = input.dim_size(0);
+    const SegmentId last_segment_id_plus_one =
         internal::SubtleMustCopy(segment_vec(N - 1)) + 1;
-    OP_REQUIRES(context, input.dim_size(0) == num_segments,
+    OP_REQUIRES(context, last_segment_id_plus_one <= num_segments,
                 errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.

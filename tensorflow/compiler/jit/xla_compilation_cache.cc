@@ -214,16 +214,11 @@ Status XlaCompilationCache::BuildExecutable(
     const XlaCompiler::CompilationResult& result,
     std::unique_ptr<xla::LocalExecutable>* executable) {
   VLOG(2) << "Compiling to local executable";
-  xla::Shape opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
 
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
   for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
-  }
-  if (result.requires_runtime_context) {
-    // The final arg is the XlaLocalRuntimeContext*.
-    argument_layouts.push_back(&opaque_shape);
   }
   xla::ExecutableBuildOptions build_options;
   build_options.set_device_ordinal(client_->default_device_ordinal());
@@ -243,7 +238,8 @@ Status XlaCompilationCache::Compile(
     int num_constant_args, const std::vector<OptionalTensor>& variable_args,
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable) {
+    xla::LocalExecutable** executable,
+    const XlaCompiler::CompileOptions* compile_options) {
   VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -302,9 +298,9 @@ Status XlaCompilationCache::Compile(
 
     XlaCompiler compiler(options);
     entry->compiled = true;
-    entry->compilation_status =
-        compiler.CompileFunction(XlaCompiler::CompileOptions(), function, args,
-                                 &entry->compilation_result);
+    entry->compilation_status = compiler.CompileFunction(
+        compile_options ? *compile_options : XlaCompiler::CompileOptions(),
+        function, args, &entry->compilation_result);
   }
   *compilation_result = &entry->compilation_result;
   if (entry->compilation_status.ok() && executable) {

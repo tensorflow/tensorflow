@@ -146,10 +146,12 @@ class _GraphTensorArray(object):
         # write into the TensorArray from a Tensor with a set device
         # will retroactively set the device value of this op.
         def create():
+          """Create the TensorArray op."""
           return gen_data_flow_ops._tensor_array_v3(
               dtype=dtype,
               size=size,
               element_shape=element_shape,
+              identical_element_shapes=infer_shape,
               dynamic_size=dynamic_size,
               clear_after_read=clear_after_read,
               tensor_array_name=tensor_array_name,

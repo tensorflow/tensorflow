@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_show.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -45,7 +45,8 @@ class TFMultiShow {
   virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const MultiGraphNodeProto& Show(const Options& opts);
+  virtual const MultiGraphNodeProto& Show(const string& prefix,
+                                          const Options& opts) final;
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,

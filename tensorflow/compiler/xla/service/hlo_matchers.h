@@ -87,6 +87,7 @@ HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(Concatenate);
+HLO_MATCHER(Conditional);
 HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);

@@ -160,7 +160,7 @@ public class TensorFlowInferenceInterface {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
   }
-  
+
   /*
    * Construct a TensorFlowInferenceInterface with provided Graph
    *
@@ -168,7 +168,7 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(Graph g) {
     prepareNativeRuntime();
-      
+
     // modelName is redundant here, here is for
     // avoiding error in initialization as modelName is marked final.
     this.modelName = "";
@@ -290,7 +290,7 @@ public class TensorFlowInferenceInterface {
    */
   public void feed(String inputName, boolean[] src, long... dims) {
     byte[] b = new byte[src.length];
-    
+
     for (int i = 0; i < src.length; i++) {
       b[i] = src[i] ? (byte) 1 : (byte) 0;
     }

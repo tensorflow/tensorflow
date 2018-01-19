@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
@@ -175,7 +176,7 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = NPY_UINT16;
+      *out_pyarray_type = Bfloat16NumpyType();
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,

@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training_util
 
@@ -67,12 +68,12 @@ class MetricsTest(test.TestCase):
     m([1, 10, 100])
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name="t0").as_default(), summary_ops.always_record_summaries():
       m.result()  # As a side-effect will write summaries.
 
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 
@@ -137,7 +138,7 @@ class MetricsTest(test.TestCase):
     self.assertEqual(m1.name, "has space")
     self.assertEqual(m1.numer.name, "has_space/numer:0")
 
-  def testGraph(self):
+  def testGraphWithPlaceholder(self):
     with context.graph_mode(), self.test_session() as sess:
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
@@ -152,6 +153,22 @@ class MetricsTest(test.TestCase):
       init_op.run()
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphAndEagerTensor(self):
+    m = metrics.Mean()
+    inputs = ops.convert_to_tensor([1.0, 2.0])
+    accumulate = m(inputs)
+    result = m.result()
+    self.evaluate(m.init_variables())
+    self.evaluate(accumulate)
+    self.assertEqual(self.evaluate(result), 1.5)
+    # Second init resets all the variables.
+    self.evaluate(m.init_variables())
+    inputs = ops.convert_to_tensor([2.0, 3.0])
+    self.evaluate(m(inputs))
+    value = m.value()
+    self.assertEqual(self.evaluate(value), 2.5)
 
   def testTwoMeansGraph(self):
     # Verify two metrics with the same class and name don't

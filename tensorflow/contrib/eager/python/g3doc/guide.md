@@ -757,7 +757,7 @@ For example, to record summaries once every 100 global steps, use:
 
 ```python
 tf.train.get_or_create_global_step()  # Ensuring the global step variable exists
-writer = tf.contrib.summary.create_summary_file_writer(logdir)
+writer = tf.contrib.summary.create_file_writer(logdir)
 
 for _ in range(iterations):
   with writer.as_default():

@@ -196,6 +196,19 @@ Status RecordReader::ReadRecord(uint64* offset, string* record) {
   return Status::OK();
 }
 
+Status RecordReader::SkipNBytes(uint64 offset) {
+#if !defined(IS_SLIM_BUILD)
+  if (zlib_input_stream_) {
+    TF_RETURN_IF_ERROR(zlib_input_stream_->SkipNBytes(offset));
+  } else {
+#endif
+    if (options_.buffer_size > 0) {
+      TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(offset));
+    }
+  }
+  return Status::OK();
+}
+
 SequentialRecordReader::SequentialRecordReader(
     RandomAccessFile* file, const RecordReaderOptions& options)
     : underlying_(file, options), offset_(0) {}

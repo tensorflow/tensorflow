@@ -429,7 +429,7 @@ class QueueIsClosedOp : public QueueOpKernel {
  public:
   explicit QueueIsClosedOp(OpKernelConstruction* context)
      : QueueOpKernel(context) {}
- 
+
  protected:
   void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                     DoneCallback callback) override {

@@ -84,6 +84,34 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  def testRunMetadata(self):
+    context.enable_run_metadata()
+    t = constant_op.constant(1.0)
+    _ = t + t  # Runs an operation which will be in the RunMetadata
+    run_metadata = context.export_run_metadata()
+    context.disable_run_metadata()
+    step_stats = run_metadata.step_stats
+    self.assertGreater(len(step_stats.dev_stats), 0)
+    cpu_stats = step_stats.dev_stats[0]
+    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                     cpu_stats.device)
+    self.assertEqual(len(cpu_stats.node_stats), 1)
+    self.assertEqual(cpu_stats.node_stats[0].node_name, 'Add')
+
+  def testContextStackContainsEagerMode(self):
+    # Eager execution has been enabled, and no other context
+    # switch has occurred, so `context_stack` should contain
+    # exactly one entry.
+    self.assertEqual(len(context.context_stack.stack), 1)
+    stack_entry = context.context_stack.stack[0]
+
+    # The entry should log that eager mode was entered.
+    self.assertIs(stack_entry.enter_context_fn, context.eager_mode)
+
+    # It is not possible to build a graph function when eager execution
+    # is enabled; the stack entry should reflect this fact.
+    self.assertFalse(stack_entry.is_building_function)
+
   def _runInThread(self, target, args):
     t = threading.Thread(target=target, args=args)
     try:

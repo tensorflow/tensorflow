@@ -44,6 +44,9 @@ namespace window_util {
   if (dim.window_dilation() != 1) {
     StrAppend(&str, ",window_dilation=", dim.window_dilation());
   }
+  if (dim.window_reversal()) {
+    StrAppend(&str, ",window_reversal");
+  }
   StrAppend(&str, ")");
   return str;
 }
@@ -83,6 +86,11 @@ string ToString(const Window& window) {
   if (HasWindowDilation(window)) {
     add_field(" rhs_dilate", [](const WindowDimension& dim) {
       return StrCat(dim.window_dilation());
+    });
+  }
+  if (HasWindowReversal(window)) {
+    add_field(" rhs_reversal", [](const WindowDimension& dim) {
+      return StrCat(dim.window_reversal() ? 1 : 0);
     });
   }
   return str;
@@ -138,8 +146,23 @@ bool HasWindowDilation(const Window& window) {
   return false;
 }
 
+bool HasWindowReversal(const Window& window) {
+  for (const auto& dim : window.dimensions()) {
+    if (dim.window_reversal()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
+}
+
+bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
+  const WindowDimension& window_dim = window.dimensions(logical_dim);
+  return window_dim.size() == 1 && window_dim.stride() == 1 &&
+         window_dim.padding_low() == 0 && window_dim.padding_high() == 0;
 }
 
 int64 DilatedBound(int64 bound, int64 dilation) {

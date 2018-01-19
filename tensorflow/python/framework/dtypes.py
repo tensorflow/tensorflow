@@ -18,9 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
+from tensorflow.python import pywrap_tensorflow
+
+
+_np_bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
 
 
 class DType(object):
@@ -146,8 +151,9 @@ class DType(object):
   @property
   def is_floating(self):
     """Returns whether this is a (non-quantized, real) floating point type."""
-    return self.is_numpy_compatible and np.issubdtype(self.as_numpy_dtype,
-                                                      np.floating)
+    return ((self.is_numpy_compatible and np.issubdtype(self.as_numpy_dtype,
+                                                        np.floating))
+            or self.base_dtype == bfloat16)
 
   @property
   def is_complex(self):
@@ -157,7 +163,7 @@ class DType(object):
   @property
   def is_quantized(self):
     """Returns whether this is a quantized data type."""
-    return self.base_dtype in [qint8, quint8, qint16, quint16, qint32, bfloat16]
+    return self.base_dtype in [qint8, quint8, qint16, quint16, qint32]
 
   @property
   def is_unsigned(self):
@@ -194,6 +200,8 @@ class DType(object):
       try:
         return np.iinfo(self.as_numpy_dtype()).min
       except:
+        if self.base_dtype == bfloat16:
+          return _np_bfloat16(float.fromhex("-0x1.FEp127"))
         raise TypeError("Cannot find minimum value of %s." % self)
 
   @property
@@ -216,6 +224,8 @@ class DType(object):
       try:
         return np.iinfo(self.as_numpy_dtype()).max
       except:
+        if self.base_dtype == bfloat16:
+          return _np_bfloat16(float.fromhex("0x1.FEp127"))
         raise TypeError("Cannot find maximum value of %s." % self)
 
   @property
@@ -486,6 +496,8 @@ _np_qint16 = np.dtype([("qint16", np.int16, 1)])
 _np_quint16 = np.dtype([("quint16", np.uint16, 1)])
 _np_qint32 = np.dtype([("qint32", np.int32, 1)])
 
+# _np_bfloat16 is defined by a module import.
+
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
 np_resource = np.dtype([("resource", np.ubyte, 1)])
 
@@ -511,7 +523,7 @@ _NP_TO_TF = frozenset([
     (_np_qint16, qint16),
     (_np_quint16, quint16),
     (_np_qint32, qint32),
-    # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
+    (_np_bfloat16, bfloat16),
 ])
 _TF_TO_NP = {
     types_pb2.DT_HALF: np.float16,
@@ -536,7 +548,7 @@ _TF_TO_NP = {
     types_pb2.DT_QINT16: _np_qint16,
     types_pb2.DT_QUINT16: _np_quint16,
     types_pb2.DT_QINT32: _np_qint32,
-    types_pb2.DT_BFLOAT16: np.uint16,
+    types_pb2.DT_BFLOAT16: _np_bfloat16,
 
     # Ref types
     types_pb2.DT_HALF_REF: np.float16,
@@ -559,7 +571,7 @@ _TF_TO_NP = {
     types_pb2.DT_QINT16_REF: _np_qint16,
     types_pb2.DT_QUINT16_REF: _np_quint16,
     types_pb2.DT_QINT32_REF: _np_qint32,
-    types_pb2.DT_BFLOAT16_REF: np.uint16,
+    types_pb2.DT_BFLOAT16_REF: _np_bfloat16,
 }
 
 

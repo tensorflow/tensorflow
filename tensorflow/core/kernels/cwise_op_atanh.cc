@@ -22,7 +22,7 @@ REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double,
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Atanh", functor::atanh, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Atanh", functor::atanh, float, double);

@@ -36,6 +36,7 @@ limitations under the License.
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
+#define DISABLED_ON_INTERPRETER(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -62,12 +63,19 @@ limitations under the License.
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU
 
+#ifdef XLA_TEST_BACKEND_INTERPRETER
+# undef DISABLED_ON_INTERPRETER
+# define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_INTERPRETER
+
 // clang-format on
 
 namespace xla {
 
-// Reads a disabled manifest file (and retains it as a singleton) to resolve
-// whether test cases should be disabled on a particular platform.
+// Reads a disabled manifest file to resolve whether test cases should be
+// disabled on a particular platform. For a test that should be disabled,
+// returns DISABLED_ prepended to its name; otherwise returns the test name
+// unmodified.
 string PrependDisabledIfIndicated(const string& test_case_name,
                                   const string& test_name);
 

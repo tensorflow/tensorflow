@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import unittest
+
 import numpy as np
 
 from tensorflow.python.keras._impl import keras
@@ -396,7 +399,7 @@ class LossWeightingTest(test.TestCase):
       model.add(keras.layers.Activation('softmax'))
       model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
-      np.random.seed(1337)
+      np.random.seed(43)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,
@@ -640,6 +643,19 @@ class LossMaskingTest(test.TestCase):
 
 class TestDynamicTrainability(test.TestCase):
 
+  def test_trainable_warning(self):
+    with self.test_session():
+      x = np.random.random((5, 3))
+      y = np.random.random((5, 2))
+
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.trainable = False
+      model.compile('rmsprop', 'mse')
+      model.trainable = True
+      model.train_on_batch(x, y)
+      self.assertRaises(Warning)
+
   def test_trainable_argument(self):
     with self.test_session():
       x = np.random.random((5, 3))
@@ -770,6 +786,9 @@ class TestDynamicTrainability(test.TestCase):
 
 class TestGeneratorMethods(test.TestCase):
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   def test_generator_methods(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
@@ -817,6 +836,11 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
+        model.fit_generator(custom_generator(),
+                            steps_per_epoch=5,
+                            validation_data=custom_generator(),
+                            validation_steps=1,
+                            workers=0)
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,
@@ -826,6 +850,10 @@ class TestGeneratorMethods(test.TestCase):
                                 steps=5,
                                 max_queue_size=10,
                                 use_multiprocessing=False)
+        model.predict_generator(custom_generator(),
+                                steps=5,
+                                max_queue_size=10,
+                                workers=0)
         model.evaluate_generator(custom_generator(),
                                  steps=5,
                                  max_queue_size=10,
@@ -835,6 +863,11 @@ class TestGeneratorMethods(test.TestCase):
                                  steps=5,
                                  max_queue_size=10,
                                  use_multiprocessing=False)
+        model.evaluate_generator(custom_generator(),
+                                 steps=5,
+                                 max_queue_size=10,
+                                 use_multiprocessing=False,
+                                 workers=0)
 
         # Test legacy API
         model.fit_generator(custom_generator(),
@@ -1420,4 +1453,13 @@ class TestTrainingWithDataTensors(test.TestCase):
 
 
 if __name__ == '__main__':
+  # Bazel sets these environment variables to very long paths.
+  # Tempfile uses them to create long paths, and in turn multiprocessing
+  # library tries to create sockets named after paths. Delete whatever bazel
+  # writes to these to avoid tests failing due to socket addresses being too
+  # long.
+  for var in ('TMPDIR', 'TMP', 'TEMP'):
+    if var in os.environ:
+      del os.environ[var]
+
   test.main()

@@ -330,8 +330,7 @@ class TensorArrayTest(xla_test.XLATestCase):
     # Find two different floating point types, create an array of
     # the first type, but try to read the other type.
     if len(self.float_types) > 1:
-      dtype1 = self.float_types[0]
-      dtype2 = self.float_types[1]
+      dtype1, dtype2 = list(self.float_types)[:2]
       with self.test_session(), self.test_scope():
         ta = tensor_array_ops.TensorArray(
             dtype=dtype1, tensor_array_name="foo", size=3)

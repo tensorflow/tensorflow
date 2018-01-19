@@ -23,7 +23,6 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -38,10 +37,9 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
 from tensorflow.python.util import deprecation
+
 
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
@@ -454,6 +452,7 @@ class _WithSpaceToBatch(object):
     self.input_shape = input_shape
     self.spatial_dims = spatial_dims
     self.dilation_rate = dilation_rate
+    self.data_format = data_format
     self.op = build_op(num_spatial_dims, "VALID")
     self.call = self._with_space_to_batch_call
 
@@ -498,6 +497,14 @@ class _WithSpaceToBatch(object):
 
     result_converted = array_ops.batch_to_space_nd(
         input=result, block_shape=dilation_rate, crops=crops)
+
+    # Recover channel information for output shape if channels are not last.
+    if self.data_format is not None and self.data_format.startswith("NC"):
+      if not result_converted.shape[1].value:
+        output_shape = result_converted.shape.as_list()
+        output_shape[1] = filter.shape[-1]
+        result_converted.set_shape(output_shape)
+
     return result_converted
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -825,7 +832,8 @@ class Convolution(object):
         padding=padding,
         build_op=self._build_op,
         filter_shape=filter_shape,
-        spatial_dims=spatial_dims)
+        spatial_dims=spatial_dims,
+        data_format=data_format)
 
   def _build_op(self, _, padding):
     return _NonAtrousConvolution(
@@ -1207,13 +1215,14 @@ def conv2d_transpose(value,
       raise ValueError("padding must be either VALID or SAME:"
                        " {}".format(padding))
 
-    return gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_,
-                                            filter=filter,
-                                            out_backprop=value,
-                                            strides=strides,
-                                            padding=padding,
-                                            data_format=data_format,
-                                            name=name)
+    return gen_nn_ops.conv2d_backprop_input(
+        input_sizes=output_shape_,
+        filter=filter,
+        out_backprop=value,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
 
 
 def atrous_conv2d_transpose(value,
@@ -1345,12 +1354,13 @@ def atrous_conv2d_transpose(value,
                    (in_width + pad_right_extra) // rate,
                    output_shape[3]]
 
-    value = gen_nn_ops.conv2d_backprop_input(input_sizes=input_sizes,
-                                             filter=filters,
-                                             out_backprop=value,
-                                             strides=[1, 1, 1, 1],
-                                             padding="VALID",
-                                             data_format="NHWC")
+    value = gen_nn_ops.conv2d_backprop_input(
+        input_sizes=input_sizes,
+        filter=filters,
+        out_backprop=value,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        data_format="NHWC")
 
     # The crops argument to batch_to_space includes both padding components.
     batch_to_space_crop = [[pad_top, pad_bottom + pad_bottom_extra],
@@ -1488,7 +1498,7 @@ def bias_add_v1(value, bias, name=None):
     return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-def crelu(features, name=None):
+def crelu(features, name=None, axis=-1):
   """Computes Concatenated ReLU.
 
   Concatenates a ReLU which selects only the positive part of the activation
@@ -1500,13 +1510,14 @@ def crelu(features, name=None):
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
       `int16`, or `int8`.
     name: A name for the operation (optional).
+    axis: The axis that the output values are concatenated along. Default is -1.
 
   Returns:
     A `Tensor` with the same type as `features`.
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
-    c = array_ops.concat([features, -features], -1, name=name)
+    c = array_ops.concat([features, -features], axis, name=name)
     return gen_nn_ops.relu(c)
 
 
@@ -1628,7 +1639,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
-  logits = _swap_axis(logits, dim, math_ops.subtract(input_rank, 1))
+  dim_axis = dim % shape.ndims
+  logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
   shape_after_swap = array_ops.shape(logits)
 
   # Reshape logits into a matrix.
@@ -1639,7 +1651,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # Transform back the output tensor.
   output = array_ops.reshape(output, shape_after_swap)
-  output = _swap_axis(output, dim, math_ops.subtract(input_rank, 1), name=name)
+  output = _swap_axis(
+      output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
@@ -1648,7 +1661,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   return output
 
 
-@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+@deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
 
@@ -1662,6 +1675,7 @@ def softmax(logits, axis=None, name=None, dim=None):
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
+    dim: Deprecated alias for `axis`.
 
   Returns:
     A `Tensor`. Has the same type and shape as `logits`.
@@ -1670,13 +1684,13 @@ def softmax(logits, axis=None, name=None, dim=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
   return _softmax(logits, gen_nn_ops._softmax, axis, name)
 
 
-@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
+@deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
 
@@ -1690,6 +1704,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
+    dim: Deprecated alias for `axis`.
 
   Returns:
     A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
@@ -1698,7 +1713,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
   """
-  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
   return _softmax(logits, gen_nn_ops._log_softmax, axis, name)
@@ -2251,6 +2266,12 @@ def nth_element(input, n, reverse=False, name=None):
   return gen_nn_ops.nth_element(input, n, reverse=reverse, name=name)
 
 
+@deprecation.deprecated_arg_values(
+    None, "`NCHW` for data_format is deprecated, use `NCW` instead",
+    warn_once=True, data_format="NCHW")
+@deprecation.deprecated_arg_values(
+    None, "`NHWC` for data_format is deprecated, use `NWC` instead",
+    warn_once=True, data_format="NHWC")
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
            name=None):
@@ -2258,9 +2279,9 @@ def conv1d(value, filters, stride, padding,
 
   Given an input tensor of shape
     [batch, in_width, in_channels]
-  if data_format is "NHWC", or
+  if data_format is "NWC", or
     [batch, in_channels, in_width]
-  if data_format is "NCHW",
+  if data_format is "NCW",
   and a filter / kernel tensor of shape
   [filter_width, in_channels, out_channels], this op reshapes
   the arguments to pass them to conv2d to perform the equivalent
@@ -2285,9 +2306,9 @@ def conv1d(value, filters, stride, padding,
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
     use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
-    data_format: An optional `string` from `"NHWC", "NCHW"`.  Defaults
-      to `"NHWC"`, the data is stored in the order of
-      [batch, in_width, in_channels].  The `"NCHW"` format stores
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
+      to `"NWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCW"` format stores
       data as [batch, in_channels, in_width].
     name: A name for the operation (optional).
 
@@ -2299,15 +2320,16 @@ def conv1d(value, filters, stride, padding,
   """
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format is None or data_format == "NHWC":
+    if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
       spatial_start_dim = 1
       strides = [1, 1, stride, 1]
-    elif data_format == "NCHW":
+    elif data_format == "NCHW" or data_format == "NCW":
+      data_format = "NCHW"
       spatial_start_dim = 2
       strides = [1, 1, 1, stride]
     else:
-      raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
     value = array_ops.expand_dims(value, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
     result = gen_nn_ops.conv2d(value, filters, strides, padding,
@@ -2316,13 +2338,14 @@ def conv1d(value, filters, stride, padding,
     return array_ops.squeeze(result, [spatial_start_dim])
 
 
-def conv1d_transpose(value,
-                     filter,
-                     output_shape,
-                     stride,
-                     padding="SAME",
-                     data_format="NWC",
-                     name=None):
+def conv1d_transpose(
+    value,
+    filter,  # pylint: disable=redefined-builtin
+    output_shape,
+    stride,
+    padding="SAME",
+    data_format="NWC",
+    name=None):
   """The transpose of `conv1d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
@@ -2357,8 +2380,8 @@ def conv1d_transpose(value,
                       [value, filter, output_shape]) as name:
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(3)):
-      raise ValueError("output_shape must have shape (3,), got {}"
-                       .format(output_shape_.get_shape()))
+      raise ValueError("output_shape must have shape (3,), got {}".format(
+          output_shape_.get_shape()))
 
     # The format could be either NWC or NCW, map to NHWC or NCHW
     if data_format is None or data_format == "NWC":
@@ -2380,7 +2403,8 @@ def conv1d_transpose(value,
       if not filter.get_shape()[1].is_compatible_with(output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[axis], filter.get_shape()[1]))
+            "{} != {}".format(output_shape[axis],
+                              filter.get_shape()[1]))
 
     if padding != "VALID" and padding != "SAME":
       raise ValueError("padding must be either VALID or SAME:"
@@ -2388,25 +2412,26 @@ def conv1d_transpose(value,
 
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format_2d == "NHWC":
-      output_shape_ = array_ops.concat([output_shape_[:1], [1],
-                                        output_shape_[1:]], axis=0)
+      output_shape_ = array_ops.concat(
+          [output_shape_[:1], [1], output_shape_[1:]], axis=0)
       spatial_start_dim = 1
       strides = [1, 1, stride, 1]
     else:
-      output_shape_ = array_ops.concat([output_shape_[:2], [1],
-                                        output_shape_[2:]], axis=0)
+      output_shape_ = array_ops.concat(
+          [output_shape_[:2], [1], output_shape_[2:]], axis=0)
       spatial_start_dim = 2
       strides = [1, 1, 1, stride]
     value = array_ops.expand_dims(value, spatial_start_dim)
     filter = array_ops.expand_dims(filter, 0)
 
-    result = gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_,
-                                              filter=filter,
-                                              out_backprop=value,
-                                              strides=strides,
-                                              padding=padding,
-                                              data_format=data_format_2d,
-                                              name=name)
+    result = gen_nn_ops.conv2d_backprop_input(
+        input_sizes=output_shape_,
+        filter=filter,
+        out_backprop=value,
+        strides=strides,
+        padding=padding,
+        data_format=data_format_2d,
+        name=name)
     return array_ops.squeeze(result, [spatial_start_dim])
 
 

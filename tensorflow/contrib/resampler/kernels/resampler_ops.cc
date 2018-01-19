@@ -406,10 +406,10 @@ class ResamplerGradOp : public ::tensorflow::OpKernel {
                                    data_channels);
     OP_REQUIRES(ctx, grad_output_shape == resampler_output_shape,
                 ::tensorflow::errors::InvalidArgument(
-                   "grad_output shape is not consistent with data and warp "
-                   "shapes; it should be ",
-                   resampler_output_shape.DebugString(), " but is ",
-                   grad_output_shape.DebugString()))
+                    "grad_output shape is not consistent with data and warp "
+                    "shapes; it should be ",
+                    resampler_output_shape.DebugString(), " but is ",
+                    grad_output_shape.DebugString()));
     const int num_sampling_points = warp.NumElements() / batch_size / 2;
     ::tensorflow::Tensor* grad_data = nullptr;
     ::tensorflow::Tensor* grad_warp = nullptr;

@@ -28,7 +28,7 @@ GENDIR := $(MAKEFILE_DIR)/gen/obj/
 
 # Settings for the host compiler.
 CXX := $(CC_PREFIX) gcc
-CXXFLAGS := --std=c++11
+CXXFLAGS := --std=c++11 -O3 -DNDEBUG
 CC := $(CC_PREFIX) gcc
 CFLAGS :=
 LDOPTS :=
@@ -56,7 +56,7 @@ LIBS := \
 -lz
 
 # If we're on Linux, also link in the dl library.
-ifeq ($(OS),LINUX)
+ifeq ($(HOST_OS),LINUX)
 	LIBS += -ldl -lpthread
 endif
 

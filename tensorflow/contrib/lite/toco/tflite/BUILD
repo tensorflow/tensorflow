@@ -1,3 +1,8 @@
+package(
+    # To suppress build cleaner error about inclusion of schema_generate.h.
+    features = ["-layering_check"],
+)
+
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -93,6 +98,7 @@ tf_cc_test(
     ],
     deps = [
         ":export",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )

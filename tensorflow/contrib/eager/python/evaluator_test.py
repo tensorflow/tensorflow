@@ -87,7 +87,7 @@ class EvaluatorTest(test.TestCase):
 
     e.all_metric_results(logdir)
 
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 6.0)
 
@@ -136,7 +136,7 @@ class EvaluatorTest(test.TestCase):
       variables.global_variables_initializer().run()
       e.run_evaluation(init_op, call_op, results_op)
 
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].simple_value, 6.0)
 

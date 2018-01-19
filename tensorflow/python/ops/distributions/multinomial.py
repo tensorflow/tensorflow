@@ -23,10 +23,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
 
@@ -243,25 +243,26 @@ class Multinomial(distribution.Distribution):
         n_draws[..., array_ops.newaxis], dtype=self.logits.dtype) * self.logits
 
     # flatten the total_count and logits
-    flat_logits = array_ops.reshape(logits, [-1, k]) # [B1B2...Bm, k]
-    flat_ndraws = n * array_ops.reshape(n_draws, [-1]) # [B1B2...Bm]
+    flat_logits = array_ops.reshape(logits, [-1, k])  # [B1B2...Bm, k]
+    flat_ndraws = n * array_ops.reshape(n_draws, [-1])  # [B1B2...Bm]
 
     # computes each total_count and logits situation by map_fn
     def _sample_single(args):
-      logits, n_draw = args[0], args[1] # [K], []
-      x = random_ops.multinomial(logits[array_ops.newaxis, ...],
-                                 n_draw, seed) # [1, n*n_draw]
-      x = array_ops.reshape(x, shape=[n, -1]) # [n, n_draw]
-      x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2) # [n, k]
+      logits, n_draw = args[0], args[1]  # [K], []
+      x = random_ops.multinomial(logits[array_ops.newaxis, ...], n_draw,
+                                 seed)  # [1, n*n_draw]
+      x = array_ops.reshape(x, shape=[n, -1])  # [n, n_draw]
+      x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2)  # [n, k]
       return x
-    x = functional_ops.map_fn(_sample_single,
-                              [flat_logits, flat_ndraws],
-                              dtype=self.dtype) # [B1B2...Bm, n, k]
+
+    x = functional_ops.map_fn(
+        _sample_single, [flat_logits, flat_ndraws],
+        dtype=self.dtype)  # [B1B2...Bm, n, k]
 
     # reshape the results to proper shape
     x = array_ops.transpose(x, perm=[1, 0, 2])
     final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
-    x = array_ops.reshape(x, final_shape) # [n, B1, B2,..., Bm, k]
+    x = array_ops.reshape(x, final_shape)  # [n, B1, B2,..., Bm, k]
     return x
 
   @distribution_util.AppendDocstring(_multinomial_sample_note)

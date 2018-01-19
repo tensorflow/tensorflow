@@ -59,6 +59,14 @@ class DenseTest(test.TestCase):
     dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_2')
 
+  def testVariableInput(self):
+    with self.test_session():
+      v = variable_scope.get_variable(
+          'X', initializer=init_ops.zeros_initializer(), shape=(1, 1))
+      x = core_layers.Dense(1)(v)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(x.eval(), [[0.0]])
+
   @test_util.run_in_graph_and_eager_modes()
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
@@ -315,20 +323,20 @@ class DenseTest(test.TestCase):
     ts = tensor_shape.TensorShape
     # pylint: disable=protected-access
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts(None))
+      dense.compute_output_shape(ts(None))
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts([]))
+      dense.compute_output_shape(ts([]))
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts([1]))
+      dense.compute_output_shape(ts([1]))
     self.assertEqual(
         [None, 2],
-        dense._compute_output_shape((None, 3)).as_list())
+        dense.compute_output_shape((None, 3)).as_list())
     self.assertEqual(
         [None, 2],
-        dense._compute_output_shape(ts([None, 3])).as_list())
+        dense.compute_output_shape(ts([None, 3])).as_list())
     self.assertEqual(
         [None, 4, 2],
-        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+        dense.compute_output_shape(ts([None, 4, 3])).as_list())
     # pylint: enable=protected-access
 
   @test_util.run_in_graph_and_eager_modes()
@@ -387,6 +395,16 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testDynamicNoiseShape(self):
+    inputs = array_ops.ones((5, 3, 2))
+    noise_shape = [None, 1, None]
+    dp = core_layers.Dropout(0.5, noise_shape=noise_shape, seed=1)
+    dropped = dp.apply(inputs, training=True)
+    self.evaluate(variables.global_variables_initializer())
+    np_output = self.evaluate(dropped)
+    self.assertAlmostEqual(0., np_output.min())
+    self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
+
   def testCustomNoiseShape(self):
     inputs = array_ops.ones((5, 3, 2))
     noise_shape = [5, 1, 2]
@@ -438,13 +456,13 @@ class FlattenTest(test.TestCase):
       self.assertEqual(y.get_shape().as_list(), [1, 12])
 
   def testComputeShape(self):
-    shape = core_layers.Flatten()._compute_output_shape((1, 2, 3, 2))
+    shape = core_layers.Flatten().compute_output_shape((1, 2, 3, 2))
     self.assertEqual(shape.as_list(), [1, 12])
 
-    shape = core_layers.Flatten()._compute_output_shape((None, 3, 2))
+    shape = core_layers.Flatten().compute_output_shape((None, 3, 2))
     self.assertEqual(shape.as_list(), [None, 6])
 
-    shape = core_layers.Flatten()._compute_output_shape((None, 3, None))
+    shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
   def testFunctionalFlatten(self):

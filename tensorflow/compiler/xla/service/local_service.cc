@@ -84,15 +84,30 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape->parameters_size()) {
     return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %zu",
+        "Invalid number of arguments for computation: expected %d, got %zu.",
         program_shape->parameters_size(), argument_layouts.size());
   }
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& argument_shape = *argument_layouts[i];
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape->parameters(i))) {
+      tensorflow::gtl::optional<const OpMetadata*> metadata =
+          user_computation->ParameterMetadata(i);
+      auto metadata_string = [&metadata]() -> string {
+        if (!metadata.has_value()) {
+          return "";
+        }
+        CHECK(metadata.value() != nullptr);
+        const OpMetadata& m = *metadata.value();
+        if (!m.source_file().empty()) {
+          return tensorflow::strings::Printf(
+              " (%s:%d)", m.source_file().c_str(), m.source_line());
+        }
+        return "";
+      };
       return InvalidArgument(
-          "invalid argument shape for argument %d, expected %s, got %s", i,
+          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
+          metadata_string().c_str(),
           ShapeUtil::HumanString(program_shape->parameters(i)).c_str(),
           ShapeUtil::HumanString(argument_shape).c_str());
     }
@@ -118,10 +133,14 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));
 
-  std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
-      argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         argument_buffers, execute_backend_.get(), executor);
+                         execute_backend_.get(), executor);
+}
+
+StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return backend().computation_placer()->DeviceId(
+      replica_number, /*computation=*/0, options_.number_of_replicas(),
+      /*computation_count=*/1);
 }
 
 }  // namespace xla

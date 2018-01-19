@@ -69,7 +69,7 @@ class SparseMatMulTest(test.TestCase):
 
     np_ans = np.matrix(np_x) * np.matrix(np_y)
     self.assertShapeEqual(np_ans, tf_ans)
-    self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+    self.assertAllCloseAccordingToType(np_ans, out, rtol=1e-4, atol=1e-4)
 
   def testBasic(self):
     x = np.arange(0., 4.).reshape([4, 1]).astype(np.float32)
@@ -128,7 +128,8 @@ class SparseMatMulTest(test.TestCase):
 
 class MatMulGradientTest(test.TestCase):
 
-  def _testGradients(self, tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype, name):
+  def _testGradients(self, tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype, delta,
+                     name):
     with self.test_session():
       a = constant_op.constant(
           RandMatrix(
@@ -151,12 +152,12 @@ class MatMulGradientTest(test.TestCase):
           a, [2, 3] if tr_a else [3, 2],
           m, [3, 4],
           x_init_value=a.eval(),
-          delta=1 / 64.) + gradient_checker.compute_gradient_error(
+          delta=delta) + gradient_checker.compute_gradient_error(
               b, [4, 2] if tr_b else [2, 4],
               m, [3, 4],
               x_init_value=b.eval(),
-              delta=1 / 64.))
-    self.assertLess(err, 1 / 128.)
+              delta=delta))
+    self.assertLess(err, delta / 2.)
 
   def testGradientInput(self):
     for tr_a in [True, False]:
@@ -165,9 +166,15 @@ class MatMulGradientTest(test.TestCase):
           for sp_b in [True, False]:
             for a_dtype in (dtypes.float32, dtypes.bfloat16):
               for b_dtype in (dtypes.float32, dtypes.bfloat16):
+                # Note: bfloat16 only has 7 mantissa bits, versus float32 with
+                # 10. Hence, we shift by 2 bits to pass the test.
+                if a_dtype == dtypes.bfloat16 and b_dtype == dtypes.bfloat16:
+                  delta = 1 / 16.
+                else:
+                  delta = 1 / 64.
                 name = "sparse_matmul_%s_%s_%s_%s" % (tr_a, tr_b, sp_a, sp_b)
                 self._testGradients(tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype,
-                                    name)
+                                    delta, name)
 
 
 if __name__ == "__main__":

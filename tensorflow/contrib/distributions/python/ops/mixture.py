@@ -49,13 +49,13 @@ class Mixture(distribution.Distribution):
 
   ```python
   # Create a mixture of two Gaussians:
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
   mix = 0.3
-  bimix_gauss = ds.Mixture(
-    cat=ds.Categorical(probs=[mix, 1.-mix]),
+  bimix_gauss = tfd.Mixture(
+    cat=tfd.Categorical(probs=[mix, 1.-mix]),
     components=[
-      ds.Normal(loc=-1., scale=0.1),
-      ds.Normal(loc=+1., scale=0.5),
+      tfd.Normal(loc=-1., scale=0.1),
+      tfd.Normal(loc=+1., scale=0.5),
   ])
 
   # Plot the PDF.

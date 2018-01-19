@@ -400,7 +400,7 @@ Status BatchExampleProtoToTensors(
   return Status::OK();
 }
 
-Status ParseSingleExampleAttrs::FinishInit() {
+Status ParseExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
     return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
   }
@@ -412,6 +412,25 @@ Status ParseSingleExampleAttrs::FinishInit() {
   }
   if (num_dense > std::numeric_limits<int32>::max()) {
     return errors::InvalidArgument("num_dense_ too large");
+  }
+  for (const DataType& type : dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
+Status ParseSingleExampleAttrs::FinishInit() {
+  if (sparse_keys.size() != sparse_types.size()) {
+    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+  }
+  if (dense_keys.size() != dense_types.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+  }
+  if (dense_keys.size() != dense_shapes.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
   }
   for (const DataType& type : dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));

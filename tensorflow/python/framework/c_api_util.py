@@ -94,3 +94,57 @@ def tf_buffer(data=None):
     yield buf
   finally:
     c_api.TF_DeleteBuffer(buf)
+
+
+def tf_output(c_op, index):
+  """Returns a wrapped TF_Output with specified operation and index.
+
+  Args:
+    c_op: wrapped TF_Operation
+    index: integer
+
+  Returns:
+    Wrapped TF_Output
+  """
+  ret = c_api.TF_Output()
+  ret.oper = c_op
+  ret.index = index
+  return ret
+
+
+def tf_operations(graph):
+  """Generator that yields every TF_Operation in `graph`.
+
+  Args:
+    graph: Graph
+
+  Yields:
+    wrapped TF_Operation
+  """
+  # pylint: disable=protected-access
+  pos = 0
+  c_op, pos = c_api.TF_GraphNextOperation(graph._c_graph, pos)
+  while c_op is not None:
+    yield c_op
+    c_op, pos = c_api.TF_GraphNextOperation(graph._c_graph, pos)
+  # pylint: enable=protected-access
+
+
+def new_tf_operations(graph):
+  """Generator that yields newly-added TF_Operations in `graph`.
+
+  Specifically, yields TF_Operations that don't have associated Operations in
+  `graph`. This is useful for processing nodes added by the C API.
+
+  Args:
+    graph: Graph
+
+  Yields:
+    wrapped TF_Operation
+  """
+  # TODO(b/69679162): do this more efficiently
+  for c_op in tf_operations(graph):
+    try:
+      graph._get_operation_by_tf_operation(c_op)  # pylint: disable=protected-access
+    except KeyError:
+      yield c_op

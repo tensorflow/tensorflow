@@ -127,7 +127,7 @@ class ConvRecurrent2D(Recurrent):
     self.input_spec = [InputSpec(ndim=5)]
     self.state_spec = None
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -467,9 +467,9 @@ class ConvLSTM2D(ConvRecurrent2D):
                        'Got input shape: ' + str(input_shape))
 
     if self.return_state:
-      output_shape = tuple(self._compute_output_shape(input_shape)[0].as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape)[0].as_list())
     else:
-      output_shape = tuple(self._compute_output_shape(input_shape).as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape).as_list())
     if self.return_sequences:
       output_shape = (input_shape[0],) + output_shape[2:]
     else:
@@ -536,7 +536,7 @@ class ConvLSTM2D(ConvRecurrent2D):
       conv_out = K.bias_add(conv_out, b, data_format=self.data_format)
     return conv_out
 
-  def reccurent_conv(self, x, w):
+  def recurrent_conv(self, x, w):
     conv_out = K.conv2d(
         x, w, strides=(1, 1), padding='same', data_format=self.data_format)
     return conv_out
@@ -556,10 +556,10 @@ class ConvLSTM2D(ConvRecurrent2D):
         inputs * dp_mask[2], self.kernel_c, self.bias_c, padding=self.padding)
     x_o = self.input_conv(
         inputs * dp_mask[3], self.kernel_o, self.bias_o, padding=self.padding)
-    h_i = self.reccurent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
-    h_f = self.reccurent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
-    h_c = self.reccurent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
-    h_o = self.reccurent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
+    h_i = self.recurrent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
+    h_f = self.recurrent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
+    h_c = self.recurrent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
+    h_o = self.recurrent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
 
     i = self.recurrent_activation(x_i + h_i)
     f = self.recurrent_activation(x_f + h_f)

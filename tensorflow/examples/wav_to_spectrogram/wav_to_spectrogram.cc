@@ -53,7 +53,8 @@ tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
   //  - Scales, clamps, and converts that spectrogram to 0 to 255 uint8's.
   //  - Reshapes the tensor so that it's [height, width, 1] for imaging.
   //  - Encodes it as a PNG stream and saves it out to a file.
-  Output file_reader = ReadFile(root.WithOpName("input_wav"), input_wav);
+  Output file_reader =
+      tensorflow::ops::ReadFile(root.WithOpName("input_wav"), input_wav);
   DecodeWav wav_decoder =
       DecodeWav(root.WithOpName("wav_decoder"), file_reader);
   Output spectrogram = AudioSpectrogram(root.WithOpName("spectrogram"),
@@ -71,8 +72,8 @@ tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
   Output squeeze = Squeeze(root.WithOpName("squeeze"), expand_dims,
                            Squeeze::Attrs().Axis({0}));
   Output png_encoder = EncodePng(root.WithOpName("png_encoder"), squeeze);
-  WriteFile file_writer =
-      WriteFile(root.WithOpName("output_image"), output_image, png_encoder);
+  tensorflow::ops::WriteFile file_writer = tensorflow::ops::WriteFile(
+      root.WithOpName("output_image"), output_image, png_encoder);
   tensorflow::GraphDef graph;
   TF_RETURN_IF_ERROR(root.ToGraphDef(&graph));
 

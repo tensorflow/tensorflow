@@ -107,6 +107,7 @@ class RdmaAdapter {
   ~RdmaAdapter();
   // Adapter name, e.g. mlx5_0.
   string name() const;
+  void StartPolling();
   void Process_CQ();
 
  protected:
@@ -161,6 +162,15 @@ class RdmaChannel {
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;
+  static const int kPingRecvWrid = 0;
+
+ private:
+  static const int kPingBuffSize = 1024;
+  char ping_buff_[kPingBuffSize];
+  struct ibv_mr* mr_;
+  struct ibv_sge ping_sge_list_;
+  int PingPostRecv();
+  int PingPostSend();
 
  protected:
   const RdmaAdapter* adapter_;

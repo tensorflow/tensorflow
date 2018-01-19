@@ -33,6 +33,8 @@ limitations under the License.
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
 
+%include "tensorflow/python/lib/core/bfloat16.i"
+
 %include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/quantize_training.i"
 %include "tensorflow/python/training/server_lib.i"
@@ -40,6 +42,7 @@ limitations under the License.
 %include "tensorflow/python/framework/python_op_gen.i"
 
 %include "tensorflow/python/framework/cpp_shape_inference.i"
+%include "tensorflow/python/platform/stacktrace_handler.i"
 %include "tensorflow/python/util/kernel_registry.i"
 
 %include "tensorflow/python/util/transform_graph.i"

@@ -151,7 +151,7 @@ Extract3DPatches(
 
   // TODO(mjanusz): Consider getting rid of pad(), and stride() and extend
   // extract_patches to take additional parameters for padding/striding,
-  // similarly to etract_image_patches.
+  // similarly to extract_image_patches.
   return input.pad(paddings, padding_value).extract_patches(patch_dims).reshape(pre_stride_dims).stride(strides);
 }
 

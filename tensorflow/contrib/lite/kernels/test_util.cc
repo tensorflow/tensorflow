@@ -180,4 +180,17 @@ int32_t SingleOpModel::GetTensorSize(int index) const {
   return total_size;
 }
 
+template <>
+std::vector<string> SingleOpModel::ExtractVector(int index) {
+  TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+  CHECK(tensor_ptr != nullptr);
+  const int num_strings = GetStringCount(tensor_ptr);
+  std::vector<string> result;
+  result.reserve(num_strings);
+  for (int i = 0; i < num_strings; ++i) {
+    const auto str = GetString(tensor_ptr, i);
+    result.emplace_back(str.str, str.len);
+  }
+  return result;
+}
 }  // namespace tflite

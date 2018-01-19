@@ -28,12 +28,9 @@ limitations under the License.
 namespace se = ::perftools::gputools;
 
 namespace xla {
-
-/* static */ tensorflow::mutex*
-TransferManager::platform_transfer_manager_mutex() {
-  static tensorflow::mutex* m = new tensorflow::mutex;
-  return m;
-}
+/* static */ tensorflow::mutex
+    TransferManager::platform_transfer_manager_mutex_(
+        tensorflow::LINKER_INITIALIZED);
 
 /* static */ std::map<perftools::gputools::Platform::Id,
                       TransferManager::State>*
@@ -43,11 +40,50 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
+Status TransferManager::TransferArrayToDevice(
+    perftools::gputools::StreamExecutor* executor, const Literal& literal,
+    const perftools::gputools::DeviceMemoryBase& dest) {
+  const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
+  TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
+      << "On-device representation of "
+      << ShapeUtil::HumanString(literal.shape())
+      << " is not an array: " << ShapeUtil::HumanString(on_device_shape);
+  if (dest.size() < GetByteSizeRequirement(on_device_shape)) {
+    return FailedPrecondition(
+        "Allocation on device not large enough for array: "
+        "%lld < %lld",
+        dest.size(), GetByteSizeRequirement(on_device_shape));
+  }
+  ShapedBuffer shaped_buffer(/*on_host_shape=*/literal.shape(), on_device_shape,
+                             executor->platform(), executor->device_ordinal());
+  shaped_buffer.set_buffer(dest, /*index=*/{});
+  return TransferLiteralToDevice(executor, literal, shaped_buffer);
+}
+
+StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
+    perftools::gputools::StreamExecutor* executor, const Shape& shape,
+    const perftools::gputools::DeviceMemoryBase& source) {
+  TF_RET_CHECK(ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape))
+      << "Shape " << ShapeUtil::HumanString(shape)
+      << " has a differently shaped representation on-device: "
+      << ShapeUtil::HumanString(HostShapeToDeviceShape(shape));
+  if (source.size() < GetByteSizeRequirement(shape)) {
+    return FailedPrecondition(
+        "Allocation on device not large enough for array: "
+        "%lld < %lld",
+        source.size(), GetByteSizeRequirement(shape));
+  }
+  ShapedBuffer shaped_buffer(/*on_host_shape=*/shape, shape,
+                             executor->platform(), executor->device_ordinal());
+  shaped_buffer.set_buffer(source, /*index=*/{});
+  return TransferLiteralFromDevice(executor, shaped_buffer);
+}
+
 /* static */ void TransferManager::RegisterTransferManager(
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -56,7 +92,7 @@ TransferManager::GetPlatformTransferManagers() {
 /* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
   tensorflow::mutex_lock lock(
-      *TransferManager::platform_transfer_manager_mutex());
+      TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());
@@ -73,6 +109,37 @@ TransferManager::GetPlatformTransferManagers() {
   }
 
   return it->second.manager.get();
+}
+
+Status TransferManager::WriteTupleIndexTables(
+    perftools::gputools::StreamExecutor* executor,
+    const ShapedBuffer& device_buffer) {
+  VLOG(2) << "Writing tuple index tables for " << device_buffer;
+
+  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      device_buffer.on_device_shape(),
+      [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
+        if (ShapeUtil::IsTuple(device_subshape)) {
+          se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
+                       device_memory.size());
+
+          std::vector<se::DeviceMemoryBase> elements;
+          ShapeIndex element_index = index;
+          for (int64 i = 0; i < ShapeUtil::TupleElementCount(device_subshape);
+               ++i) {
+            element_index.push_back(i);
+            elements.push_back(device_buffer.buffer(element_index));
+            element_index.pop_back();
+          }
+          return WriteSingleTupleIndexTable(executor, elements, device_subshape,
+                                            &device_memory);
+        }
+
+        return Status::OK();
+      });
 }
 
 Status TransferManager::TransferBufferFromDevice(
@@ -113,31 +180,43 @@ Status TransferManager::TransferBufferToDevice(
   return Status::OK();
 }
 
-StatusOr<std::set<se::DeviceMemoryBase>>
-TransferManager::GatherBufferPointersFromTuple(
-    se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
-    const Shape& shape) {
-  TF_RET_CHECK(ShapeUtil::IsTuple(shape));
-
-  std::set<se::DeviceMemoryBase> buffer_pointers;
-  buffer_pointers.insert(source);
-
-  TF_ASSIGN_OR_RETURN(std::vector<se::DeviceMemoryBase> tuple_elements,
-                      ShallowCopyTupleFromDevice(executor, source, shape));
-  for (auto i = 0; i < tuple_elements.size(); ++i) {
-    const Shape& element_shape = shape.tuple_shapes(i);
-    if (ShapeUtil::IsTuple(element_shape)) {
-      TF_ASSIGN_OR_RETURN(
-          std::set<se::DeviceMemoryBase> buffer_pointers_in_element,
-          GatherBufferPointersFromTuple(executor, tuple_elements[i],
-                                        element_shape));
-      buffer_pointers.insert(buffer_pointers_in_element.begin(),
-                             buffer_pointers_in_element.end());
-    } else {
-      buffer_pointers.insert(tuple_elements[i]);
-    }
+StatusOr<std::unique_ptr<ShapedBuffer>> TransferManager::AllocateShapedBuffer(
+    const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+    int device_ordinal) {
+  if (!LayoutUtil::HasLayout(on_host_shape)) {
+    return InvalidArgument(
+        "Shape must have a layout: %s",
+        ShapeUtil::HumanStringWithLayout(on_host_shape).c_str());
   }
-  return std::move(buffer_pointers);
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
+  const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);
+  TF_RET_CHECK(LayoutUtil::HasLayout(on_device_shape));
+
+  auto shaped_buffer = WrapUnique(new ShapedBuffer(
+      on_host_shape, on_device_shape, allocator->platform(), device_ordinal));
+
+  // Allocate an appropriate sized buffer for each element in the shape
+  // including the tuple pointer arrays.
+  for (auto& pair : shaped_buffer->buffers()) {
+    const ShapeIndex& index = pair.first;
+    se::DeviceMemoryBase& memory_base = pair.second;
+    const Shape& subshape = ShapeUtil::GetSubshape(on_device_shape, index);
+    TF_ASSIGN_OR_RETURN(memory_base,
+                        allocator->Allocate(shaped_buffer->device_ordinal(),
+                                            GetByteSizeRequirement(subshape)));
+  }
+
+  return std::move(shaped_buffer);
+}
+
+StatusOr<std::unique_ptr<ScopedShapedBuffer>>
+TransferManager::AllocateScopedShapedBuffer(const Shape& on_host_shape,
+                                            DeviceMemoryAllocator* allocator,
+                                            int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ShapedBuffer> unscoped_buffer,
+      AllocateShapedBuffer(on_host_shape, allocator, device_ordinal));
+  return ScopedShapedBuffer::MakeScoped(unscoped_buffer.get(), allocator);
 }
 
 }  // namespace xla

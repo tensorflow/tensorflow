@@ -389,7 +389,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
     static_assert(bytes_accessed == 64, "");
     EXPECT_EQ(fusion_analysis.bytes_accessed(), bytes_accessed);
 
-    EXPECT_EQ(fusion_analysis.seconds(), 1 << i);
+    EXPECT_EQ(fusion_analysis.optimal_seconds(), 1 << i);
   }
 }
 

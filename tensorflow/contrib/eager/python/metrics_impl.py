@@ -51,6 +51,20 @@ class Metric(object):
 
   ```python
   m = SomeMetric(...)
+  inputs = ... # Some tensors to compute the metric on.
+  m_update = m(inputs)
+  # Variables defined in first call, so get the initialization op afterwards.
+  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_result = m.result()
+  with tf.Session() as sess:
+    sess.run(m_init)
+    for input in ...:
+      sess.run(m_update)
+    print(sess.run(m_result))
+  ```
+  Example use with graph execution with placeholders and feed_dict:
+  ```python
+  m = SomeMetric(...)
   m_placeholder = tf.placeholder(...)
   m_update = m(m_placeholder)
   # Variables defined in first call, so get the initialization op afterwards.
@@ -73,7 +87,7 @@ class Metric(object):
   * `result()`: Computes and returns a final value for the metric
     from the variables in `self`.
 
-  Decendants may override `aggregate()`, but usually won't need to.  It
+  Descendants may override `aggregate()`, but usually won't need to.  It
   adds in the state from a list of metrics of the same type as `self`.
   (Default is to sum all the variables.) Note that users should not call
   `aggregate()`, it is for use by TensorFlow infrastructure.
@@ -107,6 +121,7 @@ class Metric(object):
     """Returns op to execute to update this metric for these inputs.
 
     Returns None if eager execution is enabled.
+    Returns a graph-mode function if graph execution is enabled.
 
     Args:
       *args:
@@ -182,6 +197,13 @@ class Metric(object):
   def result(self):  # TODO(josh11b): Add an optional summary_writer parameter.
     """Computes and returns a final value for the metric."""
     raise NotImplementedError("Metrics must define a result() member function")
+
+  def value(self):
+    """In graph mode returns the result Tensor while in eager the callable."""
+    if context.in_graph_mode():
+      return self.result()
+    else:
+      return self.result
 
   # We can support two different strategies of for doing data-parallel
   # distributed metric computations:

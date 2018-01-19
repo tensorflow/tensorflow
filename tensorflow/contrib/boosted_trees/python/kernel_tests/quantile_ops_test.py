@@ -48,15 +48,16 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
   def testBasicQuantileBuckets(self):
     """Sets up the quantile summary op test as follows.
 
-    Create a batch of 6 examples having a dense and sparse features.
+    Create a batch of 6 examples having a dense and sparse features. SparseM is
+    a sparse multi-dimensional (multivalent) feature.
     The data looks like this
-    | Instance | instance weights | Dense 0  | Sparse 0
-    | 0        |     10           |   1      |
-    | 1        |     1            |   2      |    2
-    | 2        |     1            |   3      |    3
-    | 3        |     1            |   4      |    4
-    | 4        |     1            |   4      |    5
-    | 5        |     1            |   5      |    6
+    | Instance | instance weights | Dense 0  | Sparse 0 | SparseM
+    | 0        |     10           |   1      |          |   |   |
+    | 1        |     1            |   2      |    2     | 2 |   |
+    | 2        |     1            |   3      |    3     | 3 |   |
+    | 3        |     1            |   4      |    4     |   | 4 |
+    | 4        |     1            |   4      |    5     |   | 5 |
+    | 5        |     1            |   5      |    6     |   | 6 |
     """
 
     dense_float_tensor_0 = constant_op.constant(
@@ -66,20 +67,29 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     sparse_values_0 = constant_op.constant(
         [2, 3, 4, 5, 6], dtype=dtypes.float32)
     sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+    # Multi-dimensional feature that should have the same quantiles as Sparse 0.
+    sparse_indices_m = constant_op.constant(
+        [[1, 1], [2, 0], [3, 1], [4, 1], [5, 1]], dtype=dtypes.int64)
+    sparse_values_m = constant_op.constant(
+        [2, 3, 4, 5, 6], dtype=dtypes.float32)
+    sparse_shape_m = constant_op.constant([6, 2], dtype=dtypes.int64)
+
     example_weights = constant_op.constant(
         [10, 1, 1, 1, 1, 1], dtype=dtypes.float32)
 
     with self.test_session():
       config = self._gen_config(0.33, 3)
       dense_buckets, sparse_buckets = quantile_ops.quantile_buckets(
-          [dense_float_tensor_0], [sparse_indices_0], [sparse_values_0],
-          [sparse_shape_0],
+          [dense_float_tensor_0], [sparse_indices_0, sparse_indices_m],
+          [sparse_values_0, sparse_values_m], [sparse_shape_0, sparse_shape_m],
           example_weights=example_weights,
           dense_config=[config],
-          sparse_config=[config])
+          sparse_config=[config, config])
 
       self.assertAllEqual([1, 3, 5], dense_buckets[0].eval())
       self.assertAllEqual([2, 4, 6.], sparse_buckets[0].eval())
+      # Multidimensional sparse.
+      self.assertAllEqual([2, 4, 6.], sparse_buckets[1].eval())
 
   def testStreamingQuantileBucketsWithVaryingBatch(self):
     """Sets up the quantile summary op test as follows.
@@ -214,10 +224,10 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       sparse_indices_0 = constant_op.constant(
-          [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=dtypes.int64)
+          [[1, 0], [2, 1], [3, 0], [4, 2], [5, 0]], dtype=dtypes.int64)
       sparse_values_0 = constant_op.constant(
           [2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtypes.float32)
-      sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+      sparse_shape_0 = constant_op.constant([6, 3], dtype=dtypes.int64)
       example_weights = constant_op.constant(
           [10, 1, 1, 1, 1, 1], dtype=dtypes.float32, shape=[6, 1])
       update = accumulator.add_summary(
@@ -349,19 +359,21 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
   def setUp(self):
     """Sets up the quantile op tests.
 
-    Create a batch of 4 examples having 2 dense and 3 sparse features.
+    Create a batch of 4 examples having 2 dense and 4 sparse features.
+    Forth sparse feature is multivalent (3 dimensional)
     The data looks like this
-    | Instance | Dense 0 | Dense 1 | Sparse 0 | Sparse 1 | Sparse 2
-    | 0        |   -0.1  |  -1     |   -2     |   0.1    |
-    | 1        |    0.4  |  -15    |   5.5    |          |   2
-    | 2        |    3.2  |  18     |   16     |   3      |
-    | 3        |    190  |  1000   |   17.5   |  -3      |   4
+    | Instance | Dense 0 | Dense 1 | Sparse 0 | Sparse 1 |Sparse 2| SparseM
+    | 0        |   -0.1  |  -1     |   -2     |   0.1    |        |_ ,1,_
+    | 1        |    0.4  |  -15    |   5.5    |          |  2     |2 ,_,_
+    | 2        |    3.2  |  18     |   16     |   3      |        |__,_,_
+    | 3        |    190  |  1000   |   17.5   |  -3      |  4     |1 ,8,1
     Quantiles are:
     Dense 0: (-inf,0.4], (0.4,5], (5, 190]
     Dense 1: (-inf, -9], (-9,15], (15, 1000)
     Sparse 0: (-inf, 5], (5,16], (16, 100]
     Sparse 1: (-inf, 2], (2, 5]
     Sparse 2: (-inf, 100]
+    SparseM: (-inf, 1], (1,2], (2,1000]
     """
     super(QuantilesOpTest, self).setUp()
     self._dense_float_tensor_0 = constant_op.constant(
@@ -369,18 +381,26 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
     self._dense_float_tensor_1 = constant_op.constant(
         [[-1], [-15], [18], [1000]], dtype=dtypes.float32)
     # Sparse feature 0
-    self._sparse_indices_0 = constant_op.constant([[0, 0], [1, 0], [2, 0],
-                                                   [3, 0]])
+    self._sparse_indices_0 = constant_op.constant(
+        [[0, 0], [1, 0], [2, 0], [3, 0]], dtype=dtypes.int64)
     self._sparse_values_0 = constant_op.constant([-2, 5.5, 16, 17.5])
     self._sparse_shape_0 = constant_op.constant([4, 1])
     # Sprase feature 1
-    self._sparse_indices_1 = constant_op.constant([[0, 0], [2, 0], [3, 0]])
+    self._sparse_indices_1 = constant_op.constant(
+        [[0, 0], [2, 0], [3, 0]], dtype=dtypes.int64)
     self._sparse_values_1 = constant_op.constant([0.1, 3, -3])
     self._sparse_shape_1 = constant_op.constant([4, 1])
     # Sprase feature 2
-    self._sparse_indices_2 = constant_op.constant([[1, 0], [3, 0]])
+    self._sparse_indices_2 = constant_op.constant(
+        [[1, 0], [3, 0]], dtype=dtypes.int64)
     self._sparse_values_2 = constant_op.constant([2, 4], dtype=dtypes.float32)
     self._sparse_shape_2 = constant_op.constant([4, 1])
+    # Sprase feature M
+    self._sparse_indices_m = constant_op.constant(
+        [[0, 1], [1, 0], [3, 0], [3, 1], [3, 2]], dtype=dtypes.int64)
+    self._sparse_values_m = constant_op.constant(
+        [1, 2, 1, 8, 1], dtype=dtypes.float32)
+    self._sparse_shape_m = constant_op.constant([4, 1])
     # Quantiles
     self._dense_thresholds_0 = [0.4, 5, 190]
     self._dense_thresholds_1 = [-9, 15, 1000]
@@ -388,52 +408,76 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
     self._sparse_thresholds_0 = [5, 16, 100]
     self._sparse_thresholds_1 = [2, 5]
     self._sparse_thresholds_2 = [100]
+    self._sparse_thresholds_m = [1, 2, 1000]
 
   def testDenseFeaturesOnly(self):
     with self.test_session():
       dense_quantiles, _ = quantile_ops.quantiles(
           [self._dense_float_tensor_0, self._dense_float_tensor_1], [],
-          [self._dense_thresholds_0, self._dense_thresholds_1], [])
+          [self._dense_thresholds_0, self._dense_thresholds_1], [], [])
 
       # Dense feature 0
-      self.assertAllEqual([0, 0, 1, 2], dense_quantiles[0].eval())
+      self.assertAllEqual([[0, 0], [0, 0], [1, 0], [2, 0]],
+                          dense_quantiles[0].eval())
       # Dense feature 1
-      self.assertAllEqual([1, 0, 2, 2], dense_quantiles[1].eval())
+      self.assertAllEqual([[1, 0], [0, 0], [2, 0], [2, 0]],
+                          dense_quantiles[1].eval())
 
   def testSparseFeaturesOnly(self):
     with self.test_session():
-      _, sparse_quantiles = quantile_ops.quantiles(
-          [],
-          [self._sparse_values_0, self._sparse_values_1, self._sparse_values_2],
-          [], [self._sparse_thresholds_0, self._sparse_thresholds_1,
-               self._sparse_thresholds_2])
+      _, sparse_quantiles = quantile_ops.quantiles([], [
+          self._sparse_values_0, self._sparse_values_1, self._sparse_values_2,
+          self._sparse_values_m
+      ], [], [
+          self._sparse_thresholds_0, self._sparse_thresholds_1,
+          self._sparse_thresholds_2, self._sparse_thresholds_m
+      ], [
+          self._sparse_indices_0, self._sparse_indices_1,
+          self._sparse_indices_2, self._sparse_indices_m
+      ])
 
+      self.assertAllEqual(4, len(sparse_quantiles))
       # Sparse feature 0
-      self.assertAllEqual([0, 1, 1, 2], sparse_quantiles[0].eval())
+      self.assertAllEqual([[0, 0], [1, 0], [1, 0], [2, 0]],
+                          sparse_quantiles[0].eval())
       # Sparse feature 1
-      self.assertAllEqual([0, 1, 0], sparse_quantiles[1].eval())
+      self.assertAllEqual([[0, 0], [1, 0], [0, 0]], sparse_quantiles[1].eval())
       # Sparse feature 2
-      self.assertAllEqual([0, 0], sparse_quantiles[2].eval())
+      self.assertAllEqual([[0, 0], [0, 0]], sparse_quantiles[2].eval())
+      # Multidimensional feature.
+      self.assertAllEqual([[0, 1], [1, 0], [0, 0], [2, 1], [0, 2]],
+                          sparse_quantiles[3].eval())
 
   def testDenseAndSparseFeatures(self):
     with self.test_session():
       dense_quantiles, sparse_quantiles = quantile_ops.quantiles(
-          [self._dense_float_tensor_0, self._dense_float_tensor_1],
-          [self._sparse_values_0, self._sparse_values_1, self._sparse_values_2],
-          [self._dense_thresholds_0, self._dense_thresholds_1],
-          [self._sparse_thresholds_0, self._sparse_thresholds_1,
-           self._sparse_thresholds_2])
+          [self._dense_float_tensor_0, self._dense_float_tensor_1], [
+              self._sparse_values_0, self._sparse_values_1,
+              self._sparse_values_2, self._sparse_values_m
+          ], [self._dense_thresholds_0, self._dense_thresholds_1], [
+              self._sparse_thresholds_0, self._sparse_thresholds_1,
+              self._sparse_thresholds_2, self._sparse_thresholds_m
+          ], [
+              self._sparse_indices_0, self._sparse_indices_1,
+              self._sparse_indices_2, self._sparse_indices_m
+          ])
 
       # Dense feature 0
-      self.assertAllEqual([0, 0, 1, 2], dense_quantiles[0].eval())
+      self.assertAllEqual([[0, 0], [0, 0], [1, 0], [2, 0]],
+                          dense_quantiles[0].eval())
       # Dense feature 1
-      self.assertAllEqual([1, 0, 2, 2], dense_quantiles[1].eval())
+      self.assertAllEqual([[1, 0], [0, 0], [2, 0], [2, 0]],
+                          dense_quantiles[1].eval())
       # Sparse feature 0
-      self.assertAllEqual([0, 1, 1, 2], sparse_quantiles[0].eval())
+      self.assertAllEqual([[0, 0], [1, 0], [1, 0], [2, 0]],
+                          sparse_quantiles[0].eval())
       # Sparse feature 1
-      self.assertAllEqual([0, 1, 0], sparse_quantiles[1].eval())
+      self.assertAllEqual([[0, 0], [1, 0], [0, 0]], sparse_quantiles[1].eval())
       # Sparse feature 2
-      self.assertAllEqual([0, 0], sparse_quantiles[2].eval())
+      self.assertAllEqual([[0, 0], [0, 0]], sparse_quantiles[2].eval())
+      # Multidimensional feature.
+      self.assertAllEqual([[0, 1], [1, 0], [0, 0], [2, 1], [0, 2]],
+                          sparse_quantiles[3].eval())
 
   def testBucketizeWithInputBoundaries(self):
     with self.test_session():

@@ -6,7 +6,7 @@ tested (and we only support) these instructions on machines meeting the
 following requirements:
 
   * 64-bit desktops or laptops
-  * Ubuntu 14.04 or higher
+  * Ubuntu 16.04 or higher
 
 
 ## Determine which TensorFlow to install
@@ -51,15 +51,15 @@ must be installed on your system:
     <pre>
     $ <b>sudo apt-get install cuda-command-line-tools</b>
     </pre>
-    
+
     and add its path to your `LD_LIBRARY_PATH` environment variable:
 
-    <pre> 
-    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> 
+    <pre>
+    $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b>
     </pre>
 
     For CUDA Toolkit <= 7.5 do:
-    
+
     <pre>
     $ <b>sudo apt-get install libcupti-dev</b>
     </pre>
@@ -188,7 +188,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      Virtualenv environment:
 
      <pre>(tensorflow)$ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common_installation_problems).
@@ -293,7 +293,7 @@ take the following steps:
 
      <pre>
      $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp34-cp34m-linux_x86_64.whl</b>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp34-cp34m-linux_x86_64.whl</b>
      </pre>
 
      If this step fails, see
@@ -480,7 +480,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -531,7 +531,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
@@ -648,14 +648,14 @@ This section documents the relevant values for Linux installations.
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp27-none-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.5.0rc1-cp27-none-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -667,14 +667,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.5.0rc1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -686,14 +686,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.5.0rc1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
@@ -705,57 +705,16 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0rc1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.5.0rc1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 
 Note that GPU support requires the NVIDIA hardware and software described in
 [NVIDIA requirements to run TensorFlow with GPU support](#NVIDIARequirements).
-
-<a name="Protobuf31"></a>
-## Protobuf pip package 3.1
-
-You can skip this section unless you are seeing problems related
-to the protobuf pip package.
-
-**NOTE:** If your TensorFlow programs are running slowly, you might
-have a problem related to the protobuf pip package.
-
-The TensorFlow pip package depends on protobuf pip package version 3.1. The
-protobuf pip package downloaded from PyPI (when invoking
-<tt>pip install protobuf</tt>) is a Python-only library containing
-Python implementations of proto serialization/deserialization that can run
-**10x-50x slower** than the C++ implementation. Protobuf also supports a
-binary extension for the Python package that contains fast
-C++ based proto parsing.  This extension is not available in the
-standard Python-only pip package.  We have created a custom binary
-pip package for protobuf that contains the binary extension. To install
-the custom binary protobuf pip package, invoke one of the following commands:
-
-  * for Python 2.7:
-
-  <pre>
-  $ <b>pip install --upgrade \
-  https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl</b></pre>
-
-  * for Python 3.5:
-
-  <pre>
-  $ <b>pip3 install --upgrade \
-  https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl</b></pre>
-
-Installing this protobuf package will overwrite the existing protobuf package.
-Note that the binary pip package already has support for protobufs
-larger than 64MB, which should fix errors such as these:
-
-<pre>[libprotobuf ERROR google/protobuf/src/google/protobuf/io/coded_stream.cc:207]
-A protocol message was rejected because it was too big (more than 67108864 bytes).
-To increase the limit (or to disable these warnings), see
-CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.</pre>

@@ -38,7 +38,7 @@ The following improvements can be made in the future. First, conversion to Tenso
 * **RDMA channel:** Responsible for RDMA connection to a particular node. It manages multiple buffers. A channel has a callback table which stores all the callbacks for the requested tensors.
 * **RDMA buffer:** Responsible for sending or receiving data. It has a fixed size memory to store the data. It has a queue to store the pending jobs. There are three types of buffers, message buffer, ACK buffer and tensor buffer. A channel has two message buffers, two ack buffers and many tensor buffers.
 * **RDMA manager:** Manages the adapter and channels, including channel creation, channel setup via GRPC service, channel lookup, etc.
-* **RDMA rendezvous manager:** manages multiple rdma rendezvous. 
+* **RDMA rendezvous manager:** manages multiple rdma rendezvous.
 * **RDMA rendezvous:** a derived class of BaseRemoteRendezvous. This class is the back end for "send" and "recv" ops. When the sendrecv_op wants to send or receive a tensor, it calls the rendezvous' "send" and "recv" functions respectively. Rendezvous are identified by "step_id", a random number, so that tensors for different iterations don't get mixed up.
 
 ### The SEND operation

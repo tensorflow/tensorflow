@@ -60,6 +60,7 @@ __all__ = ['add_model_variable',
            'get_variable_full_name',
            'get_variables_to_restore',
            'get_variables',
+           'global_variable',
            'local_variable',
            'model_variable',
            'variable',
@@ -147,20 +148,48 @@ def get_or_create_global_step(graph=None):
   return training_util.get_or_create_global_step(graph)
 
 
-def local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
+def local_variable(initial_value,
+                   validate_shape=True,
+                   name=None,
+                   use_resource=None):
+  """Create a variable with a value and add it to `GraphKeys.LOCAL_VARIABLES`.
 
   Args:
     initial_value: See variables.Variable.__init__.
     validate_shape: See variables.Variable.__init__.
     name: See variables.Variable.__init__.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
   Returns:
     New variable.
   """
   return variable_scope.variable(
       initial_value, trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      name=name)
+
+
+def global_variable(initial_value,
+                    validate_shape=True,
+                    name=None,
+                    use_resource=None):
+  """Create a variable with a value and add it to `GraphKeys.GLOBAL_VARIABLES`.
+
+  Args:
+    initial_value: See variables.Variable.__init__.
+    validate_shape: See variables.Variable.__init__.
+    name: See variables.Variable.__init__.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
+  Returns:
+    New variable.
+  """
+  return variable_scope.variable(
+      initial_value, trainable=False,
+      collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      name=name)
 
 
 @contrib_add_arg_scope
@@ -412,7 +441,7 @@ def get_unique_variable(var_op_name):
   """
   candidates = get_variables(scope=var_op_name)
   if not candidates:
-    raise ValueError('Couldnt find variable %s' % var_op_name)
+    raise ValueError('Couldn\'t find variable %s' % var_op_name)
 
   for candidate in candidates:
     if candidate.op.name == var_op_name:

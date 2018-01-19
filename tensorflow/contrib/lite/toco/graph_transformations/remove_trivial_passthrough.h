@@ -21,10 +21,12 @@ limitations under the License.
 namespace toco {
 
 // A "passthrough op" is an op that satisfies the following conditions:
-//   1. It has at most one non-constant input (it may have other constant
-//   inputs).
+//   1. One of its inputs is (per the semantics of that op) its "main input"
+//      for some notion of "main input" that is operator-specific; for example,
+//      for a Reshape op, the main input is the array being reshaped, not the
+//      other input which gives the new shape.
 //   2. It has exactly one output.
-//   3. It forwards exactly its single non-constant input to its single output.
+//   3. It forwards exactly its main input to its single output.
 //
 // Examples include:
 //   1. TensorFlow Identity ops. (Have one input).
@@ -34,7 +36,7 @@ namespace toco {
 //      where one of its inputs is a constant array filled with zeros.
 //
 // A passthrough op is "trivial" and can be removed when it is possible to
-// discard either its single non-constant input or output array, rerouting any
+// discard either its main input or output array, rerouting any
 // edge involving it to the other of these two arrays.
 //
 // It is only possible to discard such an array if it is not explicitly

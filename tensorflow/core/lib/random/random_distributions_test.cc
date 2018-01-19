@@ -18,9 +18,11 @@ limitations under the License.
 #include <math.h>
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/philox_random_test_utils.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -104,12 +106,12 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
 
   for (int i = 1; i <= max_moments; ++i) {
     // Calculate the theoretical mean and variance
-    const double moments_i_mean = (stride == 0)
-                                      ? theoretical_moments(i)
-                                      : std::pow(theoretical_moments(1), i);
-    const double moments_i_squared = (stride == 0)
-                                         ? theoretical_moments(2 * i)
-                                         : std::pow(theoretical_moments(2), i);
+    const double moments_i_mean =
+        (stride == 0) ? theoretical_moments(i)
+                      : MathUtil::IPow(theoretical_moments(1), i);
+    const double moments_i_squared =
+        (stride == 0) ? theoretical_moments(2 * i)
+                      : MathUtil::IPow(theoretical_moments(2), i);
     const double moments_i_var =
         moments_i_squared - moments_i_mean * moments_i_mean;
 
@@ -150,8 +152,8 @@ void UniformMomentsTest(int count, int max_moments,
   PhiloxRandom gen(seed);
   FillRandoms<UniformDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, uniform_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, uniform_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " UniformMomentsTest failing. seed: " << seed;
   }
 }
@@ -182,8 +184,8 @@ void NormalMomentsTest(int count, int max_moments,
   FillRandoms<NormalDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, normal_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, normal_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
 }
@@ -213,7 +215,7 @@ class TruncatedNormalMoments {
     }
 
     // The real computation of the moment.
-    double bias = 2.0 * std::pow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
+    double bias = 2.0 * MathUtil::IPow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
     double moment_n_minus_2 = (*this)(n - 2);
     double moment_n = (n - 1) * moment_n_minus_2 - bias;
 
@@ -244,8 +246,8 @@ void RandomParametersMomentsTest(int count, int max_moments,
       gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, TruncatedNormalMoments(),
-                                         max_moments, stride, z_limit);
+    bool status = CheckSamplesMoments(v1, TruncatedNormalMoments(), max_moments,
+                                      stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
 }

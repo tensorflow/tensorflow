@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
@@ -28,6 +29,23 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+namespace {
+int64 NumEdges(const GraphDef& graph) {
+  int64 num_edges = 0;
+  for (const auto& node : graph.node()) {
+    num_edges += node.input_size();
+  }
+  return num_edges;
+}
+
+string PrintSizesBeforeAfter(const GraphDef& before, const GraphDef& after) {
+  return strings::StrCat("Graph size before: ", before.node_size(), " nodes, ",
+                         NumEdges(before),
+                         " edges. Graph size after: ", after.node_size(),
+                         " nodes, ", NumEdges(after), " edges.");
+}
+}  // namespace
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     const string& optimizer) {
@@ -53,6 +71,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
+  if (optimizer == "dependency") {
+    graph_optimizer.reset(
+        new DependencyOptimizer(cfg_.dependency_optimization()));
+  }
   return graph_optimizer;
 }
 
@@ -71,7 +93,11 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
     }
-    if (cfg_.optimize_tensor_layout()) {
+    if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new DependencyOptimizer(cfg_.dependency_optimization())));
+    }
+    if (cfg_.layout_optimizer() == RewriterConfig::ON) {
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
@@ -92,9 +118,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           new AutoParallel(cfg_.auto_parallel().num_replicas())));
     }
   } else {
-    std::set<string> available_optimizers = {"pruning",      "constfold",
-                                             "layout",       "memory",
-                                             "autoparallel", "arithmetic"};
+    std::set<string> available_optimizers = {
+        "pruning",      "constfold",  "layout",    "memory",
+        "autoparallel", "arithmetic", "dependency"};
     for (const auto& optimizer : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer) != available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
@@ -119,12 +145,11 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       } else {
         already_optimized = true;
         result = strings::StrCat(
-            "OK. "
-            "Graph size before: ",
-            item.graph.node_size(),
-            ". Graph size after: ", optimized_graph->node_size());
+            "OK. ", PrintSizesBeforeAfter(item.graph, *optimized_graph));
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
       auto status =
@@ -137,17 +162,17 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         result = status.ToString();
       } else {
         result = strings::StrCat(
-            "OK. "
-            "Graph size before: ",
-            optimized_item.graph.node_size(),
-            ". Graph size after: ", optimized_graph->node_size());
+            "OK. ",
+            PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph));
       }
       result_.push_back(std::make_pair(optimizer->name(), result));
+      VLOG(1) << "Optimizer " << optimizer->name()
+              << " return status: " << result;
     }
   }
 
   if (already_optimized) {
-    TopologicalSort(optimized_graph);
+    TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     // Make sure that the optimizers preserved the graph version and library.
     DCHECK_GE(optimized_graph->library().function_size(),
               item.graph.library().function_size());
@@ -175,8 +200,10 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  return !cfg.disable_model_pruning() || cfg.optimize_tensor_layout() ||
+  return !cfg.disable_model_pruning() ||
+         cfg.layout_optimizer() == RewriterConfig::ON ||
          cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
          !cfg.optimizers().empty();

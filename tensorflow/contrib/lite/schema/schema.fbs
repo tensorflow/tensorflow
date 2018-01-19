@@ -47,8 +47,8 @@ table QuantizationParameters {
 
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
-  // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // builtin ops use: [batch size, height, width, number of channels] (That's
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
@@ -89,7 +89,10 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
-  RELU1 = 20,
+  // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
+  // since different model developers use RELU1 in different ways. Never
+  // create another op called RELU1.
+  RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
   RESIZE_BILINEAR = 23,
@@ -104,6 +107,16 @@ enum BuiltinOperator : byte {
   CALL = 31,
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
+  PAD = 34,
+  UNIDIRECTIONAL_SEQUENCE_RNN = 35,
+  GATHER = 36,
+  BATCH_TO_SPACE_ND = 37,
+  SPACE_TO_BATCH_ND = 38,
+  TRANSPOSE = 39,
+  MEAN = 40,
+  SUB = 41,
+  DIV = 42,
+  SQUEEZE = 43,
 }
 
 // Options for the builtin operators.
@@ -129,6 +142,15 @@ union BuiltinOptions {
   SpaceToDepthOptions,
   EmbeddingLookupSparseOptions,
   MulOptions,
+  PadOptions,
+  GatherOptions,
+  BatchToSpaceNDOptions,
+  SpaceToBatchNDOptions,
+  TransposeOptions,
+  MeanOptions,
+  SubOptions,
+  DivOptions,
+  SqueezeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -136,7 +158,7 @@ enum Padding : byte { SAME, VALID }
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
-  RELU1 = 2,
+  RELU_N1_TO_1 = 2,
   RELU6 = 3,
   TANH = 4,
   SIGN_BIT = 5,
@@ -244,8 +266,25 @@ table CallOptions {
   subgraph:uint;
 }
 
+table PadOptions {
+  before_padding:[int];
+  after_padding:[int];
+}
+
 table ReshapeOptions {
   new_shape:[int];
+}
+
+table SpaceToBatchNDOptions {
+  block_shape:[int];
+  before_paddings:[int];
+  after_paddings:[int];
+}
+
+table BatchToSpaceNDOptions {
+  block_shape:[int];
+  before_crops:[int];
+  after_crops:[int];
 }
 
 table SkipGramOptions {
@@ -258,6 +297,14 @@ table SpaceToDepthOptions {
   block_size: int;
 }
 
+table SubOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+table DivOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -266,6 +313,23 @@ enum CombinerType : byte {
 
 table EmbeddingLookupSparseOptions {
   combiner:CombinerType;
+}
+
+table GatherOptions {
+  axis: int;
+}
+
+table TransposeOptions {
+  perm:[int];
+}
+
+table MeanOptions {
+  axis:[int];
+  keep_dims: bool;
+}
+
+table SqueezeOptions {
+  squeeze_dims:[int];
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -343,4 +407,3 @@ table Model {
 }
 
 root_type Model;
-

@@ -21,7 +21,10 @@ limitations under the License.
 // Output:
 //     Output[0]: Normalized sentence. string[1]
 //
-#include "absl/strings/ascii.h"
+
+#include <algorithm>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "re2/re2.h"
@@ -50,7 +53,7 @@ const std::map<string, string>* kRegexTransforms =
 
 static const char kStartToken[] = "<S>";
 static const char kEndToken[] = "<E>";
-static const int32 kMaxInputChars = 300;
+static const int32_t kMaxInputChars = 300;
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   tflite::StringRef input = tflite::GetString(GetInput(context, node, 0), 0);

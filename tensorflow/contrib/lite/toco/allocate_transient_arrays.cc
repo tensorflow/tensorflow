@@ -218,7 +218,8 @@ void AllocateTransientArrays(Model* model,
   // just guard this assumption with a CHECK:
   bool batchless_input_shapes = true;
   for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.shape().empty() || input_array.shape(0) != 1) {
+    if (!input_array.has_shape() || input_array.shape().dims().empty() ||
+        input_array.shape().dims(0) != 1) {
       batchless_input_shapes = false;
       break;
     }
@@ -238,8 +239,8 @@ void AllocateTransientArrays(Model* model,
   // is a misnormer, should read 'workspace'.
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       AllocateTransientArray(*model, array_name, &allocator,
                              transient_data_alignment);
     }
@@ -281,8 +282,8 @@ void AllocateTransientArrays(Model* model,
   std::size_t persistent_alloc_size = 0;
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       persistent_alloc_size +=
           TransientArraySize(*model, array_name, transient_data_alignment);
     }

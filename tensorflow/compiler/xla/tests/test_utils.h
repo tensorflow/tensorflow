@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -59,8 +60,16 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
 
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
+//
+// Will handle special cases such as making sure that indices used for dynamic
+// slices are bounded, reduces that call adds use 0 as an init value, etc.
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    const HloModule& module);
+    HloModule* const module);
+
+// Check that a given module satisfies various constraints before trying to
+// execute it.
+Status VerifyHloModule(const perftools::gputools::Platform& platform,
+                       HloModule* const module);
 
 }  // namespace xla
 

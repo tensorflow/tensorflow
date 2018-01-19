@@ -23,82 +23,93 @@ from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class PyOpTest(test.TestCase):
+def np_func(x, y):
+  return np.sinh(x) + np.cosh(y)
 
-  def testBasic(self):
 
-    def my_func(x, y):
-      return np.sinh(x) + np.cosh(y)
+def matmul(x, y):
+  return math_ops.matmul(x, y)
 
-    # single type
+
+class PyFuncTest(test.TestCase):
+  """Encapsulates tests for py_func and eager_py_func."""
+
+  # ----- Tests for py_func -----
+  def testSingleType(self):
     with self.test_session():
       x = constant_op.constant(1.0, dtypes.float32)
       y = constant_op.constant(2.0, dtypes.float32)
-      z = script_ops.py_func(my_func, [x, y], dtypes.float32)
-      self.assertEqual(z.eval(), my_func(1.0, 2.0).astype(np.float32))
+      z = self.evaluate(script_ops.py_func(np_func, [x, y], dtypes.float32))
+      self.assertEqual(z, np_func(1.0, 2.0).astype(np.float32))
 
-    # scalar
+  def testScalar(self):
     with self.test_session():
       x = constant_op.constant(1.0, dtypes.float32)
       y = constant_op.constant(2.0, dtypes.float32)
-      z = script_ops.py_func(my_func, [x, y], [dtypes.float32])
-      self.assertEqual(z[0].eval(), my_func(1.0, 2.0).astype(np.float32))
+      z = self.evaluate(
+          script_ops.eager_py_func(np_func, [x, y], [dtypes.float32]))
+      self.assertEqual(z[0], np_func(1.0, 2.0).astype(np.float32))
 
-    # array
+  def testArray(self):
     with self.test_session():
       x = constant_op.constant([1.0, 2.0], dtypes.float64)
       y = constant_op.constant([2.0, 3.0], dtypes.float64)
-      z = script_ops.py_func(my_func, [x, y], [dtypes.float64])
-      self.assertAllEqual(z[0].eval(),
-                          my_func([1.0, 2.0], [2.0, 3.0]).astype(np.float64))
+      z = self.evaluate(script_ops.py_func(np_func, [x, y], [dtypes.float64]))
+      self.assertAllEqual(z[0],
+                          np_func([1.0, 2.0], [2.0, 3.0]).astype(np.float64))
 
-    # a bit exotic type (complex64)
+  def testComplexType(self):
     with self.test_session():
       x = constant_op.constant(1 + 2j, dtypes.complex64)
       y = constant_op.constant(3 + 4j, dtypes.complex64)
-      z, = script_ops.py_func(my_func, [x, y], [dtypes.complex64])
-      self.assertAllClose(z.eval(), my_func(1 + 2j, 3 + 4j))
+      z = self.evaluate(script_ops.py_func(np_func, [x, y], dtypes.complex64))
+      self.assertAllClose(z, np_func(1 + 2j, 3 + 4j))
 
-    # a bit excotic function (rfft)
+  def testRFFT(self):
     with self.test_session():
       x = constant_op.constant([1., 2., 3., 4.], dtypes.float32)
 
       def rfft(x):
         return np.fft.rfft(x).astype(np.complex64)
 
-      y, = script_ops.py_func(rfft, [x], [dtypes.complex64])
-      self.assertAllClose(y.eval(), np.fft.rfft([1., 2., 3., 4.]))
+      y = self.evaluate(script_ops.py_func(rfft, [x], dtypes.complex64))
+      self.assertAllClose(y, np.fft.rfft([1., 2., 3., 4.]))
 
-    # returns a python literal.
+  def testPythonLiteral(self):
     with self.test_session():
 
       def literal(x):
-        return 1.0 if x == 0.0 else 0.0
+        return 1.0 if float(x) == 0.0 else 0.0
 
       x = constant_op.constant(0.0, dtypes.float64)
-      y, = script_ops.py_func(literal, [x], [dtypes.float64])
-      self.assertAllClose(y.eval(), 1.0)
+      y = self.evaluate(script_ops.py_func(literal, [x], dtypes.float64))
+      self.assertAllClose(y, 1.0)
 
-    # returns a list
+  def testList(self):
     with self.test_session():
 
       def list_func(x):
         return [x, x + 1]
 
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(list_func, [x], [dtypes.float64] * 2)
-      self.assertAllClose(y.eval(), 0.0)
-      self.assertAllClose(z.eval(), 1.0)
+      y = self.evaluate(
+          script_ops.py_func(list_func, [x], [dtypes.float64] * 2))
+      self.assertAllClose(y, [0.0, 1.0])
 
+  def testTuple(self):
     # returns a tuple
     with self.test_session():
 
@@ -106,17 +117,17 @@ class PyOpTest(test.TestCase):
         return x, x + 1
 
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(tuple_func, [x], [dtypes.float64] * 2)
-      self.assertAllClose(y.eval(), 0.0)
-      self.assertAllClose(z.eval(), 1.0)
+      y = self.evaluate(
+          script_ops.py_func(tuple_func, [x], [dtypes.float64] * 2))
+      self.assertAllClose(y, [0.0, 1.0])
 
     # returns a tuple, Tout and inp a tuple
     with self.test_session():
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(tuple_func, (x,), (dtypes.float64,
-                                                   dtypes.float64))
-      self.assertAllClose(y.eval(), 0.0)
-      self.assertAllClose(z.eval(), 1.0)
+      y = self.evaluate(
+          script_ops.py_func(tuple_func, (x,),
+                             (dtypes.float64, dtypes.float64)))
+      self.assertAllClose(y, [0.0, 1.0])
 
   def testStrings(self):
 
@@ -128,10 +139,12 @@ class PyOpTest(test.TestCase):
 
     with self.test_session():
       x = constant_op.constant([b"hello", b"hi"], dtypes.string)
-      y, = script_ops.py_func(read_fixed_length_numpy_strings, [],
-                              [dtypes.string])
-      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
-      self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
+      y = self.evaluate(
+          script_ops.py_func(read_fixed_length_numpy_strings, [],
+                             dtypes.string))
+      z = self.evaluate(
+          script_ops.py_func(read_and_return_strings, [x, y], dtypes.string))
+      self.assertAllEqual(z, [b"hello there", b"hi there"])
 
   def testStringsAreConvertedToBytes(self):
 
@@ -143,10 +156,12 @@ class PyOpTest(test.TestCase):
 
     with self.test_session():
       x = constant_op.constant(["hello", "hi"], dtypes.string)
-      y, = script_ops.py_func(read_fixed_length_numpy_strings, [],
-                              [dtypes.string])
-      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
-      self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
+      y = self.evaluate(
+          script_ops.py_func(read_fixed_length_numpy_strings, [],
+                             dtypes.string))
+      z = self.evaluate(
+          script_ops.py_func(read_and_return_strings, [x, y], dtypes.string))
+      self.assertAllEqual(z, [b"hello there", b"hi there"])
 
   def testObjectArraysAreConvertedToBytes(self):
 
@@ -186,16 +201,8 @@ class PyOpTest(test.TestCase):
 
   def testNoInput(self):
     with self.test_session():
-      x, = script_ops.py_func(lambda: 42.0, [], [dtypes.float64])
-      self.assertAllClose(x.eval(), 42.0)
-
-  def testCleanup(self):
-    for _ in xrange(1000):
-      g = ops.Graph()
-      with g.as_default():
-        c = constant_op.constant([1.], dtypes.float32)
-        _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
-    self.assertTrue(script_ops._py_funcs.size() < 100)
+      x = self.evaluate(script_ops.py_func(lambda: 42.0, [], dtypes.float64))
+      self.assertAllClose(x, 42.0)
 
   def testAlias(self):
     with self.test_session():
@@ -242,8 +249,8 @@ class PyOpTest(test.TestCase):
       # Create a numpy array aliasing a tensor and a tensor aliasing this array
       z, = script_ops.py_func(ident, [p], [dtypes.float32])
       z += 0.0  # Makes sure we release the tensor aliasing the numpy array x[0]
-                # above instead of using its memory as the return value of
-                # session.run
+      # above instead of using its memory as the return value of
+      # session.run
       self.assertEqual(0.0, z.eval(feed_dict={p: [0.0]}))
 
   def testStateful(self):
@@ -319,10 +326,10 @@ class PyOpTest(test.TestCase):
       def value(self):
         return self._value
 
-    with self.test_session() as sess:
+    with self.test_session():
       s = State()
       op = s.increment(constant_op.constant(2, dtypes.int64))
-      ret = sess.run(op)
+      ret = self.evaluate(op)
       self.assertIsNone(ret)
       self.assertAllEqual([3], s.value)
 
@@ -336,15 +343,24 @@ class PyOpTest(test.TestCase):
     with self.test_session() as sess:
       self.assertEqual(sess.run(f), [])
 
-  def _testExceptionHandling(self, py_exp, tf_exp):
+  def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
 
     def raise_exception():
       raise py_exp("blah")  # pylint: disable=not-callable
 
-    f = script_ops.py_func(raise_exception, [], [])
-    with self.test_session() as sess:
+    if eager:
+      if context.in_eager_mode():
+        with self.assertRaisesRegexp(tf_exp, "blah"):
+          f = script_ops.eager_py_func(raise_exception, [], [])
+        return
+      else:
+        f = script_ops.eager_py_func(raise_exception, [], [])
+    else:
+      f = script_ops.py_func(raise_exception, [], [])
+
+    with self.test_session():
       with self.assertRaisesRegexp(tf_exp, "blah"):
-        sess.run(f)
+        self.evaluate(f)
 
   def testExceptionHandling(self):
     self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
@@ -357,6 +373,89 @@ class PyOpTest(test.TestCase):
       pass
 
     self._testExceptionHandling(WeirdError, errors.UnknownError)
+
+  # ----- Tests shared by py_func and eager_py_func -----
+  def testCleanup(self):
+    for _ in xrange(1000):
+      g = ops.Graph()
+      with g.as_default():
+        c = constant_op.constant([1.], dtypes.float32)
+        _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
+        _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
+    self.assertTrue(script_ops._py_funcs.size() < 100)
+
+  # ----- Tests for eager_py_func -----
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerSingleOutputInt32(self):
+    a = array_ops.ones((3, 3), dtype=dtypes.int32)
+    x = array_ops.ones((3, 1), dtype=dtypes.int32)
+    output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
+    with self.test_session():
+      ret = self.evaluate(output)
+      self.assertAllEqual(ret, [[3], [3], [3]])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerSingleOutputFloat32(self):
+    a = array_ops.ones((3, 3), dtype=dtypes.float32)
+    x = array_ops.ones((3, 1), dtype=dtypes.float32)
+    output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
+    with self.test_session():
+      ret = self.evaluate(output)
+      self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerArrayOutput(self):
+    a = array_ops.ones((3, 3), dtype=dtypes.int32)
+    x = array_ops.ones((3, 1), dtype=dtypes.int32)
+    output = script_ops.eager_py_func(
+        lambda a, x: [matmul(a, x)], inp=[a, x], Tout=[dtypes.int32])
+
+    with self.test_session():
+      ret = self.evaluate(output)
+      self.assertAllEqual(ret, [[[3], [3], [3]]])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerReturnNone(self):
+
+    def no_return_value():
+      return
+
+    output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
+    ret = self.evaluate(output)
+    if context.in_eager_mode():
+      self.assertEquals(len(ret), 0)
+    else:
+      self.assertIsNone(ret)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerPyFuncInDefun(self):
+
+    def wrapper():
+      a = array_ops.ones((3, 3), dtype=dtypes.int32)
+      x = array_ops.ones((3, 1), dtype=dtypes.int32)
+      return script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
+
+    wrapped = function.defun(wrapper)
+    ret = self.evaluate(wrapped())
+    self.assertAllEqual(ret, [[3], [3], [3]])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerExceptionHandling(self):
+    self._testExceptionHandling(
+        ValueError, errors.InvalidArgumentError, eager=True)
+    self._testExceptionHandling(
+        TypeError, errors.InvalidArgumentError, eager=True)
+    self._testExceptionHandling(
+        StopIteration, errors.OutOfRangeError, eager=True)
+    self._testExceptionHandling(
+        MemoryError, errors.ResourceExhaustedError, eager=True)
+    self._testExceptionHandling(
+        NotImplementedError, errors.UnimplementedError, eager=True)
+
+    class WeirdError(Exception):
+      pass
+
+    self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
 
 if __name__ == "__main__":

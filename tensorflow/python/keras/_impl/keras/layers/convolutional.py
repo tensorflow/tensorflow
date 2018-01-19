@@ -793,6 +793,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
                strides=(1, 1),
                padding='valid',
                data_format=None,
+               dilation_rate=1,
                depth_multiplier=1,
                activation=None,
                use_bias=True,
@@ -815,6 +816,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
         depthwise_initializer=initializers.get(depthwise_initializer),
@@ -831,30 +833,42 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
 
   def get_config(self):
     config = {
-        'filters': self.filters,
-        'kernel_size': self.kernel_size,
-        'strides': self.strides,
-        'padding': self.padding,
-        'data_format': self.data_format,
-        'activation': activations.serialize(self.activation),
-        'use_bias': self.use_bias,
-        'depthwise_initializer': initializers.serialize(
-            self.depthwise_initializer),
-        'pointwise_initializer': initializers.serialize(
-            self.pointwise_initializer),
-        'bias_initializer': initializers.serialize(self.bias_initializer),
-        'depthwise_regularizer': regularizers.serialize(
-            self.depthwise_regularizer),
-        'pointwise_regularizer': regularizers.serialize(
-            self.pointwise_regularizer),
-        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'filters':
+            self.filters,
+        'kernel_size':
+            self.kernel_size,
+        'strides':
+            self.strides,
+        'padding':
+            self.padding,
+        'data_format':
+            self.data_format,
+        'dilation_rate':
+            self.dilation_rate,
+        'activation':
+            activations.serialize(self.activation),
+        'use_bias':
+            self.use_bias,
+        'depthwise_initializer':
+            initializers.serialize(self.depthwise_initializer),
+        'pointwise_initializer':
+            initializers.serialize(self.pointwise_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'depthwise_regularizer':
+            regularizers.serialize(self.depthwise_regularizer),
+        'pointwise_regularizer':
+            regularizers.serialize(self.pointwise_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'depthwise_constraint': constraints.serialize(
-            self.depthwise_constraint),
-        'pointwise_constraint': constraints.serialize(
-            self.pointwise_constraint),
-        'bias_constraint': constraints.serialize(self.bias_constraint)
+        'depthwise_constraint':
+            constraints.serialize(self.depthwise_constraint),
+        'pointwise_constraint':
+            constraints.serialize(self.pointwise_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
     }
     base_config = super(SeparableConv2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -880,7 +894,7 @@ class UpSampling1D(Layer):
     self.size = int(size)
     self.input_spec = InputSpec(ndim=3)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     size = self.size * input_shape[1] if input_shape[1] is not None else None
     return tensor_shape.TensorShape([input_shape[0], size, input_shape[2]])
@@ -936,7 +950,7 @@ class UpSampling2D(Layer):
     self.size = conv_utils.normalize_tuple(size, 2, 'size')
     self.input_spec = InputSpec(ndim=4)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       height = self.size[0] * input_shape[
@@ -1003,7 +1017,7 @@ class UpSampling3D(Layer):
     self.input_spec = InputSpec(ndim=5)
     super(UpSampling3D, self).__init__(**kwargs)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       dim1 = self.size[0] * input_shape[
@@ -1058,7 +1072,7 @@ class ZeroPadding1D(Layer):
     self.padding = conv_utils.normalize_tuple(padding, 2, 'padding')
     self.input_spec = InputSpec(ndim=3)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     if input_shape[1] is not None:
       length = input_shape[1] + self.padding[0] + self.padding[1]
     else:
@@ -1140,7 +1154,7 @@ class ZeroPadding2D(Layer):
                        'Found: ' + str(padding))
     self.input_spec = InputSpec(ndim=4)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       if input_shape[2] is not None:
@@ -1249,7 +1263,7 @@ class ZeroPadding3D(Layer):
           'Found: ' + str(padding))
     self.input_spec = InputSpec(ndim=5)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       if input_shape[2] is not None:
@@ -1316,7 +1330,7 @@ class Cropping1D(Layer):
     self.cropping = conv_utils.normalize_tuple(cropping, 2, 'cropping')
     self.input_spec = InputSpec(ndim=3)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if input_shape[1] is not None:
       length = input_shape[1] - self.cropping[0] - self.cropping[1]
@@ -1414,7 +1428,7 @@ class Cropping2D(Layer):
                        'Found: ' + str(cropping))
     self.input_spec = InputSpec(ndim=4)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     # pylint: disable=invalid-unary-operand-type
     if self.data_format == 'channels_first':
@@ -1546,7 +1560,7 @@ class Cropping3D(Layer):
           'Found: ' + str(cropping))
     self.input_spec = InputSpec(ndim=5)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     # pylint: disable=invalid-unary-operand-type
     if self.data_format == 'channels_first':

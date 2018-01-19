@@ -243,3 +243,23 @@ func BenchmarkNewTensor(b *testing.B) {
 	)
 	b.Run("[150528]", func(b *testing.B) { benchmarkNewTensor(b, vector) })
 }
+
+func benchmarkDecodeTensor(b *testing.B, t *Tensor) {
+	for i := 0; i < b.N; i++ {
+		_ = t.Value()
+	}
+}
+
+func BenchmarkDecodeTensor(b *testing.B) {
+	var (
+		// Some sample sizes from the Inception image labeling model.
+		// Where input tensors correspond to a 224x224 RGB image
+		// flattened into a vector.
+		vector [224 * 224 * 3]int32
+	)
+	t, err := NewTensor(vector)
+	if err != nil {
+		b.Fatalf("(%v, %v)", t, err)
+	}
+	b.Run("[150528]", func(b *testing.B) { benchmarkDecodeTensor(b, t) })
+}

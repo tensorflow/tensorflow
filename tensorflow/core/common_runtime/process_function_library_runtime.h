@@ -53,11 +53,6 @@ class ProcessFunctionLibraryRuntime {
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator);
 
-  // Given a list of attrs on a function, extracts the "_target" attribute which
-  // indicates which device to run the function on. If it can't find the _target
-  // attribute, returns "". Canonicalizes the device name.
-  static string ObtainFunctionTarget(const AttrSlice& attrs);
-
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
   // Rendezvous. `device_context` should be the DeviceContext of the device
@@ -121,7 +116,14 @@ class ProcessFunctionLibraryRuntime {
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
   Status Instantiate(const string& function_name, AttrSlice attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
+
+  // Delegates to the local FLR that owns state corresponding to `handle` and
+  // tells it to release it. If the `handle` isnt' needed at all, the local FLR
+  // might call RemoveHandle on this to get rid of the state owned by the Proc
+  // FLR.
+  Status ReleaseHandle(FunctionLibraryRuntime::Handle handle);
 
   // Runs the function with given `handle`. Function could have been
   // instantiated on any device. More details in framework/function.h
@@ -140,6 +142,9 @@ class ProcessFunctionLibraryRuntime {
   // of the device where the function is registered.
   string GetDeviceName(FunctionLibraryRuntime::Handle handle);
 
+  // Removes handle from the state owned by this object.
+  Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
+
   friend class FunctionLibraryRuntimeImpl;
 
   mutable mutex mu_;
@@ -151,6 +156,7 @@ class ProcessFunctionLibraryRuntime {
     FunctionData(const string& target_device,
                  FunctionLibraryRuntime::LocalHandle local_handle)
         : target_device(target_device), local_handle(local_handle) {}
+    FunctionData() : FunctionData("", -1) {}
   };
 
   const DeviceMgr* const device_mgr_;
@@ -158,8 +164,10 @@ class ProcessFunctionLibraryRuntime {
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::unordered_map<FunctionLibraryRuntime::Handle, FunctionData>
+      function_data_ GUARDED_BY(mu_);
   std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
 };
 

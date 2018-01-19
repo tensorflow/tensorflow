@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_H_
 
 // C API extensions to experiment with eager execution of kernels.
+// WARNING: Unlike tensorflow/c/c_api.h, the API here is not guaranteed to be
+// stable and can change without notice.
 
 #include "tensorflow/c/c_api.h"
 
@@ -86,6 +88,10 @@ TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
 TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);
+
+// Clears the internal caches in the TFE context. Useful when reseeding random
+// ops.
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 
 // A handle to a tensor on a device.
 //
@@ -199,6 +205,26 @@ TF_CAPI_EXPORT extern void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals,
 TF_CAPI_EXPORT extern void TFE_ContextAddFunctionDef(TFE_Context* ctx,
                                                      const char* serialized_function_def,
                                                      size_t size, TF_Status* status);
+
+// Adds a function (created from TF_GraphToFunction or
+// TF_FunctionImportFunctionDef) to the context, allowing it to be executed with
+// TFE_Execute by creating an op with the same name as the function.
+TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
+                                                  TF_Function* function,
+                                                  TF_Status* status);
+
+// Enables tracing of RunMetadata on the ops executed from this context.
+TF_CAPI_EXPORT extern void TFE_ContextEnableRunMetadata(TFE_Context* ctx);
+
+// Disables tracing of RunMetadata on the ops executed from this context.
+TF_CAPI_EXPORT extern void TFE_ContextDisableRunMetadata(TFE_Context* ctx);
+
+// Populates the passed-in buffer with a serialized RunMetadata protocol buffer
+// containing any run metadata information accumulated so far and clears this
+// information.
+TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
+                                                        TF_Buffer* buf,
+                                                        TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

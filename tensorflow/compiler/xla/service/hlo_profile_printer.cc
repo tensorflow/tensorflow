@@ -50,7 +50,7 @@ string HloProfilePrinter::ToString(const int64* counters,
           /*short_name=*/instruction->short_name, instruction->category,
           counters[instruction->profile_index], instruction->flop_count,
           instruction->transcendental_count, instruction->bytes_accessed,
-          instruction->seconds);
+          instruction->optimal_seconds);
     }
 
     result += builder.ToString();

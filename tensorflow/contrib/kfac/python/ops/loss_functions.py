@@ -22,6 +22,7 @@ import abc
 
 import six
 
+from tensorflow.contrib.distributions.python.ops import onehot_categorical
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -91,13 +92,13 @@ class LossFunction(object):
 
   @abc.abstractmethod
   def _evaluate(self, targets):
-    """Evaluates the log probability of the targets.
+    """Evaluates the negative log probability of the targets.
 
     Args:
       targets: Tensor that distribution can calculate log_prob() of.
 
     Returns:
-      log probability of each target, summed across all targets.
+      negative log probability of each target, summed across all targets.
     """
     pass
 
@@ -785,3 +786,16 @@ def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
   after[dim] = dim_size - position - 1
 
   return array_ops.pad(slice_to_insert, list(zip(before, after)))
+
+
+class OnehotCategoricalLogitsNegativeLogProbLoss(
+    CategoricalLogitsNegativeLogProbLoss):
+  """Neg log prob loss for a categorical distribution with onehot targets.
+
+  Identical to CategoricalLogitsNegativeLogProbLoss except that the underlying
+  distribution is OneHotCategorical as opposed to Categorical.
+  """
+
+  @property
+  def dist(self):
+    return onehot_categorical.OneHotCategorical(logits=self._logits)
