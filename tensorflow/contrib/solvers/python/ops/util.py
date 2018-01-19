@@ -45,6 +45,18 @@ def create_operator(matrix):
       apply_adjoint=lambda v: math_ops.matmul(matrix, v, adjoint_a=True))
 
 
+def identity_operator(operator):
+  """Creates a linear operator from a rank-2 identity tensor."""
+
+  linear_operator = collections.namedtuple(
+      "LinearOperator", ["shape", "dtype", "apply", "apply_adjoint"])
+  return linear_operator(
+      shape=operator.shape,
+      dtype=operator.dtype,
+      apply=lambda v: v,
+      apply_adjoint=lambda v: v)
+
+
 # TODO(rmlarsen): Measure if we should just call matmul.
 def dot(x, y):
   return math_ops.reduce_sum(math_ops.conj(x) * y)
