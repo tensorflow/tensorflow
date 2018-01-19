@@ -246,7 +246,7 @@ def _LogSoftmaxGrad(op, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, 1, keep_dims=True) * softmax
+  return grad - math_ops.reduce_sum(grad, 1, keepdims=True) * softmax
 
 
 @ops.RegisterGradient("BiasAdd")
