@@ -46,13 +46,12 @@ def _get_default_optimizer(feature_columns):
   return ftrl.FtrlOptimizer(learning_rate=learning_rate)
 
 
-def _compute_fraction_of_zero(cols_to_vars, units):
+def _compute_fraction_of_zero(cols_to_vars):
   """Given a linear cols_to_vars dict, compute the fraction of zero weights.
 
   Args:
     cols_to_vars: A dictionary mapping FeatureColumns to lists of tf.Variables
       like one returned from feature_column_lib.linear_model.
-    units: Dimension of output (e.g. 1 for binary).
 
   Returns:
     The fraction of zeros (sparsity) in the linear model.
@@ -62,7 +61,7 @@ def _compute_fraction_of_zero(cols_to_vars, units):
     # Skip empty-lists associated with columns that created no Variables.
     if var_or_var_list:
       all_weight_vars += [
-          array_ops.reshape(var, [-1, units]) for var in var_or_var_list
+          array_ops.reshape(var, [-1]) for var in var_or_var_list
       ]
   return nn.zero_fraction(array_ops.concat(all_weight_vars, axis=0))
 
@@ -105,8 +104,7 @@ def _linear_logit_fn_builder(units, feature_columns):
       # so we should provide a scalar summary.
       summary.scalar('bias', bias[0][0])
     summary.scalar('fraction_of_zero_weights',
-                   _compute_fraction_of_zero(cols_to_vars, units))
-
+                   _compute_fraction_of_zero(cols_to_vars))
     return logits
 
   return linear_logit_fn
