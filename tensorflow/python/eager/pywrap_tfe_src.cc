@@ -739,7 +739,10 @@ void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
   if (*ThreadTapeIsStopped()) {
     return;
   }
-  for (TFE_Py_Tape* tape : *GetTapeSet()) {
+  // Note: making a copy because watching a variable can trigger a change to the
+  // set of tapes by allowing python's garbage collector to run.
+  auto tape_set = *GetTapeSet();
+  for (TFE_Py_Tape* tape : tape_set) {
     tape->tape->WatchVariable(variable);
   }
 }

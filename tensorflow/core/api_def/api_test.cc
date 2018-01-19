@@ -21,8 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/api_def/excluded_ops.h"
 #include "tensorflow/core/framework/api_def.pb.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -43,15 +43,6 @@ constexpr char kDefaultApiDefDir[] =
     "tensorflow/core/api_def/base_api";
 constexpr char kApiDefFilePattern[] = "api_def_*.pbtxt";
 }  // namespace
-
-// Returns a list of ops excluded from ApiDef.
-// TODO(annarev): figure out if we should keep ApiDefs for these ops as well.
-const std::unordered_set<string>* GetExcludedOps() {
-  static std::unordered_set<string>* excluded_ops =
-      new std::unordered_set<string>(
-          {"BigQueryReader", "GenerateBigQueryReaderPartitions"});
-  return excluded_ops;
-}
 
 // Reads golden ApiDef files and returns a map from file name to ApiDef file
 // contents.
