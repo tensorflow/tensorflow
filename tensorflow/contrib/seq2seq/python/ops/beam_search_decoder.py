@@ -301,8 +301,8 @@ class BeamSearchDecoder(decoder.Decoder):
 
     log_probs = array_ops.one_hot(  # shape(batch_sz, beam_sz)
         array_ops.zeros([self._batch_size], dtype=dtypes.int32),
-        depth=self._beam_width, on_value=0.0,
-        off_value=-np.Inf, dtype=nest.flatten(self._initial_cell_state)[0].dtype)
+        depth=self._beam_width, on_value=0.0, off_value=-np.Inf,
+        dtype=nest.flatten(self._initial_cell_state)[0].dtype)
 
 
     initial_state = BeamSearchDecoderState(
