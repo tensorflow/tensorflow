@@ -94,7 +94,6 @@ def tflite_jni_linkopts():
       "//conditions:default": [],
   })
 
-
 def tflite_jni_binary(name,
                       copts=tflite_copts(),
                       linkopts=tflite_jni_linkopts(),

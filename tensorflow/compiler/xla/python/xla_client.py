@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import enum  # pylint: disable=g-bad-import-order
+import inspect
 import itertools
+import os
 
 import numpy as np
 
@@ -27,9 +30,51 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 
 
+# Most functions are snake_case for consistency with other modules,
+# whereas method names of ComputationBuilder and LocalComputation are
+# CamelCase for consistency with XLA.
+# pylint: disable=invalid-name
+
+
+OpMetadata = collections.namedtuple(
+    'OpMetadata',
+    [
+        'op_type',
+        'op_name',
+        'source_file',
+        'source_line',
+    ],
+)
+
+
+def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
+  """Helper for use in source mapping that returns an OpMetadata object."""
+  full_filename, lineno = inspect.stack()[skip_frames][1:3]
+  filename = os.path.basename(full_filename)
+  return OpMetadata(
+      op_type=op_type,
+      op_name=op_name,
+      source_file=filename,
+      source_line=lineno)
+
+
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
+
+
+def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
+                                        window_strides):
+  """Maps PaddingType (VALID or SAME) to pad values (list of pairs of ints)."""
+  if padding_type == PaddingType.VALID:
+    return [(0, 0)] * len(window_strides)
+
+  out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+  pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
+               for out_size, stride, filter_size, in_size
+               in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
+  return [(pad_size // 2, pad_size - pad_size // 2)
+          for pad_size in pad_sizes]
 
 
 _UNARY_OPS = [
@@ -69,11 +114,6 @@ _BINARY_OPS = [
     'Or',
     'Pow',
 ]
-
-# Most functions are snake_case for consistency with other modules,
-# whereas method names of ComputationBuilder and LocalComputation are
-# CamelCase for consistency with XLA.
-# pylint: disable=invalid-name
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype(np.float32),
@@ -320,6 +360,14 @@ class ComputationBuilder(object):
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
 
+  def SetOpMetadata(self, op_metadata):
+    """Set metadata for operations that are about to be enqueued."""
+    self._client.SetOpMetadata(op_metadata)
+
+  def ClearOpMetadata(self):
+    """Clear metadata for operations that are about to be enqueued."""
+    self._client.ClearOpMetadata()
+
   def Infeed(self, shape):
     """Enqueues an infeed op onto the computation.
 
@@ -493,6 +541,36 @@ class ComputationBuilder(object):
   def GetComputationStats(self):
     raise NotImplementedError()
 
+  def Pad(self, operand, padding_value, padding_config):
+    """Enqueues a Pad operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to pad.
+      padding_value: ComputationDataHandle representing the scalar pad value.
+      padding_config: either an xla_data_pb2.PaddingConfig or a list of integer
+        triples (edge_padding_low, edge_padding_high, interior_padding)
+        representing the configuration of the padding operation.
+
+    Returns:
+      A ComputationDataHandle representing the added pad op.
+    """
+    if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
+      padding_config = self._GetPaddingConfigFromTriples(padding_config)
+    return _wrap_data_handle(
+        self._client.Pad(_unwrap_data_handle(operand),
+                         _unwrap_data_handle(padding_value),
+                         padding_config))
+
+  def _GetPaddingConfigFromTriples(self, triples):
+    """Create PaddingConfig proto from list of triples of integers."""
+    padding_config = xla_data_pb2.PaddingConfig()
+    for lo, hi, interior in triples:
+      dimension = padding_config.dimensions.add()
+      dimension.edge_padding_low = lo
+      dimension.edge_padding_high = hi
+      dimension.interior_padding = interior
+    return padding_config
+
   def Reshape(self, operand, dimensions, new_sizes):
     """Reshape op."""
     return _wrap_data_handle(
@@ -530,6 +608,36 @@ class ComputationBuilder(object):
     """Rev op."""
     return _wrap_data_handle(
         self._client.Rev(_unwrap_data_handle(operand), dimensions))
+
+  def SelectAndScatter(self, operand, select, window_dimensions, window_strides,
+                       padding, source, init_value, scatter):
+    """Select and scatter op, used by the gradient of ReduceWindow.
+
+    Args:
+      operand: ComputationDataHandle for array of dimension N and type T over
+        which the windows slide.
+      select: Computation of type (T, T) -> Pred to apply to the elements of
+        each window to indicate which element is selected.
+      window_dimensions: sequence of N integers for dimensions of the window.
+      window_strides: sequence of N integers for the strides of the window.
+      padding: PaddingType representing either 'SAME' or 'VALID ' padding.
+      source: ComputationDataHandle for array of type T with values to scatter.
+      init_value: ComputationDataHandle of scalar type T for initial out value.
+      scatter: Computation of type (T, T) -> T to apply to each scatter source
+        element with its destination element.
+
+    Returns:
+      A ComputationDataHandle representing the added SelectAndScatter op.
+    """
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(operand).dimensions(),
+        window_dimensions, window_strides)
+    return _wrap_data_handle(
+        self._client.SelectAndScatterWithGeneralPadding(
+            _unwrap_data_handle(operand), select.c_local_computation,
+            window_dimensions, window_strides, pads,
+            _unwrap_data_handle(source), _unwrap_data_handle(init_value),
+            scatter.c_local_computation))
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.
@@ -681,6 +789,31 @@ class ComputationBuilder(object):
             computation_to_apply.c_local_computation,
             dimensions))
 
+  def ReduceWindow(self, operand, init_value, computation_to_apply,
+                   window_dimensions, window_strides, padding):
+    """Enqueues a windowed reduction operation onto the computation.
+
+    Args:
+      operand: reduction operand (ComputationDataHandle).
+      init_value: reduction initial value (ComputationDataHandle).
+      computation_to_apply: a binary reduction function (Computation).
+      window_dimensions: dimensions of window (sequence of integers).
+      window_strides: strides for window (sequence of integers).
+      padding: PaddingType representing either 'SAME' or 'VALID' padding.
+
+    Returns:
+      A ComputationDataHandle representing the added ReduceWindow op.
+    """
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(operand).dimensions(), window_dimensions,
+        window_strides)
+    return _wrap_data_handle(
+        self._client.ReduceWindowWithGeneralPadding(
+            _unwrap_data_handle(operand),
+            _unwrap_data_handle(init_value),
+            computation_to_apply.c_local_computation,
+            window_dimensions, window_strides, pads))
+
   def RngNormal(self, mu, sigma, dims):
     """Enqueues an RngNormal operation onto the computation.
 
@@ -719,20 +852,6 @@ class ComputationBuilder(object):
             _unwrap_data_handle(a), _unwrap_data_handle(b),
             _unwrap_shape(shape)))
 
-  def RngBernoulli(self, mean, dims):
-    """Enqueues an RngBernoulli operation onto the computation.
-
-    Args:
-      mean: A ComputationDataHandle to an F32 scalar specifying the mean.
-      dims: A 1D array-like of nonnegative integers specifying the dimensions.
-
-    Returns: a ComputationDataHandle to the generated array of U32 values.
-    """
-    shape = Shape(np.dtype(np.uint32), dims)
-    return _wrap_data_handle(
-        self._client.RngBernoulli(
-            _unwrap_data_handle(mean), _unwrap_shape(shape)))
-
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
 
@@ -764,18 +883,9 @@ class ComputationBuilder(object):
 
     Returns: a ComputationDataHandle representing the Conv operation.
     """
-    if padding == PaddingType.SAME:
-      lhs_dims = self.GetShape(lhs).dimensions()
-      rhs_dims = self.GetShape(rhs).dimensions()
-      in_shape, filter_shape = lhs_dims[2:], rhs_dims[2:]
-      out_shape = np.ceil(np.true_divide(in_shape, window_strides)).astype(int)
-      pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
-                   for out_size, stride, filter_size, in_size
-                   in zip(out_shape, window_strides, filter_shape, in_shape)]
-      pads = [(pad_size // 2, pad_size - pad_size // 2)
-              for pad_size in pad_sizes]
-    else:
-      pads = [(0, 0)] * len(window_strides)
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(lhs).dimensions()[2:],
+        self.GetShape(rhs).dimensions()[2:], window_strides)
     dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
     return _wrap_data_handle(
         self._client.ConvGeneralDilated(_unwrap_data_handle(lhs),

@@ -1340,8 +1340,8 @@ class ComputeWeightedLossTest(test.TestCase):
               self.assertAllClose(
                   np.sum(self._raw_losses), unweighted_loss.eval())
             else:
-              # reduction one of losses.Reduction.MEAN and
-              # losses.Reduction.SUM_BY_NONZERO_WEIGHTS.
+              # reduction one of MEAN, SUM_OVER_NONZERO_WEIGHTS,
+              # SUM_BY_NONZERO_WEIGHTS or SUM_OVER_BATCH_SIZE.
               self.assertAllClose(
                   np.mean(self._raw_losses), unweighted_loss.eval())
 
@@ -1435,9 +1435,14 @@ class ComputeWeightedLossTest(test.TestCase):
               self.assertAllClose(
                   weighted_sum / np.sum(broadcast_weights),
                   weighted_loss.eval())
-            elif reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS:
+            elif (reduction == losses.Reduction.SUM_OVER_NONZERO_WEIGHTS or
+                  reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
               self.assertAllClose(
                   weighted_sum / np.count_nonzero(broadcast_weights),
+                  weighted_loss.eval())
+            elif reduction == losses.Reduction.SUM_OVER_BATCH_SIZE:
+              self.assertAllClose(
+                  weighted_sum / self._raw_losses.size,
                   weighted_loss.eval())
 
   def test1x1x1Weight(self):

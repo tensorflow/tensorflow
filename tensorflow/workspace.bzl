@@ -10,30 +10,52 @@ load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 
-# Parse the bazel version string from `native.bazel_version`.
-def _parse_bazel_version(bazel_version):
+def _extract_version_number(bazel_version):
+  """Extracts the semantic version number from a version string
+
+  Args:
+    bazel_version: the version string that begins with the semantic version
+      e.g. "1.2.3rc1 abc1234" where "abc1234" is a commit hash.
+
+  Returns:
+    The semantic version string, like "1.2.3".
+  """
   for i in range(len(bazel_version)):
     c = bazel_version[i]
     if not (c.isdigit() or c == "."):
-      bazel_version = bazel_version[:i]
-      break
-  return tuple([int(n) for n in bazel_version.split(".")])
+      return bazel_version[:i]
+  return bazel_version
 
-# Check that a specific bazel version is being used.
-def check_version(bazel_version):
+# Parse the bazel version string from `native.bazel_version`.
+# e.g.
+# "0.10.0rc1 abc123d" => (0, 10, 0)
+# "0.3.0" => (0, 3, 0)
+def _parse_bazel_version(bazel_version):
+  """Parses a version string into a 3-tuple of ints
+
+  int tuples can be compared directly using binary operators (<, >).
+
+  Args:
+    bazel_version: the Bazel version string
+
+  Returns:
+    An int 3-tuple of a (major, minor, patch) version.
+  """
+
+  version = _extract_version_number(bazel_version)
+  return tuple([int(n) for n in version.split(".")])
+
+def check_bazel_version_at_least(minimum_bazel_version):
   if "bazel_version" not in dir(native):
-    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" %
-         bazel_version)
+    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % minimum_bazel_version)
   elif not native.bazel_version:
-    print("\nCurrent Bazel is not a release version, cannot check for " +
-          "compatibility.")
-    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
-  else:
-    current_bazel_version = _parse_bazel_version(native.bazel_version)
-    minimum_bazel_version = _parse_bazel_version(bazel_version)
-    if minimum_bazel_version > current_bazel_version:
-      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
-          native.bazel_version, bazel_version))
+    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
+    print("Make sure that you are running at least Bazel %s.\n" % minimum_bazel_version)
+    return
+
+  if _parse_bazel_version(native.bazel_version) < _parse_bazel_version(minimum_bazel_version):
+    fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
+        native.bazel_version, minimum_bazel_version))
 
 # If TensorFlow is linked as a submodule.
 # path_prefix is no longer used.
@@ -42,7 +64,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  check_version("0.5.4")
+  check_bazel_version_at_least("0.5.4")
   cuda_configure(name="local_config_cuda")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
@@ -451,11 +473,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cd244770af79b652d8273d27352f8aa9fd610bb5.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/cd244770af79b652d8273d27352f8aa9fd610bb5.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/f78b1b74e8a1c265f84ccd2142af88e346ce721e.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/f78b1b74e8a1c265f84ccd2142af88e346ce721e.tar.gz",
       ],
-      sha256 = "2e017a379f43e4115aedd042696a0de36234a7202a473239a8286cb79d9dac1d",
-      strip_prefix = "llvm-cd244770af79b652d8273d27352f8aa9fd610bb5",
+      sha256 = "d8e5966cf8e7489fa5a1b167f83bebaabe58aa7584b6d8a5c8f3722ae3047d19",
+      strip_prefix = "llvm-f78b1b74e8a1c265f84ccd2142af88e346ce721e",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

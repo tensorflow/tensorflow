@@ -74,6 +74,7 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
+        ":list_ops",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -185,6 +186,7 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -394,6 +396,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -1423,6 +1426,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "list_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
 )
 
@@ -1940,6 +1947,15 @@ py_library(
 )
 
 py_library(
+    name = "list_ops",
+    srcs = ["ops/list_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":list_ops_gen",
+    ],
+)
+
+py_library(
     name = "nn",
     srcs = [
         "ops/nn.py",
@@ -2365,6 +2381,8 @@ py_library(
         ":platform",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

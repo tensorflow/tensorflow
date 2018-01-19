@@ -329,18 +329,18 @@ Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(0, min(input, 1)
+  0: a tensor equivalent to max(0, input)
 }
 ```
 
-**RELU1**
+**RELU_N1_TO_1**
 
 ```
 Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(-1, min(input, 6)
+  0: a tensor equivalent to max(-1, min(input, 1)
 }
 ```
 

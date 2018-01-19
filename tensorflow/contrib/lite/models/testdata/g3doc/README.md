@@ -127,7 +127,10 @@ test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/li
 test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_tts_model_test.cc)
 
 [ASR AM model
-test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_terse_am_model_test.cc)
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_asr_am_model_test.cc)
+
+[ASR LM model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_asr_lm_model_test.cc)
 
 [Endpointer model
 test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_endpointer_model_test.cc)

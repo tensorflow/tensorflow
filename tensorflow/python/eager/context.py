@@ -407,10 +407,14 @@ class Context(object):
     To retrieve the accumulated metadata call context.export_run_metadata()
     and to stop tracing call context.disable_run_metadata().
     """
+    if not self._context_handle:
+      self._initialize_handle_and_devices()
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
 
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
+    if not self._context_handle:
+      return
     pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
 
   def export_run_metadata(self):
@@ -420,8 +424,10 @@ class Context(object):
     to either enable_run_metadata or export_run_metadata.
 
     Returns:
-      A RunMetadata protocol buffer.
+      A RunMetadata protocol buffer. Or None if not enabled.
     """
+    if not self._context_handle:
+      return None
     with c_api_util.tf_buffer() as buffer_:
       with errors.raise_exception_on_not_ok_status() as status:
         pywrap_tensorflow.TFE_ContextExportRunMetadata(

@@ -89,9 +89,14 @@ def make_decorator(target,
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
-  decorator_func.__name__ = target.__name__
-  decorator_func.__module__ = target.__module__
-  decorator_func.__doc__ = decorator.__doc__
+  # Objects that are callables (e.g., a functools.partial object) may not have
+  # the following attributes.
+  if hasattr(target, '__name__'):
+    decorator_func.__name__ = target.__name__
+  if hasattr(target, '__module__'):
+    decorator_func.__module__ = target.__module__
+  if hasattr(target, '__doc__'):
+    decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
   return decorator_func
 
@@ -139,10 +144,11 @@ class TFDecorator(object):
     self._decorator_name = decorator_name
     self._decorator_doc = decorator_doc
     self._decorator_argspec = decorator_argspec
-    self.__name__ = target.__name__
+    if hasattr(target, '__name__'):
+      self.__name__ = target.__name__
     if self._decorator_doc:
       self.__doc__ = self._decorator_doc
-    elif target.__doc__:
+    elif hasattr(target, '__doc__') and target.__doc__:
       self.__doc__ = target.__doc__
     else:
       self.__doc__ = ''

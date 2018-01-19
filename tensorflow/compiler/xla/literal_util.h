@@ -421,6 +421,31 @@ class Literal {
   template <typename NativeT>
   void Set(tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value);
 
+  // Returns the multi-index of the element in a sparse literal at the given
+  // sparse element number.  The sparse element number is the position with in
+  // the sparse array's list of (index, value) pairs, and is checked against the
+  // total number of (index, value) pairs in the sparse array.
+  tensorflow::gtl::ArraySlice<int64> GetSparseIndex(
+      int64 sparse_element_number, const ShapeIndex& shape_index = {}) const;
+
+  // Returns the value of the element in a sparse literal at the given sparse
+  // element number.  The sparse element number is the position with in the
+  // sparse array's list of (index, value) pairs, and is checked against the
+  // total number of (index, value) pairs in the sparse array.
+  template <typename NativeT>
+  NativeT GetSparseElement(int64 sparse_element_number,
+                           const ShapeIndex& shape_index = {}) const;
+
+  // Appends the given element to the literal.  If the elements are not appended
+  // in sorted order, then SortSparseElements should be called before calling
+  // other methods.  This literal must have a sparse layout.
+  template <typename NativeT>
+  void AppendSparseElement(tensorflow::gtl::ArraySlice<int64> multi_index,
+                           NativeT value, const ShapeIndex& shape_index = {});
+
+  // Sorts the elements in a sparse array.
+  void SortSparseElements(const ShapeIndex& shape_index = {});
+
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
   template <typename NativeT>
@@ -430,6 +455,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
                      const ShapeIndex& shape_index = {}) const;
+
+  // As GetSparseElement(), but determines the correct type and converts the
+  // value into text.
+  string GetSparseElementAsString(int64 sparse_element_number,
+                                  const ShapeIndex& shape_index = {}) const;
 
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
@@ -560,6 +590,11 @@ class Literal {
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
+  // Return the count of the elements in the sparse array at the given shape
+  // index in this literal, which will be no larger than
+  // LayoutUtil::MaxSparseElements(SetSubshape(shape(), index).layout()).
+  int64 sparse_element_count() const;
+
  protected:
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
@@ -660,11 +695,19 @@ class Literal {
     // piece must be equal (not just compatible) to the shape of the proto.
     Status CopyFromProto(const LiteralProto& proto);
 
+    // Sorts the elements in a sparse array.
+    void SortSparseElements();
+
    private:
     // Recursive helper for EqualElements.
     template <typename NativeT>
     bool EqualElementsInternal(const Piece& other,
                                std::vector<int64>* multi_index) const;
+
+    // Helper for SortSparseElements that has the element type as a template
+    // parameter.
+    template <typename NativeT>
+    void SortSparseElementsInternal();
 
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
@@ -763,6 +806,7 @@ tensorflow::gtl::MutableArraySlice<NativeT> Literal::Piece::data() {
 template <typename NativeT>
 NativeT Literal::Piece::Get(
     tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  CHECK(LayoutUtil::IsDenseArray(subshape()));
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }
@@ -770,6 +814,7 @@ NativeT Literal::Piece::Get(
 template <typename NativeT>
 void Literal::Piece::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
                          NativeT value) {
+  CHECK(LayoutUtil::IsDenseArray(subshape()));
   data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)] = value;
 }
@@ -1042,6 +1087,30 @@ template <typename NativeT>
 template <typename NativeT>
 NativeT Literal::GetFirstElement() const {
   return data<NativeT>().at(0);
+}
+
+template <typename NativeT>
+NativeT Literal::GetSparseElement(int64 sparse_element_number,
+                                  const ShapeIndex& shape_index) const {
+  CHECK(
+      LayoutUtil::IsSparseArray(ShapeUtil::GetSubshape(shape(), shape_index)));
+  return data<NativeT>(shape_index)[sparse_element_number];
+}
+
+template <typename NativeT>
+void Literal::AppendSparseElement(
+    tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value,
+    const ShapeIndex& shape_index) {
+  Piece& p = piece(shape_index);
+  const Shape& subshape = p.subshape();
+  CHECK(LayoutUtil::IsSparseArray(subshape));
+  int64 rank = ShapeUtil::Rank(subshape);
+  CHECK_EQ(multi_index.size(), rank);
+  int64 last_element = p.sparse_indices()->index_count();
+  CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
+  p.sparse_indices()->Append(multi_index);
+  CHECK_LT(last_element, p.data<NativeT>().size());
+  p.data<NativeT>()[last_element] = value;
 }
 
 // Returns an identity matrix (rank 2) with the given row and column count.

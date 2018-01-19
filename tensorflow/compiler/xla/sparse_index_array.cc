@@ -49,21 +49,21 @@ int64 SparseIndexArray::index_count() const {
 }
 
 tensorflow::gtl::ArraySlice<int64> SparseIndexArray::At(
-    int64 sparse_index_number) const {
+    int64 sparse_element_number) const {
   CHECK_GT(rank_, 0);
-  CHECK_GE(sparse_index_number, 0);
-  CHECK_LE(rank_ * sparse_index_number + rank_, indices_.size());
+  CHECK_GE(sparse_element_number, 0);
+  CHECK_LE(rank_ * sparse_element_number + rank_, indices_.size());
   return tensorflow::gtl::ArraySlice<int64>(
-      indices_.data() + rank_ * sparse_index_number, rank_);
+      indices_.data() + rank_ * sparse_element_number, rank_);
 }
 
 tensorflow::gtl::MutableArraySlice<int64> SparseIndexArray::At(
-    int64 sparse_index_number) {
+    int64 sparse_element_number) {
   CHECK_GT(rank_, 0);
-  CHECK_GE(sparse_index_number, 0);
-  CHECK_LE(rank_ * sparse_index_number + rank_, indices_.size());
+  CHECK_GE(sparse_element_number, 0);
+  CHECK_LE(rank_ * sparse_element_number + rank_, indices_.size());
   return tensorflow::gtl::MutableArraySlice<int64>(
-      indices_.data() + rank_ * sparse_index_number, rank_);
+      indices_.data() + rank_ * sparse_element_number, rank_);
 }
 
 void SparseIndexArray::Append(tensorflow::gtl::ArraySlice<int64> index) {

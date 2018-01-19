@@ -1001,7 +1001,10 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    tags = ["optonly"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "optonly",
+    ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
 )

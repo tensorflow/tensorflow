@@ -231,7 +231,7 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
                   const pooling_forward::primitive_desc& pool_fwd_desc,
                   const MklDnnData<T>* src,
                   MklDnnData<T>* dst,
-                  MklDnnData<T>* wksp = nullptr) {
+                  MklDnnData<uint8>* wksp = nullptr) {
     std::vector<primitive> net;
 
     // Create pooling primitive and add it to net
@@ -307,7 +307,7 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     MklDnnData<T>* input_gradient_diff_dst,
     MklDnnData<T>* output_diff_src,
     const memory::primitive_desc& target_diff_dst_pd,
-    const MklDnnData<T>* workspace = nullptr) {
+    const MklDnnData<uint8>* workspace = nullptr) {
 
     std::vector<primitive> net;
 

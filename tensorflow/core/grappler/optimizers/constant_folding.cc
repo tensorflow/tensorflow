@@ -143,6 +143,9 @@ ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
 string ConstantFolding::AddControlDependency(const string& input_name,
                                              GraphDef* graph,
                                              NodeMap* node_map) {
+  if (IsControlInput(input_name)) {
+    return input_name;
+  }
   const NodeDef* node = node_map->GetNode(input_name);
   if (!IsSwitch(*node)) {
     return AsControlDependency(*node);
@@ -154,10 +157,10 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
     auto outputs = node_map->GetOutputs(node->name());
-    for (const NodeDef* node : outputs) {
-      if (IsIdentity(*node)) {
+    for (const NodeDef* output : outputs) {
+      if (IsIdentity(*output)) {
         if (IsSameInput(node->input(0), input_name)) {
-          return AsControlDependency(*node);
+          return AsControlDependency(*output);
         }
       }
     }
@@ -169,15 +172,18 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
     const DataType output_type = node->attr().at("T").type();
 
-    NodeDef* added_node = graph->add_node();
-    added_node->set_name(ctrl_dep_name);
-    added_node->set_op("Identity");
-    added_node->set_device(node->device());
+    NodeDef* added_node = node_map->GetNode(ctrl_dep_name);
+    if (added_node == nullptr) {
+      added_node = graph->add_node();
+      added_node->set_name(ctrl_dep_name);
+      added_node->set_op("Identity");
+      added_node->set_device(node->device());
 
-    (*added_node->mutable_attr())["T"].set_type(output_type);
-    *added_node->add_input() = input_name;
-    node_map->AddNode(added_node->name(), added_node);
-    node_map->AddOutput(node->name(), added_node->name());
+      (*added_node->mutable_attr())["T"].set_type(output_type);
+      *added_node->add_input() = input_name;
+      node_map->AddNode(added_node->name(), added_node);
+      node_map->AddOutput(node->name(), added_node->name());
+    }
     return AsControlDependency(*added_node);
   }
 }
@@ -230,9 +236,6 @@ bool ConstantFolding::OptimizedNodeExists(const NodeDef& node,
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
-string ConstantFolding::OptimizedNodeName(const NodeDef& node) const {
-  return OptimizedNodeName(node, "");
-}
 string ConstantFolding::OptimizedNodeName(const NodeDef& node,
                                           StringPiece suffix) const {
   return AddPrefixToNodeName(strings::StrCat(node.name(), suffix),
@@ -312,7 +315,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
               if (node_name == node.name() && port == j) {
                 // Create a const node as ShapeN's output if not already.
                 const string const_name =
-                    OptimizedNodeName(node, strings::StrCat("-", j));
+                    OptimizedNodeName(node, strings::StrCat("-matshapes-", j));
                 if (node_map_->GetNode(const_name) == nullptr) {
                   NodeDef* added_node = graph_->add_node();
                   added_node->set_name(const_name);
@@ -485,7 +488,8 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
         value.vec<int64>()(i) = reduce_dims[j][i];
       }
     }
-    string const_name = OptimizedNodeName(node, strings::StrCat("-", j));
+    string const_name =
+        OptimizedNodeName(node, strings::StrCat("-bcastargs-", j));
     out[j] = node_map_->GetNode(const_name);
     if (out[j] == nullptr) {
       out[j] = graph_->add_node();
@@ -884,7 +888,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   }
 
   for (size_t i = 0; i < output_tensors.size(); i++) {
-    string node_name = OptimizedNodeName(node, "");
+    string node_name = OptimizedNodeName(node, "-folded");
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
@@ -936,14 +940,14 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
         continue;
       }
 
-      string const_out_name = OptimizedNodeName(*node);
+      string const_out_name = OptimizedNodeName(*node, "_const");
       string const_index_name = OptimizedNodeName(*node, "_index");
       if (node_map_->GetNode(const_out_name) ||
           node_map_->GetNode(const_index_name)) {
         // Intended name already exists.
         return errors::AlreadyExists(
             strings::StrCat(const_out_name, " or ", const_index_name,
-                            "already present in the graph"));
+                            " already present in the graph"));
       }
 
       NodeDef* const_out = output_graph->add_node();
@@ -1041,7 +1045,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
       if (node_map_->GetNode(const_node->name())) {
         // Intended name already exists.
         return errors::AlreadyExists(strings::StrCat(
-            const_node->name(), "already present in the graph"));
+            const_node->name(), " already present in the graph"));
       }
       NodeDef* added_node = output_graph->add_node();
       *added_node = *const_node;
@@ -1310,12 +1314,21 @@ void ConstantFolding::ReplaceOperationWithIdentity(int input_to_forward,
                                                    NodeDef* node,
                                                    GraphDef* graph) {
   node->set_op("Identity");
+  DataType dtype = node->attr().at("T").type();
+  node->clear_attr();
+  (*node->mutable_attr())["T"].set_type(dtype);
+
   // Propagate the designated input through the identity.
   node->mutable_input()->SwapElements(0, input_to_forward);
   // Add all other inputs as control dependencies.
   for (int i = 1; i < node->input_size(); ++i) {
-    node->set_input(
-        i, AddControlDependency(node->input(i), graph, node_map_.get()));
+    if (IsControlInput(node->input(i))) {
+      break;
+    }
+    const string ctrl_dep =
+        AddControlDependency(node->input(i), graph, node_map_.get());
+    node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
+    node->set_input(i, ctrl_dep);
   }
   graph_modified_ = true;
 }
@@ -1324,16 +1337,18 @@ void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node,
                                                         GraphDef* graph) {
   node->set_op("Reciprocal");
   node->mutable_input()->SwapElements(0, 1);
-  node->set_input(1,
-                  AddControlDependency(node->input(1), graph, node_map_.get()));
+  const string ctrl_dep =
+      AddControlDependency(node->input(1), graph, node_map_.get());
+  node_map_->UpdateInput(node->name(), node->input(1), ctrl_dep);
+  node->set_input(1, ctrl_dep);
   graph_modified_ = true;
 }
 
 Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const TensorShapeProto& shape, NodeDef* node,
     GraphDef* graph) {
-  AttrValue tensor_attr;
   AttrValue dtype_attr = node->attr().at("T");
+  AttrValue tensor_attr;
   TF_RETURN_IF_ERROR(CreateConstantTensorAttrValue(dtype_attr.type(), value,
                                                    shape, &tensor_attr));
   node->clear_attr();
@@ -1345,8 +1360,10 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    node->set_input(
-        i, AddControlDependency(node->input(i), graph, node_map_.get()));
+    const string ctrl_dep =
+        AddControlDependency(node->input(i), graph, node_map_.get());
+    node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
+    node->set_input(i, ctrl_dep);
   }
   graph_modified_ = true;
   return Status::OK();
@@ -1375,9 +1392,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-    const bool safe_to_use_shapes =
-        use_shape_info && (feed_nodes_.empty() || is_aggressive);
-    if (safe_to_use_shapes && IsSimplifiableReshape(*node, properties)) {
+    if (use_shape_info && IsSimplifiableReshape(*node, properties)) {
       DataType output_type = node->attr().at("T").type();
       node->set_op("Identity");
       node->clear_attr();
@@ -1386,7 +1401,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-
+    const bool safe_to_use_shapes =
+        use_shape_info && (feed_nodes_.empty() || is_aggressive);
     const bool is_mul = IsMul(*node);
     const bool is_matmul = IsMatMul(*node);
     const bool is_add = IsAdd(*node) || IsBiasAdd(*node);
@@ -1499,9 +1515,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       (*reciprocal_node->mutable_attr())["T"].set_type(type);
       node->set_input(1, reciprocal_node->name());
       node_map_->AddNode(reciprocal_node->name(), reciprocal_node);
-      node_map_->UpdateInput(node->name(), const_input,
-                             reciprocal_node->name());
-      node_map_->AddOutput(NodeName(const_input), reciprocal_node->name());
+      node_map_->UpdateOutput(node->name(), const_input,
+                              reciprocal_node->name());
       graph_modified_ = true;
     }
 

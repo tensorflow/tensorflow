@@ -230,7 +230,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         return kTfLiteActNone;
       case ActivationFunctionType_RELU:
         return kTfLiteActRelu;
-      case ActivationFunctionType_RELU1:
+      case ActivationFunctionType_RELU_N1_TO_1:
         return kTfLiteActRelu1;
       case ActivationFunctionType_RELU6:
         return kTfLiteActRelu6;
@@ -286,7 +286,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU1:
+    case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
       break;
@@ -408,6 +408,24 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ADD: {
       auto* params = MallocPOD<TfLiteAddParams>();
       if (auto* schema_params = op->builtin_options_as_AddOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_DIV: {
+      auto* params = MallocPOD<TfLiteDivParams>();
+      if (auto* schema_params = op->builtin_options_as_DivOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SUB: {
+      auto* params = MallocPOD<TfLiteSubParams>();
+      if (auto* schema_params = op->builtin_options_as_SubOptions()) {
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
@@ -574,6 +592,17 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    error_reporter);
         params->keep_dims = schema_params->keep_dims();
         params->num_axis_dimensions = axis->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SQUEEZE: {
+      auto* params = MallocPOD<TfLiteSqueezeParams>();
+      if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
+        const auto& squeeze_dims = schema_params->squeeze_dims();
+        FlatBufferIntVectorToArray(sizeof(params->squeeze_dims), squeeze_dims,
+                                   params->squeeze_dims, error_reporter);
+        params->num_squeeze_dims = squeeze_dims->Length();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

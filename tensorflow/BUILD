@@ -364,6 +364,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "override_eigen_strong_inline",
+    values = {"define": "override_eigen_strong_inline=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -402,6 +408,7 @@ filegroup(
         "//tensorflow/cc:all_files",
         "//tensorflow/cc/saved_model:all_files",
         "//tensorflow/cc/saved_model/python:all_files",
+        "//tensorflow/cc/tools:all_files",
         "//tensorflow/compiler/aot:all_files",
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
@@ -446,6 +453,7 @@ filegroup(
         "//tensorflow/contrib/cloud:all_files",
         "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/cluster_resolver:all_files",
+        "//tensorflow/contrib/coder:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
@@ -584,6 +592,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/batching_util:all_files",
         "//tensorflow/core/kernels/data:all_files",
         "//tensorflow/core/kernels/data/sql:all_files",
         "//tensorflow/core/kernels/fuzzing:all_files",

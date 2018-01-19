@@ -239,3 +239,85 @@ def train_mnist_multitower(data_dir,
       })
   return minimize(
       loss, accuracy, layer_collection, session_config=session_config)
+
+
+def train_mnist_estimator(data_dir, num_epochs, use_fake_data=False):
+  """Train an MLP on MNIST using tf.estimator.
+
+  Args:
+    data_dir: string. Directory to read MNIST examples from.
+    num_epochs: int. Number of passes to make over the training set.
+    use_fake_data: bool. If True, generate a synthetic dataset.
+
+  Returns:
+    accuracy of model on the final minibatch of training data.
+  """
+
+  # Load a dataset.
+  def input_fn():
+    tf.logging.info("Loading MNIST into memory.")
+    return mnist.load_mnist(
+        data_dir,
+        num_epochs=num_epochs,
+        batch_size=64,
+        flatten_images=True,
+        use_fake_data=use_fake_data)
+
+  def model_fn(features, labels, mode, params):
+    """Model function for MLP trained with K-FAC.
+
+    Args:
+      features: Tensor of shape [batch_size, input_size]. Input features.
+      labels: Tensor of shape [batch_size]. Target labels for training.
+      mode: tf.estimator.ModeKey. Must be TRAIN.
+      params: ignored.
+
+    Returns:
+      EstimatorSpec for training.
+
+    Raises:
+      ValueError: If 'mode' is anything other than TRAIN.
+    """
+    del params
+
+    if mode != tf.estimator.ModeKeys.TRAIN:
+      raise ValueError("Only training is supposed with this API.")
+
+    # Build a ConvNet.
+    layer_collection = lc.LayerCollection()
+    loss, accuracy = build_model(
+        features, labels, num_labels=10, layer_collection=layer_collection)
+
+    # Train with K-FAC.
+    global_step = tf.train.get_or_create_global_step()
+    optimizer = opt.KfacOptimizer(
+        learning_rate=tf.train.exponential_decay(
+            0.00002, global_step, 10000, 0.5, staircase=True),
+        cov_ema_decay=0.95,
+        damping=0.0001,
+        layer_collection=layer_collection,
+        momentum=0.99)
+
+    # Run cov_update_op every step. Run 1 inv_update_ops per step.
+    cov_update_op = optimizer.cov_update_op
+    inv_update_op = tf.group(
+        tf.contrib.kfac.utils.batch_execute(
+            global_step, optimizer.inv_update_thunks, batch_size=1))
+    with tf.control_dependencies([cov_update_op, inv_update_op]):
+      train_op = optimizer.minimize(loss, global_step=global_step)
+
+    # Print metrics every 5 sec.
+    hooks = [
+        tf.train.LoggingTensorHook(
+            {
+                "loss": loss,
+                "accuracy": accuracy
+            }, every_n_secs=5),
+    ]
+    return tf.estimator.EstimatorSpec(
+        mode=mode, loss=loss, train_op=train_op, training_hooks=hooks)
+
+  # Train until input_fn() is empty with Estimator. This is a prerequisite for
+  # TPU compatibility.
+  estimator = tf.estimator.Estimator(model_fn=model_fn)
+  estimator.train(input_fn=input_fn)

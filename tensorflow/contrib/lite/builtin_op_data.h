@@ -132,6 +132,14 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+} TfLiteSubParams;
+
+typedef struct {
+  TfLiteFusedActivation activation;
+} TfLiteDivParams;
+
+typedef struct {
+  TfLiteFusedActivation activation;
 } TfLiteL2NormParams;
 
 typedef struct {
@@ -205,6 +213,13 @@ typedef struct {
   int num_axis_dimensions;
   bool keep_dims;
 } TfLiteMeanParams;
+
+typedef struct {
+  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
+  // For now we will fix the maximum possible number of dimensions.
+  int squeeze_dims[8];
+  int num_squeeze_dims;
+} TfLiteSqueezeParams;
 
 #ifdef __cplusplus
 }  // extern "C"

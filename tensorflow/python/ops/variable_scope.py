@@ -23,6 +23,7 @@ import collections as collections_lib
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
+import sys
 import traceback
 
 import six
@@ -1863,12 +1864,29 @@ class variable_scope(object):  # pylint: disable=invalid-name
       self._graph_context_manager.__enter__()
     if self._cached_pure_variable_scope is not None:
       # Fast path for re-entering variable_scopes. We've held on to the pure
-      # variable scope from a previous __enter__, so we avoid some overhead by
-      # re-using that object.
+      # variable scope from a previous successful __enter__, so we avoid some
+      # overhead by re-using that object.
       if self._current_name_scope is not None:
         self._current_name_scope.__enter__()
       return self._cached_pure_variable_scope.__enter__()
 
+    try:
+      return self._enter_scope_uncached()
+    except:
+      if self._graph_context_manager is not None:
+        self._graph_context_manager.__exit__(*sys.exc_info())
+      raise
+
+  def _enter_scope_uncached(self):
+    """Enters the context manager when there is no cached scope yet.
+
+    Returns:
+      The entered variable scope.
+
+    Raises:
+      TypeError: A wrong type is passed as `scope` at __init__().
+      ValueError: `reuse` is incorrectly set at __init__().
+    """
     if self._auxiliary_name_scope:
       # Create a new name scope later
       current_name_scope = None
@@ -1883,6 +1901,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
         # Root scope
         current_name_scope = ops.name_scope(name_scope)
 
+    # IMPORTANT: Only assign to self._cached_pure_variable_scope and
+    # self._current_name_scope after successful __enter__() calls.
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
                         (VariableScope,) + six.string_types):
@@ -1893,14 +1913,18 @@ class variable_scope(object):  # pylint: disable=invalid-name
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
       if name_scope or current_name_scope:
-        self._current_name_scope = current_name_scope or ops.name_scope(
-            name_scope)
-        current_name_scope_name = self._current_name_scope.__enter__()
+        current_name_scope = current_name_scope or ops.name_scope(name_scope)
+        try:
+          current_name_scope_name = current_name_scope.__enter__()
+        except:
+          current_name_scope.__exit__(*sys.exc_info())
+          raise
+        self._current_name_scope = current_name_scope
         if isinstance(self._name_or_scope, six.string_types):
           old_name_scope = current_name_scope_name
         else:
           old_name_scope = self._name_or_scope.original_name_scope
-        self._cached_pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1912,11 +1936,17 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._cached_pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
       else:
         self._current_name_scope = None
         # This can only happen if someone is entering the root variable scope.
-        self._cached_pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1927,16 +1957,27 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._cached_pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
 
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if self._reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
-      self._current_name_scope = current_name_scope or ops.name_scope(
+      current_name_scope = current_name_scope or ops.name_scope(
           self._default_name)
-      current_name_scope_name = self._current_name_scope.__enter__()
+      try:
+        current_name_scope_name = current_name_scope.__enter__()
+      except:
+        current_name_scope.__exit__(*sys.exc_info())
+        raise
+      self._current_name_scope = current_name_scope
       unique_default_name = _get_unique_variable_scope(self._default_name)
-      self._cached_pure_variable_scope = _pure_variable_scope(
+      pure_variable_scope = _pure_variable_scope(
           unique_default_name,
           initializer=self._initializer,
           regularizer=self._regularizer,
@@ -1947,7 +1988,13 @@ class variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._dtype,
           use_resource=self._use_resource,
           constraint=self._constraint)
-      return self._cached_pure_variable_scope.__enter__()
+      try:
+        entered_pure_variable_scope = pure_variable_scope.__enter__()
+      except:
+        pure_variable_scope.__exit__(*sys.exc_info())
+        raise
+      self._cached_pure_variable_scope = pure_variable_scope
+      return entered_pure_variable_scope
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     self._cached_pure_variable_scope.__exit__(

@@ -100,9 +100,11 @@ class TFStats {
 
  private:
   bool Validate(const Options& opts) const;
+  string MaybeReportMissingTrace() const;
 
   std::set<int64> steps_;
   bool has_code_traces_;
+  bool miss_accelerator_stream_;
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
   std::unique_ptr<TFCode> code_view_;

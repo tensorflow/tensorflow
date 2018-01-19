@@ -82,6 +82,21 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "list_ops_test",
+    size = "small",
+    srcs = ["list_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+    grpc_enabled = True,
+)
+
+cuda_py_test(
     name = "benchmark_test",
     size = "small",
     srcs = ["benchmark_test.py"],
@@ -525,6 +540,18 @@ tf_py_test(
     name = "matrix_exponential_op_test",
     size = "small",
     srcs = ["matrix_exponential_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+)
+
+tf_py_test(
+    name = "matrix_logarithm_op_test",
+    size = "small",
+    srcs = ["matrix_logarithm_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",

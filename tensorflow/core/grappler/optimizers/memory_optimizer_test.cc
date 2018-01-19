@@ -259,6 +259,10 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
   EXPECT_EQ("^c", swap_in.input(1));
 
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  EXPECT_EQ("^swap_out_e_0", new_c.input(1));
+
   // Run the optimizer a second time to ensure it's idempotent.
   item.graph.Swap(&output);
   status = optimizer.Optimize(cluster.get(), item, &output);
@@ -328,7 +332,8 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
 
   for (const auto& node : output.node()) {
     if (node.name() == "d") {
-      EXPECT_EQ(0, node.attr().count("_swap_to_host"));
+      EXPECT_EQ(1, node.attr().count("_swap_to_host"));
+      EXPECT_EQ(2, node.attr().at("_swap_to_host").list().i(0));
     }
   }
 }
@@ -355,7 +360,6 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
 
   int count = 0;
   for (const auto& node : output.node()) {
-    std::cout << node.DebugString() << std::endl;
     if (node.name() == "d") {
       EXPECT_EQ("DestroyTemporaryVariable", node.op());
       count++;

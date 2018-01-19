@@ -31,19 +31,28 @@ from tensorflow.python.util.deprecation import deprecated_args
 
 
 class Reduction(object):
-  """Types of loss reduction."""
+  """Types of loss reduction.
 
-  # Un-reduced weighted losses with the same shape as input.
+  Contains the following values:
+  `NONE`: Un-reduced weighted losses with the same shape as input.
+  `SUM`: Scalar sum of weighted losses.
+  `MEAN`: Scalar `SUM` divided by sum of weights.
+  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
+     weights.
+  `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  """
+
   NONE = "none"
 
-  # Scalar sum of `NONE`.
   SUM = "weighted_sum"
 
-  # Scalar `SUM` divided by sum of weights.
   MEAN = "weighted_mean"
 
-  # Scalar `SUM` divided by number of non-zero weights.
+  SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
+
   SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
+  SUM_OVER_NONZERO_WEIGHTS = SUM_BY_NONZERO_WEIGHTS
 
   @classmethod
   def all(cls):
@@ -51,6 +60,8 @@ class Reduction(object):
         cls.NONE,
         cls.SUM,
         cls.MEAN,
+        cls.SUM_OVER_BATCH_SIZE,
+        cls.SUM_OVER_NONZERO_WEIGHTS,
         cls.SUM_BY_NONZERO_WEIGHTS)
 
   @classmethod
@@ -135,6 +146,12 @@ def _num_present(losses, weights, per_batch=False):
     return math_ops.reduce_sum(present, name=scope)
 
 
+def _num_elements(losses):
+  """Computes the number of elements in `losses` tensor."""
+  with ops.name_scope(None, "num_elements", values=[losses]) as scope:
+    return array_ops.size(losses, name=scope, out_type=losses.dtype)
+
+
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -182,8 +199,11 @@ def compute_weighted_loss(
           loss = _safe_mean(
               loss,
               math_ops.reduce_sum(array_ops.ones_like(losses) * weights))
-        elif reduction == Reduction.SUM_BY_NONZERO_WEIGHTS:
+        elif (reduction == Reduction.SUM_BY_NONZERO_WEIGHTS or
+              reduction == Reduction.SUM_OVER_NONZERO_WEIGHTS):
           loss = _safe_mean(loss, _num_present(losses, weights))
+        elif reduction == Reduction.SUM_OVER_BATCH_SIZE:
+          loss = _safe_mean(loss, _num_elements(losses))
 
       # Convert the result back to the input type.
       loss = math_ops.cast(loss, input_dtype)
@@ -492,7 +512,7 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
   """
   if labels is None:

@@ -235,7 +235,9 @@ bool IsReciprocalGrad(const NodeDef& node) {
   return node.op() == "ReciprocalGrad";
 }
 
-bool IsRecv(const NodeDef& node) { return node.op() == "_Recv"; }
+bool IsRecv(const NodeDef& node) {
+  return node.op() == "_Recv" || node.op() == "_HostRecv";
+}
 
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
@@ -262,7 +264,9 @@ bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
-bool IsSend(const NodeDef& node) { return node.op() == "_Send"; }
+bool IsSend(const NodeDef& node) {
+  return node.op() == "_Send" || node.op() == "_HostSend";
+}
 
 bool IsShape(const NodeDef& node) { return node.op() == "Shape"; }
 
@@ -331,6 +335,10 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
   return node.attr().count(name) > 0 && node.attr().at(name).b();
 }
 }  // namespace
+
+bool IsPersistent(const NodeDef& node) {
+  return IsConstant(node) || IsVariable(node);
+}
 
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.

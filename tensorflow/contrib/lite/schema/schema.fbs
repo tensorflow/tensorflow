@@ -89,7 +89,10 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
-  RELU1 = 20,
+  // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
+  // since different model developers use RELU1 in different ways. Never
+  // create another op called RELU1.
+  RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
   RESIZE_BILINEAR = 23,
@@ -111,6 +114,9 @@ enum BuiltinOperator : byte {
   SPACE_TO_BATCH_ND = 38,
   TRANSPOSE = 39,
   MEAN = 40,
+  SUB = 41,
+  DIV = 42,
+  SQUEEZE = 43,
 }
 
 // Options for the builtin operators.
@@ -142,6 +148,9 @@ union BuiltinOptions {
   SpaceToBatchNDOptions,
   TransposeOptions,
   MeanOptions,
+  SubOptions,
+  DivOptions,
+  SqueezeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -149,7 +158,7 @@ enum Padding : byte { SAME, VALID }
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
-  RELU1 = 2,
+  RELU_N1_TO_1 = 2,
   RELU6 = 3,
   TANH = 4,
   SIGN_BIT = 5,
@@ -288,6 +297,14 @@ table SpaceToDepthOptions {
   block_size: int;
 }
 
+table SubOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+table DivOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -309,6 +326,10 @@ table TransposeOptions {
 table MeanOptions {
   axis:[int];
   keep_dims: bool;
+}
+
+table SqueezeOptions {
+  squeeze_dims:[int];
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -212,6 +212,7 @@ class Scaffold(object):
     self._saver.build()
 
     ops.get_default_graph().finalize()
+    logging.info('Graph was finalized.')
     return self
 
   @property

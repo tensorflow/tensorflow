@@ -138,6 +138,10 @@ bool IsAggregate(const NodeDef& node);
 // Returns false if it could not be determined to be so.
 bool IsCommutative(const NodeDef& node);
 
+// Returns true if the node is known to use persistent memory to store its
+// value.
+bool IsPersistent(const NodeDef& node);
+
 bool IsFreeOfSideEffect(const NodeDef& node);
 bool ModifiesFrameInfo(const NodeDef& node);
 

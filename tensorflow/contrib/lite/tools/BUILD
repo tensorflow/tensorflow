@@ -27,6 +27,25 @@ tf_cc_binary(
     ],
 )
 
+tf_cc_binary(
+    name = "benchmark_model",
+    srcs = ["benchmark_model.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+            "-landroid",
+            "-lm",
+            "-z defs",
+            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":mutable_op_resolver",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+    ],
+)
+
 cc_library(
     name = "gen_op_registration",
     srcs = ["gen_op_registration.cc"],

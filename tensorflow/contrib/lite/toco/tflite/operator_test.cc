@@ -102,7 +102,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                           OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
-  CheckSimpleOperator<Relu1Operator>("RELU1", OperatorType::kRelu1);
+  CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
   CheckSimpleOperator<ResizeBilinearOperator>("RESIZE_BILINEAR",
                                               OperatorType::kResizeBilinear);
@@ -387,6 +387,15 @@ TEST_F(OperatorTest, Transpose) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("TRANSPOSE", OperatorType::kTranspose), op);
   EXPECT_EQ(op.perm, output_toco_op->perm);
+}
+
+TEST_F(OperatorTest, Squeeze) {
+  SqueezeOperator op;
+  op.squeeze_dims = {-2, -3, 4, 1, 4};
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SQUEEZE", OperatorType::kSqueeze), op);
+  EXPECT_EQ(op.squeeze_dims, output_toco_op->squeeze_dims);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

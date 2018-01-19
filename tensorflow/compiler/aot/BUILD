@@ -52,6 +52,7 @@ cc_library(
         "flags.h",
     ],
     deps = [
+        ":embedded_protocol_buffers",
         ":runtime",  # needed by codegen to print aligned_buffer_bytes
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:common",
@@ -68,9 +69,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -80,13 +79,18 @@ cc_library(
 tf_cc_test(
     name = "codegen_test",
     srcs = ["codegen_test.cc"],
-    data = ["codegen_test_h.golden"],
+    data = [
+        "codegen_test_h.golden",
+        "codegen_test_o.golden",
+    ],
     deps = [
         ":tfcompile_lib",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@llvm//:support",  # fixdeps: keep
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -188,6 +192,23 @@ cc_library(
         "notap",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "embedded_protocol_buffers",
+    srcs = ["embedded_protocol_buffers.cc"],
+    hdrs = ["embedded_protocol_buffers.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+        "@llvm//:execution_engine",
+        "@llvm//:support",
+        "@llvm//:target",
+    ],
 )
 
 tf_cc_test(
