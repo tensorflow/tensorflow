@@ -37,12 +37,14 @@ _TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 _TF_WORKSPACE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              'WORKSPACE')
 _DEFAULT_CUDA_VERSION = '9.0'
+_DEFAULT_TENSORRT_VERSION = '4'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
                           'Toolkit/CUDA/v%s' % _DEFAULT_CUDA_VERSION)
+_DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/x86_64-linux-gnu'
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
@@ -382,13 +384,12 @@ def set_build_var(environ_cp, var_name, query_item, option_name,
 
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
-  if var == '1':
-    write_to_bazelrc('build --define %s=true' % option_name)
-  elif bazel_config_name is not None:
-    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
-    # options and not to set build configs through environment variables.
-    write_to_bazelrc('build:%s --define %s=true'
-                     % (bazel_config_name, option_name))
+  # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
+  # options and not to set build configs through environment variables.
+  if var=='1':
+    setting='true'
+    confname=":%s"%(bazel_config_name) if bazel_config_name is not None else ""
+    write_to_bazelrc('build%s --define %s=%s' % (confname,option_name,setting))
 
 
 def set_action_env_var(environ_cp,
@@ -438,13 +439,12 @@ def convert_version_to_int(version):
   for seg in version_segments:
     if not seg.isdigit():
       return None
-
   version_str = ''.join(['%03d' % int(seg) for seg in version_segments])
   return int(version_str)
 
 
 def check_bazel_version(min_version):
-  """Check installed bezel version is at least min_version.
+  """Check installed bazel version is at least min_version.
 
   Args:
     min_version: string for minimum bazel version.
@@ -1056,6 +1056,108 @@ def set_other_cuda_vars(environ_cp):
       write_to_bazelrc('test --config=cuda')
 
 
+def set_tf_trt_version(environ_cp):
+  """Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION."""
+  ask_trt_version = (
+      'Please specify the TensorRT (libnvinfer) version you want to use. '
+      '[Leave empty to default to libnvinfer %s]: ') % _DEFAULT_TENSORRT_VERSION
+
+  while True:
+    tf_trt_version = get_from_env_or_user_or_default(
+        environ_cp, 'TF_TENSORRT_VERSION', ask_trt_version,
+        _DEFAULT_TENSORRT_VERSION)
+    # if library version is passed and known
+    default_trt_path = environ_cp.get('TENSORRT_INSTALL_PATH',_DEFAULT_TENSORRT_PATH_LINUX)
+    ask_trt_path = (r'Please specify the location where libnvinfer %s library is '
+                      'installed. Refer to README.md for more details. [Default'
+                      ' is %s]:') % (tf_trt_version, default_trt_path)
+    trt_install_path = get_from_env_or_user_or_default(
+        environ_cp, 'TENSORRT_INSTALL_PATH', ask_trt_path, default_trt_path)
+
+    # Result returned from "read" will be used unexpanded. That make "~"
+    # unusable. Going through one more level of expansion to handle that.
+    trt_install_path = os.path.realpath(
+        os.path.expanduser(trt_install_path))
+    # Simple function to search for libnvinfer in install path
+    # it will find all libnvinfer.so* in user defined install path
+    # and lib64 subdirectory and return absolute paths
+    def find_libs(search_path):
+      fl=set()
+      if os.path.exists(search_path) and os.path.isdir(search_path):
+        fl.update([os.path.realpath(os.path.join(search_path,x)) \
+                   for x in os.listdir(search_path) if 'libnvinfer.so' in x])
+      return fl
+    possible_files=find_libs(trt_install_path)
+    possible_files.update(find_libs(os.path.join(trt_install_path,'lib64')))
+    if is_linux():
+      cudnnpatt=re.compile(".*libcudnn.so\.?(.*) =>.*$")
+      cudapatt =re.compile(".*libcudart.so\.?(.*) =>.*$")
+      def is_compatible(lib,cudaver,cudnnver):
+        ldd_bin=which('ldd') or '/usr/bin/ldd'
+        ldd_out=run_shell([ldd_bin,lib]).split(os.linesep)
+        for l in ldd_out:
+          if 'libcudnn.so' in l:
+            cudnn=cudnnpatt.search(l)
+          elif 'libcudart.so' in l:
+            cudart=cudapatt.search(l)
+        if cudnn:
+          cudnn=convert_version_to_int(cudnn.group(1)) if len(cudnn.group(1)) else 0
+        if cudart:
+          cudart=convert_version_to_int(cudart.group(1)) if len(cudart.group(1)) else 0
+        return (cudnn==cudnnver) and (cudart==cudaver)
+      cudaver=convert_version_to_int(environ_cp['TF_CUDA_VERSION'])
+      cudnnver=convert_version_to_int(environ_cp['TF_CUDNN_VERSION'])
+      valid_libs=[]
+      vfinder=re.compile('.*libnvinfer.so.?(.*)$')
+      highest_ver=[0,None,None]
+
+      for l in possible_files:
+        if is_compatible(l,cudaver,cudnnver):
+          valid_libs.append(l)
+          vstr=vfinder.search(l).group(1)
+          currver=convert_version_to_int(vstr) if len(vstr) else 0
+          if currver > highest_ver[0]:
+            highest_ver= [currver,vstr,l]
+      if highest_ver[1] is not None:
+        trt_install_path=os.path.dirname(highest_ver[2])
+        tf_trt_version=highest_ver[1]
+        break
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      libnvinfer_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      libnvinfer_path_from_ldconfig = re.search('.*libnvinfer.so.* => (.*)',
+                                           libnvinfer_path_from_ldconfig)
+      if libnvinfer_path_from_ldconfig:
+        libnvinfer_path_from_ldconfig = libnvinfer_path_from_ldconfig.group(1)
+        if os.path.exists('%s.%s' % (libnvinfer_path_from_ldconfig,
+                                     tf_trt_version)):
+          trt_install_path = os.path.dirname(libnvinfer_path_from_ldconfig)
+          break
+
+    # Reset and Retry
+    if len(possible_files):
+      print(
+          'Invalid path to TensorRT %s. libnvinfer.so* files found are for incompatible cuda versions '
+           % tf_trt_version)
+      print(trt_install_path)
+      print(os.path.join(trt_install_path,'lib64'))
+    else:
+      print(
+          'Invalid path to TensorRT %s. No libnvinfer.so* files found in '
+          'found:' % tf_trt_version)
+      print(trt_install_path)
+      print(os.path.join(trt_install_path,'lib64'))
+      if is_linux():
+        print('%s.%s' % (libnvinfer_path_from_ldconfig, tf_trt_version))
+
+    environ_cp['TF_TENSORRT_VERSION'] = ''
+
+  # Set TENSORRT_INSTALL_PATH and TENSORRT_CUDNN_VERSION
+  environ_cp['TENSORRT_INSTALL_PATH'] = trt_install_path
+  write_action_env_to_bazelrc('TENSORRT_INSTALL_PATH', trt_install_path)
+  environ_cp['TF_TENSORRT_VERSION'] = tf_trt_version
+  write_action_env_to_bazelrc('TF_TENSORRT_VERSION', tf_trt_version)
+  write_to_bazelrc('build:tensorrt --define using_tensorrt=true')
+
 def set_host_cxx_compiler(environ_cp):
   """Set HOST_CXX_COMPILER."""
   default_cxx_host_compiler = which('g++') or ''
@@ -1244,9 +1346,11 @@ def main():
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
+    environ_cp['TF_NEED_TENSORRT'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
+    environ_cp['TF_NEED_TENSORRT'] = '0'
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
@@ -1301,6 +1405,10 @@ def main():
       if not is_windows():
         set_gcc_host_compiler_path(environ_cp)
     set_other_cuda_vars(environ_cp)
+    # enable tensorrt if desired. Disabled on non-linux
+    set_action_env_var(environ_cp, 'TF_NEED_TENSORRT', 'TensorRT', False)
+    if environ_cp.get('TF_NEED_TENSORRT') == '1':
+      set_tf_trt_version(environ_cp)
 
   set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
   if environ_cp.get('TF_NEED_MPI') == '1':
