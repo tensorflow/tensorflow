@@ -3,9 +3,67 @@ cmake_minimum_required(VERSION 3.5)
 # Project
 project(tensorflow-lite C CXX)
 
+
+# From https://stackoverflow.com/questions/10113017/setting-the-msvc-runtime-in-cmake
+macro(configure_msvc_runtime)
+  if(MSVC)
+    # Default to statically-linked runtime.
+    if("${MSVC_RUNTIME}" STREQUAL "")
+      set(MSVC_RUNTIME "static")
+    endif()
+    # Set compiler options.
+    set(variables
+      CMAKE_C_FLAGS_DEBUG
+      CMAKE_C_FLAGS_MINSIZEREL
+      CMAKE_C_FLAGS_RELEASE
+      CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS_DEBUG
+      CMAKE_CXX_FLAGS_MINSIZEREL
+      CMAKE_CXX_FLAGS_RELEASE
+      CMAKE_CXX_FLAGS_RELWITHDEBINFO
+    )
+    if(${MSVC_RUNTIME} STREQUAL "static")
+      message(STATUS
+        "MSVC -> forcing use of statically-linked runtime."
+      )
+      foreach(variable ${variables})
+        if(${variable} MATCHES "/MD")
+          string(REGEX REPLACE "/MD" "/MT" ${variable} "${${variable}}")
+        endif()
+      endforeach()
+    else()
+      message(STATUS
+        "MSVC -> forcing use of dynamically-linked runtime."
+      )
+      foreach(variable ${variables})
+        if(${variable} MATCHES "/MT")
+          string(REGEX REPLACE "/MT" "/MD" ${variable} "${${variable}}")
+        endif()
+      endforeach()
+    endif()
+  endif()
+endmacro()
+
+configure_msvc_runtime()
+set(variables
+  CMAKE_C_FLAGS_DEBUG
+  CMAKE_C_FLAGS_MINSIZEREL
+  CMAKE_C_FLAGS_RELEASE
+  CMAKE_C_FLAGS_RELWITHDEBINFO
+  CMAKE_CXX_FLAGS_DEBUG
+  CMAKE_CXX_FLAGS_MINSIZEREL
+  CMAKE_CXX_FLAGS_RELEASE
+  CMAKE_CXX_FLAGS_RELWITHDEBINFO
+)
+
+
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
+
+set(SDK_DIR "C:/SDKS/googletest")
+set(GTEST_LIB_DIR "${SDK_DIR}/lib")
+
 
 set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
 set(TENSORFLOW_LITE_ROOT_DIR "${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/lite")
@@ -19,10 +77,21 @@ set(TENSORFLOW_LITE_GMOCK_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/
 set(TENSORFLOW_LITE_GTEST_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/googletest/include")
 
 # TODO: SIMD Visual studio
-add_definitions(-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
+add_definitions(
+    -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
     -DNOMINMAX
     -DFARMHASH_NO_BUILTIN_EXPECT)
 
+
+
+include_directories(${TENSORFLOW_ROOT_DIR}
+    ${TENSORFLOW_LITE_GEMMLOWP_DIR}
+    ${TENSORFLOW_LITE_FLATBUFFERS_DIR}
+    ${TENSORFLOW_LITE_EIGEN_DIR}
+    ${TENSORFLOW_LITE_FARMHASH_DIR}
+    ${TENSORFLOW_LITE_GMOCK_DIR}
+    ${TENSORFLOW_LITE_GTEST_DIR}
+    )
 
 SET (TENSORFLOW_LITE_KERNEL_SOURCES
     ${TENSORFLOW_LITE_KERNEL_DIR}/activations.cc
@@ -82,11 +151,16 @@ add_library(tensorflow-lite STATIC
 add_executable(testapp ${TENSORFLOW_LITE_ROOT_DIR}/testapp/testapp.cc)
 target_link_libraries(testapp tensorflow-lite)
 
-include_directories(${TENSORFLOW_ROOT_DIR}
-    ${TENSORFLOW_LITE_GEMMLOWP_DIR}
-    ${TENSORFLOW_LITE_FLATBUFFERS_DIR}
-    ${TENSORFLOW_LITE_EIGEN_DIR}
-    ${TENSORFLOW_LITE_FARMHASH_DIR}
-    ${TENSORFLOW_LITE_GMOCK_DIR}
-    ${TENSORFLOW_LITE_GTEST_DIR}
-    )
+
+# file( GLOB APP_SOURCES RELATIVE app/*.cxx )
+
+file(GLOB TFLITE_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_ROOT_DIR} *_test.cc)
+
+foreach (TFLITE_TEST_SRC ${TFLITE_TEST_SRC_FILES})
+    string( REPLACE ".cc" "" TFLITE_TEST_NAME ${TFLITE_TEST_SRC} )
+
+    add_executable(${TFLITE_TEST_NAME} ${TFLITE_TEST_SRC})
+    target_link_libraries(${TFLITE_TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib)
+    target_link_libraries(${TFLITE_TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib)
+endforeach()
+

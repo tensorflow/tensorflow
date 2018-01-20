@@ -113,7 +113,7 @@ TEST(BasicInterpreter, CheckAllocate) {
     ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
     interpreter.SetInputs({0, 1});
     interpreter.SetOutputs({});
-    TfLiteQuantizationParams quant;
+	TfLiteQuantizationParams quant{};
 
     interpreter.SetTensorParametersReadWrite(0, test.type, "", {3}, quant);
     interpreter.SetTensorParametersReadWrite(1, test.type, "", {4}, quant);
@@ -148,7 +148,7 @@ TEST(BasicInterpreter, CheckResize) {
     ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
     interpreter.SetInputs({0, 1});
     interpreter.SetOutputs({});
-    TfLiteQuantizationParams quant;
+	TfLiteQuantizationParams quant{};
 
     ASSERT_EQ(
         interpreter.SetTensorParametersReadWrite(0, test.type, "", {3}, quant),
@@ -187,7 +187,7 @@ TEST(BasicInterpreter, CheckAlignment) {
     ASSERT_EQ(interpreter.AddTensors(4), kTfLiteOk);
 
     for (int i = 0; i < 4; i++) {
-      TfLiteQuantizationParams quant;
+	TfLiteQuantizationParams quant{};
       interpreter.SetTensorParametersReadWrite(i, test.type, "", {2 * i + 1},
                                                quant);
     }
@@ -203,7 +203,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(10), kTfLiteOk);
 
-  TfLiteQuantizationParams quant;
+  TfLiteQuantizationParams quant{};
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
 
   std::vector<int> sizes{2048, 4096, 1023, 2047, 1021,
@@ -288,7 +288,7 @@ TEST(BasicInterpreter, OneOpInterpreter) {
   ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
   ASSERT_EQ(interpreter.SetOutputs({1}), kTfLiteOk);
 
-  TfLiteQuantizationParams quantized;
+  TfLiteQuantizationParams quantized{};
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "in1",
                                                      {3}, quantized),
             kTfLiteOk);
@@ -296,8 +296,8 @@ TEST(BasicInterpreter, OneOpInterpreter) {
                                                      {3}, quantized),
             kTfLiteOk);
 
-  ASSERT_EQ(interpreter.GetInputName(0), "in1");
-  ASSERT_EQ(interpreter.GetOutputName(0), "out0");
+  ASSERT_EQ(std::string(interpreter.GetInputName(0)), "in1");
+  ASSERT_EQ(std::string(interpreter.GetOutputName(0)), "out0");
 
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.init = [](TfLiteContext* context, const char*, size_t) -> void* {
@@ -369,7 +369,7 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
   ASSERT_EQ(interpreter.SetOutputs({4}), kTfLiteOk);
 
-  TfLiteQuantizationParams quantized;
+  TfLiteQuantizationParams quantized{};
   char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'A', 'B', 'C'};
   // Read only string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadOnly(0, kTfLiteString, "", {1},
@@ -450,7 +450,7 @@ TEST(BasicInterpreter, AllocateTwice) {
   ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
   ASSERT_EQ(interpreter.SetOutputs({1}), kTfLiteOk);
 
-  TfLiteQuantizationParams quantized;
+  TfLiteQuantizationParams quantized{};
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {3},
                                                      quantized),
             kTfLiteOk);
