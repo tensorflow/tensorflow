@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/platform/tensor_coding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -224,6 +225,39 @@ bool IsNodeByLayoutOptimizer(const string& node_name) {
 bool IsNodeType(const string& node_name, const string& type) {
   const string suffix = strings::StrCat(type, "-", kSuffix);
   return EndWith(node_name, suffix);
+}
+
+bool IsUserDefinedTranspose(const NodeDef* node, const NodeMap* node_map,
+                            const std::vector<int>& perm) {
+  if (node->op() == "Transpose" && node->input_size() == 2) {
+    const NodeDef* perm_node = node_map->GetNode(node->input(1));
+    if (!IsConstant(*perm_node)) {
+      return false;
+    }
+    const TensorProto tensor = perm_node->attr().at("value").tensor();
+    const auto tensor_content_size = tensor.tensor_content().size();
+    if (tensor_content_size != perm.size() * sizeof(int)) {
+      return false;
+    }
+    std::vector<int> raw_values(perm.size());
+    port::CopyToArray(tensor.tensor_content(),
+                      reinterpret_cast<char*>(raw_values.data()));
+    for (int i = 0; i < perm.size(); ++i) {
+      if (raw_values[i] != perm[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+bool IsUserDefinedTransposeNHWCToNCHW(const NodeDef* node, const NodeMap* node_map) {
+  return IsUserDefinedTranspose(node, node_map, {0, 3, 1, 2});
+}
+
+bool IsUserDefinedTransposeNCHWToNHWC(const NodeDef* node, const NodeMap* node_map) {
+  return IsUserDefinedTranspose(node, node_map, {0, 2, 3, 1});
 }
 
 bool IsTransposeNHWCToNCHW(const string& node_name) {
@@ -1980,10 +2014,13 @@ class DataLayoutOptimizer : GraphProcessor {
       auto node = graph_->mutable_node(i);
       node->mutable_attr()->erase("_output_shapes");
       if (IsTransposeNHWCToNCHW(node->name()) ||
+          IsUserDefinedTransposeNHWCToNCHW(node, node_map_) ||
           IsDimMapNHWCToNCHW(node->name()) ||
           IsVecPermuteNHWCToNCHW(node->name())) {
-        bool transpose_pair = IsTransposeNHWCToNCHW(node->name()) &&
-                              IsTransposeNCHWToNHWC(node->input(0));
+        bool transpose_pair = (IsTransposeNHWCToNCHW(node->name()) ||
+                               IsUserDefinedTransposeNHWCToNCHW(node, node_map_)) &&
+                              (IsTransposeNCHWToNHWC(node->input(0)) ||
+                               IsUserDefinedTransposeNCHWToNHWC(node, node_map_));
         bool dim_map_pair = IsDimMapNHWCToNCHW(node->name()) &&
                             IsDimMapNCHWToNHWC(node->input(0));
         bool vec_permute_pair = IsVecPermuteNHWCToNCHW(node->name()) &&
