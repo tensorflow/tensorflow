@@ -107,8 +107,20 @@ Status ShapeVerifier::HandleInfeed(HloInstruction*) {
   return tensorflow::Status::OK();
 }
 
-Status ShapeVerifier::HandleOutfeed(HloInstruction*) {
-  return tensorflow::Status::OK();
+Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
+  // Outfeed has a separate shape field for the value which is outfed to the
+  // host. The shape of the instruction itself is always nil because the outfeed
+  // produces no HLO value in the graph.
+  if (!ShapeUtil::Compatible(outfeed->outfeed_shape(),
+                             outfeed->operand(0)->shape())) {
+    return InvalidArgument(
+        "Expected outfeed to have shape compatible with operand's shape %s, "
+        "actual shape is %s:\n%s",
+        ShapeUtil::HumanString(outfeed->operand(0)->shape()).c_str(),
+        ShapeUtil::HumanString(outfeed->outfeed_shape()).c_str(),
+        outfeed->ToString().c_str());
+  }
+  return CheckShape(outfeed, ShapeUtil::MakeNil());
 }
 
 Status ShapeVerifier::HandleRng(HloInstruction*) {

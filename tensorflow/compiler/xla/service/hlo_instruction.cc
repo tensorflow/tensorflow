@@ -404,6 +404,9 @@ HloInstruction::CreateCrossReplicaSum(
     tensorflow::StringPiece outfeed_config) {
   std::unique_ptr<HloInstruction> instruction =
       WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
+  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
+      << "Outfeed shape " << shape << " must be compatible with operand shape "
+      << operand->shape();
   instruction->AppendOperand(operand);
   instruction->outfeed_config_ = outfeed_config.ToString();
   instruction->outfeed_shape_ = shape;
