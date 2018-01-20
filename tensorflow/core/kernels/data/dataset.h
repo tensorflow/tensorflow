@@ -259,6 +259,8 @@ class IteratorContext {
     std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
         nullptr;
 
+    // The FunctionLibraryRuntime object to be used to make function calls.
+    FunctionLibraryRuntime* lib = nullptr;
     std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
   };
 
@@ -281,6 +283,10 @@ class IteratorContext {
   std::shared_ptr<const FunctionLibraryDefinition> function_library() {
     return params_.function_library;
   }
+
+  FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
  private:
   Params params_;

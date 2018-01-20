@@ -45,7 +45,8 @@ class TFMultiShow {
   virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const MultiGraphNodeProto& Show(const Options& opts);
+  virtual const MultiGraphNodeProto& Show(const string& prefix,
+                                          const Options& opts) final;
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,

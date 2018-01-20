@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H
 #define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_LABEL_IMAGE_H
 
-#ifndef HAS_GLOBAL_STRING
-using std::string;
-#endif
+#include <string>
+#include "tensorflow/contrib/lite/string.h"
 
 struct Settings {
   bool verbose = false;

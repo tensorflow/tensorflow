@@ -141,6 +141,10 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
       outval = val0 - val1;
     } else if (binary_op->type == OperatorType::kDiv) {
       outval = val0 / val1;
+    } else if (binary_op->type == OperatorType::kFloorDiv) {
+      outval = floor(val0 / val1);
+    } else if (binary_op->type == OperatorType::kFloorMod) {
+      outval = val0 - (floor(val0 / val1) * val1);
     } else if (binary_op->type == OperatorType::kTensorFlowMinimum) {
       outval = std::min(val0, val1);
     } else if (binary_op->type == OperatorType::kTensorFlowMaximum) {
@@ -191,6 +195,8 @@ bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
       binary_op->type != OperatorType::kMul &&
       binary_op->type != OperatorType::kSub &&
       binary_op->type != OperatorType::kDiv &&
+      binary_op->type != OperatorType::kFloorDiv &&
+      binary_op->type != OperatorType::kFloorMod &&
       binary_op->type != OperatorType::kTensorFlowMinimum &&
       binary_op->type != OperatorType::kTensorFlowMaximum &&
       binary_op->type != OperatorType::kTensorFlowLess &&

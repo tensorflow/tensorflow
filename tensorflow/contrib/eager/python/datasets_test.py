@@ -20,9 +20,11 @@ import time
 
 import numpy as np
 
+from tensorflow.contrib import lookup
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -78,6 +80,18 @@ class IteratorTest(test.TestCase):
     it = datasets.Iterator(Dataset.range(8).map(math_ops.square).filter(even))
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
+
+  def testMapCaptureLookupTable(self):
+    default_val = -1
+    keys = constant_op.constant(['brain', 'salad', 'surgery'])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup.HashTable(
+        lookup.KeyValueTensorInitializer(keys, values), default_val)
+    dataset = Dataset.from_tensor_slices(['brain', 'salad', 'surgery'])
+    dataset = dataset.map(table.lookup)
+    it = datasets.Iterator(dataset)
+    got = [x.numpy() for x in it]
+    self.assertAllEqual([0, 1, 2], got)
 
   def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
     ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)

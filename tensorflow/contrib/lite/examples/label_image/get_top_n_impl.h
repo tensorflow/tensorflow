@@ -35,7 +35,7 @@ void get_top_n(T* prediction, int prediction_size, size_t num_results,
                       std::greater<std::pair<float, int>>>
       top_result_pq;
 
-  const long count = prediction_size;
+  const long count = prediction_size;  // NOLINT(runtime/int)
   for (int i = 0; i < count; ++i) {
     float value;
     if (input_floating)

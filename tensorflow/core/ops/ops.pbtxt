@@ -12350,6 +12350,27 @@ op {
   }
 }
 op {
+  name: "MatrixLogarithm"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "MatrixSetDiag"
   input_arg {
     name: "input"
@@ -30387,7 +30408,7 @@ op {
   }
   input_arg {
     name: "axis"
-    type: DT_INT64
+    type_attr: "Taxis"
   }
   output_arg {
     name: "y"
@@ -30400,6 +30421,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Taxis"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "out_idx"

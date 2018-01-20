@@ -132,6 +132,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
@@ -156,6 +157,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         rewriter_config_pb2.RewriterConfig(
             disable_model_pruning=True,
             constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+            dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             memory_optimization=rewriter_config_pb2.RewriterConfig.

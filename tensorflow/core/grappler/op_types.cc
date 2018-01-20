@@ -336,6 +336,10 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }
 }  // namespace
 
+bool IsPersistent(const NodeDef& node) {
+  return IsConstant(node) || IsVariable(node);
+}
+
 bool IsFreeOfSideEffect(const NodeDef& node) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {

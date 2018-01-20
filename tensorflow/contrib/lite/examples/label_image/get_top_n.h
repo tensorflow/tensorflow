@@ -32,7 +32,7 @@ template void get_top_n<uint8_t>(uint8_t*, int, size_t, float,
 template void get_top_n<float>(float*, int, size_t, float,
                                std::vector<std::pair<float, int>>*, bool);
 
-}  // label_image
-}  // tflite
+}  // namespace label_image
+}  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_GET_TOP_N_H
