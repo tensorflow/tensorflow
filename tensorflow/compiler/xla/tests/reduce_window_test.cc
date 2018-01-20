@@ -533,6 +533,7 @@ struct R4ReduceWindowTestData {
   int64 strides[4];
   int64 pad_low[4];
   int64 pad_high[4];
+  int64 layout[4];
 
   Reducer reducer;
 };
@@ -548,7 +549,8 @@ string R4ReduceWindowTestDataToString(
       "__strides_", tensorflow::str_util::Join(param.strides, "x"),    //
       "__pad_low_", tensorflow::str_util::Join(param.pad_low, "x"),    //
       "__pad_high_", tensorflow::str_util::Join(param.pad_high, "x"),  //
-      (param.reducer == kAdd) ? "add" : "max");
+      "__layout_", tensorflow::str_util::Join(param.layout, "_"),      //
+      (param.reducer == kAdd) ? "_add" : "_max");
   CHECK(param.reducer == kAdd || param.reducer == kMax);
 
   // Test names are not allowed to contain the '-' character.
@@ -575,7 +577,8 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
                          param.base_bounds[2], param.base_bounds[3]);
     input.FillIota(1);
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR4FromArray4D(input);
+        Literal::CreateR4FromArray4DWithLayout(
+            input, LayoutUtil::MakeLayout(param.layout));
     ComputationDataHandle parameter;
     auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
                                                        &b, &parameter);
@@ -611,8 +614,13 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
             /*window=*/param.window_bounds,
             /*stride=*/param.strides,
             /*padding=*/padding);
-    ComputeAndCompareLiteral(&b, *Literal::CreateFromArray(*expected),
-                             {input_arg.get()}, DefaultErrorSpec());
+    std::unique_ptr<Literal> expected_literal =
+        Literal::CreateFromArray(*expected);
+    const Shape& expected_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+        input_literal->shape().element_type(),
+        AsInt64Slice(expected_literal->shape().dimensions()), param.layout);
+    ComputeAndCompareLiteral(&b, *expected_literal, {input_arg.get()},
+                             DefaultErrorSpec(), &expected_shape_with_layout);
   }
 };
 
@@ -626,6 +634,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // Arbitrary padding (not kSame or kValid).
@@ -634,6 +643,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{4, 4, 0, 0},
                            /*pad_high=*/{4, 4, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // Zero base bound edge case.
@@ -642,6 +652,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With non-1x1 window.
@@ -650,6 +661,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With max instead of add.
@@ -658,6 +670,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kMax},
 
     // With stride.
@@ -666,6 +679,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 4, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With low padding.
@@ -674,6 +688,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{3, 2, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With high padding.
@@ -682,6 +697,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // Window touches both sides of the padding simultaneously.
@@ -690,6 +706,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{1, 1, 0, 0},
                            /*pad_high=*/{1, 1, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // Window is entirely in the padding for some positions.
@@ -698,6 +715,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{4, 4, 0, 0},
                            /*pad_high=*/{4, 4, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // Zero base bound with padding edge case.
@@ -706,6 +724,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 1, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With stride, low padding and high padding.
@@ -714,6 +733,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{3, 1, 1, 1},
                            /*pad_low=*/{10, 1, 0, 0},
                            /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With second minor dimension == 9.
@@ -722,6 +742,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With minor dimension == 129.
@@ -730,6 +751,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With minor dims reduction and non-overlapped stride.
@@ -738,6 +760,7 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{1, 1, 2, 2},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
     // With minor dims reduction and overlapped stride.
@@ -745,7 +768,8 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*window_bounds=*/{1, 1, 4, 4},
                            /*strides=*/{1, 1, 2, 2},
                            /*pad_low=*/{0, 0, 0, 0},
-                           /*pad_high=*/{0, 0, 0, 0},
+                           /*pad_high=*/{1, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 };
 
@@ -762,10 +786,11 @@ XLA_TEST_P(R4ReduceWindowLargeTest, DISABLED_ON_INTERPRETER(DoIt)) { DoIt(); }
 // Test cases that are large/slow/failed.
 const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
     R4ReduceWindowTestData{/*base_bounds=*/{28, 28, 256, 128},
-                           /*window_bounds=*/{3, 3, 1, 1},
-                           /*strides=*/{1, 1, 1, 1},
+                           /*window_bounds=*/{3, 3, 1, 5},
+                           /*strides=*/{1, 1, 1, 5},
                            /*pad_low=*/{1, 1, 0, 0},
                            /*pad_high=*/{1, 1, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kMax},
 
     R4ReduceWindowTestData{/*base_bounds=*/{112, 112, 64, 128},
@@ -773,12 +798,61 @@ const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{1, 1, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 };
 
 INSTANTIATE_TEST_CASE_P(
     R4ReduceWindowLargeTestInstantiation, R4ReduceWindowLargeTest,
     ::testing::Combine(::testing::ValuesIn(kR4ReduceWindowLargeTestValues),
+                       ::testing::ValuesIn(use_bfloat16_params)),
+    R4ReduceWindowTestDataToString);
+
+class R4ReduceWindowAnyDimsTest : public R4ReduceWindowTest {};
+
+// TODO(b/72234705): Fix the test cases failed on CPU.
+XLA_TEST_P(R4ReduceWindowAnyDimsTest,
+           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DoIt))) {
+  DoIt();
+}
+
+const R4ReduceWindowTestData kR4ReduceWindowAnyDimsTestValues[] = {
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{2, 3, 4, 5},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{2, 3, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kMax},
+    // With 0321 layout.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{2, 3, 4, 5},
+                           /*strides=*/{1, 2, 3, 4},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{0, 3, 2, 1},
+                           /*reducer=*/kAdd},
+
+    // With 0123 layout.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 23},
+                           /*window_bounds=*/{2, 3, 7, 9},
+                           /*strides=*/{1, 2, 5, 8},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*layout=*/{0, 1, 2, 3},
+                           /*reducer=*/kAdd},
+};
+
+INSTANTIATE_TEST_CASE_P(
+    R4ReduceWindowAnyDimsTestInstantiation, R4ReduceWindowAnyDimsTest,
+    ::testing::Combine(::testing::ValuesIn(kR4ReduceWindowAnyDimsTestValues),
                        ::testing::ValuesIn(use_bfloat16_params)),
     R4ReduceWindowTestDataToString);
 
