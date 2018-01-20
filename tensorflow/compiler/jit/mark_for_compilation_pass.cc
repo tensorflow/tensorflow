@@ -45,6 +45,42 @@ const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 
 namespace {
 
+// An node will not be processed by XLA even it has the XLA kernel:
+// 1, In Tensorflow, conventionally, INT32 ops are regarded as shape or control ops, and
+// are registered on CPU only. XLA should follow the same rule, to avoid the potential
+// redundant memcopy in GPU_XLA case.
+// 2, Any OpKernel with more than 500 inputs is excluded. This is a temp workaround to avoid an
+// potential issue that, the cuda drive do not accept a compiled PTX kernel with parameter space
+// larger than 4352 bytes. The data type of PTX kernel parameter is u64. An OpKernel with 500
+// inputs are more likely to exceed the limit.
+bool IsExceptionalKernel(const Node& node, const DeviceType& jit_device_type) {
+  const int kXlaInputLimit = 500;
+  if (jit_device_type != DEVICE_GPU_XLA_JIT)
+    return false;
+
+  if (node.num_inputs() > kXlaInputLimit) {
+    VLOG(2) << node.def().op() << ": " 
+      << node.def().name() 
+      << " is treated as exception from XLA scope due to too many inputs";
+    return true;
+  }
+
+  for (DataType dtype : node.input_types()) {
+    if ((dtype != DT_INT32) && (dtype != DT_BOOL)) {
+      return false;
+    }
+  }
+  for (DataType dtype : node.output_types()) {
+    if ((dtype != DT_INT32) && (dtype != DT_BOOL)) {
+      return false;
+    }
+  }
+  VLOG(2) << node.def().op() << ": " 
+    << node.def().name() 
+    << " is treated as exception from XLA scope as INT32 Ops.";
+  return true;
+}
+
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
@@ -145,7 +181,8 @@ bool IsCompilableCall(const NodeDef& call_def,
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, depth + 1,
-                          lib_runtime)) {
+                          lib_runtime) &&
+        IsExceptionalKernel(*node, jit_device_type)) {
       VLOG(2) << "Function marking failed: unsupported op " << node->name()
               << ": " << node->def().ShortDebugString();
       return false;
@@ -201,7 +238,8 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime) &&
+        IsExceptionalKernel(*node, jit_device_type)) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->type_string();
       continue;
