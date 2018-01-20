@@ -136,6 +136,8 @@ load(
     "tf_nano_proto_library",
     "tf_protos_all",
     "tf_protos_all_impl",
+    "tf_protos_grappler",
+    "tf_protos_grappler_impl",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -1534,7 +1536,7 @@ cc_library(
         "@snappy",
         "@zlib_archive//:zlib",
         "@protobuf_archive//:protobuf",
-    ] + tf_protos_all_impl(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.
@@ -2099,7 +2101,7 @@ tf_cuda_library(
         ":core_cpu_base",
         ":proto_text",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_static([":core_cpu_impl"]) + tf_protos_all(),
+    ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
 tf_cuda_library(
