@@ -621,10 +621,6 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_prediction_len += lengths_to_add
-  next_prediction_len = array_ops.where(next_beam_probs > -np.Inf,
-                                        next_prediction_len,
-                                        array_ops.zeros_like(
-                                            next_prediction_len))
 
   # Pick out the cell_states according to the next_beam_ids. We use a
   # different gather_shape here because the cell_state tensors, i.e.

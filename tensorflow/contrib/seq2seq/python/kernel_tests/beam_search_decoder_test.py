@@ -260,13 +260,19 @@ class TestLargeBeamStep(test.TestCase):
     log_probs = get_probs()
     dummy_cell_state = array_ops.zeros([self.batch_size, self.beam_width])
 
+    _finished = array_ops.one_hot(
+        array_ops.zeros([self.batch_size], dtype=dtypes.int32),
+        depth=self.beam_width, on_value=False,
+        off_value=True, dtype=dtypes.bool)
+    _lengths = np.zeros([self.batch_size, self.beam_width], dtype=np.int64)
+    _lengths[:, 0]=2
+    _lengths = constant_op.constant(_lengths, dtype=dtypes.int64)
+
     beam_state = beam_search_decoder.BeamSearchDecoderState(
         cell_state=dummy_cell_state,
         log_probs=log_probs,
-        lengths=constant_op.constant(
-            2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int32),
-        finished=array_ops.zeros(
-            [self.batch_size, self.beam_width], dtype=dtypes.bool))
+        lengths=_lengths,
+        finished=_finished)
 
     logits_ = np.full([self.batch_size, self.beam_width, self.vocab_size],
                       0.0001)
