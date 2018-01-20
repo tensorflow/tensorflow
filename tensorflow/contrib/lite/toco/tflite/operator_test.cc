@@ -389,6 +389,15 @@ TEST_F(OperatorTest, Transpose) {
   EXPECT_EQ(op.perm, output_toco_op->perm);
 }
 
+TEST_F(OperatorTest, Squeeze) {
+  SqueezeOperator op;
+  op.squeeze_dims = {-2, -3, 4, 1, 4};
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SQUEEZE", OperatorType::kSqueeze), op);
+  EXPECT_EQ(op.squeeze_dims, output_toco_op->squeeze_dims);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

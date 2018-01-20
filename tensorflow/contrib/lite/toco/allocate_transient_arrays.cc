@@ -239,8 +239,8 @@ void AllocateTransientArrays(Model* model,
   // is a misnormer, should read 'workspace'.
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       AllocateTransientArray(*model, array_name, &allocator,
                              transient_data_alignment);
     }
@@ -282,8 +282,8 @@ void AllocateTransientArrays(Model* model,
   std::size_t persistent_alloc_size = 0;
   for (const auto& array_pair : ordered_arrays_map) {
     const string& array_name = array_pair.first;
-    const auto& array_lifespan = array_lifespans.find(array_name)->second;
-    if (array_lifespan.persistent) {
+    auto it = array_lifespans.find(array_name);
+    if (it != array_lifespans.end() && it->second.persistent) {
       persistent_alloc_size +=
           TransientArraySize(*model, array_name, transient_data_alignment);
     }

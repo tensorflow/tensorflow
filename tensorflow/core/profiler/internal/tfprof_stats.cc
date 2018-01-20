@@ -26,6 +26,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 namespace {
+
+const char* const kProfilePrefix = "Profile:\n";
+
 bool CreateRunMetadataNode(const string& name, NodeDef* def) {
   // TODO(xpan): Better solution than blacklisting this 2 nodes. They
   // actually cost some resources, maybe include them. Some nodes, such
@@ -48,7 +51,7 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<OpLogProto> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
-      miss_gpu_stream_(false),
+      miss_accelerator_stream_(false),
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph) << "Must at least have GraphDef";
 
@@ -72,7 +75,7 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
 TFStats::TFStats(const string& filename,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
-      miss_gpu_stream_(false),
+      miss_accelerator_stream_(false),
       ckpt_reader_(std::move(ckpt_reader)) {
   string str;
   Status s = ReadFileToString(Env::Default(), filename, &str);
@@ -144,18 +147,21 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
   if (!Validate(opts)) {
     return empty_graph_node_;
   }
+  string prefix = MaybeReportMissingTrace();
+  prefix += QueryDoc(cmd, opts) + kProfilePrefix;
+
   if (cmd == kCmds[0]) {
-    return scope_view_->Show(opts);
+    return scope_view_->Show(prefix, opts);
   } else if (cmd == kCmds[1]) {
     if (opts.step < 0 && opts.output_type == kOutput[0]) {
       for (int64 step : steps_) {
         Options nopts = opts;
         nopts.step = step;
-        graph_view_->Show(nopts);
+        graph_view_->Show(prefix, nopts);
       }
       return empty_graph_node_;
     }
-    return graph_view_->Show(opts);
+    return graph_view_->Show(prefix, opts);
   } else {
     fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
     return empty_graph_node_;
@@ -167,14 +173,17 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
   if (!Validate(opts)) {
     return empty_multi_graph_node_;
   }
+  string prefix = MaybeReportMissingTrace();
+  prefix += QueryDoc(cmd, opts) + kProfilePrefix;
+
   if (cmd == kCmds[2]) {
     if (!has_code_traces()) {
       fprintf(stderr, "No code trace information\n");
       return empty_multi_graph_node_;
     }
-    return code_view_->Show(opts);
+    return code_view_->Show(prefix, opts);
   } else if (cmd == kCmds[3]) {
-    return op_view_->Show(opts);
+    return op_view_->Show(prefix, opts);
   } else {
     fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
     return empty_multi_graph_node_;
@@ -295,19 +304,21 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   }
 
   if (has_gpu_scheduling && !has_gpu_stream) {
-    miss_gpu_stream_ = true;
+    miss_accelerator_stream_ = true;
   }
 }
 
-void TFStats::MaybeReportMissingTrace() const {
-  if (miss_gpu_stream_) {
-    fprintf(stderr,
-            "\n\nFound accelerator operation but misses accelerator "
-            "stream stats!\n\n"
-            "It's likely a gpu tracing issue rather than tf-profiler issue.\n"
-            "If you found your operation missing accelerator time, "
-            "consider filing a bug to xprof-dev@!\n\n");
+string TFStats::MaybeReportMissingTrace() const {
+  string report = "";
+  if (miss_accelerator_stream_) {
+    report +=
+        "\n\nFound accelerator operation but misses accelerator "
+        "stream stats!\n\n"
+        "It's likely a gpu tracing issue rather than tf-profiler issue.\n"
+        "If you found your operation missing accelerator time, "
+        "consider filing a bug to xprof-dev@!\n\n";
   }
+  return report;
 }
 
 void TFStats::SerializeToString(string* content) {
@@ -324,6 +335,7 @@ void TFStats::SerializeToString(string* content) {
   }
 
   profile.set_has_trace(has_code_traces_);
+  profile.set_miss_accelerator_stream(miss_accelerator_stream_);
   for (int64 s : steps_) {
     profile.add_steps(s);
   }
@@ -340,7 +352,6 @@ void TFStats::WriteProfile(const string& filename) {
 }
 
 bool TFStats::Validate(const Options& opts) const {
-  MaybeReportMissingTrace();
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
     fprintf(stderr,
             "Options -step=%lld not found.\nAvailable steps: ", opts.step);

@@ -35,7 +35,7 @@ class PrintFunctionsTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None)
+    node = type_info.resolve(node, {})
     return node
 
   def test_transform(self):

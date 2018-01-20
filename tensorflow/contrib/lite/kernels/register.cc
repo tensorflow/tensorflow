@@ -41,6 +41,8 @@ TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_ADD();
 TfLiteRegistration* Register_SPACE_TO_BATCH_ND();
+TfLiteRegistration* Register_DIV();
+TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_L2_NORMALIZATION();
@@ -54,6 +56,7 @@ TfLiteRegistration* Register_SPACE_TO_DEPTH();
 TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_TRANSPOSE();
 TfLiteRegistration* Register_MEAN();
+TfLiteRegistration* Register_SQUEEZE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -94,6 +97,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
+  AddBuiltin(BuiltinOperator_DIV, Register_DIV());
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB());
+  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

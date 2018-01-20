@@ -1280,11 +1280,12 @@ def sparse_mask(a, mask_indices, name=None):
 
 
 def unique(x, out_idx=dtypes.int32, name=None):
-  # TODO (yongtang): switch to v2 once API deprecation
+  # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
-  # TODO (yongtang): The documentation should also
+  # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
   return gen_array_ops._unique(x, out_idx, name)
+
 
 unique.__doc__ = gen_array_ops._unique.__doc__
 

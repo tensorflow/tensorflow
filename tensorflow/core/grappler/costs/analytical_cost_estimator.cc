@@ -63,6 +63,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
   std::vector<string> inaccurate_nodes;
+  int nodes_executed = 0;
   VirtualScheduler scheduler(&item, use_static_shapes_, cluster_,
                              node_manager_.get());
   auto status = scheduler.Init();
@@ -73,6 +74,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
   Costs node_costs;
   do {
+    ++nodes_executed;
     OpContext op_context = scheduler.GetCurrNode();
     const string& op_name = op_context.name;
 
@@ -107,8 +109,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
   RunMetadata run_metadata;
   *costs = scheduler.Summary(&run_metadata);
-  VLOG(1) << inaccurate_nodes.size() << " out of "
-          << optimized_graph.node_size()
+  VLOG(1) << inaccurate_nodes.size() << " out of " << nodes_executed
           << " nodes have inaccurate time estimation";
   if (VLOG_IS_ON(3)) {
     for (const auto& node : inaccurate_nodes) {

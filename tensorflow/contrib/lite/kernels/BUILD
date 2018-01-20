@@ -81,6 +81,7 @@ cc_library(
         "concatenation.cc",
         "conv.cc",
         "depthwise_conv.cc",
+        "div.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "fully_connected.cc",
@@ -101,6 +102,8 @@ cc_library(
         "skip_gram.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "squeeze.cc",
+        "sub.cc",
         "svdf.cc",
         "transpose.cc",
         "unidirectional_sequence_rnn.cc",
@@ -482,6 +485,18 @@ tf_cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "squeeze_test",
+    size = "small",
+    srcs = ["squeeze_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

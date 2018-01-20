@@ -54,7 +54,7 @@ from tensorflow.python.ops import math_ops
 NORMALIZE_DAMPING_POWER = 1.0
 
 # Methods for adjusting damping for FisherBlocks. See
-# _compute_pi_adjusted_damping() for details.
+# compute_pi_adjusted_damping() for details.
 PI_OFF_NAME = "off"
 PI_TRACENORM_NAME = "tracenorm"
 PI_TYPE = PI_TRACENORM_NAME
@@ -72,7 +72,14 @@ def set_global_constants(normalize_damping_power=None, pi_type=None):
     PI_TYPE = pi_type
 
 
-def _compute_pi_tracenorm(left_cov, right_cov):
+def normalize_damping(damping, num_replications):
+  """Normalize damping after adjusting scale by NORMALIZE_DAMPING_POWER."""
+  if NORMALIZE_DAMPING_POWER:
+    return damping / (num_replications ** NORMALIZE_DAMPING_POWER)
+  return damping
+
+
+def compute_pi_tracenorm(left_cov, right_cov):
   """Computes the scalar constant pi for Tikhonov regularization/damping.
 
   pi = sqrt( (trace(A) / dim(A)) / (trace(B) / dim(B)) )
@@ -92,10 +99,10 @@ def _compute_pi_tracenorm(left_cov, right_cov):
   return math_ops.sqrt(left_norm / right_norm)
 
 
-def _compute_pi_adjusted_damping(left_cov, right_cov, damping):
+def compute_pi_adjusted_damping(left_cov, right_cov, damping):
 
   if PI_TYPE == PI_TRACENORM_NAME:
-    pi = _compute_pi_tracenorm(left_cov, right_cov)
+    pi = compute_pi_tracenorm(left_cov, right_cov)
     return (damping * pi, damping / pi)
 
   elif PI_TYPE == PI_OFF_NAME:
@@ -450,10 +457,7 @@ class ConvDiagonalFB(FisherBlock):
     self._num_locations = (
         inputs_shape[1] * inputs_shape[2] //
         (self._strides[1] * self._strides[2]))
-
-    if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_locations**NORMALIZE_DAMPING_POWER
-    self._damping = damping
+    self._damping = normalize_damping(damping, self._num_locations)
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,
@@ -506,7 +510,7 @@ class KroneckerProductFB(FisherBlock):
     Args:
       damping: The base damping factor (float or Tensor) for the damped inverse.
     """
-    self._input_damping, self._output_damping = _compute_pi_adjusted_damping(
+    self._input_damping, self._output_damping = compute_pi_adjusted_damping(
         self._input_factor.get_cov(),
         self._output_factor.get_cov(),
         damping**0.5)
@@ -691,8 +695,8 @@ class ConvKFCBasicFB(KroneckerProductFB):
     grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
 
     # Infer number of locations upon which convolution is applied.
-    self._num_locations = _num_conv_locations(inputs.shape.as_list(),
-                                              self._strides)
+    self._num_locations = num_conv_locations(inputs.shape.as_list(),
+                                             self._strides)
 
     self._input_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvInputKroneckerFactor,
@@ -701,11 +705,9 @@ class ConvKFCBasicFB(KroneckerProductFB):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvOutputKroneckerFactor, (grads_list,))
 
-    if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_locations**NORMALIZE_DAMPING_POWER
-    self._damping = damping
-
+    damping = normalize_damping(damping, self._num_locations)
     self._register_damped_input_and_output_inverses(damping)
+    self._damping = damping
 
   @property
   def _renorm_coeff(self):
@@ -758,8 +760,16 @@ def _concat_along_batch_dim(tensor_list):
     return array_ops.concat(tensor_list, axis=0)
 
 
-def _num_conv_locations(input_shape, strides):
-  """Returns the number of locations a Conv kernel is applied to."""
+def num_conv_locations(input_shape, strides):
+  """Returns the number of spatial locations a 2D Conv kernel is applied to.
+
+  Args:
+    input_shape: list representing shape of inputs to the Conv layer.
+    strides: list representing strides for the Conv kernel.
+
+  Returns:
+    A scalar |T| denoting the number of spatial locations for the Conv layer.
+  """
   return input_shape[1] * input_shape[2] // (strides[1] * strides[2])
 
 
@@ -804,9 +814,7 @@ class FullyConnectedMultiIndepFB(KroneckerProductFB):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF, (grads_list,))
 
-    if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_uses**NORMALIZE_DAMPING_POWER
-
+    damping = normalize_damping(damping, self._num_uses)
     self._register_damped_input_and_output_inverses(damping)
 
   @property
@@ -885,10 +893,8 @@ class FullyConnectedSeriesFB(FisherBlock):
     self._output_factor = self._layer_collection.make_or_get_factor(
         fisher_factors.FullyConnectedMultiKF, (grads_list,))
 
-    if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_timesteps**NORMALIZE_DAMPING_POWER
-
-    self._damping_input, self._damping_output = _compute_pi_adjusted_damping(
+    damping = normalize_damping(damping, self._num_timesteps)
+    self._damping_input, self._damping_output = compute_pi_adjusted_damping(
         self._input_factor.get_cov(),
         self._output_factor.get_cov(),
         damping**0.5)

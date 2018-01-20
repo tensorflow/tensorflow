@@ -19,14 +19,26 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 
 ##  Content
 
-Python source file(s):
-- `spinn.py`: Model definition and training routines written with TensorFlow
-  eager execution idioms.
+- [`data.py`](../../../../tensorflow/contrib/eager/python/examples/spinn/data.py): Pipeline for loading and preprocessing the
+   [SNLI](https://nlp.stanford.edu/projects/snli/) data and
+   [GloVe](https://nlp.stanford.edu/projects/glove/) word embedding, written
+   using the [`tf.data`](https://www.tensorflow.org/programmers_guide/datasets)
+   API.
+- [`spinn.py`](./spinn.py): Model definition and training routines.
+  This example illustrates how one might perform the following actions with
+  eager execution enabled:
+  * defining a model consisting of a dynamic computation graph,
+  * assigning operations to the CPU or GPU dependending on device availability,
+  * training the model using the data from the `tf.data`-based pipeline,
+  * obtaining metrics such as mean accuracy during training,
+  * saving and loading checkpoints,
+  * writing summaries for monitoring and visualization in TensorBoard.
 
 ## To run
 
-- Make sure you have installed the latest `tf-nightly` or `tf-nightly-gpu` pip
-  package of TensorFlow in order to access the eager execution feature.
+- Make sure you have installed TensorFlow release 1.5 or higher. Alternatively,
+  you can use the latest `tf-nightly` or `tf-nightly-gpu` pip
+  package to access the eager execution feature.
 
 - Download and extract the raw SNLI data and GloVe embedding vectors.
   For example:
