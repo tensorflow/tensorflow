@@ -358,6 +358,7 @@ class RdmaTensorResponse {
 
   RdmaChannel* channel_;
   RdmaMessage rm_;  // The request message
+  Device* src_dev_ = nullptr;
   TensorBuffer* src_buffer_ = nullptr;
   void* src_addr_ = nullptr;
   ibv_mr* mr_ = nullptr;

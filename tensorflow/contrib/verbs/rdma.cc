@@ -878,6 +878,7 @@ void RdmaMessageBuffer::SendNextItem() {
   }
 }
 
+#if GOOGLE_CUDA
 static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
                         size_t tensor_bytes, bool is_gpu_to_cpu) {
 #ifdef RDMA_COUNT_COPIES
@@ -903,8 +904,9 @@ static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
   }
   RDMA_LOG(2) << "Copying tensor " << key
               << " From: " << src_addr << " To: " << dst_addr;
-#endif
+#endif // RDMA_COUNT_COPIES
 }
+#endif // GOOGLE_CUDA
 
 static uint64_t Checksum(Device* device, const DeviceContext* device_context,
                          const Tensor& in) {
@@ -917,7 +919,7 @@ static uint64_t Checksum(Device* device, const DeviceContext* device_context,
     checksum = (device_context != nullptr)
                    ? GPUUtil::Checksum(device, device_context, in)
                    : GPUUtil::Checksum(in);
-#endif
+#endif // GOOGLE_CUDA
   } else {
     string s = in.SummarizeValue(999999);
     checksum = Hash64(s.c_str(), s.size(), 0);
@@ -953,6 +955,7 @@ static void ValidateChecksum(uint64_t expected, uint64_t actual,
   }
 }
 
+#if GOOGLE_CUDA
 // Sync the 'done' operation on the GPU stream, but without all the data
 // copying.
 static void StreamGPUOp(Device* gpu_device,
@@ -962,6 +965,7 @@ static void StreamGPUOp(Device* gpu_device,
   GPUUtil::CopyGPUTensorToCPU(
       gpu_device, device_context, &dummy1, &dummy2, done);
 }
+#endif  // GOOGLE_CUDA
 
 RdmaTensorResponse* RdmaChannel::AddTensorResponse(const RdmaMessage& rm) {
   mutex_lock lock{mu_};
@@ -1032,8 +1036,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
                                      const Rendezvous::Args& send_args,
                                      const Rendezvous::Args& recv_args,
                                      const Tensor& in, bool is_dead) {
-  Device* src_dev = nullptr;
-  Status s = PrepareRecvTensor(parsed, &src_dev);
+  Status s = PrepareRecvTensor(parsed, &src_dev_);
   if (!s.ok()) {
     SendErrorStatus(s);
     return;
@@ -1043,19 +1046,19 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
 #ifdef RDMA_DATA_VALIDATION
   // Always send a meta data message with the source checksum
   meta_data_changed_ = rm_.type_ == RDMA_MESSAGE_TENSOR_REQUEST;
-  checksum_ = Checksum(src_dev, send_args.device_context, in);
+  checksum_ = Checksum(src_dev_, send_args.device_context, in);
 #endif
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
   // string tensor needs to be serialized
   Tensor copy;
   TensorProto proto;
   const bool on_host = send_args.alloc_attrs.on_host();
-  if (src_dev->tensorflow_gpu_device_info() && !on_host) {
+  if (src_dev_->tensorflow_gpu_device_info() && !on_host) {
 #if GOOGLE_CUDA
     DeviceContext* send_dev_context = send_args.device_context;
     CHECK(send_dev_context)
-        << "send dev name: " << src_dev->name()
-        << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+        << "send dev name: " << src_dev_->name()
+        << " gpu_info: " << src_dev_->tensorflow_gpu_device_info();
 
     if (can_memcpy) {
       // If the tensor is located on a GDR compatible GPU, there is no need to
@@ -1068,7 +1071,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       if ((in.TotalBytes() > 0) && !meta_data_changed_ &&
           (RdmaMemoryMgr::Singleton().FindMemoryRegion(
               (void*)DMAHelper::base(&in), in.TotalBytes()) != nullptr)) {
-        StreamGPUOp(src_dev, send_dev_context,
+        StreamGPUOp(src_dev_, send_dev_context,
                     [this, in, proto, is_dead](const Status& s) {
                       Send(in, proto, is_dead, s);
                     });
@@ -1083,13 +1086,13 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       CountCopies(rm_.name_, (void*)DMAHelper::base(&in),
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
       GPUUtil::CopyGPUTensorToCPU(
-          src_dev, send_dev_context, &in, &copy,
+          src_dev_, send_dev_context, &in, &copy,
           [this, copy, proto, is_dead](const Status& s) {
             Send(copy, proto, is_dead, s);
           });
     } else {
       GPUUtil::SetProtoFromGPU(
-          in, src_dev, send_args.device_context, &proto, is_dead,
+          in, src_dev_, send_args.device_context, &proto, is_dead,
           [this, in, proto, is_dead](const Status& s) mutable {
             Send(in, proto, is_dead, s);
           });
@@ -1137,7 +1140,10 @@ void RdmaTensorResponse::Clone(const Tensor& in, const TensorProto& proto,
   // tensor content may change before re-request was completed.
   bool can_memcpy = DataTypeCanUseMemcpy(in.dtype());
   if (can_memcpy && (in.TotalBytes() > 0)) {
-    Allocator* allocator = ProcessState::singleton()->GetCPUAllocator(0);
+    AllocatorAttributes host_alloc_attrs;
+    host_alloc_attrs.set_nic_compatible(true);
+    host_alloc_attrs.set_on_host(true);
+    Allocator* allocator = src_dev_->GetAllocator(host_alloc_attrs);
     tensor_ = new Tensor(allocator, in.dtype(), in.shape());
     memcpy(DMAHelper::base(tensor_), DMAHelper::base(&in), in.TotalBytes());
   } else {
@@ -1557,8 +1563,10 @@ void RdmaTensorRequest::AllocateTensorsAsync(StatusCallback done) {
   bool on_host = recv_args_.alloc_attrs.on_host();
   if (dst_dev_->tensorflow_gpu_device_info() && !on_host &&
       (proxy_tensor_ == nullptr)) {
+#if GOOGLE_CUDA
         // We need to sync the memory allocation on the GPU:
         StreamGPUOp(dst_dev_, recv_args_.device_context, done);
+#endif
   } else {
     done(Status::OK());
   }
