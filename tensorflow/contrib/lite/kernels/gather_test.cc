@@ -1,10 +1,10 @@
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0f (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0f
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -48,8 +48,8 @@ class GatherOpModel : public SingleOpModel {
     PopulateStringTensor(input_, data);
   }
 
-  void SetPositions(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(positions_, data);
+  void SetPositions(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(positions_, data);
   }
 
   std::vector<float> GetOutputFloat() { return ExtractVector<float>(output_); }
@@ -69,29 +69,29 @@ class GatherOpModel : public SingleOpModel {
 
 TEST(GatherOpTest, Shuffle) {
   GatherOpModel m({2, 2}, TensorType_FLOAT32, {2});
-  m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
+  m.SetInputFloat({-2.0f, 0.2f, 0.7f, 0.8f});
   m.SetPositions({1, 0});
   m.Invoke();
   EXPECT_THAT(m.GetOutputFloat(),
-              ElementsAreArray(ArrayFloatNear({0.7, 0.8, -2, 0.2})));
+              ElementsAreArray(ArrayFloatNear({0.7f, 0.8f, -2, 0.2f})));
 }
 
 TEST(FloatGatherOpTest, Duplicate) {
   GatherOpModel m({1, 2, 2}, TensorType_FLOAT32, {2});
-  m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
+  m.SetInputFloat({-2.0f, 0.2f, 0.7f, 0.8f});
   m.SetPositions({0, 0});
   m.Invoke();
   EXPECT_THAT(
       m.GetOutputFloat(),
-      ElementsAreArray(ArrayFloatNear({-2, 0.2, 0.7, 0.8, -2, 0.2, 0.7, 0.8})));
+      ElementsAreArray(ArrayFloatNear({-2, 0.2f, 0.7f, 0.8f, -2, 0.2f, 0.7f, 0.8f})));
 }
 
 TEST(FloatGatherOpTest, Slice) {
   GatherOpModel m({4, 1}, TensorType_FLOAT32, {2});
-  m.SetInputFloat({-2.0, 0.2, 0.7, 0.8});
+  m.SetInputFloat({-2.0f, 0.2f, 0.7f, 0.8f});
   m.SetPositions({1, 3});
   m.Invoke();
-  EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({0.2, 0.8})));
+  EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({0.2f, 0.8f})));
 }
 
 TEST(Uint8tGatherOpTest, Shuffle) {

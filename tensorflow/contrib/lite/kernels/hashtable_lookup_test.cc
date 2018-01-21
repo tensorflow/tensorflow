@@ -110,10 +110,10 @@ TEST(HashtableLookupOpTest, Test2DInput) {
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 2.0, 2.1,  // 2-nd item
+                                 2.0f, 2.1f,  // 2-nd item
                                  0, 0,      // Not found
-                                 0.0, 0.1,  // 0-th item
-                                 1.0, 1.1,  // 1-st item
+                                 0.0f, 0.1f,  // 0-th item
+                                 1.0f, 1.1f,  // 1-st item
                              })));
   EXPECT_THAT(m.GetHit(), ElementsAreArray({
                               1, 0, 1, 1,
@@ -130,10 +130,10 @@ TEST(HashtableLookupOpTest, Test1DInput) {
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.4,  // 2-nd item
+                                 0.4f,  // 2-nd item
                                  0,    // Not found
-                                 0.0,  // 0-th item
-                                 0.1,  // 1-st item
+                                 0.0f,  // 0-th item
+                                 0.1f,  // 1-st item
                              })));
   EXPECT_THAT(m.GetHit(), ElementsAreArray({
                               1,

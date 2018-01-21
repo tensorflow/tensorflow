@@ -60,10 +60,10 @@ class SoftmaxOpModel : public SingleOpModel {
 };
 
 TEST(SoftmaxOpTest, SimpleTest) {
-  SoftmaxOpModel m(/*batches=*/2, /*size=*/5, /*beta=*/1.0);
+  SoftmaxOpModel m(/*batches=*/2, /*size=*/5, /*beta=*/1.0f);
   m.SetInput({
-      1.0, 2.0, 3.0, 4.0, 5.0,       // b = 0
-      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f,       // b = 0
+      -1.0f, -2.0f, -3.0f, -4.0f, -5.0f,  // b = 0
   });
 
   m.Invoke();
@@ -71,18 +71,18 @@ TEST(SoftmaxOpTest, SimpleTest) {
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(
-          {0.011656231, 0.031684921, 0.086128544, 0.234121657, 0.636408647,
-           0.636408647, 0.234121657, 0.086128544, 0.031684921, 0.011656231},
+          {0.011656231f, 0.031684921f, 0.086128544f, 0.234121657f, 0.636408647f,
+           0.636408647f, 0.234121657f, 0.086128544f, 0.031684921f, 0.011656231f},
           1e-6)));
 }
 
 TEST(SoftmaxOpTest, CompareWithTFminiBetaEq1) {
   const int batch_size = 2;
   const int input_size = 5;
-  const float beta = 1.0;
+  const float beta = 1.0f;
   static float input_buffer[] = {
-      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
-      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 1
+      1.0f,  2.0f,  3.0f,  4.0f,  5.0f,   // b = 0
+      -1.0f, -2.0f, -3.0f, -4.0f, -5.0f,  // b = 1
   };
 
   SoftmaxOpModel m(batch_size, input_size, beta);
@@ -107,10 +107,10 @@ TEST(SoftmaxOpTest, CompareWithTFminiBetaEq1) {
 TEST(SoftmaxOpTest, CompareWithTFminiBetaNotEq1) {
   const int batch_size = 2;
   const int input_size = 5;
-  const float beta = 0.5;
+  const float beta = 0.5f;
   static float input_buffer[] = {
-      1.0,  2.0,  3.0,  4.0,  5.0,   // b = 0
-      -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 1
+      1.0f,  2.0f,  3.0f,  4.0f,  5.0f,   // b = 0
+      -1.0f, -2.0f, -3.0f, -4.0f, -5.0f,  // b = 1
   };
 
   SoftmaxOpModel m(batch_size, input_size, beta);

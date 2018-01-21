@@ -52,11 +52,11 @@ class FloatMulOpModel : public BaseMulOpModel {
 };
 
 // For quantized Mul, the error shouldn't exceed (2*step + step^2).
-// The param min=-1.0 & max=1.0 is used in the following tests.
-// The tolerance value is ~0.0157.
-const float kQuantizedStep = 2.0 / 255.0;
+// The param min=-1.0f & max=1.0f is used in the following tests.
+// The tolerance value is ~0.0157f.
+const float kQuantizedStep = 2.0f / 255.0f;
 const float kQuantizedTolerance =
-    2.0 * kQuantizedStep + kQuantizedStep * kQuantizedStep;
+    2.0f * kQuantizedStep + kQuantizedStep * kQuantizedStep;
 
 class QuantizedMulOpModel : public BaseMulOpModel {
  public:
@@ -71,21 +71,21 @@ class QuantizedMulOpModel : public BaseMulOpModel {
 TEST(FloatMulOpTest, NoActivation) {
   FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.PopulateTensor<float>(m.input1(), {-2.0f, 0.2f, 0.7f, 0.8f});
+  m.PopulateTensor<float>(m.input2(), {0.1f, 0.2f, 0.3f, 0.5f});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
+              ElementsAreArray(ArrayFloatNear({-0.2f, 0.04f, 0.21f, 0.4f})));
 }
 
 TEST(FloatMulOpTest, ActivationRELU1) {
   FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU1);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 5});
+  m.PopulateTensor<float>(m.input1(), {-2.0f, 0.2f, 0.7f, 0.8f});
+  m.PopulateTensor<float>(m.input2(), {0.1f, 0.2f, 0.3f, 5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 1.0})));
+              ElementsAreArray(ArrayFloatNear({-0.2f, 0.04f, 0.21f, 1.0f})));
 }
 
 TEST(FloatMulOpTest, VariousInputShapes) {
@@ -94,25 +94,25 @@ TEST(FloatMulOpTest, VariousInputShapes) {
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
+    m.PopulateTensor<float>(m.input1(), {-2.0f, 0.2f, 0.7f, 0.8f, 1.1f, 2.0f});
+    m.PopulateTensor<float>(m.input2(), {0.1f, 0.2f, 0.3f, 0.5f, 1.1f, 0.1f});
     m.Invoke();
     EXPECT_THAT(
         m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4, 1.21, 0.2})))
+        ElementsAreArray(ArrayFloatNear({-0.2f, 0.04f, 0.21f, 0.4f, 1.21f, 0.2f})))
         << "With shape number " << i;
   }
 }
 
 TEST(QuantizedMulOpTest, NoActivation) {
-  QuantizedMulOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                        {TensorType_UINT8, {}, -1.0, 1.0},
+  QuantizedMulOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0f, 1.0f},
+                        {TensorType_UINT8, {}, -1.0f, 1.0f},
                         ActivationFunctionType_NONE);
-  m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
-  m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
+  m.QuantizeAndPopulate<uint8_t>(m.input1(), {-0.8f, 0.2f, 0.9f, 0.7f});
+  m.QuantizeAndPopulate<uint8_t>(m.input2(), {0.6f, 0.4f, 0.9f, 0.8f});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
+              ElementsAreArray(ArrayFloatNear({-0.48f, 0.08f, 0.81f, 0.56f},
                                               kQuantizedTolerance)));
 }
 

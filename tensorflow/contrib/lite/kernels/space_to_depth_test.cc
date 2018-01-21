@@ -57,10 +57,10 @@ TEST(SpaceToDepthOpModel, BadBlockSize) {
 
 TEST(SpaceToDepthOpModel, Float32) {
   SpaceToDepthOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, 2);
-  m.SetInput<float>({1.4, 2.3, 3.2, 4.1, 5.4, 6.3, 7.2, 8.1});
+  m.SetInput<float>({1.4f, 2.3f, 3.2f, 4.1f, 5.4f, 6.3f, 7.2f, 8.1f});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({1.4, 2.3, 3.2, 4.1, 5.4, 6.3, 7.2, 8.1}));
+              ElementsAreArray({1.4f, 2.3f, 3.2f, 4.1f, 5.4f, 6.3f, 7.2f, 8.1f}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 8));
 }
 

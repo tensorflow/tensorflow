@@ -105,13 +105,13 @@ TEST(FloatActivationsOpTest, Relu1) {
   FloatActivationsOpModel m(BuiltinOperator_RELU1,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
   m.SetInput({
-      0.0, -0.6, 0.2, -0.4,  //
-      0.3, -2.0, 1.1, -0.1,  //
+      0.0f, -0.6f, 0.2f, -0.4f,  //
+      0.3f, -2.0f, 1.1f, -0.1f,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0, -0.6, 0.2, -0.4,  //
-                                 0.3, -1.0, 1.0, -0.1,  //
+                                 0.0f, -0.6f, 0.2f, -0.4f,  //
+                                 0.3f, -1.0f, 1.0f, -0.1f,  //
                              }));
 }
 
@@ -138,8 +138,8 @@ TEST(FloatActivationsOpTest, Tanh) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0, -0.9999877, 0.9640275, 0.999329,    //
-                                 0.99505475, -0.9640275, 1, 0.7615941,  //
+                                 0, -0.9999877f, 0.9640275f, 0.999329f,    //
+                                 0.99505475f, -0.9640275f, 1, 0.7615941f,  //
                              })));
 }
 
@@ -152,8 +152,8 @@ TEST(FloatActivationsOpTest, Sigmoid) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.5, 0.002473, 0.880797, 0.982014,       //
-                                 0.952574, 0.119203, 0.999955, 0.731059,  //
+                                 0.5f, 0.002473f, 0.880797f, 0.982014f,       //
+                                 0.952574f, 0.119203f, 0.999955f, 0.731059f,  //
                              })));
 }
 
@@ -169,8 +169,8 @@ TEST(QuantizedActivationsOpTest, Sigmoid) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.5, 0.002473, 0.880797, 0.982014,       //
-                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5f, 0.002473f, 0.880797f, 0.982014f,       //
+                      0.952574f, 0.119203f, 0.999955f, 0.731059f,  //
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput(),
@@ -178,7 +178,7 @@ TEST(QuantizedActivationsOpTest, Sigmoid) {
 }
 
 TEST(FloatActivationsOpTest, Softmax4D) {
-  FloatActivationsOpModel m(0.1,
+  FloatActivationsOpModel m(0.1f,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 1, 4}});
   m.SetInput({
       0, -6, 2, 4,   // depth = 0
@@ -186,12 +186,12 @@ TEST(FloatActivationsOpTest, Softmax4D) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 .23463, .12877, .28658, .35003,  //
-                                 .22528, .13664, .45365, .18443,  //
+                                 .23463f, .12877f, .28658f, .35003f,  //
+                                 .22528f, .13664f, .45365f, .18443f,  //
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
+  FloatActivationsOpModel m2(0.1f,
                              /*input=*/{TensorType_FLOAT32, {4, 1, 1, 2}});
   m2.SetInput({
       0, -6,  //
@@ -201,16 +201,16 @@ TEST(FloatActivationsOpTest, Softmax4D) {
   });
   m2.Invoke();
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                  0.645656, 0.354344,  //
-                                  0.450166, 0.549834,  //
-                                  0.622459, 0.377541,  //
-                                  0.710949, 0.28905,   //
+                                  0.645656f, 0.354344f,  //
+                                  0.450166f, 0.549834f,  //
+                                  0.622459f, 0.377541f,  //
+                                  0.710949f, 0.28905f,   //
                               })));
 }
 
 TEST(QuantizedActivationsOpTest, Softmax4D) {
   QuantizedActivationsOpModel m(
-      0.1,
+      0.1f,
       /*input=*/{TensorType_UINT8, {1, 2, 1, 4}, -10, 10});
   m.SetInput({
       0, -6, 2, 4,   // depth = 0
@@ -220,14 +220,14 @@ TEST(QuantizedActivationsOpTest, Softmax4D) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      .23463, .12877, .28658, .35003,  //
-                      .22528, .13664, .45365, .18443,  //
+                      .23463f, .12877f, .28658f, .35003f,  //
+                      .22528f, .13664f, .45365f, .18443f,  //
                   },
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
   QuantizedActivationsOpModel m2(
-      0.1,
+      0.1f,
       /*input=*/{TensorType_UINT8, {4, 1, 1, 2}, -10, 10});
   m2.SetInput({
       0, -6,  //
@@ -238,16 +238,16 @@ TEST(QuantizedActivationsOpTest, Softmax4D) {
   m2.Invoke();
   EXPECT_THAT(m2.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
                                              {
-                                                 0.645656, 0.354344,  //
-                                                 0.450166, 0.549834,  //
-                                                 0.622459, 0.377541,  //
-                                                 0.710949, 0.28905,   //
+                                                 0.645656f, 0.354344f,  //
+                                                 0.450166f, 0.549834f,  //
+                                                 0.622459f, 0.377541f,  //
+                                                 0.710949f, 0.28905f,   //
                                              },
                                              kQuantizedTolerance)));
 }
 
 TEST(FloatActivationsOpTest, Softmax2D) {
-  FloatActivationsOpModel m(0.1,
+  FloatActivationsOpModel m(0.1f,
                             /*input=*/{TensorType_FLOAT32, {2, 4}});
   m.SetInput({
       0, -6, 2, 4,   //
@@ -255,12 +255,12 @@ TEST(FloatActivationsOpTest, Softmax2D) {
   });
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 .23463, .12877, .28658, .35003,  //
-                                 .22528, .13664, .45365, .18443,  //
+                                 .23463f, .12877f, .28658f, .35003f,  //
+                                 .22528f, .13664f, .45365f, .18443f,  //
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
+  FloatActivationsOpModel m2(0.1f,
                              /*input=*/{TensorType_FLOAT32, {4, 2}});
   m2.SetInput({
       0, -6,  //
@@ -270,15 +270,15 @@ TEST(FloatActivationsOpTest, Softmax2D) {
   });
   m2.Invoke();
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                  0.645656, 0.354344,  //
-                                  0.450166, 0.549834,  //
-                                  0.622459, 0.377541,  //
-                                  0.710949, 0.28905,   //
+                                  0.645656f, 0.354344f,  //
+                                  0.450166f, 0.549834f,  //
+                                  0.622459f, 0.377541f,  //
+                                  0.710949f, 0.28905f,   //
                               })));
 }
 
 TEST(QuantizedActivationsOpTest, Softmax2D) {
-  QuantizedActivationsOpModel m(0.1,
+  QuantizedActivationsOpModel m(0.1f,
                                 /*input=*/{TensorType_UINT8, {2, 4}, -10, 10});
   m.SetInput({
       0, -6, 2, 4,   //
@@ -288,13 +288,13 @@ TEST(QuantizedActivationsOpTest, Softmax2D) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      .23463, .12877, .28658, .35003,  //
-                      .22528, .13664, .45365, .18443,  //
+                      .23463f, .12877f, .28658f, .35003f,  //
+                      .22528f, .13664f, .45365f, .18443f,  //
                   },
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(0.1,
+  QuantizedActivationsOpModel m2(0.1f,
                                  /*input=*/{TensorType_UINT8, {4, 2}, -10, 10});
   m2.SetInput({
       0, -6,  //
@@ -305,10 +305,10 @@ TEST(QuantizedActivationsOpTest, Softmax2D) {
   m2.Invoke();
   EXPECT_THAT(m2.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
                                              {
-                                                 0.645656, 0.354344,  //
-                                                 0.450166, 0.549834,  //
-                                                 0.622459, 0.377541,  //
-                                                 0.710949, 0.28905,   //
+                                                 0.645656f, 0.354344f,  //
+                                                 0.450166f, 0.549834f,  //
+                                                 0.622459f, 0.377541f,  //
+                                                 0.710949f, 0.28905f,   //
                                              },
                                              kQuantizedTolerance)));
 }

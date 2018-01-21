@@ -47,10 +47,10 @@ class L2NormOpModel : public SingleOpModel {
 
 TEST(L2NormOpTest, SimpleTest) {
   L2NormOpModel m({1, 1, 1, 6}, ActivationFunctionType_NONE);
-  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  m.SetInput({-1.1f, 0.6f, 0.7f, 1.2f, -0.7f, 0.1f});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+              ElementsAreArray({-0.55f, 0.3f, 0.35f, 0.6f, -0.35f, 0.05f}));
 }
 
 }  // namespace

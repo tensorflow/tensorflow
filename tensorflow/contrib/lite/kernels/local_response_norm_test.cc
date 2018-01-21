@@ -49,46 +49,46 @@ class LocalResponseNormOpModel : public SingleOpModel {
 };
 
 TEST(LocalResponseNormOpTest, SameAsL2Norm) {
-  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0,
-                             /*alpha=*/1.0, /*beta=*/0.5);
-  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0f,
+                             /*alpha=*/1.0f, /*beta=*/0.5f);
+  m.SetInput({-1.1f, 0.6f, 0.7f, 1.2f, -0.7f, 0.1f});
   m.Invoke();
   // The result is every input divided by 2.
   EXPECT_THAT(
       m.GetOutput(),
-      ElementsAreArray(ArrayFloatNear({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05})));
+      ElementsAreArray(ArrayFloatNear({-0.55f, 0.3f, 0.35f, 0.6f, -0.35f, 0.05f})));
 }
 
 TEST(LocalResponseNormOpTest, WithAlpha) {
-  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0,
-                             /*alpha=*/4.0, /*beta=*/0.5);
-  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0f,
+                             /*alpha=*/4.0f, /*beta=*/0.5f);
+  m.SetInput({-1.1f, 0.6f, 0.7f, 1.2f, -0.7f, 0.1f});
   m.Invoke();
   // The result is every input divided by 3.
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                 {-0.275, 0.15, 0.175, 0.3, -0.175, 0.025})));
+                                 {-0.275f, 0.15f, 0.175f, 0.3f, -0.175f, 0.025f})));
 }
 
 TEST(LocalResponseNormOpTest, WithBias) {
-  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/9.0,
-                             /*alpha=*/4.0, /*beta=*/0.5);
-  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/9.0f,
+                             /*alpha=*/4.0f, /*beta=*/0.5f);
+  m.SetInput({-1.1f, 0.6f, 0.7f, 1.2f, -0.7f, 0.1f});
   m.Invoke();
   // The result is every input divided by 5.
   EXPECT_THAT(
       m.GetOutput(),
-      ElementsAreArray(ArrayFloatNear({-0.22, 0.12, 0.14, 0.24, -0.14, 0.02})));
+      ElementsAreArray(ArrayFloatNear({-0.22f, 0.12f, 0.14f, 0.24f, -0.14f, 0.02f})));
 }
 
 TEST(LocalResponseNormOpTest, SmallRadius) {
-  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/2, /*bias=*/9.0,
-                             /*alpha=*/4.0, /*beta=*/0.5);
-  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/2, /*bias=*/9.0f,
+                             /*alpha=*/4.0f, /*beta=*/0.5f);
+  m.SetInput({-1.1f, 0.6f, 0.7f, 1.2f, -0.7f, 0.1f});
   m.Invoke();
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(
-          {-0.264926, 0.125109, 0.140112, 0.267261, -0.161788, 0.0244266})));
+          {-0.264926f, 0.125109f, 0.140112f, 0.267261f, -0.161788f, 0.0244266f})));
 }
 
 }  // namespace

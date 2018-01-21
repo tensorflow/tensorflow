@@ -86,39 +86,39 @@ class EmbeddingLookupSparseOpModel : public SingleOpModel {
 
 TEST(EmbeddingLookupOpTest, SimpleTest) {
   EmbeddingLookupSparseOpModel m(CombinerType_SUM, {3}, {3, 2}, {2}, {4, 3, 2});
-  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
+  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0f, 2.0f, 4.0f});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
-                  1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // Row 1
-                  0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  // -
-                  6.00, 6.06, 6.60, 6.66, 7.20, 7.26,  // 2 * Row 3 + 4 * Row 0
+                  1.00f, 1.01f, 1.10f, 1.11f, 1.20f, 1.21f,  // Row 1
+                  0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,  // -
+                  6.00f, 6.06f, 6.60f, 6.66f, 7.20f, 7.26f,  // 2 * Row 3 + 4 * Row 0
               })));
 }
 
 TEST(EmbeddingLookupOpTest, SimpleTestMean) {
   EmbeddingLookupSparseOpModel m(CombinerType_MEAN, {3}, {3, 2}, {2},
                                  {4, 3, 2});
-  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
+  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0f, 2.0f, 4.0f});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
-                  1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // Row 1
-                  0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  // -
-                  1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // 2 * Row 3 + 4 * Row 0
+                  1.00f, 1.01f, 1.10f, 1.11f, 1.20f, 1.21f,  // Row 1
+                  0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,  // -
+                  1.00f, 1.01f, 1.10f, 1.11f, 1.20f, 1.21f,  // 2 * Row 3 + 4 * Row 0
               })));
 }
 
 TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
   EmbeddingLookupSparseOpModel m(CombinerType_SQRTN, {3}, {3, 2}, {2},
                                  {4, 3, 2});
-  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
+  m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0f, 2.0f, 4.0f});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
   m.Invoke();
@@ -126,8 +126,8 @@ TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear({
-          1.00, 1.01, 1.10, 1.11, 1.20, 1.21,  // Row 1
-          0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  // -
+          1.00f, 1.01f, 1.10f, 1.11f, 1.20f, 1.21f,  // Row 1
+          0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,  // -
           6.00f / std::sqrt(20.0f), 6.06f / std::sqrt(20.0f),
           6.60f / std::sqrt(20.0f), 6.66f / std::sqrt(20.0f),
           7.20f / std::sqrt(20.0f),
@@ -140,17 +140,17 @@ TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
 TEST(EmbeddingLookupOpTest, Indices3DTest) {
   EmbeddingLookupSparseOpModel m(CombinerType_SUM, {3}, {3, 3}, {3}, {4, 3, 2});
   m.SetInput({1, 3, 0}, {0, 0, 0, 2, 0, 0, 2, 0, 1}, {3, 2, 2},
-             {1.0, 2.0, 4.0});
+             {1.0f, 2.0f, 4.0f});
   m.Set3DWeightMatrix(
       [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({
-                  1.00, 1.01, 1.10, 1.11, 1.20, 1.21, 0.00, 0.00, 0.00,
-                  0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
-                  0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 6.00, 6.06, 6.60,
-                  6.66, 7.20, 7.26, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,
+                  1.00f, 1.01f, 1.10f, 1.11f, 1.20f, 1.21f, 0.00f, 0.00f, 0.00f,
+                  0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,
+                  0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 6.00f, 6.06f, 6.60f,
+                  6.66f, 7.20f, 7.26f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f, 0.00f,
               })));
 }
 

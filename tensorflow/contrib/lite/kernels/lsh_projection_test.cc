@@ -81,8 +81,8 @@ TEST(LSHProjectionOpTest2, Dense1DInputs) {
   LSHProjectionOpModel m(LSHProjectionType_DENSE, {3, 2}, {5}, {5});
 
   m.SetInput({12345, 54321, 67890, 9876, -12345678});
-  m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
-  m.SetWeight({1.0, 1.0, 1.0, 1.0, 1.0});
+  m.SetHash({0.123f, 0.456f, -0.321f, 1.234f, 5.678f, -4.321f});
+  m.SetWeight({1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
 
   m.Invoke();
 
@@ -93,7 +93,7 @@ TEST(LSHProjectionOpTest2, Sparse1DInputs) {
   LSHProjectionOpModel m(LSHProjectionType_SPARSE, {3, 2}, {5}, {});
 
   m.SetInput({12345, 54321, 67890, 9876, -12345678});
-  m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
+  m.SetHash({0.123f, 0.456f, -0.321f, 1.234f, 5.678f, -4.321f});
 
   m.Invoke();
 
@@ -105,8 +105,8 @@ TEST(LSHProjectionOpTest2, Sparse3DInputs) {
 
   m.SetInput({1234, 2345, 3456, 1234, 4567, 5678, 6789, 4567, 7891, 8912,
               9123, 7890, -987, -876, -765, -987, -543, -432, -321, -543});
-  m.SetHash({0.123, 0.456, -0.321, 1.234, 5.678, -4.321});
-  m.SetWeight({0.12, 0.34, 0.56, 0.67, 0.78});
+  m.SetHash({0.123f, 0.456f, -0.321f, 1.234f, 5.678f, -4.321f});
+  m.SetWeight({0.12f, 0.34f, 0.56f, 0.67f, 0.78f});
 
   m.Invoke();
 

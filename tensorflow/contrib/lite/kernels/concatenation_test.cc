@@ -132,7 +132,7 @@ TEST(ConcatenationOpTest, FourInputs) {
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantized) {
-  QuantizedConcatenationOpModel m0({TensorType_UINT8, {2, 1, 2}, -12.7, 12.8},
+  QuantizedConcatenationOpModel m0({TensorType_UINT8, {2, 1, 2}, -12.7f, 12.8f},
                                    /*axis=*/2,
                                    /*num_inputs=*/4);
 
