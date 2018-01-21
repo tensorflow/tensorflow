@@ -9,10 +9,10 @@ import numpy as np
 import tensorflow as tf
 
 # Data sets
-IRIS_TRAINING = "iris_training.csv"
+IRIS_TRAINING = "/tmp/iris_training.csv"
 IRIS_TRAINING_URL = "http://download.tensorflow.org/data/iris_training.csv"
 
-IRIS_TEST = "iris_test.csv"
+IRIS_TEST = "/tmp/iris_test.csv"
 IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
 
 def main():
@@ -41,10 +41,12 @@ def main():
   feature_columns = [tf.feature_column.numeric_column("x", shape=[4])]
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
-  classifier = tf.estimator.DNNClassifier(feature_columns=feature_columns,
-                                          hidden_units=[10, 20, 10],
-                                          n_classes=3,
-                                          model_dir="/tmp/iris_model")
+  with tf.device("/device:XLA_IPU:0"):
+    with tf.variable_scope("vars", use_resource=True):
+      classifier = tf.estimator.DNNClassifier(feature_columns=feature_columns,
+                                              hidden_units=[10, 20, 10],
+                                              n_classes=3,
+                                              model_dir="/tmp/iris_model")
   # Define the training inputs
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={"x": np.array(training_set.data)},
