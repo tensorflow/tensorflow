@@ -41,8 +41,8 @@ payload:
       echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet ${event.head.repo.url} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet ${event.head.sha}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
       sudo -H -u build-user /bin/bash /tmp/clone.sh &&
       /home/build-user/DeepSpeech/tf/tc-apt.sh &&
-      sudo -H -u build-user PYENV_VERSION=${build.pyver} /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh ${build.args.tcsetup} &&
-      sudo -H -u build-user PYENV_VERSION=${build.pyver} /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh ${build.args.tcbuild} &&
+      sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh ${build.args.tcsetup} &&
+      sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh ${build.args.tcbuild} &&
       sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
 
   artifacts:

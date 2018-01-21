@@ -46,10 +46,6 @@ if [ "${OS}" = "Linux" ]; then
     export LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/:$LD_LIBRARY_PATH
 fi;
 
-export TF_VENV=tf-venv
-export PYENV_ROOT=${DS_ROOT_TASK}/pyenv/
-export PATH="${PYENV_ROOT}/bin:$PATH"
-
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
 export TF_NEED_OPENCL=0
@@ -106,9 +102,7 @@ BAZEL_CUDA_FLAGS="--config=cuda"
 BAZEL_EXTRA_FLAGS="--copt=-fvisibility=hidden"
 
 ### Define build targets that we will re-ues in sourcing scripts.
-BUILD_TARGET_PIP="//tensorflow/tools/pip_package:build_pip_package"
 BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"
-BUILD_TARGET_LIB_FRAMEWORK="//tensorflow:libtensorflow_framework.so"
 BUILD_TARGET_GRAPH_TRANSFORMS="//tensorflow/tools/graph_transforms:transform_graph"
 BUILD_TARGET_GRAPH_SUMMARIZE="//tensorflow/tools/graph_transforms:summarize_graph"
 BUILD_TARGET_GRAPH_BENCHMARK="//tensorflow/tools/benchmark:benchmark_model"

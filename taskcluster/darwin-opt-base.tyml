@@ -48,8 +48,8 @@ payload:
         git clone --quiet ${event.head.repo.url} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/ &&
         cd $TASKCLUSTER_TASK_DIR/DeepSpeech/tf && git checkout --quiet ${event.head.sha} && cd $TASKCLUSTER_TASK_DIR &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-brew.sh &&
-        PYENV_VERSION=${build.pyver} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh &&
-        PYENV_VERSION=${build.pyver} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh
 
   artifacts:

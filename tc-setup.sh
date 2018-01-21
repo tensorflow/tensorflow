@@ -26,37 +26,6 @@ download()
     ${WGET} $1 -O ${DS_ROOT_TASK}/dls/$fname && echo "$2  ${DS_ROOT_TASK}/dls/$fname" | ${SHA_SUM} -
 }
 
-### Copied from DeepSpeech repo
-install_pyenv()
-{
-  if [ -z "${PYENV_ROOT}" ]; then
-    echo "No PYENV_ROOT set";
-    exit 1;
-  fi;
-
-  git clone --quiet https://github.com/pyenv/pyenv.git ${PYENV_ROOT}
-  pushd ${PYENV_ROOT}
-    git checkout --quiet 0c909f7457a027276a1d733d78bfbe70ba652047
-  popd
-  eval "$(pyenv init -)"
-}
-
-install_pyenv_virtualenv()
-{
-  PYENV_VENV=$1
-
-  if [ -z "${PYENV_VENV}" ]; then
-    echo "No PYENV_VENV set";
-    exit 1;
-  fi;
-
-  git clone --quiet https://github.com/pyenv/pyenv-virtualenv.git ${PYENV_VENV}
-  pushd ${PYENV_VENV}
-      git checkout --quiet 27270877575fe8c3e7be5385b8b6a1e4089b39aa
-  popd
-  eval "$(pyenv virtualenv-init -)"
-}
-
 # Download stuff
 mkdir -p ${DS_ROOT_TASK}/dls || true
 download $BAZEL_URL $BAZEL_SHA256
@@ -107,22 +76,5 @@ if [ ! -z "${install_cuda}" ]; then
 else
     echo "No CUDA/CuDNN to install"
 fi
-
-# We don't produce Python package for RPi3, so don't give a Python version there
-if [ ! -z "${PYENV_VERSION}" ]; then
-    # Configure Python virtualenv
-    unset PYTHON_BIN_PATH
-    unset PYTHONPATH
-
-    install_pyenv "${PYENV_ROOT}"
-    install_pyenv_virtualenv "$(pyenv root)/plugins/pyenv-virtualenv"
-
-    pyenv install ${PYENV_VERSION}
-    pyenv virtualenv ${PYENV_VERSION} ${TF_VENV}
-
-    source ${PYENV_ROOT}/versions/${PYENV_VERSION}/envs/${TF_VENV}/bin/activate
-
-    pip install numpy scipy python_speech_features wheel
-fi;
 
 mkdir -p ${TASKCLUSTER_ARTIFACTS} || true

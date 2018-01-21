@@ -7,7 +7,6 @@ source $(dirname $0)/tc-vars.sh
 mkdir -p ${TASKCLUSTER_ARTIFACTS} || true
 
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/libtensorflow_cc.so ${TASKCLUSTER_ARTIFACTS}
-cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/libtensorflow_framework.so ${TASKCLUSTER_ARTIFACTS}
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/transform_graph ${TASKCLUSTER_ARTIFACTS}
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/summarize_graph ${TASKCLUSTER_ARTIFACTS}
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/benchmark/benchmark_model ${TASKCLUSTER_ARTIFACTS}
