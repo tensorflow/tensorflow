@@ -154,12 +154,12 @@ target_link_libraries(testapp tensorflow-lite)
 
 # file( GLOB APP_SOURCES RELATIVE app/*.cxx )
 
-file(GLOB TFLITE_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_ROOT_DIR} *_test.cc)
+file(GLOB TFLITE_CORE_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_ROOT_DIR} *_test.cc)
 
-foreach (TFLITE_TEST_SRC ${TFLITE_TEST_SRC_FILES})
-    string( REPLACE ".cc" "" TFLITE_TEST_NAME ${TFLITE_TEST_SRC} )
+foreach (TFLITE_CORE_TEST_SRC ${TFLITE_CORE_TEST_SRC_FILES})
+    string( REPLACE ".cc" "" TFLITE_TEST_NAME ${TFLITE_CORE_TEST_SRC} )
 
-    add_executable(${TFLITE_TEST_NAME} ${TFLITE_TEST_SRC})
+    add_executable(${TFLITE_TEST_NAME} ${TFLITE_CORE_TEST_SRC})
     target_link_libraries(${TFLITE_TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib)
     target_link_libraries(${TFLITE_TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib)
 endforeach()
