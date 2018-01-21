@@ -335,7 +335,7 @@ uint32_t set_param(uint32_t default_val, const char* env_param) {
 
 enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
   ibv_port_attr port_attr;
-  enum ibv_mtu mtu;
+  enum ibv_mtu mtu = IBV_MTU_512;
   string mtu_s;
   int rc, mtu_i;
 
@@ -908,6 +908,7 @@ static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
 }
 #endif // GOOGLE_CUDA
 
+#ifdef RDMA_DATA_VALIDATION
 static uint64_t Checksum(Device* device, const DeviceContext* device_context,
                          const Tensor& in) {
   uint64 checksum = 0;
@@ -954,6 +955,7 @@ static void ValidateChecksum(uint64_t expected, uint64_t actual,
     }
   }
 }
+#endif // RDMA_DATA_VALIDATION
 
 #if GOOGLE_CUDA
 // Sync the 'done' operation on the GPU stream, but without all the data
@@ -1249,9 +1251,8 @@ void RdmaTensorResponse::SendErrorStatus(const Status& status) {
 }
 
 void RdmaTensorResponse::Destroy() {
-  bool res = false;
   if (src_buffer_ != nullptr) {
-    res = src_buffer_->Unref();
+    src_buffer_->Unref();
   }
   if (tensor_ != nullptr) {
     delete tensor_;
@@ -1339,7 +1340,8 @@ string RdmaMessage::CreateMessage(const RdmaMessage& rm) {
                  << kErrorStatusMaxSize << " bytes). Truncated.";
       gsProtoSize = kErrorStatusMaxSize - 4;
     }
-    *(uint32_t*)&message[kErrorStatusStartIndex] = gsProtoSize;
+    uint32_t* proto_size = (uint32_t*)&message[kErrorStatusStartIndex];
+    *proto_size = gsProtoSize;
     gsProto.SerializeToArray(&message[kErrorStatusStartIndex + 4],
                              gsProtoSize);
     message_size += gsProtoSize + 4;
