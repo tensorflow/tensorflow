@@ -151,18 +151,6 @@ add_library(tensorflow-lite STATIC
 add_executable(testapp ${TENSORFLOW_LITE_ROOT_DIR}/testapp/testapp.cc)
 target_link_libraries(testapp tensorflow-lite)
 
-# TODO (shaurya) : create macro for test binary generation
-
-file(GLOB TFLITE_CORE_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_ROOT_DIR} ${TENSORFLOW_LITE_ROOT_DIR}/*_test.cc )
-
-foreach (TFLITE_CORE_TEST_SRC ${TFLITE_CORE_TEST_SRC_FILES})
-    string( REPLACE ".cc" "" TFLITE_TEST_NAME ${TFLITE_CORE_TEST_SRC} )
-
-    add_executable(${TFLITE_TEST_NAME} ${TFLITE_CORE_TEST_SRC})
-    target_link_libraries(${TFLITE_TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib)
-    target_link_libraries(${TFLITE_TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib)
-endforeach()
-
 if (WIN32)
     set(PLATFORM_ENV_TIME_SRC ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/windows/env_time.cc)
 else()
@@ -175,23 +163,20 @@ add_library(tensorflow-lite_test_util STATIC
     ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/default/logging.cc
     ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/env_time.cc
     ${PLATFORM_ENV_TIME_SRC}
-    )
+  )
 
-file(GLOB TFLITE_KERNEL_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_KERNEL_DIR} ${TENSORFLOW_LITE_KERNEL_DIR}/*_test.cc)
+function(add_tflite_tests test_directory)
+  file(GLOB TEST_SRC_FILES RELATIVE ${test_directory} ${test_directory}/*_test.cc )
+  foreach (TEST_SRC_FILE ${TEST_SRC_FILES})
+      string(REPLACE ".cc" "" TEST_NAME ${TEST_SRC_FILE})
+      add_executable(${TEST_NAME} ${test_directory}/${TEST_SRC_FILE} )
+      target_link_libraries(${TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib ${GTEST_LIB_DIR}/gmockd.lib tensorflow-lite_test_util)
+      target_link_libraries(${TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib ${GTEST_LIB_DIR}/gmock.lib tensorflow-lite_test_util)
+  endforeach()
 
-foreach (TFLITE_KERNEL_TEST_SRC ${TFLITE_KERNEL_TEST_SRC_FILES})
-    string(REPLACE ".cc" "" TFLITE_KERNEL_TEST_NAME ${TFLITE_KERNEL_TEST_SRC})
-    add_executable(${TFLITE_KERNEL_TEST_NAME} ${TENSORFLOW_LITE_KERNEL_DIR}/${TFLITE_KERNEL_TEST_SRC} )
-    target_link_libraries(${TFLITE_KERNEL_TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib ${GTEST_LIB_DIR}/gmockd.lib tensorflow-lite_test_util)
-    target_link_libraries(${TFLITE_KERNEL_TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib ${GTEST_LIB_DIR}/gmock.lib tensorflow-lite_test_util)
-endforeach()
+endfunction()
 
 
-file(GLOB TFLITE_KERNEL_INTERNAL_TEST_SRC_FILES RELATIVE ${TENSORFLOW_LITE_KERNEL_DIR}/internal ${TENSORFLOW_LITE_KERNEL_DIR}/internal/*_test.cc)
-
-foreach (TFLITE_KERNEL_INTERNAL_TEST_SRC ${TFLITE_KERNEL_INTERNAL_TEST_SRC_FILES})
-    string(REPLACE ".cc" "" TFLITE_KERNEL_INTERNAL_TEST_NAME ${TFLITE_KERNEL_INTERNAL_TEST_SRC})
-    add_executable(${TFLITE_KERNEL_INTERNAL_TEST_NAME} ${TENSORFLOW_LITE_KERNEL_DIR}/internal/${TFLITE_KERNEL_INTERNAL_TEST_SRC} )
-    target_link_libraries(${TFLITE_KERNEL_INTERNAL_TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib ${GTEST_LIB_DIR}/gmockd.lib tensorflow-lite_test_util)
-    target_link_libraries(${TFLITE_KERNEL_INTERNAL_TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib ${GTEST_LIB_DIR}/gmock.lib tensorflow-lite_test_util)
-endforeach()
+add_tflite_tests(${TENSORFLOW_LITE_ROOT_DIR})
+add_tflite_tests(${TENSORFLOW_LITE_KERNEL_DIR})
+add_tflite_tests(${TENSORFLOW_LITE_KERNEL_DIR}/internal)
