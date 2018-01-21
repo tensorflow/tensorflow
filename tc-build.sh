@@ -17,7 +17,7 @@ if [ "$1" = "--arm" ]; then
 fi
 
 pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
-    BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build --experimental_strict_action_env --config=monolithic"
+    BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build -s --explain bazel_monolithic_tf.log --verbose_explanations --experimental_strict_action_env --config=monolithic"
 
     # Pure amd64 CPU-only build
     if [ "${build_gpu}" = "no" -a "${build_arm}" = "no" ]; then
