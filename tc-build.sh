@@ -17,7 +17,7 @@ if [ "$1" = "--arm" ]; then
 fi
 
 pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
-    BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build --config=monolithic"
+    BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build --experimental_strict_action_env --config=monolithic"
 
     # We don't produce Python package for RPi3, so don't give a Python version there
     if [ ! -z "${PYENV_VERSION}" ]; then
