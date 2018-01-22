@@ -304,13 +304,13 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
 #if PY_MAJOR_VERSION >= 3
           el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
 #else
-          el = NULL;
+          el = nullptr;
           if (PyUnicode_Check(input_data[i])) {
             PyObject* unicode = PyUnicode_AsUTF8String(input_data[i]);
             if (unicode) {
               if (PyString_AsStringAndSize(unicode, &el, &el_size) == -1) {
                 Py_DECREF(unicode);
-                el = NULL;
+                el = nullptr;
               }
             }
           }
