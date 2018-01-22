@@ -20,6 +20,8 @@ See the @{$python/constant_op$constants guide}.
 @@zeros_like
 @@ones
 @@ones_like
+@@alphas
+@@alphas_like
 @@fill
 @@constant
 @@linspace

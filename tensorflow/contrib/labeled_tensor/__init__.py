@@ -116,6 +116,7 @@ pad = _ops.pad
 constant = _ops.constant
 zeros_like = _ops.zeros_like
 ones_like = _ops.ones_like
+alphas_like = _ops.alphas_like
 cast = _ops.cast
 verify_tensor_all_finite = _ops.verify_tensor_all_finite
 boolean_mask = _ops.boolean_mask
