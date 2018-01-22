@@ -52,14 +52,13 @@ def random_batch(batch_size):
 
 def train_one_step(model, images, labels, optimizer):
 
-  def model_loss():
+  with tfe.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-    return loss
-
-  optimizer.minimize(model_loss)
+  grads = tape.gradient(loss, model.variables)
+  optimizer.apply_gradients(zip(grads, model.variables))
 
 
 class ResNet50Test(tf.test.TestCase):
