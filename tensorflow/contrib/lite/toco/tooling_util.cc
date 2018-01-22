@@ -652,7 +652,7 @@ void CheckNonExistentIOArrays(const Model& model) {
 void CheckNoMissingArray(const Model& model) {
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
-      CHECK(model.arrays.count(input));
+      CHECK(model.arrays.count(input) || model.optional_arrays.count(input));
     }
     for (const auto& output : op->outputs) {
       CHECK(model.arrays.count(output));
@@ -761,6 +761,8 @@ void CheckOperatorOrdering(const Model& model) {
       arrays_behind_us.insert(array_entry.first);
     }
   }
+  arrays_behind_us.insert(model.optional_arrays.begin(),
+                          model.optional_arrays.end());
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
       if (!IsConstantParameterArray(model, input)) {
@@ -784,6 +786,8 @@ void FixOperatorOrdering(Model* model) {
       arrays_behind_us.insert(array_entry.first);
     }
   }
+  arrays_behind_us.insert(model->optional_arrays.begin(),
+                          model->optional_arrays.end());
   std::vector<std::unique_ptr<Operator>> old_operators;
   std::swap(old_operators, model->operators);
   std::set<std::size_t> remaining;
@@ -1281,6 +1285,8 @@ void DropMinMax(Model* model, const string& array_name) {
 }
 
 bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
+  // Optional array is not transient
+  if (model.IsOptionalArray(array_name)) return false;
   // The model's input and output arrays are externally allocated.
   // They are not transient arrays.
   if (IsInputArray(model, array_name)) {
@@ -1304,7 +1310,7 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
 }
 
 string AvailableArrayName(const Model& model, const string& name) {
-  if (!model.arrays.count(name)) {
+  if (!model.arrays.count(name) && !model.optional_arrays.count(name)) {
     return name;
   }
   const int kNumSuffixesToTry = 1000;
