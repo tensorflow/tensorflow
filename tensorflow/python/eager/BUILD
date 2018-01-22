@@ -1,8 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -420,6 +419,22 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_test(
+    name = "pywrap_tfe_test",
+    srcs = ["pywrap_tfe_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backprop",
+        ":context",
+        ":test",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
 )
 
