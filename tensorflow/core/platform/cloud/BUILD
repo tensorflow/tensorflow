@@ -102,7 +102,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 
@@ -119,7 +119,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 

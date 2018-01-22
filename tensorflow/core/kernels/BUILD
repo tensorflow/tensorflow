@@ -4268,7 +4268,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
+        "@fft2d",
     ],
 )
 
@@ -5007,8 +5007,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
-        "@gemmlowp//:gemmlowp",
+        "@fft2d",
+        "@gemmlowp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -5079,7 +5079,7 @@ tf_kernel_library(
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -5992,6 +5992,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
