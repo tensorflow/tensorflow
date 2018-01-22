@@ -22,6 +22,9 @@ limitations under the License.
 #ifdef _WIN32
 static constexpr void* MAP_FAILED = nullptr;
 #define PROT_READ (0x1)
+#else
+#include <sys/mman.h>
+
 #endif
 
 namespace tflite {
