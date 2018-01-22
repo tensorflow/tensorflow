@@ -130,6 +130,9 @@ static std::vector<std::pair<int, int>> createSamePadding(
     int left = p / 2;
     int right = p - left;
 
+    LOG(DEBUG) << "PADDING_" << i << " pre: " << left << ", post: " << right
+               << "paras: " << inputDims[i] << ", " << stride.d[i] << ", "
+               << "kernel: " << kernel.d[i];
     padding[i] = {left, right};
   }
   return padding;
@@ -985,6 +988,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
+  LOG(DEBUG) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
   TFAttrs attrs(node_def);
 
   int h_index = 2;
@@ -1001,6 +1005,8 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   }
   // TODO(jie): stride. (NHWC/NCHW)
   auto tf_stride = attrs.get<std::vector<int>>("strides");
+  LOG(DEBUG) << "h_INDEX" << h_index << ", w_index " << w_index;
+  LOG(DEBUG) << "stride!!!: " << tf_stride[0] << tf_stride[1] << tf_stride[2] << tf_stride[3];
   nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
 
   auto tensor_dim = tensor->getDimensions();
@@ -1011,8 +1017,8 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     //  1 -> h
     //  2 -> w
     padding = createSamePadding(stride, kernel_size,
-                                {static_cast<int>(tensor_dim.d[h_index]),
-                                 static_cast<int>(tensor_dim.d[w_index])});
+                                {static_cast<int>(tensor_dim.d[1]),
+                                 static_cast<int>(tensor_dim.d[2])});
   } else {
     // return tensorflow::errors::Unimplemented(
     //          "Current Conv2D cannot support padding other than SAME");
@@ -1024,11 +1030,21 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     // TODO(jie): handle asymmetric padding
     // return tensorflow::errors::Unimplemented(
     //         "Asymmetric padding not implemented yet");
+    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
+                                 << padding[1].first << padding[1].second;
+
+    auto dim_before = tensor->getDimensions();
+    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", " << dim_before.d[1]
+                                    << dim_before.d[2] << ", " << dim_before.d[3];
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::DimsHW(padding[1].first, padding[0].first),
-        nvinfer1::DimsHW(padding[1].second, padding[0].second));
+        nvinfer1::DimsHW(padding[0].first, padding[1].first),
+        nvinfer1::DimsHW(padding[0].second, padding[1].second));
+    padding = {{0, 0}, {0, 0}};
     tensor = padLayer->getOutput(0);
+    auto dim_after = tensor->getDimensions();
+    LOG(DEBUG) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
+                                   << dim_after.d[2] << ", " << dim_after.d[3];
   }
 
   nvinfer1::IConvolutionLayer* layer =
@@ -1039,6 +1055,10 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   layer->setPadding({padding[0].first, padding[1].first});
   layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  auto dim_after = output_tensor->getDimensions();
+  LOG(DEBUG) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
+                               << dim_after.d[2] << ", " << dim_after.d[3];
 
   if (data_format == "NHWC") {
     // TODO(jie): transpose it back!
@@ -1107,10 +1127,12 @@ tensorflow::Status ConvertPool(Converter& ctx,
     // TODO(jie): handle asymmetric padding
     // return tensorflow::errors::Unimplemented(
     //          "Asymmetric padding not implemented yet");
+    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second << padding[1].first << padding[1].second;
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::DimsHW(padding[1].first, padding[0].first),
-        nvinfer1::DimsHW(padding[1].second, padding[0].second));
+        nvinfer1::DimsHW(padding[0].first, padding[1].first),
+        nvinfer1::DimsHW(padding[0].second, padding[1].second));
+    padding = {{0, 0}, {0, 0}};
     tensor = padLayer->getOutput(0);
   }
 
