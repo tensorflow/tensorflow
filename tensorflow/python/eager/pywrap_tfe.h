@@ -131,6 +131,28 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status);
 
+// Execute a tensorflow operation assuming that all provided inputs are
+// correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
+// it will simply fail with a NotImplementedError.
+//
+// The first PyObject* is unused.
+// The "args" PyObject* is meant to be a tuple with the following structure:
+//  Item 1: The TFE Context
+//  Item 2: device_name: Name of the device on which to execute the operation,
+//          or NULL for automatic selection.
+//  Item 3: op_name: Name of the TensorFlow op to execute.
+//  Item 4: record_gradient_callback: Callback that records the gradient of the
+//          result.
+//          The callback takes (inputs, attrs, result) - all sequences and
+//          records the gradient.
+//  Item 5 onwards: inputs - This is a list of inputs followed by a list of
+//        attrs. It is not necessary for type attrs to be present.
+//
+// This is named _C since there doesn't seem to be any way to make it visible
+// in the SWIG interface without renaming due to the use of the %native
+// directive.
+PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
