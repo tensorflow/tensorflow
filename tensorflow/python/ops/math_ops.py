@@ -2765,9 +2765,12 @@ def tensordot(a, b, axes, name=None):
     """Generates two sets of contraction axes for the two tensor arguments."""
     a_shape = a.get_shape()
     if isinstance(axes, compat.integral_types):
-      if axes < 1:
-        raise ValueError("'axes' must be at least 1.")
+      if axes < 0:
+        raise ValueError("'axes' must be at least 0.")
       if a_shape.ndims is not None:
+        if axes > a_shape.ndims:
+          raise ValueError("'axes' must not be larger than the number of "
+                           "dimensions of tensor %s." % a)
         return (list(xrange(a_shape.ndims - axes, a_shape.ndims)),
                 list(xrange(axes)))
       else:
