@@ -785,26 +785,16 @@ class _VariableStore(object):
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = False
-    if use_resource:
-      v = resource_variable_ops.ResourceVariable(
-          initial_value=init_val,
-          name=name,
-          trainable=trainable,
-          collections=collections,
-          caching_device=caching_device,
-          dtype=variable_dtype,
-          validate_shape=validate_shape,
-          constraint=constraint)
-    else:
-      v = variables.Variable(
-          initial_value=init_val,
-          name=name,
-          trainable=trainable,
-          collections=collections,
-          caching_device=caching_device,
-          dtype=variable_dtype,
-          validate_shape=validate_shape,
-          constraint=constraint)
+    v = variable(
+        initial_value=init_val,
+        name=name,
+        trainable=trainable,
+        collections=collections,
+        caching_device=caching_device,
+        dtype=variable_dtype,
+        validate_shape=validate_shape,
+        constraint=constraint,
+        use_resource=use_resource)
     if context.in_graph_mode() or self._store_eager_variables:
       # In eager mode we do not want to keep default references to Variable
       # objects as this will prevent their memory from being released.
@@ -2067,21 +2057,26 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   return slice_dim, slice_shape
 
 
-def variable(initial_value=None,
-             trainable=True,
-             collections=None,
-             validate_shape=True,
-             caching_device=None,
-             name=None,
-             dtype=None,
-             use_resource=None):
+def default_variable_creator(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", True)
+  collections = kwargs.get("collections", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  dtype = kwargs.get("dtype", None)
+  constraint = kwargs.get("constraint", None)
+  use_resource = kwargs.get("use_resource", None)
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
   if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
-        caching_device=caching_device, name=name, dtype=dtype)
+        caching_device=caching_device, name=name, dtype=dtype,
+        constraint=constraint)
   elif not use_resource and context.in_eager_mode():
     raise RuntimeError(
         "VariableScope should use resource variable when eager execution is"
@@ -2091,4 +2086,95 @@ def variable(initial_value=None,
     return variables.Variable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
-        caching_device=caching_device, name=name, dtype=dtype)
+        caching_device=caching_device, name=name, dtype=dtype,
+        constraint=constraint)
+
+
+def _make_getter(captured_getter, captured_previous):
+  """Gets around capturing loop variables in python being broken."""
+  return lambda **kwargs: captured_getter(captured_previous, **kwargs)
+
+
+def variable(initial_value=None,
+             trainable=True,
+             collections=None,
+             validate_shape=True,
+             caching_device=None,
+             name=None,
+             dtype=None,
+             constraint=None,
+             use_resource=None):
+  previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+  for getter in ops.get_default_graph()._get_variable_creator_stack():  # pylint: disable=protected-access
+    previous_getter = _make_getter(getter, previous_getter)
+  return previous_getter(initial_value=initial_value,
+                         trainable=trainable,
+                         collections=collections,
+                         validate_shape=validate_shape,
+                         caching_device=caching_device,
+                         name=name, dtype=dtype,
+                         constraint=constraint,
+                         use_resource=use_resource)
+
+
+@tf_contextlib.contextmanager
+def variable_creator_scope(variable_creator):
+  """Scope which defines a variable creation function to be used by variable().
+
+  variable_creator is expected to be a function with the following signature:
+
+  ```
+    def variable_creator(next_creator, **kwargs)
+  ```
+
+  The creator is supposed to eventually call the next_creator to create a
+  variable if it does want to create a variable and not call Variable or
+  ResourceVariable directly. This helps make creators composable. A creator may
+  choose to create multiple variables, return already existing variables, or
+  simply register that a variable was created and defer to the next creators in
+  line. Creators can also modify the keyword arguments seen by the next
+  creators.
+
+  Custom getters in the variable scope will eventually resolve down to these
+  custom creators when they do create variables.
+
+  The valid keyword arguments in kwds are:
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
+      trainable: If `True`, the default, also adds the variable to the graph
+        collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
+        the default list of variables to use by the `Optimizer` classes.
+      collections: List of graph collections keys. The new variable is added to
+        these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
+      constraint: A constraint function to be applied to the variable after
+        updates by some algorithms.
+      use_resource: if True, a ResourceVariable is always created.
+
+  This set may grow over time, so it's important the signature of creators is as
+  mentioned above.
+
+  Args:
+    variable_creator: the passed creator
+
+  Yields:
+    A scope in which the creator is active
+  """
+  with ops.get_default_graph()._variable_creator_scope(variable_creator):  # pylint: disable=protected-access
+    yield
