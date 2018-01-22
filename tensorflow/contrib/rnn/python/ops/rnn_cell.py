@@ -329,7 +329,7 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
   def __init__(self, num_units, use_peepholes=False,
                cell_clip=None, initializer=None,
                num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None,
+               feature_size=None, frequency_skip=1,
                reuse=None):
     """Initialize the parameters for an LSTM cell.
 
