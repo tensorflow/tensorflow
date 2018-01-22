@@ -1701,7 +1701,7 @@ def alphas(shape, alpha_value, name=None):
 
   with ops.name_scope(name, "alphas", [shape]) as name:
 
-    alpha_tensor = convert_to_tensor(alpha_value)
+    alpha_tensor = ops.convert_to_tensor(alpha_value)
     alpha_dtype = dtypes.as_dtype(alpha_tensor.dtype).base_dtype
 
     if not isinstance(shape, ops.Tensor):
