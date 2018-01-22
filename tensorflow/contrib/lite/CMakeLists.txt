@@ -61,8 +61,8 @@ set(variables
 set(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
-set(SDK_DIR "C:/SDKS/googletest")
-set(GTEST_LIB_DIR "${SDK_DIR}/lib")
+set(SDK_DIR "C:/SDKS")
+set(GTEST_LIB_DIR "${SDK_DIR}/googletest/lib")
 
 
 set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
@@ -127,7 +127,6 @@ SET (TENSORFLOW_LITE_KERNEL_SOURCES
     ${TENSORFLOW_LITE_KERNEL_DIR}/space_to_batch_nd.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/space_to_depth.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/svdf.cc
-    # ${TENSORFLOW_LITE_KERNEL_DIR}/test_util.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/transpose.cc
     ${TENSORFLOW_LITE_KERNEL_DIR}/unidirectional_sequence_rnn.cc
     )
