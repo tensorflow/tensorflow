@@ -40,7 +40,7 @@ PARAM_RE = re.compile(r"""
   ((?P<val>[^,\[]*)            # single value: "a" or None
    |
    \[(?P<vals>[^\]]*)\])       # list of values: None or "1,2,3"
-  ($|,)""", re.VERBOSE)
+  ($|,\s*)""", re.VERBOSE)
 
 
 def _parse_fail(name, var_type, value, values):
