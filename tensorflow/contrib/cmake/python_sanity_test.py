@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""
+Complain about invalid or missing entries in python_*.txt files.
+Problematic entries can be commented for temporary whitelisting.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -36,14 +40,19 @@ def read_entries(test):
     lines = f.readlines()
 
   lines = [line.strip() for line in lines]
+  lines = [line for line in lines if line]
 
   test.entries = []
   test.whitelist = []
 
   for line in lines:
+    # line is comment
     if line.startswith('#'):
       line = line[1:].strip()
-      test.whitelist.append(line)
+      # whitelist entry
+      if line.startswith('tensorflow/'):
+        test.whitelist.append(line)
+    # line has comment -> strip comment
     elif line.find('#') != -1:
       line = line[:line.find('#')].strip()
       test.entries.append(line)
@@ -52,8 +61,10 @@ def read_entries(test):
 
 def test_invalid_directories(test):
   for entry in test.entries:
-    test.assertTrue(os.path.isdir(abs_path(entry)),
-      "'" + test.entries_file + "' contains invalid '" + entry + "'")
+    if not os.path.isdir(abs_path(entry)):
+      problem = "'" + test.entries_file + "' contains invalid '" + entry + "'"
+      solution = "Please remove the invalid entry (or add the missing directory)."
+      raise AssertionError(problem + "\n" + solution)
 
 def test_missing_directory(test, path):
   if path in test.whitelist:
@@ -62,8 +73,10 @@ def test_missing_directory(test, path):
   dir_exists = os.path.isdir(abs_path(path))
   entry_exists = path in test.entries
 
-  test.assertFalse(dir_exists and not entry_exists,
-    "'" + test.entries_file + "' is missing '" + path + "'")
+  if dir_exists and not entry_exists:
+    problem = "'" + test.entries_file + "' is missing '" + path + "'"
+    solution = "Please add the missing entry (comment to whitelist if needed)."
+    raise AssertionError(problem + "\n" + solution)
 
 
 class PythonModuleTest(unittest.TestCase):
