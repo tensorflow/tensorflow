@@ -13,6 +13,8 @@ TensorFlow provides several operations that you can use to generate constants.
 *   @{tf.zeros_like}
 *   @{tf.ones}
 *   @{tf.ones_like}
+*   @{tf.alphas}
+*   @{tf.alphas_like}
 *   @{tf.fill}
 *   @{tf.constant}
 
