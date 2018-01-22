@@ -1,6 +1,6 @@
 # TensorFlow Runtime with HVX Acceleration
 
-This README explain how to build and use the TensorFlow runtime with HVX Acceleration. HVX is an extension of Hexagon, a DSP provided by Qualcomm which can compute vector calculations faster using lower energy than ARM processors.
+This README explain how to build and use the TensorFlow runtime with HVX Acceleration. HVX is an extension of Hexagon, a DSP provided by Qualcomm, which can compute vector calculations faster using less energy than ARM processors.
 
 ## Dependencies
 
