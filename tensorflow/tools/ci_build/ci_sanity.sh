@@ -26,6 +26,8 @@
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
 
+ROOT_DIR=$( cd "$SCRIPT_DIR/../../.." && pwd -P )
+
 # Helper functions
 die() {
   echo $@
@@ -418,15 +420,8 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:pip_smoke_test"
-  ${BUILD_CMD}
-  cmd_status \
-    "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
-
-  RUN_CMD="bazel-bin/tensorflow/tools/pip_package/pip_smoke_test"
-  ${RUN_CMD}
-  cmd_status \
-    "The pip smoke test failed."
+  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  python pip_smoke_test.py
 }
 
 do_code_link_check() {
@@ -548,7 +543,10 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 "${SANITY_STEPS[COUNTER]} (${SANITY_STEPS_DESC[COUNTER]}) ==="
   echo ""
 
+  # subshell: don't leak variables or changes of working directory
+  (
   ${SANITY_STEPS[COUNTER]} ${INCREMENTAL_FLAG}
+  )
   RESULT=$?
 
   if [[ ${RESULT} != "0" ]]; then

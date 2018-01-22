@@ -47,18 +47,6 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_test(
-    name = "pip_smoke_test",
-    srcs = ["pip_smoke_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    tags = [
-        "manual",
-        "notap",
-    ],
-)
-
 py_binary(
     name = "check_load_py_test",
     srcs = ["check_load_py_test.py"],
