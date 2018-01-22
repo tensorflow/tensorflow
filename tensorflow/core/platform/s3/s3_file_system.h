@@ -22,8 +22,6 @@ limitations under the License.
 namespace tensorflow {
 
 class S3FileSystem : public FileSystem {
- private:
-  std::shared_ptr<Aws::S3::S3Client> s3Client_;
  public:
   S3FileSystem();
   ~S3FileSystem();
@@ -56,6 +54,8 @@ class S3FileSystem : public FileSystem {
   Status GetFileSize(const string& fname, uint64* size) override;
 
   Status RenameFile(const string& src, const string& target) override;
+ private:
+  std::shared_ptr<Aws::S3::S3Client> s3_client_;
 };
 
 }  // namespace tensorflow
