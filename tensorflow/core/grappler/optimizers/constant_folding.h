@@ -52,7 +52,6 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  string OptimizedNodeName(const NodeDef& node) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;

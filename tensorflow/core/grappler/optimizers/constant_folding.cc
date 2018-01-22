@@ -128,6 +128,42 @@ bool AllValuesAre(const TensorProto& tensor, const T& value) {
   return false;
 }
 
+// Add new_input as a control input to node if it does not already depend on it.
+// TODO(rmlarsen): Move the following two utility functions to utils.{h,cc} and
+// clean up code that should be using them.
+bool MaybeAddControlInput(const string& new_input, NodeDef* node,
+                          GraphDef* graph, NodeMap* node_map) {
+  bool already_exists = false;
+  for (const string& input : node->input()) {
+    if (input == new_input || AsControlDependency(input) == new_input) {
+      already_exists = true;
+      break;
+    }
+  }
+  if (!already_exists) {
+    const string ctrl_dep =
+        ConstantFolding::AddControlDependency(new_input, graph, node_map);
+    node->add_input(ctrl_dep);
+    node_map->AddOutput(NodeName(new_input), node->name());
+  }
+  return !already_exists;
+}
+
+// Remove old_input as a control input to node.
+bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
+                             GraphDef* graph, NodeMap* node_map) {
+  for (int i = 0; i < node->input_size(); ++i) {
+    const string& input = node->input(i);
+    if (IsControlInput(input) && AsControlDependency(old_input) == input) {
+      node->mutable_input()->SwapElements(i, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+      node_map->RemoveOutput(NodeName(old_input), node->name());
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
@@ -1524,14 +1560,15 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     //
     //                      +                +       = parent
     //                     / \              / \
-    //                  Const +    -- >    X   +     = children
+    //                    C   +    -- >    X   +     = children
     //                       / \              / \
-    //                      X   Y          Const Y   = leaves
+    //                      X   Y            C   Y   = leaves
     //
-    // where '+' denotes an associative and commutative operator like addition
-    // or multiplication. This optimization pushes constants down in the tree
-    // to canonicalize it. Moreoever, in cases where the child node has a
-    // constant input we will create a node that can be folded, e.g.
+    // where C is constant and X is non-constant, and '+' denotes an
+    // associative and commutative operator like addition or multiplication.
+    // This optimization pushes constants down in the tree to canonicalize it.
+    // Moreoever, in cases where the child node has a second constant input Y
+    // we will create a leaf node that can be folded, e.g.
     //
     //    Add(C1, Add(C2, X)) -> Add(X, Add(C1, C2)) -> Add(X, C1 + C2)
     //
@@ -1540,7 +1577,8 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
     // division/multiplication.
     // Don't touch BiasAdd since they can't handle vectors as their first
     // inputs.
-    if ((IsAdd(*node) || is_mul) && NumNonControlInputs(*node) == 2) {
+    if (has_fetch_ && (IsAdd(*node) || is_mul) &&
+        NumNonControlInputs(*node) == 2) {
       NodeDef* left_child = node_map_->GetNode(node->input(0));
       NodeDef* right_child = node_map_->GetNode(node->input(1));
       // One child must be constant, and the other the same op as the parent.
@@ -1556,18 +1594,21 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           node->device() != right_child->device()) {
         continue;
       }
-      NodeDef* child_node = left_child_is_constant ? right_child : left_child;
+      NodeDef* op_child_node =
+          left_child_is_constant ? right_child : left_child;
+      NodeDef* const_child_node =
+          left_child_is_constant ? left_child : right_child;
       // Make sure that it is safe to change the value of the child node->
-      if (child_node->input_size() < 2 ||
-          NumNonControlOutputs(*child_node, *node_map_) > 1 || !has_fetch_ ||
-          nodes_to_preserve_.find(child_node->name()) !=
+      if (op_child_node->input_size() < 2 ||
+          NumNonControlOutputs(*op_child_node, *node_map_) > 1 ||
+          nodes_to_preserve_.find(op_child_node->name()) !=
               nodes_to_preserve_.end()) {
         continue;
       }
 
       // Identify the nodes to swap.
-      const NodeDef* left_leaf = node_map_->GetNode(child_node->input(0));
-      const NodeDef* right_leaf = node_map_->GetNode(child_node->input(1));
+      NodeDef* left_leaf = node_map_->GetNode(op_child_node->input(0));
+      NodeDef* right_leaf = node_map_->GetNode(op_child_node->input(1));
       const bool left_leaf_is_constant = IsReallyConstant(*left_leaf);
       const bool right_leaf_is_constant = IsReallyConstant(*right_leaf);
       if (left_leaf_is_constant && right_leaf_is_constant) {
@@ -1576,15 +1617,27 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       }
       const int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
       const int parent_const_input = left_child_is_constant ? 0 : 1;
+      const auto& child_output = node_map_->GetOutputs(op_child_node->name());
+      if (child_output.find(const_child_node) != child_output.end()) {
+        // If there is a control edge from the child op to C, the transformation
+        // would create a cycle in the graph. We know that it must be a control
+        // edge. We can replace such a control edge with a control edge from A
+        // to C.
+        CHECK(MaybeRemoveControlInput(op_child_node->name(), const_child_node,
+                                      graph_, node_map_.get()));
+        NodeDef* other_leaf = left_leaf_is_constant ? left_leaf : right_leaf;
+        MaybeAddControlInput(other_leaf->name(), const_child_node, graph_,
+                             node_map_.get());
+      }
 
       // Swap the constant child with a non-constant leaf node.
       node_map_->UpdateInput(node->name(), node->input(parent_const_input),
-                             child_node->input(non_const_leaf_input));
-      node_map_->UpdateInput(child_node->name(),
-                             child_node->input(non_const_leaf_input),
+                             op_child_node->input(non_const_leaf_input));
+      node_map_->UpdateInput(op_child_node->name(),
+                             op_child_node->input(non_const_leaf_input),
                              node->input(parent_const_input));
       std::swap(*node->mutable_input(parent_const_input),
-                *child_node->mutable_input(non_const_leaf_input));
+                *op_child_node->mutable_input(non_const_leaf_input));
       graph_modified_ = true;
     }
   }

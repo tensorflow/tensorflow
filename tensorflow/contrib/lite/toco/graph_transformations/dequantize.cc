@@ -214,7 +214,9 @@ bool Dequantize::Run(Model* model, std::size_t op_index) {
   }
   bool changed = false;
   for (const string& array : arrays) {
-    changed |= DequantizeArray(array, this, model);
+    if (!model->IsOptionalArray(array)) {
+      changed |= DequantizeArray(array, this, model);
+    }
   }
 
   return changed;
