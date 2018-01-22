@@ -475,6 +475,17 @@ class UnaryOpsTest(XLATestCase):
           np.array([[-4j, 3 + 2j], [2, -1j]], dtype=dtype),
           expected=np.array([[1, 1], [1, 1]], dtype=dtype))
 
+      for fill_value in [0, 1, 0.7, -5.2]:
+          target_value = np.array(fill_value).astype(dtype)
+
+          self._assertOpOutputMatchesExpected(
+              lambda x: array_ops.alphas_like(x, alpha_value=target_value),
+              np.array([[-4j, 3 + 2j], [2, -1j]], dtype=dtype),
+              expected=np.array(
+                  [[target_value, target_value], [target_value, target_value]],
+                  dtype=dtype
+              ))
+
       self._assertOpOutputMatchesExpected(
           math_ops.angle,
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
@@ -528,6 +539,17 @@ class UnaryOpsTest(XLATestCase):
           array_ops.ones_like,
           np.array([[4, 3], [2, 1]], dtype=dtype),
           expected=np.array([[1, 1], [1, 1]], dtype=dtype))
+
+      for fill_value in [0, 1, 0.7, -5.2]:
+          target_value = np.array(fill_value).astype(dtype)
+
+          self._assertOpOutputMatchesExpected(
+              lambda x: array_ops.alphas_like(x, alpha_value=target_value),
+              np.array([[4, 3], [2, 1]], dtype=dtype),
+              expected=np.array(
+                  [[target_value, target_value], [target_value, target_value]],
+                  dtype=dtype
+              ))
 
   # TODO(phawkins): these tests fail unless fastmath optimizations
   # are disabled. Use more robust IsInf/IsNaN detection and enable these
