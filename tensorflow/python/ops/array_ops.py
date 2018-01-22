@@ -64,6 +64,7 @@ See the @{$python/array_ops} guide.
 @@dynamic_stitch
 @@boolean_mask
 @@one_hot
+@@multi_one_hot
 @@sequence_mask
 @@dequantize
 @@quantize
@@ -2452,6 +2453,81 @@ def _all_dimensions(x):
 
   # Otherwise, we rely on Range and Rank to do the right thing at run-time.
   return range(0, rank(x))
+
+
+  def multi_one_hot(indices, depth_list, on_values_list=None,
+                    off_values_list=None, name=None):
+  """Creates one-hot-encodings for multiple features (columns in a matrix)
+  and concatenates the resulting encodings
+
+  If `indices` is a matrix (batch) with shape `[batch, features]`, the output
+  shape will be `[batch, sum(depth_list)]`:
+
+  Example
+  =========
+
+  Suppose that
+
+  ```python
+    indices =
+    [1.0, 2.0]
+    [0.0, 1.0]
+    [1.0, 0.0]
+
+    depth_list = [2, 3]
+    on_values_list = [5.0, 10.0]
+    off_value_list = [0.0, 0.0]
+  ```
+
+  Then output is `[3 x (2+3)]` which is `[3 x 5]`:
+
+  ```python
+    output =
+    [0.0 5.0]                     [ 0.0  0.0 10.0]
+    [5.0 0.0]  concatenated with  [ 0.0 10.0  0.0]
+    [5.0 0.0]                     [10.0  0.0  0.0]
+  ```
+
+  Args:
+    indices: A `Tensor` with mutiple columns.
+    depth_list: A list containing the depth for each column.
+    on_values_list: A list with the on_value for each column.
+    off_values_list: A list with the off_value for each column.
+
+  Returns:
+    multi_tensor: The mutiple one-hot encoded Tensor.
+
+  Raises:
+    ValueError: If length of `depth_list` does match last dim. of indices
+  """
+  n_features = indices.get_shape()[-1]
+  if len(depth_list)!=n_features:
+    raise ValueError("No. of features does not match length of the depth " \
+                     "list: {} != {}".format(len(depth_list), n_features))
+
+  on_exists = on_values_list is not None
+  off_exists = off_values_list is not None
+
+  # Pad values lists with None if their lengths are smaller than depth_list
+  if on_exists:
+    on_values_list += [None] * (n_features - len(on_values_list))
+  else:
+    on_values_list = [None] * n_features
+
+  if off_exists:
+    off_values_list += [None] * (n_features - len(off_values_list))
+  else:
+    off_values_list = [None] * n_features
+
+  multi_tensor = tf.one_hot(indices[:,0], depth_list[0], on_values_list[0],
+                            off_values_list[0], dtype=tf.float32)
+
+  for col in range(1, n_features):
+    add = tf.one_hot(indices[:,col], depth_list[col], on_values_list[col],
+                     off_values_list[col], dtype=tf.float32)
+    multi_tensor = tf.concat([multi_tensor, add], axis=-1, name=name)
+
+  return multi_tensor
 
 
 @tf_export("sequence_mask")
