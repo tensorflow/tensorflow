@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
+#include "tensorflow/core/graph/optimizer_linm.h"
 
 namespace tensorflow {
 
@@ -28,6 +29,7 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
   if (opts_.opt_level() >= OptimizerOptions::L1) {
     opts_.set_do_common_subexpression_elimination(true);
     opts_.set_do_constant_folding(true);
+    opts_.set_do_loop_invariant_node_motion(true);
   }
 }
 
@@ -87,6 +89,12 @@ void GraphOptimizer::Optimize(
     }
     if (opts_.do_function_inlining() && ExpandInlineFunctions(runtime, g)) {
       DumpGraph("ExpandInlineFunctions", g);
+      changed = true;
+    }
+    if (opts_.do_loop_invariant_node_motion() &&
+        OptimizeLINM(g)) {
+      RemoveDeadNodes(g);
+      DumpGraph("OptimizeLINM", g);
       changed = true;
     }
     if (!changed) break;
