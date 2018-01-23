@@ -28,17 +28,146 @@ from tensorflow.python.platform import test
 
 class ApiTest(test.TestCase):
 
+  def setUp(self):
+    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
+    config.COMPILED_IMPORT_STATEMENTS = (
+        'from tensorflow.python.ops '
+        'import control_flow_ops as tf',)
+
+  def test_decorator_recurses(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= self.called_member(a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_decorator_does_not_recurse(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        return math_ops.negative(a)
+
+      @api.convert(recursive=False)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= self.called_member(a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_decorator_calls_converted(self):
+
+    class TestClass(object):
+
+      @api.graph_ready
+      def called_member(self, a):
+        return math_ops.negative(a)
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= self.called_member(a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_decorator_calls_decorated(self):
+
+    class TestClass(object):
+
+      @api.convert()
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= self.called_member(a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_convert_call_site_decorator(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= api.convert_inline(self.called_member, a)
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_graph_ready_call_site_decorator(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        return math_ops.negative(a)
+
+      @api.convert(recursive=True)
+      def test_method(self, x, s, a):
+        while math_ops.reduce_sum(x) > s:
+          x //= api.graph_ready(self.called_member(a))
+        return x
+
+    tc = TestClass()
+    with self.test_session() as sess:
+      x = tc.test_method(
+          constant_op.constant([2, 4]), constant_op.constant(1),
+          constant_op.constant(-2))
+      self.assertListEqual([0, 1], sess.run(x).tolist())
+
   def test_to_graph_basic(self):
     def test_fn(x, s):
       while math_ops.reduce_sum(x) > s:
         x //= 2
       return x
 
-    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
-    config.COMPILED_IMPORT_STATEMENTS = (
-        'from tensorflow.python.ops '
-        'import control_flow_ops as tf',
-    )
     compiled_fn = api.to_graph(test_fn)
 
     with self.test_session() as sess:
@@ -51,7 +180,6 @@ class ApiTest(test.TestCase):
         x /= 2
       return x
 
-    config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     compiled_code = api.to_code(test_fn)
 
     # Just check for some key words and that it is parseable Python code.

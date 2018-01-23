@@ -736,6 +736,7 @@ The `run` command provides the following two ways to pass inputs to the model:
 
 * `--inputs` option enables you to pass numpy ndarray in files.
 * `--input_exprs` option enables you to pass Python expressions.
+* `--input_examples` option enables you to pass `tf.train.Example`.
 
 
 #### `--inputs`
@@ -789,18 +790,30 @@ inputs that match the dtype and shape of the model's `SignatureDef`s.
 For example:
 
 ```bsh
-`input_key=[[1], [2], [3]]`
+`<input_key>=[[1],[2],[3]]`
 ```
 
 In addition to Python expressions, you may also pass numpy functions. For
 example:
 
 ```bsh
-input_key=np.ones((32, 32, 3))
+`<input_key>=np.ones((32,32,3))`
 ```
 
 (Note that the `numpy` module is already available to you as `np`.)
 
+
+#### `--inputs_examples`
+
+To pass `tf.train.Example` as inputs, specify the `--input_examples` option.
+For each input key, it takes a list of dictionary, where each dictionary is an
+instance of `tf.train.Example`. The dictionary keys are the features and the
+values are the value lists for each feature.
+For example:
+
+```bsh
+`<input_key>=[{"age":[22,24],"education":["BS","MS"]}]`
+```
 
 #### Save Output
 
