@@ -21,7 +21,6 @@ In addition to the functions below, `as_str` converts an object to a `str`.
 @@as_bytes
 @@as_text
 @@as_str_any
-@@path_to_str
 
 ## Types
 The compatibility module also provides the following types:
