@@ -1091,8 +1091,9 @@ bool MaybeRunRecordGradientCallback(const tensorflow::OpDef* op_def,
 
   PyObject* inputs = PyTuple_New(op_def->input_arg_size());
   for (int i = 0; i < op_def->input_arg_size(); i++) {
-    PyTuple_SET_ITEM(
-        inputs, i, PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i));
+    auto* input = PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i);
+    Py_INCREF(input);
+    PyTuple_SET_ITEM(inputs, i, input);
   }
 
   int args_size = PyTuple_GET_SIZE(args);
@@ -1100,9 +1101,10 @@ bool MaybeRunRecordGradientCallback(const tensorflow::OpDef* op_def,
       args_size - op_def->input_arg_size() - kFastPathExecuteInputStartIndex;
   PyObject* attrs = PyTuple_New(num_attrs);
   for (int i = 0; i < num_attrs; i++) {
-    PyTuple_SET_ITEM(attrs, i,
-                     PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex +
-                                                op_def->input_arg_size() + i));
+    auto* attr = PyTuple_GET_ITEM(
+        args, kFastPathExecuteInputStartIndex + op_def->input_arg_size() + i);
+    Py_INCREF(attr);
+    PyTuple_SET_ITEM(attrs, i, attr);
   }
 
   PyObject* callback_args = Py_BuildValue("OOO", inputs, attrs, result);
