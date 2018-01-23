@@ -102,6 +102,7 @@ cc_library(
         "remove_ema.cc",
         "obfuscate_names.cc",
         "remove_attribute.cc",
+        "remove_control_dependencies.cc",
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
