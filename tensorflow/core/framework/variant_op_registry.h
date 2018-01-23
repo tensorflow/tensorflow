@@ -205,8 +205,8 @@ class UnaryVariantOpRegistry {
       binary_op_fns;
 
   // Find or insert a string into a persistent string storage
-  // container; return the StringPiece pointing to the permanent
-  string location.static StringPiece GetPersistentStringPiece(const string& str) {
+  // container; return the StringPiece pointing to the permanent string location.
+  static StringPiece GetPersistentStringPiece(const string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);
     if (found == string_storage->end()) {
