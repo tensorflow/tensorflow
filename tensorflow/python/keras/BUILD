@@ -557,6 +557,7 @@ py_test(
     srcs = ["_impl/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_windows",
         "noasan",  # times out
         "notsan",
