@@ -35,8 +35,10 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("nn.log_poisson_loss")
 def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
   """Computes log Poisson loss given `log_input`.
 
@@ -101,6 +103,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     return result
 
 
+@tf_export("nn.sigmoid_cross_entropy_with_logits")
 def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     _sentinel=None,
     labels=None,
@@ -180,6 +183,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
         name=name)
 
 
+@tf_export("nn.weighted_cross_entropy_with_logits")
 def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
@@ -251,6 +255,7 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
         name=name)
 
 
+@tf_export("nn.relu_layer")
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 
@@ -297,6 +302,7 @@ def _swish_grad(features, grad):
     shape_func=_swish_shape,
     func_name="swish",
     noinline=True)
+@tf_export("nn.swish")
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -316,6 +322,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
+@tf_export("nn.l2_normalize")
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   """Normalizes along dimension `axis` using an L2 norm.
@@ -347,6 +354,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     return math_ops.multiply(x, x_inv_norm, name=name)
 
 
+@tf_export("nn.zero_fraction")
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
 
@@ -374,6 +382,7 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
+@tf_export("nn.depthwise_conv2d")
 def depthwise_conv2d(input,
                      filter,
                      strides,
@@ -450,6 +459,7 @@ def depthwise_conv2d(input,
 
 
 # pylint: disable=redefined-builtin,line-too-long
+@tf_export("nn.separable_conv2d")
 def separable_conv2d(input,
                      depthwise_filter,
                      pointwise_filter,
@@ -550,6 +560,7 @@ def separable_conv2d(input,
 # pylint: enable=redefined-builtin,line-too-long
 
 
+@tf_export("nn.sufficient_statistics")
 def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -599,6 +610,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   return counts, m_ss, v_ss, shift
 
 
+@tf_export("nn.normalize_moments")
 def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   """Calculate the mean and variance of based on the sufficient statistics.
 
@@ -630,6 +642,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
+@tf_export("nn.moments")
 def moments(x, axes,
             shift=None,  # pylint: disable=unused-argument
             name=None, keep_dims=False):
@@ -682,6 +695,7 @@ def moments(x, axes,
       return (mean, variance)
 
 
+@tf_export("nn.weighted_moments")
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -753,6 +767,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
     return weighted_mean, weighted_variance
 
 
+@tf_export("nn.batch_normalization")
 def batch_normalization(x,
                         mean,
                         variance,
@@ -810,6 +825,7 @@ def batch_normalization(x,
                       if offset is not None else -mean * inv)
 
 
+@tf_export("nn.fused_batch_norm")
 def fused_batch_norm(
     x,
     scale,
@@ -882,6 +898,7 @@ def fused_batch_norm(
   return y, batch_mean, batch_var
 
 
+@tf_export("nn.batch_norm_with_global_normalization")
 def batch_norm_with_global_normalization(t,
                                          m,
                                          v,
@@ -1109,6 +1126,7 @@ def _compute_sampled_logits(weights,
     return out_logits, out_labels
 
 
+@tf_export("nn.nce_loss")
 def nce_loss(weights,
              biases,
              labels,
@@ -1217,6 +1235,7 @@ def nce_loss(weights,
   return _sum_rows(sampled_losses)
 
 
+@tf_export("nn.sampled_softmax_loss")
 def sampled_softmax_loss(weights,
                          biases,
                          labels,
